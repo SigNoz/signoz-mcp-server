@@ -3,94 +3,111 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
+	"strings"
 	"time"
 
+	"github.com/SigNoz/signoz-mcp-server/internal/apiclient/apitypes"
 	"github.com/SigNoz/signoz-mcp-server/internal/client"
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 	"github.com/SigNoz/signoz-mcp-server/pkg/metricsrules"
-	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
 
 const (
 	maxBuilderMetricMetadataLookups = 16
 	builderMetricMetadataTimeout    = 30 * time.Second
+	builderMetricReducerRecovery    = "supply reduceTo explicitly (sum, count, avg, min, max, last, or median)"
 )
 
-func (h *Handler) defaultBuilderMetricReducers(ctx context.Context, client client.Client, payload *types.QueryPayload) ([]string, *mcp.CallToolResult) {
-	if payload.RequestType != "scalar" {
+func (h *Handler) defaultBuilderMetricReducers(ctx context.Context, c client.Client, request map[string]any) ([]string, *mcp.CallToolResult) {
+	if request["requestType"] != string(apitypes.Querybuildertypesv5RequestTypeScalar) {
 		return nil, nil
 	}
-	var decisions []string
+	// Read through the generated contract, but edit the original object so unknown
+	// fields and explicitly supplied values still reach SigNoz unchanged.
+	body, err := json.Marshal(request)
+	if err != nil {
+		return nil, nil
+	}
+	var payload apitypes.Querybuildertypesv5QueryRangeRequest
+	if err := json.Unmarshal(body, &payload); err != nil || payload.Start == nil || payload.End == nil || *payload.Start <= 0 || *payload.End <= 0 {
+		return nil, nil
+	}
+	composite, _ := request["compositeQuery"].(map[string]any)
+	queries, _ := composite["queries"].([]any)
+	type pendingReducer struct {
+		aggregation                     map[string]any
+		metricName, source, name, field string
+		index                           int
+	}
+	var pending []pendingReducer
 	reducers := make(map[[2]string]string)
-	// Reject excessive discovery before making any upstream requests.
-	for _, query := range payload.CompositeQuery.Queries {
-		spec, ok := query.Spec.(types.QuerySpec)
-		if !ok || query.Type != "builder_query" || spec.Signal != "metrics" {
+	for qi, raw := range queries {
+		query, _ := raw.(map[string]any)
+		spec, _ := query["spec"].(map[string]any)
+		if query["type"] != string(apitypes.Querybuildertypesv5QueryTypeBuilderQuery) || spec["signal"] != "metrics" {
 			continue
 		}
-		for _, raw := range spec.Aggregations {
+		rawSource, _ := builderField(spec, "source")
+		source, _ := rawSource.(string)
+		source = strings.ToLower(strings.TrimSpace(source))
+		name, _ := spec["name"].(string)
+		aggregations, _ := spec["aggregations"].([]any)
+		for ai, raw := range aggregations {
 			agg, ok := raw.(map[string]any)
 			if !ok {
 				continue
 			}
-			if _, supplied := agg["reduceTo"]; supplied {
+			if _, supplied := builderField(agg, "reduceTo"); supplied {
 				continue
 			}
-			metricName, _ := agg["metricName"].(string)
-			reducers[[2]string{spec.Source, metricName}] = ""
-			if len(reducers) > maxBuilderMetricMetadataLookups {
-				return nil, validationError("query.compositeQuery.queries", fmt.Sprintf("requires more than %d metric metadata lookups; set reduceTo explicitly on the scalar metrics aggregations", maxBuilderMetricMetadataLookups))
+			rawName, _ := builderField(agg, "metricName")
+			metricName, _ := rawName.(string)
+			field := fmt.Sprintf("query.compositeQuery.queries[%d].spec.aggregations[%d].reduceTo", qi, ai)
+			if metricName == "" {
+				return nil, validationError(strings.TrimSuffix(field, "reduceTo")+"metricName", "is required to choose a default; find the metric with signoz_list_metrics")
 			}
+			reducers[[2]string{source, metricName}] = ""
+			if len(reducers) > maxBuilderMetricMetadataLookups {
+				return nil, validationError("query.compositeQuery.queries", fmt.Sprintf("requires more than %d metric metadata lookups; %s on the scalar metrics aggregations", maxBuilderMetricMetadataLookups, builderMetricReducerRecovery))
+			}
+			pending = append(pending, pendingReducer{agg, metricName, source, name, field, ai})
 		}
 	}
-	if len(reducers) == 0 {
+	if len(pending) == 0 {
 		return nil, nil
 	}
 	metadataCtx, cancel := context.WithTimeout(ctx, builderMetricMetadataTimeout)
 	defer cancel()
-
-	for qi, query := range payload.CompositeQuery.Queries {
-		spec, ok := query.Spec.(types.QuerySpec)
-		if !ok || query.Type != "builder_query" || spec.Signal != "metrics" {
-			continue
+	var decisions []string
+	for _, item := range pending {
+		key := [2]string{item.source, item.metricName}
+		reducer := reducers[key]
+		if reducer == "" {
+			meta, err := h.fetchBuilderMetricMetadata(metadataCtx, c, int64(*payload.Start), int64(*payload.End), item.metricName, item.source)
+			if err != nil {
+				return nil, upstreamError(fmt.Errorf("could not choose reduceTo for metric %q: %w; %s to skip metadata lookup", item.metricName, err, builderMetricReducerRecovery))
+			}
+			if meta == nil {
+				return nil, validationError(item.field, fmt.Sprintf("could not find metadata for metric %q in this source; check metricName and source with signoz_list_metrics, or %s if the name is correct", item.metricName, builderMetricReducerRecovery))
+			}
+			if meta.MetricName != item.metricName || meta.MetricType == "" || meta.IsMonotonicMissing {
+				h.logger.WarnContext(ctx, "Cannot determine scalar metric reducer from metadata", slog.String("metricName", item.metricName), slog.String("source", item.source))
+				return nil, validationError(item.field, "cannot be defaulted from the metric metadata; "+builderMetricReducerRecovery)
+			}
+			resolved, err := metricsrules.ApplyDefaults(metricsrules.MetricQueryParams{MetricType: meta.MetricType, IsMonotonic: meta.IsMonotonic}, "scalar")
+			if err != nil {
+				h.logger.WarnContext(ctx, "Unsupported metric metadata type for scalar reducer", slog.String("metricName", item.metricName), slog.String("source", item.source), slog.String("metricType", meta.MetricType))
+				return nil, validationError(item.field, "cannot be defaulted for this metric type; "+builderMetricReducerRecovery)
+			}
+			reducer = resolved.ReduceTo
+			reducers[key] = reducer
 		}
-		for ai, raw := range spec.Aggregations {
-			agg, ok := raw.(map[string]any)
-			if !ok {
-				continue
-			}
-			if _, supplied := agg["reduceTo"]; supplied {
-				continue
-			}
-			metricName, _ := agg["metricName"].(string)
-			field := fmt.Sprintf("query.compositeQuery.queries[%d].spec.aggregations[%d].reduceTo", qi, ai)
-			if metricName == "" {
-				return nil, validationError(field, "requires a metricName to choose a default; supply the metricName and reduceTo")
-			}
-			key := [2]string{spec.Source, metricName}
-			reducer := reducers[key]
-			if reducer == "" {
-				meta, err := h.fetchBuilderMetricMetadata(metadataCtx, client, payload.Start, payload.End, metricName, spec.Source)
-				if err != nil {
-					return nil, upstreamError(fmt.Errorf("could not choose reduceTo for metric %q: %w; supply reduceTo explicitly to skip metadata lookup", metricName, err))
-				}
-				if meta == nil || meta.MetricName != metricName || meta.MetricType == "" || meta.IsMonotonicMissing {
-					h.logger.WarnContext(ctx, "Cannot determine scalar metric reducer from metadata", slog.String("metricName", metricName), slog.String("source", spec.Source))
-					return nil, validationError(field, "cannot be defaulted from the metric metadata; supply sum, count, avg, min, max, last, or median explicitly")
-				}
-				resolved, err := metricsrules.ApplyDefaults(metricsrules.MetricQueryParams{MetricType: meta.MetricType, IsMonotonic: meta.IsMonotonic}, "scalar")
-				if err != nil {
-					h.logger.WarnContext(ctx, "Unsupported metric metadata type for scalar reducer", slog.String("metricName", metricName), slog.String("source", spec.Source), slog.String("metricType", meta.MetricType))
-					return nil, validationError(field, "cannot be defaulted for this metric type; supply sum, count, avg, min, max, last, or median explicitly")
-				}
-				reducer = resolved.ReduceTo
-				reducers[key] = reducer
-			}
-			agg["reduceTo"] = reducer
-			decisions = append(decisions, fmt.Sprintf("query %s aggregation #%d (%s): reduceTo=%s (metric-type default)", spec.Name, ai+1, metricName, reducer))
-		}
+		item.aggregation["reduceTo"] = reducer
+		decisions = append(decisions, fmt.Sprintf("query %s aggregation #%d (%s): reduceTo=%s (metric-type default)", item.name, item.index+1, item.metricName, reducer))
 	}
 	return decisions, nil
 }
@@ -102,15 +119,24 @@ func (h *Handler) fetchBuilderMetricMetadata(ctx context.Context, c client.Clien
 	}
 	// The catalog is a bounded substring search. Its first page can omit an exact name.
 	if source == "meter" {
-		// The exact-name endpoint only reads the ordinary metrics store.
-		data, err := c.ListMetrics(ctx, start, end, 5000, metricName, source)
+		// Meter queries align to hourly buckets outside short requested windows.
+		// Its metadata fallback stays in the meter store and omits the window.
+		data, err := c.ListMetrics(ctx, 0, 0, 5000, metricName, source)
 		if err != nil {
 			return nil, err
 		}
-		return parseMetricMetadataFromResponse(data, metricName)
+		meta, err := parseMetricMetadataFromResponse(data, metricName)
+		if meta != nil && meta.MetricName != metricName {
+			return nil, err
+		}
+		return meta, err
 	}
 	data, err := c.GetMetricMetadata(ctx, metricName)
 	if err != nil {
+		var statusErr *client.HTTPStatusError
+		if errors.As(err, &statusErr) && statusErr.StatusCode == http.StatusNotFound {
+			return nil, nil
+		}
 		return nil, err
 	}
 	var response struct {
@@ -120,6 +146,22 @@ func (h *Handler) fetchBuilderMetricMetadata(ctx context.Context, c client.Clien
 		h.logger.WarnContext(ctx, "Cannot parse exact metric metadata", slog.String("metricName", metricName))
 		return nil, fmt.Errorf("invalid metric metadata response: %w", err)
 	}
-	response.Data.MetricName = metricName
+	if response.Data.MetricName == "" {
+		response.Data.MetricName = metricName
+	}
 	return metricMetadataFromRow(response.Data), nil
+}
+
+// JSON marshaling sorts map keys, and SigNoz's decoder takes the last
+// case-insensitive match. Use the same value without rewriting caller fields.
+func builderField(object map[string]any, name string) (any, bool) {
+	var value any
+	var matched string
+	found := false
+	for key, candidate := range object {
+		if strings.EqualFold(key, name) && (!found || key > matched) {
+			value, matched, found = candidate, key, true
+		}
+	}
+	return value, found
 }

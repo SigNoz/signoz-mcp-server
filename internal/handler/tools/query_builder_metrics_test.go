@@ -1,104 +1,143 @@
 package tools
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/http/httptest"
-	"reflect"
-	"strings"
+	"strconv"
+	"sync/atomic"
 	"testing"
-	"testing/synctest"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/client"
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 )
 
-func TestHandleExecuteBuilderQuery_ScalarMetricReducers(t *testing.T) {
-	for _, tc := range []struct {
-		name, metricType, reducer string
-		monotonic                 bool
-	}{
-		{"gauge", "gauge", "avg", false},
-		{"counter", "sum", "sum", true},
-		{"non_monotonic_sum", "sum", "avg", false},
-		{"histogram", "histogram", "avg", false},
-		{"exponential_histogram", "exponentialhistogram", "avg", false},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			calls := make(map[string]int)
-			mock := &client.MockClient{
-				ListMetricsFn: func(_ context.Context, start, end int64, _ int, name, source string) (json.RawMessage, error) {
-					if start != 1711123200000 || end != 1711130400000 {
-						t.Fatalf("metadata must use the historical query window; got %d..%d", start, end)
-					}
-					if name != "test_metric" {
-						t.Fatalf("unexpected metric %q", name)
-					}
-					calls[source]++
-					return json.RawMessage(fmt.Sprintf(`{"data":{"metrics":[{"metricName":"test_metric","type":%q,"isMonotonic":%t,"temporality":"delta"}]}}`, tc.metricType, tc.monotonic)), nil
-				},
-				QueryBuilderV5Fn: func(_ context.Context, body []byte) (json.RawMessage, error) {
-					var payload map[string]any
-					if err := json.Unmarshal(body, &payload); err != nil {
-						t.Fatal(err)
-					}
-					queries := payload["compositeQuery"].(map[string]any)["queries"].([]any)
-					for _, index := range []int{0, 1} {
-						spec := queries[index].(map[string]any)["spec"].(map[string]any)
-						aggs := spec["aggregations"].([]any)
-						for i, raw := range aggs {
-							agg := raw.(map[string]any)
-							want := tc.reducer
-							if i == 2 {
-								want = "max"
-							}
-							if agg["reduceTo"] != want {
-								t.Fatalf("query %d aggregation %d: %v", index, i, agg)
-							}
-							if agg["timeAggregation"] != "sum" || agg["spaceAggregation"] != "sum" {
-								t.Fatalf("authored aggregation changed: %v", agg)
-							}
-						}
-					}
-					return json.RawMessage(`{"data":{"results":[]}}`), nil
-				},
+func TestHandleExecuteBuilderQuery_SourceIsolationAndRequestLocalDedup(t *testing.T) {
+	var ordinaryLookups, meterLookups, executions atomic.Int32
+	var round atomic.Int32
+	h := newBuilderMetricTestHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method + " " + r.URL.Path {
+		case "GET /api/v2/metrics":
+			assert.Equal(t, "shared_metric", r.URL.Query().Get("searchText"))
+			meter := r.URL.Query().Get("source") == "meter"
+			if meter {
+				meterLookups.Add(1)
+			} else {
+				assert.Empty(t, r.URL.Query().Get("source"))
+				ordinaryLookups.Add(1)
 			}
-			query := scalarMetricBuilderQuery()
-			queries := query["compositeQuery"].(map[string]any)["queries"].([]any)
-			for _, source := range []string{"", "meter"} {
-				spec := map[string]any{"name": "A", "signal": "metrics", "source": source, "disabled": true,
-					"aggregations": []any{
-						map[string]any{"metricName": "test_metric", "timeAggregation": "sum", "spaceAggregation": "sum"},
-						map[string]any{"metricName": "test_metric", "timeAggregation": "sum", "spaceAggregation": "sum"},
-						map[string]any{"metricName": "test_metric", "timeAggregation": "sum", "spaceAggregation": "sum", "reduceTo": "max"},
-					},
+			if meter == (round.Load() == 0) {
+				_, _ = w.Write([]byte(`{"data":{"metrics":[{"metricName":"shared_metric","type":"sum","isMonotonic":true}]}}`))
+			} else {
+				_, _ = w.Write([]byte(`{"data":{"metrics":[{"metricName":"shared_metric","type":"gauge"}]}}`))
+			}
+		case "POST /api/v5/query_range":
+			executions.Add(1)
+			var payload map[string]any
+			if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&payload)) {
+				return
+			}
+			assert.Equal(t, "retained", payload["futureRequestField"])
+			composite := payload["compositeQuery"].(map[string]any)
+			assert.Equal(t, true, composite["futureCompositeField"])
+			queries := composite["queries"].([]any)
+			if !assert.Len(t, queries, 4) {
+				return
+			}
+			for i, source := range []string{"", "meter", " Meter "} {
+				query := queries[i].(map[string]any)
+				assert.Equal(t, "retained", query["futureQueryField"])
+				spec := query["spec"].(map[string]any)
+				sourceKey := "source"
+				if i == 2 {
+					sourceKey = "Source"
 				}
-				if source == "meter" {
-					spec["name"] = "B"
+				assert.Equal(t, source, spec[sourceKey])
+				assert.Equal(t, true, spec["disabled"], "hidden formula inputs must still get reducers")
+				assert.Equal(t, "retained", spec["futureSpecField"])
+				aggs := spec["aggregations"].([]any)
+				if !assert.Len(t, aggs, 3) {
+					return
 				}
-				queries = append(queries, map[string]any{"type": "builder_query", "spec": spec})
+				want := "avg"
+				if (i > 0) == (round.Load() == 0) {
+					want = "sum"
+				}
+				for j, raw := range aggs {
+					if j == 2 {
+						want = "max"
+					}
+					metricKey := "metricName"
+					if i == 2 {
+						metricKey = "MetricName"
+					}
+					assert.Equal(t, map[string]any{metricKey: "shared_metric", "timeAggregation": "sum", "spaceAggregation": "sum", "reduceTo": want, "futureAggregationField": "retained"}, raw)
+				}
 			}
-			queries = append(queries, map[string]any{"type": "builder_formula", "spec": map[string]any{"name": "F", "expression": "A / B"}})
-			query["compositeQuery"].(map[string]any)["queries"] = queries
-			result, err := newTestHandler(mock).handleExecuteBuilderQuery(testCtx(), makeToolRequest("signoz_execute_builder_query", map[string]any{"query": query}))
-			if err != nil || result.IsError {
-				t.Fatalf("result=%v err=%v", result, err)
+			formula := queries[3].(map[string]any)["spec"].(map[string]any)
+			assert.Equal(t, "A / (B + C)", formula["expression"])
+			assert.Equal(t, "retained", formula["futureFormulaField"])
+			_, _ = w.Write([]byte(`{"data":{"results":[{"queryName":"F","value":2}]}}`))
+		default:
+			t.Errorf("unexpected upstream request: %s %s", r.Method, r.URL)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	})
+	for invocation := range 2 {
+		round.Store(int32(invocation))
+		query := scalarMetricBuilderQuery()
+		query["futureRequestField"] = "retained"
+		var queries []any
+		for i, source := range []string{"", "meter", " Meter "} {
+			var aggs []any
+			for j := range 3 {
+				agg := map[string]any{"metricName": "shared_metric", "timeAggregation": "sum", "spaceAggregation": "sum", "futureAggregationField": "retained"}
+				if j == 2 {
+					agg["reduceTo"] = "max"
+				}
+				if i == 2 {
+					delete(agg, "metricName")
+					agg["MetricName"] = "shared_metric"
+				}
+				aggs = append(aggs, agg)
 			}
-			if !reflect.DeepEqual(calls, map[string]int{"": 1, "meter": 1}) {
-				t.Fatalf("source-scoped metadata lookups: %v", calls)
+			queries = append(queries, map[string]any{"type": "builder_query", "futureQueryField": "retained", "spec": map[string]any{
+				"name": []string{"A", "B", "C"}[i], "signal": "metrics", "source": source, "disabled": true, "aggregations": aggs, "futureSpecField": "retained",
+			}})
+		}
+		aliasedSpec := queries[2].(map[string]any)["spec"].(map[string]any)
+		aliasedSpec["Source"] = aliasedSpec["source"]
+		delete(aliasedSpec, "source")
+		queries = append(queries, map[string]any{"type": "builder_formula", "spec": map[string]any{"name": "F", "expression": "A / (B + C)", "futureFormulaField": "retained"}})
+		query["compositeQuery"] = map[string]any{"queries": queries, "futureCompositeField": true}
+		result, err := h.handleExecuteBuilderQuery(testCtx(), makeToolRequest("signoz_execute_builder_query", map[string]any{"query": query}))
+		require.NoError(t, err)
+		require.False(t, result.IsError, "%v", result.Content)
+		assert.JSONEq(t, `{"data":{"results":[{"queryName":"F","value":2}]}}`, textContent(t, result))
+		var notes string
+		for i := range result.Content {
+			notes += noteText(t, result, i) + "\n"
+		}
+		for i, name := range []string{"A", "B", "C"} {
+			want := "avg"
+			if (i > 0) == (invocation == 0) {
+				want = "sum"
 			}
-			if !resultNotesContain(result, "reduceTo="+tc.reducer) {
-				t.Fatalf("missing decisions: %v", allTextBlocks(result))
+			for agg := 1; agg <= 2; agg++ {
+				assert.Contains(t, notes, fmt.Sprintf("query %s aggregation #%d (shared_metric): reduceTo=%s", name, agg, want))
 			}
-			if block, ok := mcp.AsTextContent(result.Content[0]); !ok || block.Text != `{"data":{"results":[]}}` {
-				t.Fatalf("raw response changed: %v", result.Content)
-			}
-		})
+		}
+		assert.Equal(t, int32(invocation+1), ordinaryLookups.Load(), "deduplicate ordinary metadata only within each request")
+		assert.Equal(t, int32(invocation+1), meterLookups.Load(), "deduplicate meter metadata only within each request")
+		assert.Equal(t, int32(invocation+1), executions.Load())
 	}
 }
 
@@ -114,35 +153,40 @@ func TestHandleExecuteBuilderQuery_PreservesAuthoredReducers(t *testing.T) {
 		{"invalid", "scalar", "metrics", map[string]any{"metricName": "test_metric", "reduceTo": "not_a_reducer"}},
 		{"empty", "scalar", "metrics", map[string]any{"metricName": "test_metric", "reduceTo": ""}},
 		{"null", "scalar", "metrics", map[string]any{"metricName": "test_metric", "reduceTo": nil}},
+		{"case_variant", "scalar", "metrics", map[string]any{"MetricName": "test_metric", "ReduceTo": "max"}},
+		{"case_variant_null", "scalar", "metrics", map[string]any{"metricName": "test_metric", "ReduceTo": nil}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			mock := &client.MockClient{
-				ListMetricsFn: func(context.Context, int64, int64, int, string, string) (json.RawMessage, error) {
-					t.Fatal("unexpected metadata lookup")
-					return nil, nil
-				},
-				QueryBuilderV5Fn: func(_ context.Context, body []byte) (json.RawMessage, error) {
-					var payload map[string]any
-					if err := json.Unmarshal(body, &payload); err != nil {
-						t.Fatal(err)
-					}
-					got := payload["compositeQuery"].(map[string]any)["queries"].([]any)[0].(map[string]any)["spec"].(map[string]any)["aggregations"].([]any)[0]
-					if !reflect.DeepEqual(got, tc.agg) {
-						t.Fatalf("aggregation changed: %v", got)
-					}
-					return json.RawMessage(`{}`), nil
-				},
-			}
+			wantAgg := maps.Clone(tc.agg)
+			var executions atomic.Int32
+			h := newBuilderMetricTestHandler(t, func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodPost || r.URL.Path != "/api/v5/query_range" {
+					t.Errorf("authored reducers must bypass metadata: %s %s", r.Method, r.URL)
+					w.WriteHeader(http.StatusNotFound)
+					return
+				}
+				executions.Add(1)
+				var payload map[string]any
+				if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&payload)) {
+					return
+				}
+				assert.Equal(t, tc.requestType, payload["requestType"])
+				spec := payload["compositeQuery"].(map[string]any)["queries"].([]any)[0].(map[string]any)["spec"].(map[string]any)
+				assert.Equal(t, tc.signal, spec["signal"])
+				assert.Equal(t, []any{wantAgg}, spec["aggregations"], "caller-supplied values belong to upstream validation")
+				_, _ = w.Write([]byte(`{"data":{"results":[{"queryName":"A","value":7}]}}`))
+			})
 			query := scalarMetricBuilderQuery()
 			query["requestType"] = tc.requestType
 			query["compositeQuery"].(map[string]any)["queries"] = []any{map[string]any{"type": "builder_query", "spec": map[string]any{"name": "A", "signal": tc.signal, "aggregations": []any{tc.agg}}}}
-			result, err := newTestHandler(mock).handleExecuteBuilderQuery(testCtx(), makeToolRequest("signoz_execute_builder_query", map[string]any{"query": query}))
-			if err != nil || result.IsError {
-				t.Fatalf("result=%v err=%v", result, err)
+			result, err := h.handleExecuteBuilderQuery(testCtx(), makeToolRequest("signoz_execute_builder_query", map[string]any{"query": query}))
+			require.NoError(t, err)
+			require.False(t, result.IsError, "%v", result.Content)
+			assert.JSONEq(t, `{"data":{"results":[{"queryName":"A","value":7}]}}`, textContent(t, result))
+			for i := range result.Content {
+				assert.NotContains(t, noteText(t, result, i), "reduceTo=", "authored aggregations must not produce reducer decisions")
 			}
-			if resultNotesContain(result, "reduceTo=") {
-				t.Fatal("unexpected reducer decision")
-			}
+			assert.Equal(t, int32(1), executions.Load())
 		})
 	}
 }
@@ -155,112 +199,161 @@ func TestHandleExecuteBuilderQuery_MetricMetadataFailure(t *testing.T) {
 		{name: "unauthorized", status: http.StatusUnauthorized, code: CodeUnauthorized},
 		{name: "forbidden", status: http.StatusForbidden, code: CodePermissionDenied},
 		{name: "unavailable", status: http.StatusServiceUnavailable, code: CodeUpstreamError},
+		{name: "missing_metric_name", code: CodeValidationFailed},
 		{name: "missing", body: `{"data":{"metrics":[]}}`, code: CodeValidationFailed},
 		{name: "different_metric", body: `{"data":{"metrics":[{"metricName":"test_metric_other","type":"gauge"}]}}`, code: CodeValidationFailed},
+		{name: "missing_type", body: `{"data":{"metrics":[{"metricName":"test_metric"}]}}`, code: CodeValidationFailed},
 		{name: "missing_monotonicity", body: `{"data":{"metrics":[{"metricName":"test_metric","type":"sum"}]}}`, code: CodeValidationFailed},
 		{name: "unknown_type", body: `{"data":{"metrics":[{"metricName":"test_metric","type":"new_type"}]}}`, code: CodeValidationFailed},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			mock := &client.MockClient{
-				ListMetricsFn: func(context.Context, int64, int64, int, string, string) (json.RawMessage, error) {
+			var lookups atomic.Int32
+			h := newBuilderMetricTestHandler(t, func(w http.ResponseWriter, r *http.Request) {
+				switch r.Method + " " + r.URL.Path {
+				case "GET /api/v2/metrics":
+					lookups.Add(1)
+					assert.Equal(t, "test_metric", r.URL.Query().Get("searchText"))
 					if tc.status != 0 {
-						return nil, &client.HTTPStatusError{StatusCode: tc.status, Body: `{}`}
+						w.WriteHeader(tc.status)
+						_, _ = w.Write([]byte(`{"error":"metadata unavailable"}`))
+						return
 					}
-					return json.RawMessage(tc.body), nil
-				},
-				QueryBuilderV5Fn: func(context.Context, []byte) (json.RawMessage, error) {
-					t.Fatal("must not execute without a safe reducer")
-					return nil, nil
-				},
-			}
+					_, _ = w.Write([]byte(tc.body))
+				case "GET /api/v2/metrics/metadata":
+					assert.Contains(t, []string{"missing", "different_metric"}, tc.name, "only an absent catalog match needs fallback")
+					assert.Equal(t, "test_metric", r.URL.Query().Get("metricName"))
+					w.WriteHeader(http.StatusNotFound)
+					_, _ = w.Write([]byte(`{"status":"error","error":{"code":"not_found","message":"metadata not found for metric \"test_metric\""}}`))
+				default:
+					t.Errorf("unsafe metadata must not execute a query: %s %s", r.Method, r.URL)
+					w.WriteHeader(http.StatusNotFound)
+				}
+			})
 			query := scalarMetricBuilderQuery()
 			query["compositeQuery"].(map[string]any)["queries"] = []any{map[string]any{"type": "builder_query", "spec": map[string]any{"name": "A", "signal": "metrics", "aggregations": []any{map[string]any{"metricName": "test_metric"}}}}}
-			var logs bytes.Buffer
-			h := newTestHandler(mock)
-			h.logger = slog.New(slog.NewJSONHandler(&logs, nil))
+			if tc.name == "missing_metric_name" {
+				query["compositeQuery"].(map[string]any)["queries"].([]any)[0].(map[string]any)["spec"].(map[string]any)["aggregations"] = []any{map[string]any{}}
+			}
 			result, err := h.handleExecuteBuilderQuery(testCtx(), makeToolRequest("signoz_execute_builder_query", map[string]any{"query": query}))
-			if err != nil || !result.IsError || resultCode(t, result) != tc.code {
-				t.Fatalf("result=%v err=%v", result, err)
+			require.NoError(t, err)
+			require.True(t, result.IsError)
+			assert.Equal(t, tc.code, resultCode(t, result))
+			if tc.name == "missing_metric_name" {
+				assert.Contains(t, resultText(t, result), "aggregations[0].metricName")
+				assert.Contains(t, resultText(t, result), "signoz_list_metrics")
+				assert.Zero(t, lookups.Load(), "missing metricName must fail before discovery")
+				return
 			}
-			if tc.status == 0 && !strings.Contains(resultText(t, result), "reduceTo") {
-				t.Fatalf("missing recovery guidance: %v", result.Content)
+			assert.Contains(t, resultText(t, result), "reduceTo")
+			assert.Contains(t, resultText(t, result), "explicitly", "agent must be told how to bypass unresolved metadata")
+			if tc.name == "missing" || tc.name == "different_metric" {
+				assert.Contains(t, resultText(t, result), "check metricName and source with signoz_list_metrics")
 			}
-			if tc.name == "unknown_type" && (!strings.Contains(logs.String(), `"level":"WARN"`) || !strings.Contains(logs.String(), `"metricType":"new_type"`)) {
-				t.Fatalf("unsupported upstream type was not observable: %s", logs.String())
-			}
+			assert.Positive(t, lookups.Load(), "failure must come from metadata discovery")
 		})
 	}
 }
 
 func TestHandleExecuteBuilderQuery_MetricMetadataBeyondFirstPage(t *testing.T) {
 	for _, tc := range []struct {
-		name, source, code string
-		status             int
+		name, source, body, code string
+		status                   int
 	}{
-		{name: "exact_name", status: http.StatusOK},
+		{name: "exact_name_omitted", status: http.StatusOK, body: `{"data":{"type":"sum","isMonotonic":true,"temporality":"cumulative"}}`},
+		{name: "exact_name_mismatch", status: http.StatusOK, body: `{"data":{"metricName":"different_metric","type":"sum","isMonotonic":true}}`, code: CodeValidationFailed},
 		{name: "meter_store", source: "meter", status: http.StatusOK},
+		{name: "meter_outside_requested_window", source: "meter", status: http.StatusOK},
+		{name: "meter_missing", source: "meter", status: http.StatusOK, code: CodeValidationFailed},
 		{name: "exact_lookup_unauthorized", status: http.StatusUnauthorized, code: CodeUnauthorized},
 		{name: "exact_lookup_forbidden", status: http.StatusForbidden, code: CodePermissionDenied},
+		{name: "meter_lookup_unauthorized", source: "meter", status: http.StatusUnauthorized, code: CodeUnauthorized},
+		{name: "meter_lookup_forbidden", source: "meter", status: http.StatusForbidden, code: CodePermissionDenied},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			const metricName = "test+metric&name"
-			executed := false
-			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("Content-Type", "application/json")
-				switch r.URL.Path {
-				case "/api/v2/metrics":
-					if r.URL.Query().Get("source") != tc.source || r.URL.Query().Get("searchText") != metricName {
-						t.Errorf("catalog lookup lost source/name: %v", r.URL.Query())
-					}
-					var rows []map[string]any
-					for i := range 11 {
-						rows = append(rows, map[string]any{"metricName": fmt.Sprintf("a%d_%s", i, metricName), "type": "gauge"})
-					}
-					rows = append(rows, map[string]any{"metricName": metricName, "type": "sum", "isMonotonic": true})
-					if r.URL.Query().Get("limit") == "10" {
-						rows = rows[:10]
-					} else if tc.source != "meter" || r.URL.Query().Get("limit") != "5000" {
-						t.Errorf("unexpected catalog fallback: %v", r.URL.Query())
-					}
-					if err := json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"metrics": rows}}); err != nil {
-						t.Error(err)
-					}
-				case "/api/v2/metrics/metadata":
-					if r.Method != http.MethodGet || r.URL.Query().Get("metricName") != metricName || tc.source == "meter" {
-						t.Errorf("wrong exact-name request: %s %s", r.Method, r.URL)
-					}
-					w.WriteHeader(tc.status)
-					_, _ = w.Write([]byte(`{"data":{"type":"sum","isMonotonic":true,"temporality":"cumulative"}}`))
-				case "/api/v5/query_range":
-					executed = true
-					var query map[string]any
-					if err := json.NewDecoder(r.Body).Decode(&query); err != nil {
-						t.Error(err)
+			var initialLookups, fallbacks, executions atomic.Int32
+			var firstPageLimit atomic.Int64
+			h := newBuilderMetricTestHandler(t, func(w http.ResponseWriter, r *http.Request) {
+				switch r.Method + " " + r.URL.Path {
+				case "GET /api/v2/metrics":
+					assert.Equal(t, tc.source, r.URL.Query().Get("source"))
+					assert.Equal(t, metricName, r.URL.Query().Get("searchText"))
+					limit, err := strconv.Atoi(r.URL.Query().Get("limit"))
+					if !assert.NoError(t, err) || !assert.Positive(t, limit) {
 						return
 					}
-					queries := query["compositeQuery"].(map[string]any)["queries"].([]any)
-					agg := queries[0].(map[string]any)["spec"].(map[string]any)["aggregations"].([]any)[0].(map[string]any)
-					if agg["reduceTo"] != "sum" {
-						t.Errorf("reducer came from a different metric: %v", agg)
+					var rows []map[string]any
+					if firstPageLimit.CompareAndSwap(0, int64(limit)) {
+						initialLookups.Add(1)
+						assert.Equal(t, "1711123200000", r.URL.Query().Get("start"))
+						assert.Equal(t, "1711130400000", r.URL.Query().Get("end"))
+						if tc.name == "meter_outside_requested_window" {
+							_, _ = w.Write([]byte(`{"data":{"metrics":[]}}`))
+							return
+						}
+						for i := range limit {
+							rows = append(rows, map[string]any{"metricName": fmt.Sprintf("a%d_%s", i, metricName), "type": "gauge"})
+						}
+					} else {
+						fallbacks.Add(1)
+						assert.Equal(t, "meter", tc.source, "ordinary metrics must use exact-name fallback")
+						assert.Greater(t, int64(limit), firstPageLimit.Load(), "meter fallback must search beyond the first catalog page")
+						assert.False(t, r.URL.Query().Has("start"), "meter metadata fallback must include hourly buckets outside the requested window")
+						assert.False(t, r.URL.Query().Has("end"))
+						w.WriteHeader(tc.status)
+						if tc.name != "meter_missing" {
+							rows = append(rows, map[string]any{"metricName": metricName, "type": "sum", "isMonotonic": true})
+						}
 					}
-					_, _ = w.Write([]byte(`{}`))
+					assert.NoError(t, json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"metrics": rows}}))
+				case "GET /api/v2/metrics/metadata":
+					fallbacks.Add(1)
+					assert.Empty(t, tc.source, "meter must never call the ordinary-store exact endpoint")
+					assert.Equal(t, metricName, r.URL.Query().Get("metricName"))
+					w.WriteHeader(tc.status)
+					_, _ = w.Write([]byte(tc.body))
+				case "POST /api/v5/query_range":
+					executions.Add(1)
+					assert.Empty(t, tc.code, "unresolved metadata must prevent query execution")
+					var query map[string]any
+					if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&query)) {
+						return
+					}
+					spec := query["compositeQuery"].(map[string]any)["queries"].([]any)[0].(map[string]any)["spec"].(map[string]any)
+					assert.Equal(t, tc.source, spec["source"])
+					assert.Equal(t, []any{map[string]any{"metricName": metricName, "reduceTo": "sum"}}, spec["aggregations"], "reducer must come from the exact metric")
+					_, _ = w.Write([]byte(`{"data":{"results":[{"queryName":"A","value":12}]}}`))
 				default:
-					t.Errorf("unexpected request: %s", r.URL.Path)
+					t.Errorf("unexpected upstream request: %s %s", r.Method, r.URL)
 					w.WriteHeader(http.StatusNotFound)
 				}
-			}))
-			defer upstream.Close()
+			})
 			query := scalarMetricBuilderQuery()
 			query["compositeQuery"].(map[string]any)["queries"] = []any{map[string]any{"type": "builder_query", "spec": map[string]any{
 				"name": "A", "signal": "metrics", "source": tc.source, "aggregations": []any{map[string]any{"metricName": metricName}},
 			}}}
-			c := client.NewClient(slog.Default(), upstream.URL, "test-key", "SIGNOZ-API-KEY", nil)
-			result, err := newTestHandler(c).handleExecuteBuilderQuery(testCtx(), makeToolRequest("signoz_execute_builder_query", map[string]any{"query": query}))
-			if err != nil || result.IsError != (tc.code != "") || executed != (tc.code == "") {
-				t.Fatalf("result=%v err=%v executed=%v", result, err, executed)
-			}
-			if tc.code != "" && resultCode(t, result) != tc.code {
-				t.Fatalf("wrong upstream error code: %v", result)
+			result, err := h.handleExecuteBuilderQuery(testCtx(), makeToolRequest("signoz_execute_builder_query", map[string]any{"query": query}))
+			require.NoError(t, err)
+			assert.Equal(t, int32(1), initialLookups.Load())
+			assert.Equal(t, int32(1), fallbacks.Load())
+			if tc.code != "" {
+				require.True(t, result.IsError)
+				assert.Equal(t, tc.code, resultCode(t, result))
+				assert.Contains(t, resultText(t, result), "reduceTo")
+				assert.Contains(t, resultText(t, result), "explicitly")
+				assert.Zero(t, executions.Load())
+				if tc.name == "meter_missing" {
+					assert.Contains(t, resultText(t, result), "check metricName and source with signoz_list_metrics")
+				}
+			} else {
+				require.False(t, result.IsError, "%v", result.Content)
+				assert.JSONEq(t, `{"data":{"results":[{"queryName":"A","value":12}]}}`, textContent(t, result))
+				var notes string
+				for i := range result.Content {
+					notes += noteText(t, result, i) + "\n"
+				}
+				assert.Contains(t, notes, "reduceTo=sum")
+				assert.Equal(t, int32(1), executions.Load())
 			}
 		})
 	}
@@ -273,25 +366,48 @@ func TestHandleExecuteBuilderQuery_MetricMetadataBudget(t *testing.T) {
 		explicit, wantError         bool
 	}{
 		{name: "at_limit_with_duplicates", metrics: 16, sources: 1, wantCalls: 16},
+		{name: "at_limit_across_sources", metrics: 8, sources: 2, wantCalls: 16},
 		{name: "over_limit", metrics: 17, sources: 1, wantError: true},
 		{name: "sources_count_separately", metrics: 9, sources: 2, wantError: true},
 		{name: "explicit_reducers_bypass_budget", metrics: 17, sources: 2, explicit: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			lookups, executions := 0, 0
-			mock := &client.MockClient{
-				ListMetricsFn: func(_ context.Context, _, _ int64, _ int, name, _ string) (json.RawMessage, error) {
-					lookups++
-					return json.RawMessage(fmt.Sprintf(`{"data":{"metrics":[{"metricName":%q,"type":"gauge"}]}}`, name)), nil
-				},
-				QueryBuilderV5Fn: func(ctx context.Context, _ []byte) (json.RawMessage, error) {
-					executions++
-					if _, bounded := ctx.Deadline(); bounded {
-						t.Fatal("metadata deadline leaked into query execution")
+			var lookups, executions atomic.Int32
+			h := newBuilderMetricTestHandler(t, func(w http.ResponseWriter, r *http.Request) {
+				assert.False(t, tc.wantError, "over-budget discovery must fail before any upstream request")
+				switch r.Method + " " + r.URL.Path {
+				case "GET /api/v2/metrics":
+					lookups.Add(1)
+					_, _ = fmt.Fprintf(w, `{"data":{"metrics":[{"metricName":%q,"type":"gauge"}]}}`, r.URL.Query().Get("searchText"))
+				case "POST /api/v5/query_range":
+					executions.Add(1)
+					var query map[string]any
+					if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&query)) {
+						return
 					}
-					return json.RawMessage(`{}`), nil
-				},
-			}
+					queries := query["compositeQuery"].(map[string]any)["queries"].([]any)
+					if !assert.Len(t, queries, tc.sources) {
+						return
+					}
+					for source, raw := range queries {
+						spec := raw.(map[string]any)["spec"].(map[string]any)
+						assert.Equal(t, []string{"", "meter"}[source], spec["source"])
+						aggs := spec["aggregations"].([]any)
+						assert.Len(t, aggs, tc.metrics*2)
+						for i, agg := range aggs {
+							want := "avg"
+							if tc.explicit {
+								want = "last"
+							}
+							assert.Equal(t, map[string]any{"metricName": fmt.Sprintf("metric_%d", i/2), "reduceTo": want}, agg)
+						}
+					}
+					_, _ = w.Write([]byte(`{"data":{"results":[]}}`))
+				default:
+					t.Errorf("unexpected upstream request: %s %s", r.Method, r.URL)
+					w.WriteHeader(http.StatusNotFound)
+				}
+			})
 			query := scalarMetricBuilderQuery()
 			var queries []any
 			for source := 0; source < tc.sources; source++ {
@@ -310,62 +426,89 @@ func TestHandleExecuteBuilderQuery_MetricMetadataBudget(t *testing.T) {
 				}})
 			}
 			query["compositeQuery"].(map[string]any)["queries"] = queries
-			result, err := newTestHandler(mock).handleExecuteBuilderQuery(testCtx(), makeToolRequest("signoz_execute_builder_query", map[string]any{"query": query}))
-			if err != nil || result.IsError != tc.wantError || lookups != tc.wantCalls {
-				t.Fatalf("result=%v err=%v lookups=%d", result, err, lookups)
-			}
+			result, err := h.handleExecuteBuilderQuery(testCtx(), makeToolRequest("signoz_execute_builder_query", map[string]any{"query": query}))
+			require.NoError(t, err)
+			assert.Equal(t, int32(tc.wantCalls), lookups.Load())
 			if tc.wantError {
-				if executions != 0 || resultCode(t, result) != CodeValidationFailed || !strings.Contains(resultText(t, result), "reduceTo explicitly") {
-					t.Fatalf("query ran or recovery missing: executions=%d result=%v", executions, result)
-				}
-			} else if executions != 1 {
-				t.Fatalf("executions=%d, want 1", executions)
+				require.True(t, result.IsError)
+				assert.Equal(t, CodeValidationFailed, resultCode(t, result))
+				assert.Contains(t, resultText(t, result), "reduceTo explicitly")
+				assert.Zero(t, executions.Load())
+			} else {
+				require.False(t, result.IsError, "%v", result.Content)
+				assert.JSONEq(t, `{"data":{"results":[]}}`, textContent(t, result))
+				assert.Equal(t, int32(1), executions.Load())
 			}
 		})
 	}
 }
 
-func TestHandleExecuteBuilderQuery_MetricMetadataDeadline(t *testing.T) {
-	for _, parentTimeout := range []time.Duration{0, 5 * time.Second} {
-		t.Run(parentTimeout.String(), func(t *testing.T) {
-			synctest.Test(t, func(t *testing.T) {
-				ctx := testCtx()
-				wantElapsed := 30 * time.Second
-				if parentTimeout > 0 {
-					var cancel context.CancelFunc
-					ctx, cancel = context.WithTimeout(ctx, parentTimeout)
-					defer cancel()
-					wantElapsed = parentTimeout
-				}
-				mock := &client.MockClient{
-					ListMetricsFn: func(ctx context.Context, _, _ int64, _ int, name, _ string) (json.RawMessage, error) {
-						select {
-						case <-ctx.Done():
-							return nil, ctx.Err()
-						case <-time.After(20 * time.Second):
-							return json.RawMessage(fmt.Sprintf(`{"data":{"metrics":[{"metricName":%q,"type":"gauge"}]}}`, name)), nil
-						}
-					},
-					QueryBuilderV5Fn: func(context.Context, []byte) (json.RawMessage, error) {
-						t.Fatal("query must not execute after metadata timeout")
-						return nil, nil
-					},
-				}
-				query := scalarMetricBuilderQuery()
-				query["compositeQuery"].(map[string]any)["queries"] = []any{map[string]any{"type": "builder_query", "spec": map[string]any{
-					"name": "A", "signal": "metrics", "aggregations": []any{map[string]any{"metricName": "first"}, map[string]any{"metricName": "second"}},
-				}}}
-				start := time.Now()
-				result, err := newTestHandler(mock).handleExecuteBuilderQuery(ctx, makeToolRequest("signoz_execute_builder_query", map[string]any{"query": query}))
-				if err != nil || !result.IsError || resultCode(t, result) != CodeTimeout || !strings.Contains(resultText(t, result), "reduceTo explicitly") {
-					t.Fatalf("result=%v err=%v", result, err)
-				}
-				if elapsed := time.Since(start); elapsed != wantElapsed {
-					t.Fatalf("metadata took %v, want %v total across lookups", elapsed, wantElapsed)
-				}
-			})
-		})
+func TestHandleExecuteBuilderQuery_CancelsMetricDiscovery(t *testing.T) {
+	started := make(chan struct{}, 1)
+	canceled := make(chan struct{}, 1)
+	var requests atomic.Int32
+	ctx, cancel := context.WithCancel(testCtx())
+	defer cancel()
+	h := newBuilderMetricTestHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		if r.Method != http.MethodGet || r.URL.Path != "/api/v2/metrics" || r.URL.Query().Get("searchText") != "first" {
+			t.Errorf("canceled discovery must not advance or execute: %s %s", r.Method, r.URL)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		started <- struct{}{}
+		select {
+		case <-r.Context().Done():
+			canceled <- struct{}{}
+		case <-time.After(5 * time.Second):
+			t.Error("upstream request did not observe cancellation")
+		}
+	})
+	query := scalarMetricBuilderQuery()
+	query["compositeQuery"].(map[string]any)["queries"] = []any{map[string]any{"type": "builder_query", "spec": map[string]any{
+		"name": "A", "signal": "metrics", "aggregations": []any{map[string]any{"metricName": "first"}, map[string]any{"metricName": "second"}},
+	}}}
+	type outcome struct {
+		result *mcp.CallToolResult
+		err    error
 	}
+	done := make(chan outcome, 1)
+	go func() {
+		result, err := h.handleExecuteBuilderQuery(ctx, makeToolRequest("signoz_execute_builder_query", map[string]any{"query": query}))
+		done <- outcome{result, err}
+	}()
+	select {
+	case <-started:
+		cancel()
+	case <-time.After(5 * time.Second):
+		cancel()
+		t.Fatal("metadata request never reached upstream")
+	}
+	select {
+	case got := <-done:
+		require.NoError(t, got.err)
+		require.True(t, got.result.IsError)
+		assert.Equal(t, CodeCanceled, resultCode(t, got.result))
+		assert.Contains(t, resultText(t, got.result), "reduceTo explicitly")
+	case <-time.After(5 * time.Second):
+		t.Fatal("handler did not return after cancellation")
+	}
+	select {
+	case <-canceled:
+	case <-time.After(5 * time.Second):
+		t.Fatal("cancellation did not reach the HTTP request")
+	}
+	assert.Equal(t, int32(1), requests.Load(), "no fallback, retry, second discovery, or query after cancellation")
+}
+
+func newBuilderMetricTestHandler(t *testing.T, serve http.HandlerFunc) *Handler {
+	t.Helper()
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		serve(w, r)
+	}))
+	t.Cleanup(upstream.Close)
+	return newTestHandler(client.NewClient(slog.Default(), upstream.URL, "test-key", "SIGNOZ-API-KEY", nil))
 }
 
 func scalarMetricBuilderQuery() map[string]any {

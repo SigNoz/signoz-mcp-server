@@ -21,9 +21,10 @@ Document signal-specific order keys without rewriting caller intent.
 
 ## Files to Modify
 
+- `internal/client/client.go`, `internal/client/interface.go` — exact metric metadata lookup
 - `internal/handler/tools/query_builder*.go` — default reducers and handler coverage
 - `internal/handler/tools/metrics_query.go` — retain metadata identity for exact-match checks
-- `pkg/metricsrules/guide.go`, `README.md`, `manifest.json` — synchronized guidance
+- `pkg/metricsrules/guide.go`, `README.md` — synchronized guidance (manifest description stays unchanged)
 - `internal/mcp-server/testdata/wire-catalog/` — only changed contract entries
 - `tests/e2e/tests/test_query_response_paths.py` — seeded scalar metric regression
 - Companion agent-skills query skill and evaluation cases
@@ -84,6 +85,64 @@ first catalog page excludes the target, then require successful scalar output
 equal to explicit avg. HTTP handler tests exercise exact-name query encoding,
 Cost Meter store isolation, reducer selection, and fallback 401/403 propagation.
 
+### 2026-10-17 — Rebase onto the current pass-through and testing contracts
+
+Rebased onto main at `2284b68`. Keep the generated Query Builder request type for
+reading input and insert reducers into the original JSON object, so unknown
+fields and explicit values reach SigNoz unchanged. Do not restore the retired
+QueryPayload validator or MockClient. Preserve main's missing-start guard and
+its existing bounds behavior.
+
+Use the real HTTP client against strict test upstreams for reducer wiring,
+metadata recovery, source isolation, and discovery-budget behavior. The live
+regression retains only the check that requires SigNoz: a seeded gauge hidden
+beyond the first substring catalog page executes successfully and agrees with
+explicit avg. Decision-note assertions belong in handler coverage. The metricsrules package
+owns the full metric-type reduction table; handler coverage proves wiring with
+different counter/gauge metadata for the same metric in each source.
+
+Coordinated HTTP cancellation replaces the mock-only timing test. Exact
+30-second elapsed-time and local context-deadline assertions were dropped; the
+shared timeout and query-context independence remain code-reviewed rather than
+directly timed, avoiding wall-clock sleeps and production-only test hooks.
+
+An outstanding review found that the exact-name endpoint could return a
+conflicting nonempty metricName. Preserve that identity and reject it through
+the existing metadata validation/WARN path; synthesize the requested name only
+when upstream omits it.
+
+### 2026-10-17 — Claude Opus 5.5 review
+
+Accepted the missing-metadata recovery and source-normalization findings.
+The exact endpoint returns 404 for missing metadata; this now reaches the same
+field-specific recovery as an exhausted meter catalog and tells the caller to
+verify metricName and source with signoz_list_metrics. Normalize the discovery
+source by trimming and lowercasing, as SigNoz does for builder queries, while
+leaving authored JSON untouched. The source-isolation test covers both `meter`
+and ` Meter ` sharing discovery without reading the ordinary store.
+
+Kept explicit null/empty reducers unchanged: the defined contract defaults only
+absent fields, preserves invalid supplied values for SigNoz validation, and
+avoids guessing intent (SCH-2). README, guide, and tests agree on that policy.
+Kept the conflicting-identity guard and its negative test: it exercises our
+fail-closed choice for unexpected upstream data, not a claim that current SigNoz
+normally sends metricName in this response. Nonempty conflicts still WARN.
+
+Strengthened the live gauge case to span at least two fixed 60-second buckets
+and require explicit sum to differ from avg, so selecting the wrong reducer
+cannot pass merely because both reductions saw one bucket. Current live
+verification will use main's pinned SigNoz release, not the September run.
+
+The second Claude Opus 5.5 review confirmed those decisions and identified three
+more narrow issues, all addressed: meter discovery now retries its bounded
+catalog without a time filter because hourly buckets can precede the requested
+start; source, metricName, and reducer presence honor the case-insensitive keys
+SigNoz accepts; and metadata recovery consistently lists reducers while a missing
+metric name identifies the metricName field itself. Strict HTTP tests cover the
+empty-window meter case, preserved `ReduceTo`, aliased source/metric fields,
+and missing-name recovery before any upstream call. Broader bounds casing and
+presentation nits remain outside this change; no correctness finding is deferred.
+
 ## Reference Links
 
 - https://github.com/SigNoz/nerve-pod/issues/359
@@ -91,6 +150,22 @@ Cost Meter store isolation, reducer selection, and fallback 401/403 propagation.
 - https://github.com/SigNoz/signoz/blob/v0.143.0/pkg/types/querybuildertypes/querybuildertypesv5/validation.go
 
 ## Verification
+
+Current-main verification (2026-10-17):
+
+- `GOTOOLCHAIN=go1.26.9 make ci` passes, including race tests, wire catalog,
+  guardrails, both protocol-era checks, Python style, and repository docs. This
+  matches the patch version in the latest GitHub CI run.
+- Go 1.26.0 reports six staticcheck warnings in unchanged test helpers; the same
+  warnings reproduce on an untouched archive of main. Go 1.26.9 reports none.
+- The focused real-HTTP reducer suite and its race run pass.
+- Claude Opus 5.5 completed two reviews. All substantive findings were fixed;
+  explicit null/empty preservation and the negative identity test were accepted
+  as intentional contracts on follow-up. Full CI passed after both rounds of fixes,
+  including the final `GOTOOLCHAIN=go1.26.9 make ci` run. Current live e2e
+  results are owned by the PR checks after push.
+
+The September results below describe the pre-rebase implementation.
 
 - Passed focused handler, routing, wire-catalog, and description-budget checks.
 - Passed `GOTOOLCHAIN=go1.26.0 make ci`, including race tests, guardrails,

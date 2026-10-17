@@ -80,7 +80,7 @@ def test_execute_builder_query(mcp_client: MCPClient) -> None:
 def test_scalar_metric_builder_defaults_reducer(mcp_client: MCPClient, test_id: str, telemetry: None) -> None:
     """Defaulting finds the exact gauge beyond substring hits and matches explicit avg."""
     metric = f"mcp_e2e_{test_id.replace('-', '_')}_scalar_gauge"
-    seed_metrics(f"mcp-e2e-{test_id}", metric, count=2, age_seconds=120)
+    seed_metrics(f"mcp-e2e-{test_id}", metric, count=7, age_seconds=120)
     for i in range(11):
         seed_metrics(f"mcp-e2e-{test_id}", f"a{i}_{metric}", count=2, age_seconds=120)
     now = int(time.time() * 1000)
@@ -94,7 +94,7 @@ def test_scalar_metric_builder_defaults_reducer(mcp_client: MCPClient, test_id: 
             "queries": [
                 {
                     "type": "builder_query",
-                    "spec": {"name": "A", "signal": "metrics", "aggregations": [aggregation]},
+                    "spec": {"name": "A", "signal": "metrics", "stepInterval": 60, "aggregations": [aggregation]},
                 }
             ]
         },
@@ -129,7 +129,6 @@ def test_scalar_metric_builder_defaults_reducer(mcp_client: MCPClient, test_id: 
         return result if any(isinstance(value, (int, float)) and value > 0 for value in values) else None
 
     defaulted = wait_for(visible, f"scalar metric {metric} available with default reducer")
-    assert "reduceTo=avg" in note_blocks(defaulted)
     aggregation["reduceTo"] = "avg"
     explicit = assert_tool_ok(
         mcp_client.call_tool(
@@ -139,4 +138,11 @@ def test_scalar_metric_builder_defaults_reducer(mcp_client: MCPClient, test_id: 
     default_data = json.loads(first_text_block(defaulted))["data"]["data"]["results"][0]["data"]
     explicit_data = json.loads(first_text_block(explicit))["data"]["data"]["results"][0]["data"]
     assert default_data == explicit_data
-    assert "reduceTo=" not in note_blocks(explicit)
+    aggregation["reduceTo"] = "sum"
+    summed = assert_tool_ok(
+        mcp_client.call_tool(
+            "signoz_execute_builder_query", {"searchContext": "sum seeded gauge buckets", "query": query}
+        )
+    )
+    sum_data = json.loads(first_text_block(summed))["data"]["data"]["results"][0]["data"]
+    assert explicit_data != sum_data, "seeded gauge must span multiple buckets so avg differs from sum"

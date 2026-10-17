@@ -26,7 +26,7 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *mcp.Server) {
 				"Read the matching signoz://logs/query-builder-guide, signoz://traces/query-builder-guide, or signoz://metrics-aggregation-guide; formulas require the metrics guide, and PromQL requires signoz://promql/instructions. "+
 				"Set each input builder_query limit to 10000, the builder_formula result limit to 100, and non-empty spec.order (not dashboard orderBy) on each builder_query and builder_formula; the server normalizes omissions.",
 		),
-		mcp.WithObject("query", mcp.Required(), mcp.Description("Complete SigNoz Query Builder v5 JSON object with schemaVersion, start, end, requestType, compositeQuery, formatOptions, and variables; SigNoz validates it. requestType has no default: use raw, trace, time_series, or scalar. For predictable bounds, explicitly supply a positive spec.limit and non-empty spec.order (not dashboard orderBy) for every builder_query and builder_formula; the server inserts signal-aware defaults when they are omitted. Missing or zero standalone and formula-result limits normalize to 100; builder queries feeding a formula normalize to 10000 because input limits apply before formula evaluation.")),
+		mcp.WithObject("query", mcp.Required(), mcp.Description("Complete SigNoz Query Builder v5 JSON object with schemaVersion, start, end, requestType, compositeQuery, formatOptions, and variables; SigNoz validates it. requestType has no default: use raw, trace, time_series, or scalar. Scalar metric aggregations need reduceTo; absent fields default from metric metadata. Supply positive spec.limit and non-empty spec.order (not dashboard orderBy); omitted bounds default to limit 100, or 10000 for formula inputs, and signal-aware order. Order keys: raw rows use timestamp; metric aggregates and formulas use __result; log/trace aggregates use an expression (count()), alias, zero-based index, or groupBy key.")),
 	)
 
 	h.addTool(s, executeQuery, h.handleExecuteBuilderQuery)
@@ -89,8 +89,8 @@ func (h *Handler) handleExecuteBuilderQuery(ctx context.Context, req mcp.CallToo
 		return validationError("query.start", `is required: set start and end to Unix milliseconds, for example "start": 1697385600000`), nil
 	}
 
-	// The request is forwarded verbatim apart from the result bounds this server
-	// inserts where the caller omitted them; SigNoz validates everything else.
+	// Only omitted result bounds and scalar metric reducers are inserted;
+	// SigNoz validates the request with all caller-supplied fields intact.
 	applied := querybuilder.ApplyBounds(queryObj)
 	finalQueryJSON, err := json.Marshal(queryObj)
 	if err != nil {
@@ -101,6 +101,16 @@ func (h *Handler) handleExecuteBuilderQuery(ctx context.Context, req mcp.CallToo
 	client, err := h.GetClient(ctx)
 	if err != nil {
 		return clientError(err), nil
+	}
+	decisions, errResult := h.defaultBuilderMetricReducers(ctx, client, queryObj)
+	if errResult != nil {
+		return errResult, nil
+	}
+	if len(decisions) > 0 {
+		finalQueryJSON, err = json.Marshal(queryObj)
+		if err != nil {
+			return InternalErrorResult("failed to marshal query object: " + err.Error()), nil
+		}
 	}
 	data, err := client.QueryBuilderV5(ctx, finalQueryJSON)
 	if err != nil {
@@ -114,6 +124,9 @@ func (h *Handler) handleExecuteBuilderQuery(ctx context.Context, req mcp.CallToo
 	// sibling QueryBuilderV5 callers (search/aggregate logs & traces, query_metrics).
 	// Returning the body verbatim previously dropped them entirely.
 	var notes []string
+	if len(decisions) > 0 {
+		notes = append(notes, buildMetricsDecisionsNote(decisions, nil, nil))
+	}
 	if len(applied) > 0 {
 		requestType, _ := queryObj["requestType"].(string)
 		notes = append(notes, queryBoundsDecisionsNote(applied, requestType))
