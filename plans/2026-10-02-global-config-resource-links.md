@@ -65,7 +65,8 @@ where to configure it.
   and regenerate its client. Use `callAPI` for the request; retain the minimal
   pointer-valued response projection to detect missing/null `external_url`
   fields, which a generated required string would silently decode as empty.
-- Preserve the earlier public-URL plan as historical context, marked superseded.
+- Remove obsolete configuration design notes at the user's request. Keep
+  documentation and tests focused on discovery from SigNoz global configuration.
 - Extend the URL builder's existing test table for path-prefixed dashboard and
   alert links, at the lowest layer that owns link construction.
 
@@ -98,12 +99,20 @@ Current rebase verification (2026-10-17):
   All three dashboards were deleted and confirmed 404. Native processes,
   foundry containers/network/volumes, ports, and temporary files were cleaned
   up, and Docker Desktop was stopped after the run. No full E2E rerun.
-- Claude Opus 5.5 reviewed the full rebased diff and found no behavioral,
-  security, error-handling, or tenant-isolation bugs. Its two advisory findings
+- Claude Opus 5.5 reviewed the full rebased diff. Its two advisory findings
   prompted path-prefix link coverage and using the generated global-config
   endpoint while preserving response-drift detection. Its focused follow-up
   reviewed `919b17b..3e4e7f9`, confirmed both findings and test-pattern nits
-  resolved, and returned no findings.
+  resolved, and returned no findings. This review predates the later bot-comment
+  assessment of redirect hardening and external URL port validation.
+
+Configuration-documentation cleanup (2026-10-17):
+
+- Removed the obsolete configuration plan. Audited tracked code and tests for
+  references to the retired setting; no related tests or compatibility branches
+  remain. Existing browser-link tests exercise the active discovery behavior.
+- `GOTOOLCHAIN=go1.26.0 make ci READY=1` passed again with an isolated
+  lint cache for this documentation cleanup.
 
 Previous implementation verification:
 
