@@ -1,8 +1,10 @@
 package tools
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 )
@@ -20,19 +23,22 @@ func TestHandleListDashboards_UsesPublicWebURLWithoutChangingAPIURL(t *testing.T
 		localhostAPI bool
 		webURL       string
 	}{
-		{"numeric loopback backend", false, "https://signoz.example.com/"},
-		{"localhost backend", true, "https://signoz.example.com/"},
-		{"localhost browser", false, "http://localhost:3301/"},
+		{"configured external URL", true, "https://signoz.example.com"},
 		{"unconfigured external URL", true, ""},
-		{"external base path", false, "https://signoz.example.com/observability/"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			requests := make(chan *http.Request, 2)
 			backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				requests <- r
+				if r.Method != http.MethodGet || r.Header.Get("SIGNOZ-API-KEY") != "test-key" {
+					t.Errorf("API request = %s %s; discovery and dashboard reads must retain GET and tenant credentials", r.Method, r.URL.Path)
+				}
 				w.Header().Set("Content-Type", "application/json")
 				if r.URL.Path == "/api/v1/global/config" {
 					_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"external_url": tc.webURL}})
+					return
+				}
+				if r.URL.Path != "/api/v2/dashboards" {
+					t.Errorf("unexpected API request: %s", r.URL.Path)
+					w.WriteHeader(http.StatusBadRequest)
 					return
 				}
 				_, _ = w.Write([]byte(`{"data":{"dashboards":[{"id":"abc-123","name":"Hosts"}],"tags":[],"total":1}}`))
@@ -56,21 +62,6 @@ func TestHandleListDashboards_UsesPublicWebURLWithoutChangingAPIURL(t *testing.T
 			}
 			if result.IsError {
 				t.Fatalf("handler returned error result: %v", result.Content)
-			}
-			gotPaths := map[string]bool{}
-			for range 2 {
-				select {
-				case request := <-requests:
-					gotPaths[request.URL.Path] = true
-					if request.Method != http.MethodGet || request.Header.Get("SIGNOZ-API-KEY") != "test-key" {
-						t.Error("API request did not retain method and credentials")
-					}
-				default:
-					t.Fatal("API backend did not receive both resource and global config requests")
-				}
-			}
-			if !gotPaths["/api/v1/global/config"] || !gotPaths["/api/v2/dashboards"] {
-				t.Fatalf("unexpected API paths: %v", gotPaths)
 			}
 			base := strings.TrimSuffix(tc.webURL, "/")
 			if base == "" {
@@ -123,48 +114,50 @@ func TestHandleListDashboards_DiscoversEachTenantsWebURL(t *testing.T) {
 	}
 }
 
-func TestHandleCreateDashboard_GlobalConfigAuthFailurePreventsWrite(t *testing.T) {
-	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
-		for _, truncated := range []bool{false, true} {
-			t.Run(fmt.Sprintf("%d/truncated=%t", status, truncated), func(t *testing.T) {
-				var writes, discoveries atomic.Int32
+func TestDashboardWrites_GlobalConfigAuthFailurePreventsMutation(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		call func(*Handler, context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error)
+		args map[string]any
+	}{
+		{"create", (*Handler).handleCreateDashboard, map[string]any{"schemaVersion": "v6", "name": "test-dashboard", "spec": map[string]any{"display": map[string]any{"name": "Test"}}}},
+		{"update", (*Handler).handleUpdateDashboard, map[string]any{"id": "abc-123", "schemaVersion": "v6", "name": "test-dashboard", "spec": map[string]any{"display": map[string]any{"name": "Test"}}}},
+		{"patch", (*Handler).handlePatchDashboard, map[string]any{"id": "abc-123", "patch": []any{map[string]any{"op": "replace", "path": "/spec/display/name", "value": "Test"}}}},
+	} {
+		for _, failure := range []struct {
+			status int
+			code   string
+		}{
+			{http.StatusUnauthorized, CodeUnauthorized},
+			{http.StatusForbidden, CodePermissionDenied},
+		} {
+			t.Run(fmt.Sprintf("%s/%d", tc.name, failure.status), func(t *testing.T) {
+				var mutations atomic.Int32
 				backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					if r.URL.Path == "/api/v1/global/config" {
-						discoveries.Add(1)
-						if truncated {
-							w.Header().Set("Content-Length", "100")
-						}
-						w.WriteHeader(status)
+						w.WriteHeader(failure.status)
 						_, _ = w.Write([]byte(`{"error":"denied"}`))
 						return
 					}
-					writes.Add(1)
-					_, _ = w.Write([]byte(`{"id":"abc-123"}`))
+					mutations.Add(1)
+					t.Errorf("discovery auth rejection must prevent resource requests, got %s %s", r.Method, r.URL.Path)
+					w.WriteHeader(http.StatusBadRequest)
 				}))
-				defer backend.Close()
+				t.Cleanup(backend.Close)
 				h := NewHandler(logpkg.New("error"), &config.Config{URL: backend.URL, ClientCacheSize: 4})
 				ctx := util.SetAPIKey(util.SetSigNozURL(testCtx(), backend.URL), "test-key")
-				for range 2 {
-					result, err := h.handleCreateDashboard(ctx, makeToolRequest("signoz_create_dashboard", map[string]any{
-						"schemaVersion": "v6", "name": "test-dashboard", "spec": map[string]any{"display": map[string]any{"name": "Test"}, "panels": map[string]any{}},
-					}))
-					if err != nil || !result.IsError {
-						t.Fatalf("expected coded error: %v %v", err, result)
-					}
-					want := "UNAUTHORIZED"
-					if status == http.StatusForbidden {
-						want = "PERMISSION_DENIED"
-					}
-					body, _ := json.Marshal(result.StructuredContent)
-					if !strings.Contains(string(body), want) {
-						t.Fatalf("expected %s, got %s", want, body)
-					}
+				result, err := tc.call(h, ctx, makeToolRequest("signoz_"+tc.name+"_dashboard", maps.Clone(tc.args)))
+				if err != nil || result == nil || !result.IsError {
+					t.Fatalf("discovery auth rejection must return a coded tool error: err=%v result=%v", err, result)
 				}
-				if writes.Load() != 0 || discoveries.Load() != 2 {
-					t.Fatalf("auth rejection must prevent writes and stay uncached: writes=%d discoveries=%d", writes.Load(), discoveries.Load())
+				structured := resultStructuredMap(t, result)
+				if structured["code"] != failure.code || structured["status"] != failure.status {
+					t.Fatalf("discovery auth rejection = %#v, want %s with status %d", structured, failure.code, failure.status)
+				}
+				if mutations.Load() != 0 {
+					t.Fatalf("discovery auth rejection allowed %d resource requests; abort before mutation", mutations.Load())
 				}
 			})
 		}
 	}
 }
-

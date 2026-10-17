@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -1024,41 +1025,50 @@ func TestDeleteView(t *testing.T) {
 	assert.Equal(t, "/api/v2/saved_views/view-1", gotPath)
 }
 
-// TestDoRequest_RejectsOversizeResponse verifies the response-size guard: a
-// backend response larger than maxResponseBytes is rejected with a clear error
-// (never silently truncated into invalid JSON), bounding single-request memory
-// on the shared multi-tenant pod.
-func TestDoRequest_RejectsOversizeResponse(t *testing.T) {
+// Broken bodies stay terminal; known auth rejections must still reach the
+// coded error path instead of becoming successful discovery fallbacks.
+func TestDoRequest_ResponseBodyFailures(t *testing.T) {
 	for _, status := range []int{http.StatusOK, http.StatusUnauthorized, http.StatusForbidden} {
-		t.Run(http.StatusText(status), func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(status)
-				// Stream just past the cap without buffering it all server-side.
-				chunk := bytes.Repeat([]byte("a"), 1<<20) // 1 MiB
-				var written int64
-				for written <= maxResponseBytes {
-					n, err := w.Write(chunk)
-					if err != nil {
+		for _, truncated := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%d/truncated=%t", status, truncated), func(t *testing.T) {
+				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if truncated {
+						w.Header().Set("Content-Length", "100")
+					}
+					w.WriteHeader(status)
+					if truncated {
+						_, _ = w.Write([]byte("partial"))
 						return
 					}
-					written += int64(n)
-				}
-			}))
-			defer server.Close()
+					chunk := bytes.Repeat([]byte("a"), 1<<20)
+					var written int64
+					for written <= maxResponseBytes {
+						n, err := w.Write(chunk)
+						if err != nil {
+							return
+						}
+						written += int64(n)
+					}
+				}))
+				t.Cleanup(server.Close)
 
-			var logBuf bytes.Buffer
-			client := NewClient(newBufferedLogger(&logBuf, slog.LevelDebug), server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
-			_, err := client.doRequest(context.Background(), http.MethodGet, server.URL, nil, 30*time.Second)
-			require.Error(t, err)
-			if status == http.StatusOK {
-				assert.Contains(t, err.Error(), "exceeds maximum allowed size")
-			} else {
-				var statusErr *HTTPStatusError
-				require.ErrorAs(t, err, &statusErr)
-				assert.Equal(t, status, statusErr.StatusCode)
-				assert.Empty(t, statusErr.Body)
-			}
-		})
+				client := NewClient(logpkg.New("error"), server.URL, "test-api-key", SignozApiKey, nil)
+				_, err := client.doRequest(context.Background(), http.MethodGet, server.URL, nil, 30*time.Second)
+				require.Error(t, err)
+				if status == http.StatusOK {
+					if truncated {
+						require.ErrorIs(t, err, io.ErrUnexpectedEOF)
+					} else {
+						require.Contains(t, err.Error(), "exceeds maximum allowed size")
+					}
+				} else {
+					var statusErr *HTTPStatusError
+					require.ErrorAs(t, err, &statusErr, "body failures must preserve authentication status")
+					assert.Equal(t, status, statusErr.StatusCode)
+					assert.Empty(t, statusErr.Body, "discard unreadable error bodies")
+				}
+			})
+		}
 	}
 }
 

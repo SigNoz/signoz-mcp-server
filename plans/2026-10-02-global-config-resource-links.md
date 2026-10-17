@@ -1,7 +1,7 @@
 # Plan: Discover Resource Links from SigNoz Global Configuration
 
 Status: Done
-Issue: #303
+Issue: SigNoz/signoz-mcp-server#303
 PR: https://github.com/SigNoz/signoz-mcp-server/pull/339
 Companion PR: https://github.com/SigNoz/signoz.io/pull/4262
 
@@ -51,6 +51,19 @@ where to configure it.
   to reduce repeated configuration lookups. Failed discovery still retries after
   one minute. README, architecture, and companion website docs match this lifetime.
 
+### 2026-10-17 — Rebase onto current main and apply the testing standard
+
+- Keep main's shared HTTP doer and deleted permissive client mock. Preserve
+  unreadable 401/403 responses in the shared doer, before either request path
+  reads them, so discovery cannot swallow an authentication failure.
+- Follow `CLAUDE.md` and `docs/testing.md`: keep normalization and cache policy
+  in client tests; exercise handler wiring through real HTTP clients. Cover
+  discovery auth rejection across dashboard create, update, and patch together.
+- Test cache expiry with `testing/synctest` and a controlled HTTP transport,
+  without editing private cache state or waiting for real time to pass.
+- The generated API client has no global-config endpoint; keep the minimal
+  response projection, observable parse fallback, and existing live E2E checks.
+
 ## Reference Links
 
 - https://github.com/SigNoz/signoz-mcp-server/issues/303
@@ -58,6 +71,17 @@ where to configure it.
 - https://github.com/SigNoz/signoz/blob/1643df620bbe82c67a794e736dc91825a9826385/pkg/global/signozglobal/provider.go
 
 ## Verification
+
+Current rebase verification (2026-10-17):
+
+- Focused client discovery, response-body failures, cache refresh, tenant
+  isolation, and dashboard auth-before-mutation tests pass.
+- Full local CI and Claude Opus 5.5 review are pending.
+- Live E2E rerun currently unavailable: Docker daemon is stopped. Previous
+  delegated live results below predate this rebase.
+
+Previous implementation verification:
+
 
 - After the cache increase on 2026-10-03, `GOTOOLCHAIN=go1.26.0 make ci`
   passed again, including the existing cache reuse and refresh tests. Companion
@@ -93,4 +117,4 @@ where to configure it.
 Browser links now use SigNoz global configuration while API routing and
 credentials remain request-scoped. README and website docs explain how to set
 the browser URL on SigNoz. The implementation and website refresh are separate
-draft PRs; website publication waits for a server release. No CI workflows changed.
+PRs; the website PR stays draft until a server release. No CI workflows changed.

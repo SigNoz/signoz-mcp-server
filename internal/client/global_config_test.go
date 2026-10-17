@@ -4,15 +4,19 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -46,9 +50,9 @@ func TestGetExternalURL_ConfigurationAndFallback(t *testing.T) {
 			var requests atomic.Int32
 			backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				requests.Add(1)
-				require.Equal(t, "/api/v1/global/config", r.URL.Path)
-				require.Equal(t, "test-key", r.Header.Get(SignozApiKey))
-				require.Equal(t, "proxy-value", r.Header.Get("X-Proxy-Auth"))
+				assert.Equal(t, "/api/v1/global/config", r.URL.Path)
+				assert.Equal(t, "test-key", r.Header.Get(SignozApiKey))
+				assert.Equal(t, "proxy-value", r.Header.Get("X-Proxy-Auth"))
 				_, _ = w.Write([]byte(tc.response))
 			}))
 			defer backend.Close()
@@ -99,13 +103,11 @@ func TestGetExternalURL_StatusFailures(t *testing.T) {
 	}
 }
 
-func TestGetExternalURL_ConcurrentDiscoveryAndRefresh(t *testing.T) {
+func TestGetExternalURL_ConcurrentDiscoverySharesLookup(t *testing.T) {
 	var requests atomic.Int32
-	var response atomic.Value
-	response.Store("https://first.example.com")
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		requests.Add(1)
-		_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"external_url": response.Load()}})
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"external_url": "https://first.example.com"}})
 	}))
 	defer backend.Close()
 	client := NewClient(logpkg.New("error"), backend.URL, "test-key", SignozApiKey, nil)
@@ -120,10 +122,45 @@ func TestGetExternalURL_ConcurrentDiscoveryAndRefresh(t *testing.T) {
 	}
 	wg.Wait()
 	require.EqualValues(t, 1, requests.Load())
-	response.Store("https://second.example.com")
-	client.webURLExpiresAt = time.Now().Add(-time.Second)
-	got, err := client.GetExternalURL(context.Background())
-	require.NoError(t, err)
-	require.Equal(t, "https://second.example.com", got)
-	require.EqualValues(t, 2, requests.Load())
+}
+
+type externalURLTransport func(*http.Request) (*http.Response, error)
+
+func (f externalURLTransport) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
+
+func TestGetExternalURL_RefreshesConfigurationAndRetriesFallback(t *testing.T) {
+	for _, tc := range []struct {
+		name, initial, cached string
+		status                int
+		freshFor              time.Duration
+	}{
+		{"configured", `{"data":{"external_url":"https://first.example.com"}}`, "https://first.example.com", http.StatusOK, 15 * time.Minute},
+		{"unset", `{"data":{"external_url":"//<unset>"}}`, "", http.StatusOK, 15 * time.Minute},
+		{"unavailable", `{"error":"unavailable"}`, "", http.StatusNotFound, time.Minute},
+		{"invalid", `{"data":{"external_url":"/relative"}}`, "", http.StatusOK, time.Minute},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				response, status := tc.initial, tc.status
+				client := NewClient(logpkg.New("error"), "https://api.example.com", "test-key", SignozApiKey, nil)
+				client.httpClient = &http.Client{Transport: externalURLTransport(func(req *http.Request) (*http.Response, error) {
+					return &http.Response{StatusCode: status, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(response)), Request: req}, nil
+				})}
+				got, err := client.GetExternalURL(context.Background())
+				require.NoError(t, err)
+				require.Equal(t, tc.cached, got)
+
+				response, status = `{"data":{"external_url":"https://updated.example.com"}}`, http.StatusOK
+				time.Sleep(tc.freshFor - time.Second)
+				got, err = client.GetExternalURL(context.Background())
+				require.NoError(t, err)
+				require.Equal(t, tc.cached, got, "use cached configuration until its freshness window expires")
+
+				time.Sleep(time.Second)
+				got, err = client.GetExternalURL(context.Background())
+				require.NoError(t, err)
+				require.Equal(t, "https://updated.example.com", got, "refresh expired configuration so browser links converge on SigNoz's current setting")
+			})
+		})
+	}
 }
