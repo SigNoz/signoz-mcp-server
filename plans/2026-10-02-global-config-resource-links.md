@@ -79,14 +79,19 @@ where to configure it.
 
 Current rebase verification (2026-10-17):
 
-- Focused client discovery, response-body failures, cache refresh, tenant
-  isolation, and dashboard auth-before-mutation tests pass.
-- `GOTOOLCHAIN=go1.26.0 GOLANGCI_LINT_CACHE=/private/tmp/pr339-clean-lint-cache
-  make ci READY=1`: all checks passed. The default lint cache initially emitted
-  six SA5011 warnings in unchanged tests, reproduced on a clean main archive;
+- At `3e4e7f9`, focused race tests for client discovery, response-body failures,
+  cache refresh, tenant isolation, dashboard auth-before-mutation, and URL
+  construction passed after switching to the generated request.
+- At `3e4e7f9`, `GOTOOLCHAIN=go1.26.0
+  GOLANGCI_LINT_CACHE=/private/tmp/pr339-final-lint-cache make ci READY=1`:
+  all checks passed after the generated-client change. The default lint cache
+  initially emitted six SA5011 warnings in unchanged tests, reproduced on a
+  clean main archive;
   a fresh cache reported zero issues without changing tests or lint settings.
-- Delegated live verification at `919b17b`: all three browser-link cases passed
-  against ephemeral SigNoz v0.143.0 (59.81 seconds). Verified unset fallback,
+- Delegated live verification at `3e4e7f9`: all three browser-link cases passed
+  against ephemeral SigNoz v0.143.0 (141.46 seconds). Confirmed generated
+  discovery retained the `/signoz` backend path and API-key authentication.
+  Verified unset fallback,
   a public browser base path, localhost browser origin, and per-request aliases
   for origin cases across dashboard create/get/list/update/patch. `id`, `name`,
   `schemaVersion`, `tags`, and `spec` round-tripped; `webUrl` was not persisted.
@@ -96,8 +101,9 @@ Current rebase verification (2026-10-17):
 - Claude Opus 5.5 reviewed the full rebased diff and found no behavioral,
   security, error-handling, or tenant-isolation bugs. Its two advisory findings
   prompted path-prefix link coverage and using the generated global-config
-  endpoint while preserving response-drift detection. Follow-up verification
-  and review are pending.
+  endpoint while preserving response-drift detection. Its focused follow-up
+  reviewed `919b17b..3e4e7f9`, confirmed both findings and test-pattern nits
+  resolved, and returned no findings.
 
 Previous implementation verification:
 
