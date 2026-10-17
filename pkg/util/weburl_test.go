@@ -12,6 +12,8 @@ func TestResourceWebURL(t *testing.T) {
 		wantOK       bool
 	}{
 		{"dashboard", "https://signoz.example.com", "dashboard", "019a2e3d-uuid", "https://signoz.example.com/dashboard/019a2e3d-uuid", true},
+		{"dashboard base path", "https://observe.example.com/signoz", "dashboard", "x", "https://observe.example.com/signoz/dashboard/x", true},
+		{"alert base path", "https://observe.example.com/signoz", "alert", "rule-123", "https://observe.example.com/signoz/alerts/overview?ruleId=rule-123", true},
 		{"trailing slash base", "https://signoz.example.com/", "dashboard", "x", "https://signoz.example.com/dashboard/x", true},
 		{"alert", "https://signoz.example.com", "alert", "rule-123", "https://signoz.example.com/alerts/overview?ruleId=rule-123", true},
 		{"service with space", "https://signoz.example.com", "service", "cart service", "https://signoz.example.com/services/cart%20service", true},

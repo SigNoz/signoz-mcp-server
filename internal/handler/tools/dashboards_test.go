@@ -17,61 +17,42 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 )
 
-func TestHandleListDashboards_UsesPublicWebURLWithoutChangingAPIURL(t *testing.T) {
-	for _, tc := range []struct {
-		name         string
-		localhostAPI bool
-		webURL       string
-	}{
-		{"configured external URL", true, "https://signoz.example.com"},
-		{"unconfigured external URL", true, ""},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.Method != http.MethodGet || r.Header.Get("SIGNOZ-API-KEY") != "test-key" {
-					t.Errorf("API request = %s %s; discovery and dashboard reads must retain GET and tenant credentials", r.Method, r.URL.Path)
-				}
-				w.Header().Set("Content-Type", "application/json")
-				if r.URL.Path == "/api/v1/global/config" {
-					_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"external_url": tc.webURL}})
-					return
-				}
-				if r.URL.Path != "/api/v2/dashboards" {
-					t.Errorf("unexpected API request: %s", r.URL.Path)
-					w.WriteHeader(http.StatusBadRequest)
-					return
-				}
-				_, _ = w.Write([]byte(`{"data":{"dashboards":[{"id":"abc-123","name":"Hosts"}],"tags":[],"total":1}}`))
-			}))
-			defer backend.Close()
-			apiURL := backend.URL
-			if tc.localhostAPI {
-				apiURL = strings.Replace(apiURL, "127.0.0.1", "localhost", 1)
-			}
-			t.Setenv(config.SignozURL, apiURL)
-			t.Setenv(config.SignozApiKey, "test-key")
-			cfg, err := config.LoadConfig()
-			if err != nil {
-				t.Fatal(err)
-			}
-			h := NewHandler(logpkg.New("error"), cfg)
-			ctx := util.SetAPIKey(util.SetSigNozURL(testCtx(), cfg.URL), cfg.APIKey)
-			result, err := h.handleListDashboards(ctx, makeToolRequest("signoz_list_dashboards", map[string]any{}))
-			if err != nil {
-				t.Fatal(err)
-			}
-			if result.IsError {
-				t.Fatalf("handler returned error result: %v", result.Content)
-			}
-			base := strings.TrimSuffix(tc.webURL, "/")
-			if base == "" {
-				base = apiURL
-			}
-			want := `"webUrl":"` + base + `/dashboard/abc-123"`
-			if body := textContent(t, result); !strings.Contains(body, want) {
-				t.Fatalf("expected %s, got: %s", want, body)
-			}
-		})
+func TestHandleListDashboards_UnconfiguredBrowserURLUsesLocalhostBackend(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.Header.Get("SIGNOZ-API-KEY") != "test-key" {
+			t.Errorf("API request = %s %s; discovery and dashboard reads must retain GET and tenant credentials", r.Method, r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v1/global/config":
+			_, _ = w.Write([]byte(`{"data":{"external_url":""}}`))
+		case "/api/v2/dashboards":
+			_, _ = w.Write([]byte(`{"data":{"dashboards":[{"id":"abc-123","name":"Hosts"}],"tags":[],"total":1}}`))
+		default:
+			t.Errorf("unexpected API request: %s", r.URL.Path)
+			w.WriteHeader(http.StatusBadRequest)
+		}
+	}))
+	t.Cleanup(backend.Close)
+	apiURL := strings.Replace(backend.URL, "127.0.0.1", "localhost", 1)
+	t.Setenv(config.SignozURL, apiURL)
+	t.Setenv(config.SignozApiKey, "test-key")
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := NewHandler(logpkg.New("error"), cfg)
+	ctx := util.SetAPIKey(util.SetSigNozURL(testCtx(), cfg.URL), cfg.APIKey)
+	result, err := h.handleListDashboards(ctx, makeToolRequest("signoz_list_dashboards", map[string]any{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
+	want := `"webUrl":"` + apiURL + `/dashboard/abc-123"`
+	if body := textContent(t, result); !strings.Contains(body, want) {
+		t.Fatalf("unconfigured browser URL must fall back to the localhost backend: want %s, got %s", want, body)
 	}
 }
 

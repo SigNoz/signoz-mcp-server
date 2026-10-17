@@ -244,6 +244,9 @@ type ClientInterface interface {
 	// GetFieldsValues request
 	GetFieldsValues(ctx context.Context, params *GetFieldsValuesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetGlobalConfig request
+	GetGlobalConfig(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetMyServiceAccount request
 	GetMyServiceAccount(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -391,6 +394,18 @@ func (c *Client) GetFieldsKeys(ctx context.Context, params *GetFieldsKeysParams,
 
 func (c *Client) GetFieldsValues(ctx context.Context, params *GetFieldsValuesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetFieldsValuesRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetGlobalConfig(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetGlobalConfigRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -1294,6 +1309,33 @@ func NewGetFieldsValuesRequest(server string, params *GetFieldsValuesParams) (*h
 			rawQueryFragments = append(rawQueryFragments, encoded)
 		}
 		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetGlobalConfigRequest generates requests for GetGlobalConfig
+func NewGetGlobalConfigRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/global/config")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -3021,6 +3063,9 @@ type ClientWithResponsesInterface interface {
 	// GetFieldsValuesWithResponse request
 	GetFieldsValuesWithResponse(ctx context.Context, params *GetFieldsValuesParams, reqEditors ...RequestEditorFn) (*GetFieldsValuesResponse, error)
 
+	// GetGlobalConfigWithResponse request
+	GetGlobalConfigWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetGlobalConfigResponse, error)
+
 	// GetMyServiceAccountWithResponse request
 	GetMyServiceAccountWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetMyServiceAccountResponse, error)
 
@@ -3244,6 +3289,40 @@ func (r GetFieldsValuesResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetFieldsValuesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetGlobalConfigResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *struct {
+		Data   apitypes.GlobaltypesConfig `json:"data"`
+		Status string                     `json:"status"`
+	}
+	JSON500 *apitypes.RenderErrorResponse
+}
+
+// Status returns HTTPResponse.Status
+func (r GetGlobalConfigResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetGlobalConfigResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetGlobalConfigResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -4446,6 +4525,15 @@ func (c *ClientWithResponses) GetFieldsValuesWithResponse(ctx context.Context, p
 	return ParseGetFieldsValuesResponse(rsp)
 }
 
+// GetGlobalConfigWithResponse request returning *GetGlobalConfigResponse
+func (c *ClientWithResponses) GetGlobalConfigWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetGlobalConfigResponse, error) {
+	rsp, err := c.GetGlobalConfig(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetGlobalConfigResponse(rsp)
+}
+
 // GetMyServiceAccountWithResponse request returning *GetMyServiceAccountResponse
 func (c *ClientWithResponses) GetMyServiceAccountWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetMyServiceAccountResponse, error) {
 	rsp, err := c.GetMyServiceAccount(ctx, reqEditors...)
@@ -4967,6 +5055,42 @@ func ParseGetFieldsValuesResponse(rsp *http.Response) (*GetFieldsValuesResponse,
 			return nil, err
 		}
 		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest apitypes.RenderErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetGlobalConfigResponse parses an HTTP response from a GetGlobalConfigWithResponse call
+func ParseGetGlobalConfigResponse(rsp *http.Response) (*GetGlobalConfigResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetGlobalConfigResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			Data   apitypes.GlobaltypesConfig `json:"data"`
+			Status string                     `json:"status"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest apitypes.RenderErrorResponse

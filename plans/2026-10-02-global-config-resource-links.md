@@ -61,8 +61,13 @@ where to configure it.
   discovery auth rejection across dashboard create, update, and patch together.
 - Test cache expiry with `testing/synctest` and a controlled HTTP transport,
   without editing private cache state or waiting for real time to pass.
-- The generated API client has no global-config endpoint; keep the minimal
-  response projection, observable parse fallback, and existing live E2E checks.
+- Add the global-config route from the pinned upstream spec to `skaff.yml`
+  and regenerate its client. Use `callAPI` for the request; retain the minimal
+  pointer-valued response projection to detect missing/null `external_url`
+  fields, which a generated required string would silently decode as empty.
+- Preserve the earlier public-URL plan as historical context, marked superseded.
+- Extend the URL builder's existing test table for path-prefixed dashboard and
+  alert links, at the lowest layer that owns link construction.
 
 ## Reference Links
 
@@ -76,12 +81,25 @@ Current rebase verification (2026-10-17):
 
 - Focused client discovery, response-body failures, cache refresh, tenant
   isolation, and dashboard auth-before-mutation tests pass.
-- Full local CI and Claude Opus 5.5 review are pending.
-- Live E2E rerun currently unavailable: Docker daemon is stopped. Previous
-  delegated live results below predate this rebase.
+- `GOTOOLCHAIN=go1.26.0 GOLANGCI_LINT_CACHE=/private/tmp/pr339-clean-lint-cache
+  make ci READY=1`: all checks passed. The default lint cache initially emitted
+  six SA5011 warnings in unchanged tests, reproduced on a clean main archive;
+  a fresh cache reported zero issues without changing tests or lint settings.
+- Delegated live verification at `919b17b`: all three browser-link cases passed
+  against ephemeral SigNoz v0.143.0 (59.81 seconds). Verified unset fallback,
+  a public browser base path, localhost browser origin, and per-request aliases
+  for origin cases across dashboard create/get/list/update/patch. `id`, `name`,
+  `schemaVersion`, `tags`, and `spec` round-tripped; `webUrl` was not persisted.
+  All three dashboards were deleted and confirmed 404. Native processes,
+  foundry containers/network/volumes, ports, and temporary files were cleaned
+  up, and Docker Desktop was stopped after the run. No full E2E rerun.
+- Claude Opus 5.5 reviewed the full rebased diff and found no behavioral,
+  security, error-handling, or tenant-isolation bugs. Its two advisory findings
+  prompted path-prefix link coverage and using the generated global-config
+  endpoint while preserving response-drift detection. Follow-up verification
+  and review are pending.
 
 Previous implementation verification:
-
 
 - After the cache increase on 2026-10-03, `GOTOOLCHAIN=go1.26.0 make ci`
   passed again, including the existing cache reuse and refresh tests. Companion

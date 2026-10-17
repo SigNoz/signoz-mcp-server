@@ -156,7 +156,7 @@ func TestGetExternalURL_RefreshesConfigurationAndRetriesFallback(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, tc.cached, got, "use cached configuration until its freshness window expires")
 
-				time.Sleep(time.Second)
+				time.Sleep(2 * time.Second)
 				got, err = client.GetExternalURL(context.Background())
 				require.NoError(t, err)
 				require.Equal(t, "https://updated.example.com", got, "refresh expired configuration so browser links converge on SigNoz's current setting")

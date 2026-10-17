@@ -11,6 +11,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/SigNoz/signoz-mcp-server/internal/apiclient"
 )
 
 const (
@@ -32,7 +34,9 @@ func (s *SigNoz) GetExternalURL(ctx context.Context) (string, error) {
 		return s.cachedWebURL, nil
 	}
 
-	data, err := s.doRequest(ctx, http.MethodGet, s.baseURL+"/api/v1/global/config", nil, externalURLTimeout)
+	data, err := s.callAPI(ctx, externalURLTimeout, func(ctx context.Context, api *apiclient.Client) (*http.Response, error) {
+		return api.GetGlobalConfig(ctx)
+	})
 	if err != nil {
 		if ctx.Err() != nil {
 			return "", ctx.Err()
@@ -51,6 +55,7 @@ func (s *SigNoz) GetExternalURL(ctx context.Context) (string, error) {
 		return "", nil
 	}
 
+	// A required generated string cannot distinguish missing/null from unset.
 	var config struct {
 		Data *struct {
 			ExternalURL *string `json:"external_url"`
