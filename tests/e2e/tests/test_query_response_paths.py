@@ -75,3 +75,74 @@ def test_execute_builder_query(mcp_client: MCPClient) -> None:
         mcp_client.call_tool("signoz_execute_builder_query", {"searchContext": "count logs", "query": query})
     )
     json.loads(first_text_block(result))
+
+
+def test_scalar_metric_builder_defaults_reducer(mcp_client: MCPClient, test_id: str, telemetry: None) -> None:
+    """Defaulting finds the exact gauge beyond substring hits with accepted nested field casing."""
+    metric = f"mcp_e2e_{test_id.replace('-', '_')}_scalar_gauge"
+    seed_metrics(f"mcp-e2e-{test_id}", metric, count=7, age_seconds=120)
+    for i in range(11):
+        seed_metrics(f"mcp-e2e-{test_id}", f"a{i}_{metric}", count=2, age_seconds=120)
+    now = int(time.time() * 1000)
+    aggregation = {"metricName": metric, "timeAggregation": "avg", "spaceAggregation": "sum"}
+    query = {
+        "schemaVersion": "v1",
+        "start": now - 3_600_000,
+        "end": now,
+        "requestType": "scalar",
+        "compositeQuery": {
+            "queries": [
+                {
+                    "type": "builder_query",
+                    "spec": {"name": "A", "signal": "metrics", "stepInterval": 60, "Aggregations": [aggregation]},
+                }
+            ]
+        },
+    }
+
+    def first_page_excludes_exact_metric() -> bool:
+        result = mcp_client.call_tool(
+            "signoz_list_metrics",
+            {
+                "searchContext": "verify substring collisions for scalar metric lookup",
+                "searchText": metric,
+                "limit": 10,
+                "start": query["start"],
+                "end": query["end"],
+            },
+        )
+        if result.get("isError", False):
+            return False
+        names = [row["metricName"] for row in json.loads(first_text_block(result))["data"]["metrics"]]
+        return len(names) == 10 and metric not in names
+
+    wait_for(first_page_excludes_exact_metric, "exact metric outside the first substring-search page")
+
+    def visible() -> dict | None:
+        result = mcp_client.call_tool(
+            "signoz_execute_builder_query", {"searchContext": "average seeded gauge", "query": query}
+        )
+        if result.get("isError", False):
+            return None
+        results = json.loads(first_text_block(result))["data"]["data"]["results"]
+        values = [value for item in results for row in item.get("data", []) for value in row]
+        return result if any(isinstance(value, (int, float)) and value > 0 for value in values) else None
+
+    defaulted = wait_for(visible, f"scalar metric {metric} available with default reducer")
+    aggregation["reduceTo"] = "avg"
+    explicit = assert_tool_ok(
+        mcp_client.call_tool(
+            "signoz_execute_builder_query", {"searchContext": "explicit average seeded gauge", "query": query}
+        )
+    )
+    default_data = json.loads(first_text_block(defaulted))["data"]["data"]["results"][0]["data"]
+    explicit_data = json.loads(first_text_block(explicit))["data"]["data"]["results"][0]["data"]
+    assert default_data == explicit_data
+    aggregation["reduceTo"] = "sum"
+    summed = assert_tool_ok(
+        mcp_client.call_tool(
+            "signoz_execute_builder_query", {"searchContext": "sum seeded gauge buckets", "query": query}
+        )
+    )
+    sum_data = json.loads(first_text_block(summed))["data"]["data"]["results"][0]["data"]
+    assert explicit_data != sum_data, "seeded gauge must span multiple buckets so avg differs from sum"

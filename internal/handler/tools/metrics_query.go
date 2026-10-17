@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -19,6 +20,7 @@ import (
 // TemporalityMissing / IsMonotonicMissing flag that a matched row lacked the
 // field; they drive the drift WARN and the "unknown/assumed" decision note.
 type metricMetadata struct {
+	MetricName         string
 	MetricType         string
 	IsMonotonic        bool
 	Temporality        string
@@ -55,7 +57,7 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 
 	// Auto-fetch metric metadata if not provided
 	if mqr.MetricType == "" {
-		meta, fetchErr := h.fetchMetricMetadata(ctx, client, mqr.MetricName, mqr.Source)
+		meta, fetchErr := h.fetchMetricMetadata(ctx, client, 0, 0, mqr.MetricName, mqr.Source)
 		if fetchErr != nil {
 			return upstreamError(fmt.Errorf(
 				"could not auto-fetch metric metadata for %q: %w. "+
@@ -249,9 +251,9 @@ func buildMetricsDecisionsNote(decisions, defaultWarnings, backendWarnings []str
 // correct store rather than the default metrics store.
 func (h *Handler) fetchMetricMetadata(ctx context.Context, client interface {
 	ListMetrics(ctx context.Context, start, end int64, limit int, searchText, source string) (json.RawMessage, error)
-}, metricName, source string) (*metricMetadata, error) {
+}, start, end int64, metricName, source string) (*metricMetadata, error) {
 	// Search with exact metric name, limit 10 to find it
-	result, err := client.ListMetrics(ctx, 0, 0, 10, metricName, source)
+	result, err := client.ListMetrics(ctx, start, end, 10, metricName, source)
 	if err != nil {
 		return nil, err
 	}
@@ -260,6 +262,7 @@ func (h *Handler) fetchMetricMetadata(ctx context.Context, client interface {
 	// or just an array. Try both formats.
 	meta, err := parseMetricMetadataFromResponse(result, metricName)
 	if err != nil {
+		h.logger.WarnContext(ctx, "Cannot parse metric catalog metadata", slog.String("metricName", metricName), slog.String("source", source))
 		return nil, err
 	}
 	// Fail open, but never fail silent: a matched row missing a field signals
@@ -301,6 +304,7 @@ func metricMetadataFromRow(m metricMetadataRow) *metricMetadata {
 		temporality = *m.Temporality
 	}
 	meta := &metricMetadata{
+		MetricName:  m.MetricName,
 		MetricType:  mt,
 		IsMonotonic: isMono,
 		Temporality: temporality,
@@ -316,34 +320,34 @@ func metricMetadataFromRow(m metricMetadataRow) *metricMetadata {
 
 // parseMetricMetadataFromResponse extracts metric metadata from the ListMetrics response.
 func parseMetricMetadataFromResponse(data json.RawMessage, metricName string) (*metricMetadata, error) {
-	// Try format: {"status":"success","data":{"metrics":[{...}]}}
-	var wrapper struct {
-		Status string `json:"status"`
-		Data   struct {
-			Metrics []metricMetadataRow `json:"metrics"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(data, &wrapper); err == nil && len(wrapper.Data.Metrics) > 0 {
-		for _, m := range wrapper.Data.Metrics {
-			if m.MetricName == metricName {
-				return metricMetadataFromRow(m), nil
-			}
+	data = bytes.TrimSpace(data)
+	if len(data) == 0 || data[0] != '[' {
+		var wrapper struct {
+			Data struct {
+				Metrics json.RawMessage `json:"metrics"`
+			} `json:"data"`
 		}
-		// If exact match not found, return the first result if search was specific
-		return metricMetadataFromRow(wrapper.Data.Metrics[0]), nil
+		if err := json.Unmarshal(data, &wrapper); err != nil {
+			return nil, fmt.Errorf("invalid metric metadata response: %w", err)
+		}
+		// A null or empty metrics list is valid; an absent list is a broken envelope.
+		if len(wrapper.Data.Metrics) == 0 {
+			return nil, fmt.Errorf("invalid metric metadata response: missing data.metrics")
+		}
+		data = wrapper.Data.Metrics
 	}
-
-	// Try format: [{"metricName":"...", "type":"...", ...}]
 	var metrics []metricMetadataRow
-	if err := json.Unmarshal(data, &metrics); err == nil && len(metrics) > 0 {
-		for _, m := range metrics {
-			if m.MetricName == metricName {
-				return metricMetadataFromRow(m), nil
-			}
+	if err := json.Unmarshal(data, &metrics); err != nil {
+		return nil, fmt.Errorf("invalid metric metadata response: %w", err)
+	}
+	for _, m := range metrics {
+		if m.MetricName == metricName {
+			return metricMetadataFromRow(m), nil
 		}
+	}
+	if len(metrics) > 0 {
 		return metricMetadataFromRow(metrics[0]), nil
 	}
-
 	return nil, nil
 }
 
@@ -370,7 +374,7 @@ func resolveFormulaSubQuery(ctx context.Context, h *Handler, client interface {
 
 	// Auto-fetch if needed
 	if metricType == "" {
-		meta, err := h.fetchMetricMetadata(ctx, client, fq.MetricName, source)
+		meta, err := h.fetchMetricMetadata(ctx, client, 0, 0, fq.MetricName, source)
 		if err != nil {
 			// Upstream (ListMetrics) failure — tag it so the caller surfaces the
 			// uniform "SigNoz API error:" prefix. The "metric not found" and

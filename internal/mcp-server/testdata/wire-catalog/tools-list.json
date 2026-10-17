@@ -3367,7 +3367,7 @@
           "inputSchema": {
             "properties": {
               "query": {
-                "description": "Complete SigNoz Query Builder v5 JSON object with schemaVersion, start, end, requestType, compositeQuery, formatOptions, and variables; SigNoz validates it. requestType has no default: use raw, trace, time_series, or scalar. For predictable bounds, explicitly supply a positive spec.limit and non-empty spec.order (not dashboard orderBy) for every builder_query and builder_formula; the server inserts signal-aware defaults when they are omitted. Missing or zero standalone and formula-result limits normalize to 100; builder queries feeding a formula normalize to 10000 because input limits apply before formula evaluation.",
+                "description": "Complete SigNoz Query Builder v5 JSON object with schemaVersion, start, end, requestType, compositeQuery, formatOptions, and variables; SigNoz validates it. requestType has no default: use raw, trace, time_series, or scalar. Scalar metric aggregations need reduceTo; absent fields default from metric metadata. Supply positive spec.limit and non-empty spec.order (not dashboard orderBy); omitted bounds default to limit 100, or 10000 for formula inputs, and signal-aware order. Order keys: raw rows use timestamp; metric aggregates and formulas use __result; log/trace aggregates use an expression (count()), alias, zero-based index, or groupBy key.",
                 "properties": {},
                 "type": "object"
               },
