@@ -59,6 +59,7 @@ Valid reduceTo values: sum, count, avg, min, max, last, median
 2. **timeAggregation on histogram** → Ignored. Histogram time aggregation is handled automatically by the backend. Only set spaceAggregation (p50-p99).
 3. **sum/avg/min/max spaceAggregation on histogram** → Invalid. Histograms must use percentile aggregations (p50, p75, p90, p95, p99).
 4. **Providing only metricType for a counter** → This bypasses metadata auto-fetch and can leave temporality or monotonicity unspecified. Either omit metricType so all metadata is fetched, or pass the matching values from signoz_list_metrics.
+5. **Setting temporality by hand** → Omit it. The backend resolves cumulative, delta or unspecified from the metric's metadata; a pinned value that does not match the exporter returns no data. Set it only to override the stored metadata.
 
 ---
 
@@ -126,7 +127,6 @@ range, not each time bucket. A short-lived spike can therefore fall outside the 
         "order": [{"key": {"name": "__result"}, "direction": "desc"}],
         "aggregations": [{
           "metricName": "container.cpu.utilization",
-          "temporality": "unspecified",
           "timeAggregation": "avg",
           "spaceAggregation": "sum"
         }],
@@ -155,7 +155,6 @@ range, not each time bucket. A short-lived spike can therefore fall outside the 
         "order": [{"key": {"name": "__result"}, "direction": "desc"}],
         "aggregations": [{
           "metricName": "http_requests_total",
-          "temporality": "cumulative",
           "timeAggregation": "rate",
           "spaceAggregation": "sum"
         }],
@@ -183,7 +182,6 @@ range, not each time bucket. A short-lived spike can therefore fall outside the 
         "order": [{"key": {"name": "__result"}, "direction": "desc"}],
         "aggregations": [{
           "metricName": "http_request_duration_seconds",
-          "temporality": "delta",
           "timeAggregation": "",
           "spaceAggregation": "p99"
         }],
@@ -212,7 +210,6 @@ range, not each time bucket. A short-lived spike can therefore fall outside the 
           "order": [{"key": {"name": "__result"}, "direction": "desc"}],
           "aggregations": [{
             "metricName": "http_errors_total",
-            "temporality": "cumulative",
             "timeAggregation": "rate",
             "spaceAggregation": "sum"
           }]
@@ -228,7 +225,6 @@ range, not each time bucket. A short-lived spike can therefore fall outside the 
           "order": [{"key": {"name": "__result"}, "direction": "desc"}],
           "aggregations": [{
             "metricName": "http_requests_total",
-            "temporality": "cumulative",
             "timeAggregation": "rate",
             "spaceAggregation": "sum"
           }]
@@ -310,7 +306,6 @@ dimension, just like any other metric.
         "order": [{"key": {"name": "__result"}, "direction": "desc"}],
         "aggregations": [{
           "metricName": "signoz.meter.log.size",
-          "temporality": "delta",
           "timeAggregation": "increase",
           "spaceAggregation": "sum"
         }]
