@@ -13,7 +13,7 @@ Payload envelope: {schemaVersion:"v6", generateName:true, tags:[...], spec:{disp
 Metrics Query Builder shape (used by all examples below):
 - aggregations[] entries are OBJECTS, not the {expression} string form used for logs/traces: {metricName, temporality, timeAggregation, spaceAggregation[, reduceTo]}.
   - metricName: the metric, e.g. system.cpu.time.
-  - temporality: cumulative | delta | unspecified.
+  - temporality: omit it. SigNoz resolves cumulative, delta or unspecified from the metric's metadata; set it only to override that, since a wrong value returns no data.
   - timeAggregation: per-series temporal rollup (rate, sum, avg, min, max, count, increase, latest).
   - spaceAggregation: cross-series combine (sum, avg, min, max, count, p50..p99).
   - reduceTo: value/number panels only; collapse the series to one scalar (sum, avg, last, min, max, count, median).
@@ -72,7 +72,6 @@ A single signoz/TimeSeriesPanel over system.cpu.time, grouped by the state attri
                     "aggregations": [
                       {
                         "metricName": "system.cpu.time",
-                        "temporality": "cumulative",
                         "timeAggregation": "rate",
                         "spaceAggregation": "sum"
                       }
@@ -193,7 +192,6 @@ Example 1 plus a dynamic $state variable (ListVariable / signoz/DynamicVariable,
                     "aggregations": [
                       {
                         "metricName": "system.cpu.time",
-                        "temporality": "cumulative",
                         "timeAggregation": "rate",
                         "spaceAggregation": "sum"
                       }
@@ -293,7 +291,6 @@ A single signoz/NumberPanel over system.network.errors. The scalar reduce is on 
                     "aggregations": [
                       {
                         "metricName": "system.network.errors",
-                        "temporality": "cumulative",
                         "timeAggregation": "rate",
                         "spaceAggregation": "sum",
                         "reduceTo": "sum"
@@ -382,7 +379,6 @@ The number panel from example 3 plus a signoz/PieChartPanel on system.network.er
                     "aggregations": [
                       {
                         "metricName": "system.network.errors",
-                        "temporality": "cumulative",
                         "timeAggregation": "rate",
                         "spaceAggregation": "sum",
                         "reduceTo": "sum"
@@ -433,7 +429,6 @@ The number panel from example 3 plus a signoz/PieChartPanel on system.network.er
                     "aggregations": [
                       {
                         "metricName": "system.network.errors",
-                        "temporality": "cumulative",
                         "timeAggregation": "rate",
                         "spaceAggregation": "sum"
                       }
@@ -541,7 +536,6 @@ This dashboard pairs a queryless TextPanel with a NumberPanel. Both grid items u
                   "name": "A",
                   "aggregations": [{
                     "metricName": "system.network.errors",
-                    "temporality": "cumulative",
                     "timeAggregation": "rate",
                     "spaceAggregation": "sum",
                     "reduceTo": "sum"
