@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 
@@ -283,7 +284,7 @@ func (h *Handler) RegisterDashboardHandlers(s *mcp.Server) {
 		mcp.WithDescription(
 			"Use this when the user wants to browse curated dashboard templates or discover a path for signoz_import_dashboard. It returns the matching bundled templates with id, title, path, description, category, and keywords, plus their total. Pass searchText with the technology the user named; omit it only to browse the full catalog. It does not list dashboards already created in the tenant; use signoz_list_dashboards for those.",
 		),
-		mcp.WithString("searchText", mcp.Description(`Words matched case-insensitively against each template's id, title, path, category, description, and keywords; a template must match every word. Example: "postgres" or "kubernetes pod". If nothing matches, retry with fewer words. Omit to return the full catalog.`)),
+		mcp.WithString("searchText", mcp.Description(`Words matched case-insensitively against each template's id, title, path, category, description, and keywords; a template must match every word. Example: "postgres" or "kubernetes pod". At most 2048 characters. If nothing matches, retry with fewer words. Omit to return the full catalog.`)),
 		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
 	)
 
@@ -542,6 +543,9 @@ func (h *Handler) handleListDashboardTemplates(ctx context.Context, req mcp.Call
 	searchText, isString := args["searchText"].(string)
 	if raw := args["searchText"]; raw != nil && !isString {
 		return validationError("searchText", `must be a string, e.g. "postgres". Omit it to list every template.`), nil
+	}
+	if utf8.RuneCountInString(searchText) > maxTemplateSearchTextRunes {
+		return validationErrorf("searchText", `must be at most %d characters. Pass the technology name, e.g. "postgres".`, maxTemplateSearchTextRunes), nil
 	}
 	h.logger.DebugContext(ctx, "Tool called: signoz_list_dashboard_templates", slog.String("searchText", searchText))
 

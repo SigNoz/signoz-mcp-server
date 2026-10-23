@@ -29,6 +29,10 @@ func init() {
 	}
 }
 
+// maxTemplateSearchTextRunes matches signoz_search_docs. The search scans every
+// template per word and never calls SigNoz, so an unverified key reaches it.
+const maxTemplateSearchTextRunes = 2048
+
 // searchDashboardTemplates returns the catalog entries whose text fields
 // contain every whitespace-separated word of searchText, case-insensitively.
 // An empty searchText returns the whole catalog.

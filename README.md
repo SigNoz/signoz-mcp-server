@@ -670,7 +670,7 @@ When the relative template path is unknown, call `signoz_list_dashboard_template
 Searches the bundled catalog of curated SigNoz dashboard templates and returns the matches as `{"templates": [...], "total": N}`, where each entry has id, title, path, description, category, and keywords. It does not list dashboards already created in the tenant; use `signoz_list_dashboards` for those.
 
 - **Parameters:**
-  - `searchText` (optional) – Words matched case-insensitively against each template's id, title, path, category, description, and keywords; a template must match every word, e.g. `postgres` or `kubernetes pod`. Omit to return the full catalog.
+  - `searchText` (optional) – Words matched case-insensitively against each template's id, title, path, category, description, and keywords; a template must match every word, e.g. `postgres` or `kubernetes pod`. At most 2048 characters. Omit to return the full catalog.
 
 #### `signoz_update_dashboard`
 

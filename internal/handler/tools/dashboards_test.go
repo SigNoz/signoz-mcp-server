@@ -183,6 +183,14 @@ func TestHandleListDashboardTemplates_SearchText(t *testing.T) {
 		}
 	})
 
+	t.Run("at most 2048 characters", func(t *testing.T) {
+		list(t, map[string]any{"searchText": strings.Repeat("é", maxTemplateSearchTextRunes)})
+		result, _ := newTestHandler(nil).handleListDashboardTemplates(testCtx(), makeToolRequest("signoz_list_dashboard_templates", map[string]any{"searchText": strings.Repeat("é", maxTemplateSearchTextRunes+1)}))
+		if code := resultCode(t, result); code != CodeValidationFailed {
+			t.Errorf("code = %q, want %q", code, CodeValidationFailed)
+		}
+	})
+
 	t.Run("non-string is rejected", func(t *testing.T) {
 		result, _ := newTestHandler(nil).handleListDashboardTemplates(testCtx(), makeToolRequest("signoz_list_dashboard_templates", map[string]any{"searchText": 42}))
 		if code := resultCode(t, result); code != CodeValidationFailed {

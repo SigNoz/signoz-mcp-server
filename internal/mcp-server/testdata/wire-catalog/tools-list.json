@@ -5014,7 +5014,7 @@
                 "type": "string"
               },
               "searchText": {
-                "description": "Words matched case-insensitively against each template's id, title, path, category, description, and keywords; a template must match every word. Example: \"postgres\" or \"kubernetes pod\". If nothing matches, retry with fewer words. Omit to return the full catalog.",
+                "description": "Words matched case-insensitively against each template's id, title, path, category, description, and keywords; a template must match every word. Example: \"postgres\" or \"kubernetes pod\". At most 2048 characters. If nothing matches, retry with fewer words. Omit to return the full catalog.",
                 "type": "string"
               }
             },
