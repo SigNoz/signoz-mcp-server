@@ -23,6 +23,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+
+## [0.16.0] - 2026-10-23
+
+### Breaking changes
+- replace the hand-copied QB v5 mirror with the generated types ([#358](https://github.com/SigNoz/signoz-mcp-server/pull/358))
+- delete client-side validation and the hand-copied rule types, SigNoz is the only validator ([#354](https://github.com/SigNoz/signoz-mcp-server/pull/354))
+- delete the hand-copied provider specs and validation, SigNoz is the only validator ([#355](https://github.com/SigNoz/signoz-mcp-server/pull/355))
+- delete client-side validation, SigNoz is the only validator ([#349](https://github.com/SigNoz/signoz-mcp-server/pull/349))
+- delete MockClient and everything that relied on it ([#352](https://github.com/SigNoz/signoz-mcp-server/pull/352))
+- delete client-side validation and teach the truncation signal ([#351](https://github.com/SigNoz/signoz-mcp-server/pull/351))
+- stop injecting limit/order into alert evaluation queries ([#345](https://github.com/SigNoz/signoz-mcp-server/pull/345))
+- return a core field set from search and add optional `selectFields` ([#325](https://github.com/SigNoz/signoz-mcp-server/pull/325))
+
+### Added
+- generate the SigNoz API client with skaff ([#341](https://github.com/SigNoz/signoz-mcp-server/pull/341))
+
+### Fixed
+- stop pinning temporality in dashboard and metrics examples ([#370](https://github.com/SigNoz/signoz-mcp-server/pull/370))
+- discover browser links from SigNoz global config ([#339](https://github.com/SigNoz/signoz-mcp-server/pull/339))
+- stop logging the value of a custom header that collides with the auth header ([#359](https://github.com/SigNoz/signoz-mcp-server/pull/359))
+- stop teaching the legacy 'tag' fieldContext alias ([#350](https://github.com/SigNoz/signoz-mcp-server/pull/350))
+- use public SigNoz URL for resource links ([#332](https://github.com/SigNoz/signoz-mcp-server/pull/332))
+
+### Other
+- keep only the checks that need SigNoz ([#365](https://github.com/SigNoz/signoz-mcp-server/pull/365))
+- keep each rule pinned once, at the lowest layer that runs it ([#364](https://github.com/SigNoz/signoz-mcp-server/pull/364))
+- drop tests that assert the wrong thing or only test library behavior ([#363](https://github.com/SigNoz/signoz-mcp-server/pull/363))
+- drop re-pins of the wire catalog, wording pins, and count pins ([#362](https://github.com/SigNoz/signoz-mcp-server/pull/362))
+- drop logger and telemetry plumbing tests ([#361](https://github.com/SigNoz/signoz-mcp-server/pull/361))
+- record what the server sends instead of rewriting it into mcp-go shapes ([#360](https://github.com/SigNoz/signoz-mcp-server/pull/360))
+- delete dead code left behind by the validation-deletion wave ([#356](https://github.com/SigNoz/signoz-mcp-server/pull/356))
+- bump @modelcontextprotocol/sdk from 1.29.0 to 1.32.1 in /tools/mcp-ci ([#342](https://github.com/SigNoz/signoz-mcp-server/pull/342))
+- bump proxy-addr from 2.0.7 to 2.0.8 in /tools/mcp-ci ([#343](https://github.com/SigNoz/signoz-mcp-server/pull/343))
+- apply the testing standard to the existing suite ([#348](https://github.com/SigNoz/signoz-mcp-server/pull/348))
+- add testing doc ([#340](https://github.com/SigNoz/signoz-mcp-server/pull/340))
+- bump urllib3 from 2.7.0 to 2.8.0 in /tests ([#337](https://github.com/SigNoz/signoz-mcp-server/pull/337))
+- bump ip-address from 10.5.0 to 10.7.3 in /tools/mcp-ci ([#330](https://github.com/SigNoz/signoz-mcp-server/pull/330))
+- bump undici from 7.29.0 to 7.30.0 in /tools/mcp-ci ([#336](https://github.com/SigNoz/signoz-mcp-server/pull/336))
+- bump pyjwt from 2.13.0 to 2.15.0 in /tests ([#338](https://github.com/SigNoz/signoz-mcp-server/pull/338))
+- upgrade MCP Go SDK to v1.8.0 ([#326](https://github.com/SigNoz/signoz-mcp-server/pull/326))
+
 ## [0.15.0] - 2026-09-25
 
 ### Breaking changes
@@ -429,3 +470,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [0.13.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.12.0...v0.13.0
 [0.14.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.13.0...v0.14.0
 [0.15.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.14.0...v0.15.0
+[0.16.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.15.0...v0.16.0
