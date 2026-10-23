@@ -281,8 +281,9 @@ func (h *Handler) RegisterDashboardHandlers(s *mcp.Server) {
 		"signoz_list_dashboard_templates",
 		withReadOnlyToolAnnotations(),
 		mcp.WithDescription(
-			"Use this when the user wants to browse curated dashboard templates or discover a path for signoz_import_dashboard. It returns the complete bundled catalog with id, title, path, description, category, and keywords. It does not list dashboards already created in the tenant; use signoz_list_dashboards for those.",
+			"Use this when the user wants to browse curated dashboard templates or discover a path for signoz_import_dashboard. It returns the matching bundled templates with id, title, path, description, category, and keywords, plus their total. Pass searchText with the technology the user named; omit it only to browse the full catalog. It does not list dashboards already created in the tenant; use signoz_list_dashboards for those.",
 		),
+		mcp.WithString("searchText", mcp.Description(`Words matched case-insensitively against each template's id, title, path, category, description, and keywords; a template must match every word. Example: "postgres" or "kubernetes pod". If nothing matches, retry with fewer words. Omit to return the full catalog.`)),
 		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
 	)
 
@@ -534,9 +535,17 @@ func fetchTemplate(ctx context.Context, path string) ([]byte, error) {
 }
 
 func (h *Handler) handleListDashboardTemplates(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	h.logger.DebugContext(ctx, "Tool called: signoz_list_dashboard_templates")
+	args, errResult := requireArgsMap(req.Params.Arguments)
+	if errResult != nil {
+		return errResult, nil
+	}
+	searchText, isString := args["searchText"].(string)
+	if raw := args["searchText"]; raw != nil && !isString {
+		return validationError("searchText", `must be a string, e.g. "postgres". Omit it to list every template.`), nil
+	}
+	h.logger.DebugContext(ctx, "Tool called: signoz_list_dashboard_templates", slog.String("searchText", searchText))
 
-	entries := listDashboardTemplates()
+	entries := searchDashboardTemplates(searchText)
 	// Wrapped in an object because MCP requires structuredContent to be a JSON
 	// object; a bare array fails client-side schema validation.
 	body, err := json.Marshal(map[string]any{"templates": entries, "total": len(entries)})

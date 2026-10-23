@@ -444,7 +444,7 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 | `signoz_patch_dashboard` | Apply a partial RFC 6902 JSON Patch without resending the whole dashboard |
 | `signoz_delete_dashboard` | Permanently delete a confirmed dashboard by `id` |
 | `signoz_import_dashboard` | Create a dashboard from a known curated template path |
-| `signoz_list_dashboard_templates` | List curated templates and discover an import path |
+| `signoz_list_dashboard_templates` | Search curated templates and discover an import path |
 | `signoz_list_services` | List APM services with trace activity in a time range |
 | `signoz_get_service_top_operations` | Get ranked operations for one traced service |
 | `signoz_list_views` | List saved Explorer views for traces/logs/metrics/Cost Meter and discover UUIDs |
@@ -667,9 +667,10 @@ When the relative template path is unknown, call `signoz_list_dashboard_template
 
 #### `signoz_list_dashboard_templates`
 
-Returns the full bundled catalog of curated SigNoz dashboard templates as `{"templates": [...], "total": N}`, where each entry has id, title, path, description, category, and keywords. It does not list dashboards already created in the tenant; use `signoz_list_dashboards` for those.
+Searches the bundled catalog of curated SigNoz dashboard templates and returns the matches as `{"templates": [...], "total": N}`, where each entry has id, title, path, description, category, and keywords. It does not list dashboards already created in the tenant; use `signoz_list_dashboards` for those.
 
-- **Parameters:** none
+- **Parameters:**
+  - `searchText` (optional) – Words matched case-insensitively against each template's id, title, path, category, description, and keywords; a template must match every word, e.g. `postgres` or `kubernetes pod`. Omit to return the full catalog.
 
 #### `signoz_update_dashboard`
 

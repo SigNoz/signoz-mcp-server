@@ -115,7 +115,7 @@
     },
     {
       "name": "signoz_list_dashboard_templates",
-      "description": "List the bundled curated template catalog and discover a path for signoz_import_dashboard; this is not the tenant-dashboard list"
+      "description": "Search the bundled curated template catalog by technology and discover a path for signoz_import_dashboard; this is not the tenant-dashboard list"
     },
     {
       "name": "signoz_list_services",
