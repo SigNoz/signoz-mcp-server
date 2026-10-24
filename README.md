@@ -180,6 +180,14 @@ Create an API key in **Settings → API Keys** in SigNoz. Only **Admin** users c
 
 ## Self-Hosted Installation
 
+### Homebrew (macOS and Linux)
+
+```bash
+brew install signoz/tap/signoz-mcp-server
+```
+
+Upgrade with `brew upgrade signoz-mcp-server`. The binary lands on your PATH as `signoz-mcp-server`.
+
 ### Download Binary (Recommended)
 
 Download the latest binary from [GitHub Releases](https://github.com/SigNoz/signoz-mcp-server/releases):
