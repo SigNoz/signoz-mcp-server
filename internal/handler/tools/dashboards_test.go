@@ -7,6 +7,7 @@ import (
 	"maps"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -141,4 +142,59 @@ func TestDashboardWrites_GlobalConfigAuthFailurePreventsMutation(t *testing.T) {
 			})
 		}
 	}
+}
+
+func TestHandleListDashboardTemplates_SearchText(t *testing.T) {
+	list := func(t *testing.T, args map[string]any) (paths []string, total int) {
+		t.Helper()
+		result, err := newTestHandler(nil).handleListDashboardTemplates(testCtx(), makeToolRequest("signoz_list_dashboard_templates", args))
+		if err != nil || result.IsError {
+			t.Fatalf("list templates failed: err=%v result=%v", err, result.Content)
+		}
+		var body struct {
+			Templates []dashboardTemplateEntry `json:"templates"`
+			Total     int                      `json:"total"`
+		}
+		if err := json.Unmarshal([]byte(textContent(t, result)), &body); err != nil {
+			t.Fatal(err)
+		}
+		if body.Total != len(body.Templates) {
+			t.Fatalf("total = %d, but %d templates returned", body.Total, len(body.Templates))
+		}
+		for _, entry := range body.Templates {
+			paths = append(paths, entry.Path)
+		}
+		return paths, body.Total
+	}
+
+	t.Run("every word must match, ignoring case", func(t *testing.T) {
+		paths, _ := list(t, map[string]any{"searchText": "Host K8S"})
+		if !slices.Contains(paths, "hostmetrics/hostmetrics-k8s.json") {
+			t.Errorf("k8s host template missing from %v", paths)
+		}
+		if slices.Contains(paths, "hostmetrics/hostmetrics.json") {
+			t.Errorf("template matching only %q returned: %v", "host", paths)
+		}
+	})
+
+	t.Run("omitted returns the full catalog", func(t *testing.T) {
+		if _, total := list(t, nil); total != len(dashboardTemplateCatalog) {
+			t.Errorf("total = %d, want the full catalog of %d", total, len(dashboardTemplateCatalog))
+		}
+	})
+
+	t.Run("at most 2048 characters", func(t *testing.T) {
+		list(t, map[string]any{"searchText": strings.Repeat("é", maxTemplateSearchTextRunes)})
+		result, _ := newTestHandler(nil).handleListDashboardTemplates(testCtx(), makeToolRequest("signoz_list_dashboard_templates", map[string]any{"searchText": strings.Repeat("é", maxTemplateSearchTextRunes+1)}))
+		if code := resultCode(t, result); code != CodeValidationFailed {
+			t.Errorf("code = %q, want %q", code, CodeValidationFailed)
+		}
+	})
+
+	t.Run("non-string is rejected", func(t *testing.T) {
+		result, _ := newTestHandler(nil).handleListDashboardTemplates(testCtx(), makeToolRequest("signoz_list_dashboard_templates", map[string]any{"searchText": 42}))
+		if code := resultCode(t, result); code != CodeValidationFailed {
+			t.Errorf("code = %q, want %q", code, CodeValidationFailed)
+		}
+	})
 }
