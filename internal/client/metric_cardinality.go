@@ -6,7 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"net/url"
+
+	"github.com/SigNoz/signoz-mcp-server/internal/apiclient"
 )
 
 // GetMetricCardinality fetches label/attribute keys for a single metric with
@@ -20,15 +21,12 @@ import (
 // raw response is returned as-is — classification (UNBOUNDED, ACCUMULATING,
 // etc.) is left to the caller.
 func (s *SigNoz) GetMetricCardinality(ctx context.Context, name string, start, end int64) (json.RawMessage, error) {
-	params := url.Values{}
-	params.Set("metricName", name)
-	params.Set("start", fmt.Sprintf("%d", start))
-	params.Set("end", fmt.Sprintf("%d", end))
-
-	reqURL := fmt.Sprintf("%s/api/v2/metrics/attributes?%s", s.baseURL, params.Encode())
+	params := &apiclient.GetMetricAttributesParams{MetricName: name, Start: ptr(int(start)), End: ptr(int(end))}
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching metric cardinality", slog.String("metric", name))
 
-	body, err := s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
+	body, err := s.callAPI(ctx, DefaultQueryTimeout, func(ctx context.Context, api *apiclient.Client) (*http.Response, error) {
+		return api.GetMetricAttributes(ctx, params)
+	})
 	if err != nil {
 		return nil, fmt.Errorf("cardinality lookup for %q: %w", name, err)
 	}
