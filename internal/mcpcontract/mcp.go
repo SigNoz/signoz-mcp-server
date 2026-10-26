@@ -149,7 +149,10 @@ func WithDescription(description string) ToolOption {
 
 func WithInputSchema[T any]() ToolOption {
 	return func(t *Tool) {
-		schema, err := jsonschema.For[T](&jsonschema.ForOptions{IgnoreInvalidTypes: true})
+		schema, err := jsonschema.For[T](&jsonschema.ForOptions{
+			IgnoreInvalidTypes: true,
+			TypeSchemas:        unionTypeSchemas(reflect.TypeFor[T]()),
+		})
 		if err != nil {
 			panic(fmt.Errorf("infer input schema for tool %q from Go type %s: %w", t.Name, reflect.TypeFor[T](), err))
 		}
@@ -159,7 +162,10 @@ func WithInputSchema[T any]() ToolOption {
 
 func WithOutputSchema[T any]() ToolOption {
 	return func(t *Tool) {
-		schema, err := jsonschema.For[T](&jsonschema.ForOptions{IgnoreInvalidTypes: true})
+		schema, err := jsonschema.For[T](&jsonschema.ForOptions{
+			IgnoreInvalidTypes: true,
+			TypeSchemas:        unionTypeSchemas(reflect.TypeFor[T]()),
+		})
 		if err != nil {
 			panic(fmt.Errorf("infer output schema for tool %q from Go type %s: %w", t.Name, reflect.TypeFor[T](), err))
 		}

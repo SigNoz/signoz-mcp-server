@@ -1050,7 +1050,7 @@ that dependency error and resolve references before retrying.
 
 Runs a SigNoz Query Builder v5 request that the dedicated tools cannot express, including multi-query requests, formulas, PromQL, and ClickHouse SQL. Prefer `signoz_search_logs` / `signoz_search_traces` for rows, `signoz_aggregate_logs` / `signoz_aggregate_traces` for grouped results, and `signoz_query_metrics` for ordinary metrics.
 
-- **Parameters**: `query` (required) - Complete SigNoz Query Builder v5 JSON object
+- **Parameters**: `query` (required) - the complete `query_range` request. The input schema describes its top-level fields (`start`, `end`, `requestType`, `compositeQuery`, `variables`, `formatOptions`, `noCache`) with the descriptions from the SigNoz OpenAPI spec; the query envelopes inside `compositeQuery.queries` are open objects the guides and `signoz://query-builder/examples` cover.
 - **Query types**: the per-envelope `compositeQuery.queries[i].type` selects the spec shape:
   - `builder_query`: signal-specific spec (logs/traces/metrics) with filter, aggregations, groupBy, etc.
   - `builder_formula`: formula expression referencing other query names (e.g. `A / B * 100`).
