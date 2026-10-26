@@ -21,7 +21,7 @@ Outputs, relative to the repository root:
   object is described.
 
 Usage:
-    specgen.py --openapi docs/api/openapi.yml --spec-ref v0.0.0 --repo-root .
+    specgen.py --openapi docs/api/openapi.yml --repo-root .
 """
 
 from __future__ import annotations
@@ -51,10 +51,9 @@ OAS_ONLY_KEYWORDS = ("xml", "externalDocs", "nullable", "example")
 
 
 class Spec:
-    def __init__(self, path: str, ref: str):
+    def __init__(self, path: str):
         with open(path, encoding="utf-8") as fh:
             self.doc = yaml.safe_load(fh)
-        self.ref = ref
         self.schemas: dict = self.doc["components"]["schemas"]
 
     # ---- JSON Schema extraction -------------------------------------------------
@@ -240,7 +239,7 @@ def render_examples(spec: Spec, title: str, operations: Iterable[tuple[str, str,
     lines = [
         f"# {title}",
         "",
-        f"Source: request examples published by the SigNoz OpenAPI document at {spec.ref}.",
+        "Source: the request examples published by the SigNoz OpenAPI spec.",
         "",
     ]
     if extra:
@@ -336,11 +335,10 @@ def write(path: str, content: str) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--openapi", required=True, help="path to the pinned docs/api/openapi.yml")
-    parser.add_argument("--spec-ref", required=True, help="the SigNoz git ref the spec was fetched from")
     parser.add_argument("--repo-root", default=".", help="repository root to write into")
     args = parser.parse_args()
 
-    spec = Spec(args.openapi, args.spec_ref)
+    spec = Spec(args.openapi)
     root = os.path.abspath(args.repo_root)
 
     for name, doc in dashboard_schemas(spec).items():

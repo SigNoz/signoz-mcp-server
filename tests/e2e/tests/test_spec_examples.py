@@ -96,12 +96,18 @@ def routing_channels(mcp_client: MCPClient, test_id: str) -> Iterator[dict[str, 
 def test_alert_examples_create_and_delete(mcp_client: MCPClient, routing_channels: dict[str, str]) -> None:
     text = mcp_client.read_resource("signoz://alert/examples")
     examples = section(text, "Create a rule") + section(text, "Cost Meter budget alert")
-    for title, rule in examples:
-        result = mcp_client.call_tool("signoz_create_alert", {"searchContext": f"create {title}", **rule})
-        assert not result.get("isError", False), f"{title}: {text_blocks(result)[:600]}"
-        rule_id = (first_block_json(result).get("data") or {}).get("id")
-        assert rule_id, f"{title}: create returned no id"
-        assert_tool_ok(mcp_client.call_tool("signoz_delete_alert", {"searchContext": f"delete {title}", "id": rule_id}))
+    created: list[str] = []
+    try:
+        for title, rule in examples:
+            result = mcp_client.call_tool("signoz_create_alert", {"searchContext": f"create {title}", **rule})
+            assert not result.get("isError", False), f"{title}: {text_blocks(result)[:600]}"
+            rule_id = (first_block_json(result).get("data") or {}).get("id")
+            assert rule_id, f"{title}: create returned no id"
+            created.append(rule_id)
+    finally:
+        # Rules reference the fixture's routing channels, so they go before the channels do.
+        for rule_id in created:
+            assert_tool_ok(mcp_client.call_tool("signoz_delete_alert", {"searchContext": "cleanup", "id": rule_id}))
 
 
 def test_view_examples_create_replace_and_delete(mcp_client: MCPClient, test_id: str) -> None:

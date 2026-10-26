@@ -175,7 +175,7 @@ gen-spec:
 	@echo ">> Generating the dashboard schemas and examples resources from SigNoz $(SIGNOZ_SPEC_REF)"
 	@tmp=$$(mktemp -d) && trap 'rm -rf "$$tmp"' EXIT && \
 	curl -sSfL $(SIGNOZ_SPEC_URL) -o "$$tmp/openapi.yml" && \
-	$(SPECGEN) --openapi "$$tmp/openapi.yml" --spec-ref $(SIGNOZ_SPEC_REF) --repo-root .
+	$(SPECGEN) --openapi "$$tmp/openapi.yml" --repo-root .
 
 # Fails when a committed generated file differs from a fresh generation (hand edits or stale output).
 GENERATED_PATHS := $(APICLIENT_DIR) internal/handler/tools/schemas pkg/alert/examples.generated.md \

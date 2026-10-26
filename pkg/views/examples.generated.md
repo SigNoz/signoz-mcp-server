@@ -1,6 +1,6 @@
 # Saved view request examples
 
-Source: request examples published by the SigNoz OpenAPI document at 09bba8960dfc3e0a43dc54d6d7cf203aae9841f4.
+Source: the request examples published by the SigNoz OpenAPI spec.
 
 ## Create a view with signoz_create_view
 
