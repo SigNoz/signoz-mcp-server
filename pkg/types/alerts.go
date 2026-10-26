@@ -19,30 +19,6 @@ type AlertHistoryRequest struct {
 	Cursor           string // "" omitted; opaque cursor from a prior response's nextCursor
 }
 
-// QueryParams renders the request as URL query parameters for the v2 GET endpoint.
-// Empty optional values are omitted so the server applies its own defaults.
-func (r AlertHistoryRequest) QueryParams() url.Values {
-	v := url.Values{}
-	v.Set("start", strconv.FormatInt(r.Start, 10))
-	v.Set("end", strconv.FormatInt(r.End, 10))
-	if r.State != "" {
-		v.Set("state", r.State)
-	}
-	if r.FilterExpression != "" {
-		v.Set("filterExpression", r.FilterExpression)
-	}
-	if r.Limit > 0 {
-		v.Set("limit", strconv.Itoa(r.Limit))
-	}
-	if r.Order != "" {
-		v.Set("order", r.Order)
-	}
-	if r.Cursor != "" {
-		v.Set("cursor", r.Cursor)
-	}
-	return v
-}
-
 // Alert contains only essential information
 type Alert struct {
 	Alertname string `json:"alertname"`
@@ -92,7 +68,7 @@ type AlertRuleSummary struct {
 	WebURL      string            `json:"webUrl,omitempty"`
 }
 
-// APIAlertRule mirrors the compact fields used from GET /api/v2/rules.
+// APIAlertRule mirrors the compact fields used from a GET /api/v3/rules page.
 type APIAlertRule struct {
 	ID          string            `json:"id"`
 	Alert       string            `json:"alert"`
@@ -104,13 +80,16 @@ type APIAlertRule struct {
 	Labels      map[string]string `json:"labels"`
 	CreatedAt   string            `json:"createdAt"`
 	UpdatedAt   string            `json:"updatedAt"`
-	CreateAt    string            `json:"createAt"`
-	UpdateAt    string            `json:"updateAt"`
 }
 
+// APIAlertRulesResponse is one GET /api/v3/rules page: the rules in the page
+// and the number matching across every page.
 type APIAlertRulesResponse struct {
-	Status string         `json:"status"`
-	Data   []APIAlertRule `json:"data"`
+	Status string `json:"status"`
+	Data   struct {
+		Rules []APIAlertRule `json:"rules"`
+		Total int            `json:"total"`
+	} `json:"data"`
 }
 
 // ListAlertsParams contains query parameters for the GET /api/v1/alerts endpoint.

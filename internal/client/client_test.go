@@ -56,18 +56,18 @@ func TestGetAlertByRuleID(t *testing.T) {
 func TestListAlertRules(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
-		assert.Equal(t, "/api/v2/rules", r.URL.Path)
-		assert.Equal(t, "", r.URL.RawQuery)
+		assert.Equal(t, "/api/v3/rules", r.URL.Path)
+		assert.Equal(t, "limit=200&offset=400", r.URL.RawQuery)
 
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status":"success","data":[{"id":"rule-1","alert":"High CPU","state":"inactive"}]}`))
+		_, _ = w.Write([]byte(`{"status":"success","data":{"rules":[{"id":"rule-1","alert":"High CPU","state":"inactive"}],"total":401}}`))
 	}))
 	defer server.Close()
 
 	logger := logpkg.New("debug")
 	client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
-	result, err := client.ListAlertRules(context.Background())
+	result, err := client.ListAlertRules(context.Background(), 200, 400)
 	require.NoError(t, err)
 	assert.Contains(t, string(result), `"id":"rule-1"`)
 }

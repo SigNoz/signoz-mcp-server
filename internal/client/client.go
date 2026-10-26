@@ -9,8 +9,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"net/url"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -19,6 +17,8 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/SigNoz/signoz-mcp-server/internal/apiclient"
+	"github.com/SigNoz/signoz-mcp-server/internal/apiclient/apitypes"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	otelpkg "github.com/SigNoz/signoz-mcp-server/pkg/otel"
 	"github.com/SigNoz/signoz-mcp-server/pkg/querybuilder"
@@ -196,11 +196,14 @@ func (s *SigNoz) ValidateCredentials(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	reqURL := fmt.Sprintf("%s/api/v1/service_accounts/me", s.baseURL)
-	status, body, err := s.doValidationRequest(ctx, reqURL)
+	req, err := apiclient.NewGetMyServiceAccountRequest(s.apiServer())
+	if err != nil {
+		return fmt.Errorf("failed to create validation request: %w", err)
+	}
+	status, body, err := s.doValidationRequest(ctx, req)
 	if err != nil {
 		s.logger.ErrorContext(ctx, "SigNoz credential validation request failed",
-			slog.String("url", reqURL), logpkg.ErrAttr(err))
+			slog.String("url", req.URL.String()), logpkg.ErrAttr(err))
 		return fmt.Errorf("failed to reach SigNoz API: %w", err)
 	}
 
@@ -247,18 +250,21 @@ func (s *SigNoz) fetchAnalyticsIdentity(ctx context.Context) (*AnalyticsIdentity
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	endpoint := "/api/v1/service_accounts/me"
+	newRequest := apiclient.NewGetMyServiceAccountRequest
 	principal := "service_account"
 	if strings.EqualFold(s.authHeaderName, "Authorization") {
-		endpoint = "/api/v2/users/me"
+		newRequest = apiclient.NewGetMyUserRequest
 		principal = "user"
 	}
 
-	reqURL := fmt.Sprintf("%s%s", s.baseURL, endpoint)
-	status, body, err := s.doValidationRequest(ctx, reqURL)
+	req, err := newRequest(s.apiServer())
+	if err != nil {
+		return nil, fmt.Errorf("failed to create identity request: %w", err)
+	}
+	status, body, err := s.doValidationRequest(ctx, req)
 	if err != nil {
 		s.logger.ErrorContext(ctx, "SigNoz analytics identity request failed",
-			slog.String("url", reqURL), logpkg.ErrAttr(err))
+			slog.String("url", req.URL.String()), logpkg.ErrAttr(err))
 		return nil, fmt.Errorf("failed to reach SigNoz API: %w", err)
 	}
 	if status != http.StatusOK {
@@ -267,7 +273,7 @@ func (s *SigNoz) fetchAnalyticsIdentity(ctx context.Context) (*AnalyticsIdentity
 
 	identity, err := parseAnalyticsIdentity(body, principal)
 	if err != nil {
-		return nil, fmt.Errorf("parse %s response: %w", endpoint, err)
+		return nil, fmt.Errorf("parse %s response: %w", req.URL.Path, err)
 	}
 
 	return identity, nil
@@ -309,14 +315,12 @@ func parseAnalyticsIdentity(body []byte, principal string) (*AnalyticsIdentity, 
 	}, nil
 }
 
-// doValidationRequest sends a GET request to the given URL with auth headers
-// and returns the HTTP status code, response body, and any transport error.
-func (s *SigNoz) doValidationRequest(ctx context.Context, reqURL string) (int, []byte, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
-	if err != nil {
-		return 0, nil, fmt.Errorf("failed to create validation request: %w", err)
-	}
-
+// doValidationRequest sends a generated identity request with auth headers and
+// returns the HTTP status code, response body, and any transport error. It stays
+// off the shared transport on purpose: credential checks must not retry, and
+// their status handling is evaluateValidationResponse's.
+func (s *SigNoz) doValidationRequest(ctx context.Context, req *http.Request) (int, []byte, error) {
+	req = req.WithContext(ctx)
 	s.setRequestHeaders(ctx, req, false)
 
 	resp, err := s.httpClient.Do(req)
@@ -384,9 +388,11 @@ const (
 // never get invalid JSON.
 const maxResponseBytes int64 = 64 << 20 // 64 MiB
 
-// doRequest performs an HTTP request with the method's default replay policy.
-// Mutating POSTs are single-attempt because the backend does not accept
-// idempotency keys and a transport failure can happen after commit.
+// doRequest is the escape hatch for endpoints the SigNoz spec does not
+// document, so the generated client has no method for them. It uses the
+// method's default replay policy: mutating POSTs are single-attempt because the
+// backend does not accept idempotency keys and a transport failure can happen
+// after commit.
 func (s *SigNoz) doRequest(ctx context.Context, method, reqURL string, body []byte, timeout time.Duration) (json.RawMessage, error) {
 	return s.doRequestWithReplayPolicy(ctx, method, reqURL, body, timeout, isReplaySafeMethod(method))
 }
@@ -398,24 +404,17 @@ func (s *SigNoz) doReplaySafePost(ctx context.Context, reqURL string, body []byt
 }
 
 func (s *SigNoz) doRequestWithReplayPolicy(ctx context.Context, method, reqURL string, body []byte, timeout time.Duration, replaySafe bool) (json.RawMessage, error) {
-	ctx = s.ensureTenantContext(ctx)
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
-	var reqBody io.Reader
-	if body != nil {
-		reqBody = bytes.NewReader(body)
-	}
-	req, err := http.NewRequestWithContext(withReplaySafe(ctx, replaySafe), method, reqURL, reqBody)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	resp, err := doer{s: s}.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	return readResponse(resp)
+	return s.callAPI(withReplaySafe(ctx, replaySafe), timeout, func(ctx context.Context, api *apiclient.Client) (*http.Response, error) {
+		var reqBody io.Reader
+		if body != nil {
+			reqBody = bytes.NewReader(body)
+		}
+		req, err := http.NewRequestWithContext(ctx, method, reqURL, reqBody)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create request: %w", err)
+		}
+		return api.Client.Do(req)
+	})
 }
 
 // readResponse returns a buffered response's body on 2xx and an HTTPStatusError
@@ -453,47 +452,46 @@ func isReplaySafeMethod(method string) bool {
 }
 
 func (s *SigNoz) ListMetrics(ctx context.Context, start, end int64, limit int, searchText, source string) (json.RawMessage, error) {
-	params := url.Values{}
-	if start > 0 {
-		params.Set("start", fmt.Sprintf("%d", start))
+	params := &apiclient.ListMetricsParams{
+		Start:      optInt(int(start)),
+		End:        optInt(int(end)),
+		Limit:      optInt(limit),
+		SearchText: optString(searchText),
+		Source:     optString(source),
 	}
-	if end > 0 {
-		params.Set("end", fmt.Sprintf("%d", end))
-	}
-	if limit > 0 {
-		params.Set("limit", fmt.Sprintf("%d", limit))
-	}
-	if searchText != "" {
-		params.Set("searchText", searchText)
-	}
-	if source != "" {
-		params.Set("source", source)
-	}
-
-	reqURL := fmt.Sprintf("%s/api/v2/metrics?%s", s.baseURL, params.Encode())
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Listing metrics", slog.String("searchText", searchText))
-	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
+	return s.callAPI(ctx, DefaultQueryTimeout, func(ctx context.Context, api *apiclient.Client) (*http.Response, error) {
+		return api.ListMetrics(ctx, params)
+	})
 }
 
+// ListAlerts lists alert instances. The SigNoz spec does not yet document the
+// Alertmanager filter parameters of GET /api/v1/alerts, so they are appended to
+// the generated request.
 func (s *SigNoz) ListAlerts(ctx context.Context, params types.ListAlertsParams) (json.RawMessage, error) {
-	reqURL := fmt.Sprintf("%s/api/v1/alerts", s.baseURL)
-	if qp := params.QueryParams(); len(qp) > 0 {
-		reqURL += "?" + qp.Encode()
-	}
-	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching alerts from SigNoz", slog.String("url", reqURL))
-	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
+	query := params.QueryParams().Encode()
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching alerts from SigNoz", slog.String("query", query))
+	return s.callAPI(ctx, DefaultQueryTimeout, func(ctx context.Context, api *apiclient.Client) (*http.Response, error) {
+		return api.GetAlerts(ctx, withRawQuery(query))
+	})
 }
 
-func (s *SigNoz) ListAlertRules(ctx context.Context) (json.RawMessage, error) {
-	reqURL := fmt.Sprintf("%s/api/v2/rules", s.baseURL)
-	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching alert rules from SigNoz", slog.String("url", reqURL))
-	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
+// ListAlertRules returns one server-side page of rule summaries from
+// GET /api/v3/rules. SigNoz clamps limit to its own maximum, so the handler
+// walks pages until it has the window it was asked for.
+func (s *SigNoz) ListAlertRules(ctx context.Context, limit, offset int) (json.RawMessage, error) {
+	params := &apiclient.ListRulesV3Params{Limit: optInt(limit), Offset: optInt(offset)}
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching alert rules from SigNoz", slog.Int("limit", limit), slog.Int("offset", offset))
+	return s.callAPI(ctx, DefaultQueryTimeout, func(ctx context.Context, api *apiclient.Client) (*http.Response, error) {
+		return api.ListRulesV3(ctx, params)
+	})
 }
 
 func (s *SigNoz) GetAlertByRuleID(ctx context.Context, ruleID string) (json.RawMessage, error) {
-	reqURL := fmt.Sprintf("%s/api/v2/rules/%s", s.baseURL, url.PathEscape(ruleID))
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching alert rule details", slog.String("ruleID", ruleID))
-	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
+	return s.callAPI(ctx, DefaultQueryTimeout, func(ctx context.Context, api *apiclient.Client) (*http.Response, error) {
+		return api.GetRuleByID(ctx, ruleID)
+	})
 }
 
 // ListDashboards returns the v2 dashboard list (GET /api/v2/dashboards). The v2
@@ -502,178 +500,169 @@ func (s *SigNoz) GetAlertByRuleID(ctx context.Context, ruleID string) (json.RawM
 // verbatim. filter (the API's `query` filter DSL), sort, and order are forwarded
 // when non-empty; the API applies its own defaults otherwise.
 func (s *SigNoz) ListDashboards(ctx context.Context, limit, offset int, filter, sort, order string) (json.RawMessage, error) {
-	ctx = s.ensureTenantContext(ctx)
-	params := url.Values{}
-	if limit > 0 {
-		params.Set("limit", strconv.Itoa(limit))
+	params := &apiclient.ListDashboardsV2Params{
+		Query:  optString(filter),
+		Sort:   optEnum[apitypes.DashboardtypesListSort](sort),
+		Order:  optEnum[apitypes.DashboardtypesListOrder](order),
+		Limit:  optInt(limit),
+		Offset: optInt(offset),
 	}
-	if offset > 0 {
-		params.Set("offset", strconv.Itoa(offset))
-	}
-	if filter != "" {
-		params.Set("query", filter)
-	}
-	if sort != "" {
-		params.Set("sort", sort)
-	}
-	if order != "" {
-		params.Set("order", order)
-	}
-	reqURL := fmt.Sprintf("%s/api/v2/dashboards", s.baseURL)
-	if enc := params.Encode(); enc != "" {
-		reqURL += "?" + enc
-	}
-	s.logger.DebugContext(ctx, "Fetching dashboards from SigNoz (v2)")
-	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching dashboards from SigNoz (v2)")
+	return s.callAPI(ctx, DefaultQueryTimeout, func(ctx context.Context, api *apiclient.Client) (*http.Response, error) {
+		return api.ListDashboardsV2(ctx, params)
+	})
 }
 
 func (s *SigNoz) GetDashboard(ctx context.Context, uuid string) (json.RawMessage, error) {
-	reqURL := fmt.Sprintf("%s/api/v2/dashboards/%s", s.baseURL, url.PathEscape(uuid))
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching dashboard details", slog.String("uuid", uuid))
-	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
+	return s.callAPI(ctx, DefaultQueryTimeout, func(ctx context.Context, api *apiclient.Client) (*http.Response, error) {
+		return api.GetDashboardV2(ctx, uuid)
+	})
 }
 
+// ListServices and GetServiceTopOperations call endpoints the SigNoz spec does
+// not document, so they stay on the hand-written request path.
 func (s *SigNoz) ListServices(ctx context.Context, start, end string) (json.RawMessage, error) {
-	reqURL := fmt.Sprintf("%s/api/v1/services", s.baseURL)
 	payload := map[string]string{"start": start, "end": end}
 	bodyBytes, _ := json.Marshal(payload)
 
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching services from SigNoz",
 		slog.String("start", start), slog.String("end", end))
-	return s.doReplaySafePost(ctx, reqURL, bodyBytes, DefaultQueryTimeout)
+	return s.doReplaySafePost(ctx, s.baseURL+"/api/v1/services", bodyBytes, DefaultQueryTimeout)
 }
 
 func (s *SigNoz) GetServiceTopOperations(ctx context.Context, start, end, service string, tags json.RawMessage) (json.RawMessage, error) {
-	reqURL := fmt.Sprintf("%s/api/v1/service/top_operations", s.baseURL)
 	payload := map[string]any{"start": start, "end": end, "service": service, "tags": tags}
 	bodyBytes, _ := json.Marshal(payload)
 
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching service top operations", slog.String("service", service))
-	return s.doReplaySafePost(ctx, reqURL, bodyBytes, DefaultQueryTimeout)
+	return s.doReplaySafePost(ctx, s.baseURL+"/api/v1/service/top_operations", bodyBytes, DefaultQueryTimeout)
 }
 
 func (s *SigNoz) QueryBuilderV5(ctx context.Context, body []byte) (json.RawMessage, error) {
 	ctx = s.ensureTenantContext(ctx)
-	reqURL := fmt.Sprintf("%s/api/v5/query_range", s.baseURL)
 	s.logger.DebugContext(ctx, "sending request",
-		slog.String("url", reqURL),
+		slog.String("path", "/api/v5/query_range"),
 		slog.String("body", logpkg.TruncBody(body)),
 		slog.Int("request.body.size_bytes", len(body)))
 	if span := trace.SpanFromContext(ctx); span.IsRecording() {
 		span.SetAttributes(otelpkg.MCPQueryPayloadKey.String(string(body)))
 	}
-	return s.doReplaySafePost(ctx, reqURL, body, DefaultQueryTimeout)
+	return s.callAPI(withReplaySafe(ctx, true), DefaultQueryTimeout, func(ctx context.Context, api *apiclient.Client) (*http.Response, error) {
+		return api.QueryRangeV5WithBody(ctx, jsonContentType, bytes.NewReader(body))
+	})
 }
 
 func (s *SigNoz) GetAlertHistory(ctx context.Context, ruleID string, req types.AlertHistoryRequest) (json.RawMessage, error) {
-	reqURL := fmt.Sprintf("%s/api/v2/rules/%s/history/timeline?%s", s.baseURL, url.PathEscape(ruleID), req.QueryParams().Encode())
+	params := &apiclient.GetRuleHistoryTimelineParams{
+		Start:            req.Start,
+		End:              req.End,
+		State:            optEnum[apitypes.RuletypesAlertState](req.State),
+		FilterExpression: optString(req.FilterExpression),
+		Limit:            optInt64(int64(req.Limit)),
+		Order:            optEnum[apitypes.Querybuildertypesv5OrderDirection](req.Order),
+		Cursor:           optString(req.Cursor),
+	}
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching alert history", slog.String("ruleID", ruleID))
-	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
+	return s.callAPI(ctx, DefaultQueryTimeout, func(ctx context.Context, api *apiclient.Client) (*http.Response, error) {
+		return api.GetRuleHistoryTimeline(ctx, ruleID, params)
+	})
 }
 
 func (s *SigNoz) CreateAlertRule(ctx context.Context, alertJSON []byte) (json.RawMessage, error) {
-	reqURL := fmt.Sprintf("%s/api/v2/rules", s.baseURL)
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Creating alert rule")
-	return s.doRequest(ctx, http.MethodPost, reqURL, alertJSON, DashboardWriteTimeout)
+	return s.callAPI(ctx, DashboardWriteTimeout, func(ctx context.Context, api *apiclient.Client) (*http.Response, error) {
+		return api.CreateRuleWithBody(ctx, jsonContentType, bytes.NewReader(alertJSON))
+	})
 }
 
 func (s *SigNoz) UpdateAlertRule(ctx context.Context, ruleID string, alertJSON []byte) error {
-	reqURL := fmt.Sprintf("%s/api/v2/rules/%s", s.baseURL, url.PathEscape(ruleID))
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Updating alert rule", slog.String("ruleID", ruleID))
-	_, err := s.doRequest(ctx, http.MethodPut, reqURL, alertJSON, DashboardWriteTimeout)
+	_, err := s.callAPI(ctx, DashboardWriteTimeout, func(ctx context.Context, api *apiclient.Client) (*http.Response, error) {
+		return api.UpdateRuleByIDWithBody(ctx, ruleID, jsonContentType, bytes.NewReader(alertJSON))
+	})
 	return err
 }
 
 func (s *SigNoz) DeleteAlertRule(ctx context.Context, ruleID string) error {
-	reqURL := fmt.Sprintf("%s/api/v2/rules/%s", s.baseURL, url.PathEscape(ruleID))
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Deleting alert rule", slog.String("ruleID", ruleID))
-	_, err := s.doRequest(ctx, http.MethodDelete, reqURL, nil, DashboardWriteTimeout)
+	_, err := s.callAPI(ctx, DashboardWriteTimeout, func(ctx context.Context, api *apiclient.Client) (*http.Response, error) {
+		return api.DeleteRuleByID(ctx, ruleID)
+	})
 	return err
 }
 
 func (s *SigNoz) ListViews(ctx context.Context, source, name string) (json.RawMessage, error) {
-	params := url.Values{}
-	params.Set("source", source)
-	if name != "" {
-		params.Set("name", name)
+	params := &apiclient.ListSavedViewsParams{
+		Source: ptr(apitypes.SavedviewtypesSource(source)),
+		Name:   optString(name),
 	}
-	reqURL := fmt.Sprintf("%s/api/v2/saved_views?%s", s.baseURL, params.Encode())
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Listing saved views", slog.String("source", source))
-	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
+	return s.callAPI(ctx, DefaultQueryTimeout, func(ctx context.Context, api *apiclient.Client) (*http.Response, error) {
+		return api.ListSavedViews(ctx, params)
+	})
 }
 
 func (s *SigNoz) GetView(ctx context.Context, viewID string) (json.RawMessage, error) {
-	reqURL := fmt.Sprintf("%s/api/v2/saved_views/%s", s.baseURL, url.PathEscape(viewID))
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching saved view", slog.String("viewID", viewID))
-	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
+	return s.callAPI(ctx, DefaultQueryTimeout, func(ctx context.Context, api *apiclient.Client) (*http.Response, error) {
+		return api.GetSavedView(ctx, viewID)
+	})
 }
 
 func (s *SigNoz) CreateView(ctx context.Context, body []byte) (json.RawMessage, error) {
-	reqURL := fmt.Sprintf("%s/api/v2/saved_views", s.baseURL)
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Creating saved view")
-	return s.doRequest(ctx, http.MethodPost, reqURL, body, DashboardWriteTimeout)
+	return s.callAPI(ctx, DashboardWriteTimeout, func(ctx context.Context, api *apiclient.Client) (*http.Response, error) {
+		return api.CreateSavedViewWithBody(ctx, jsonContentType, bytes.NewReader(body))
+	})
 }
 
 func (s *SigNoz) UpdateView(ctx context.Context, viewID string, body []byte) (json.RawMessage, error) {
-	reqURL := fmt.Sprintf("%s/api/v2/saved_views/%s", s.baseURL, url.PathEscape(viewID))
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Updating saved view", slog.String("viewID", viewID))
-	return s.doRequest(ctx, http.MethodPut, reqURL, body, DashboardWriteTimeout)
+	return s.callAPI(ctx, DashboardWriteTimeout, func(ctx context.Context, api *apiclient.Client) (*http.Response, error) {
+		return api.UpdateSavedViewWithBody(ctx, viewID, jsonContentType, bytes.NewReader(body))
+	})
 }
 
 func (s *SigNoz) DeleteView(ctx context.Context, viewID string) (json.RawMessage, error) {
-	reqURL := fmt.Sprintf("%s/api/v2/saved_views/%s", s.baseURL, url.PathEscape(viewID))
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Deleting saved view", slog.String("viewID", viewID))
-	return s.doRequest(ctx, http.MethodDelete, reqURL, nil, DashboardWriteTimeout)
+	return s.callAPI(ctx, DashboardWriteTimeout, func(ctx context.Context, api *apiclient.Client) (*http.Response, error) {
+		return api.DeleteSavedView(ctx, viewID)
+	})
 }
 
 func (s *SigNoz) GetFieldKeys(ctx context.Context, signal, metricName, searchText, fieldContext, fieldDataType, source string) (json.RawMessage, error) {
-	params := url.Values{}
-	params.Set("signal", signal)
-	if metricName != "" {
-		params.Set("metricName", metricName)
+	params := &apiclient.GetFieldsKeysParams{
+		Signal:        ptr(apitypes.TelemetrytypesSignal(signal)),
+		Source:        optEnum[apitypes.TelemetrytypesSource](source),
+		FieldContext:  optEnum[apitypes.TelemetrytypesFieldContext](fieldContext),
+		FieldDataType: optEnum[apitypes.TelemetrytypesFieldDataType](fieldDataType),
+		MetricName:    optString(metricName),
+		SearchText:    optString(searchText),
 	}
-	if searchText != "" {
-		params.Set("searchText", searchText)
-	}
-	if fieldContext != "" {
-		params.Set("fieldContext", fieldContext)
-	}
-	if fieldDataType != "" {
-		params.Set("fieldDataType", fieldDataType)
-	}
-	if source != "" {
-		params.Set("source", source)
-	}
-
-	reqURL := fmt.Sprintf("%s/api/v1/fields/keys?%s", s.baseURL, params.Encode())
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching field keys",
 		slog.String("signal", signal),
 		slog.String("searchText", searchText))
-	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
+	return s.callAPI(ctx, DefaultQueryTimeout, func(ctx context.Context, api *apiclient.Client) (*http.Response, error) {
+		return api.GetFieldsKeys(ctx, params)
+	})
 }
 
 func (s *SigNoz) GetFieldValues(ctx context.Context, signal, name, metricName, searchText, fieldContext, source string) (json.RawMessage, error) {
-	params := url.Values{}
-	params.Set("signal", signal)
-	params.Set("name", name)
-	if metricName != "" {
-		params.Set("metricName", metricName)
+	params := &apiclient.GetFieldsValuesParams{
+		Signal:       ptr(apitypes.TelemetrytypesSignal(signal)),
+		Source:       optEnum[apitypes.TelemetrytypesSource](source),
+		FieldContext: optEnum[apitypes.TelemetrytypesFieldContext](fieldContext),
+		MetricName:   optString(metricName),
+		SearchText:   optString(searchText),
+		Name:         ptr(name),
 	}
-	if searchText != "" {
-		params.Set("searchText", searchText)
-	}
-	if fieldContext != "" {
-		params.Set("fieldContext", fieldContext)
-	}
-	if source != "" {
-		params.Set("source", source)
-	}
-
-	reqURL := fmt.Sprintf("%s/api/v1/fields/values?%s", s.baseURL, params.Encode())
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching field values",
 		slog.String("signal", signal),
 		slog.String("name", name))
-	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
+	return s.callAPI(ctx, DefaultQueryTimeout, func(ctx context.Context, api *apiclient.Client) (*http.Response, error) {
+		return api.GetFieldsValues(ctx, params)
+	})
 }
 
 func (s *SigNoz) GetTraceDetails(ctx context.Context, traceID string, includeSpans bool, startTime, endTime int64) (json.RawMessage, error) {
@@ -701,54 +690,51 @@ func (s *SigNoz) GetTraceDetails(ctx context.Context, traceID string, includeSpa
 // (schemaVersion, DisallowUnknownFields, panel/query rules), so the bytes are
 // forwarded as-is to POST /api/v2/dashboards.
 func (s *SigNoz) CreateDashboardRaw(ctx context.Context, dashboardJSON []byte) (json.RawMessage, error) {
-	reqURL := fmt.Sprintf("%s/api/v2/dashboards", s.baseURL)
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Creating dashboard (raw)")
-	return s.doRequest(ctx, http.MethodPost, reqURL, dashboardJSON, DashboardWriteTimeout)
+	return s.callAPI(ctx, DashboardWriteTimeout, func(ctx context.Context, api *apiclient.Client) (*http.Response, error) {
+		return api.CreateDashboardV2WithBody(ctx, jsonContentType, bytes.NewReader(dashboardJSON))
+	})
 }
 
 // UpdateDashboardRaw replaces a v2 dashboard via PUT /api/v2/dashboards/{id}.
 // The body is the full UpdatableDashboardV2 post-update state; the v2 API
 // rejects locked dashboards and treats name as immutable.
 func (s *SigNoz) UpdateDashboardRaw(ctx context.Context, id string, dashboardJSON []byte) (json.RawMessage, error) {
-	reqURL := fmt.Sprintf("%s/api/v2/dashboards/%s", s.baseURL, url.PathEscape(id))
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Updating dashboard (raw)", slog.String("id", id))
-	return s.doRequest(ctx, http.MethodPut, reqURL, dashboardJSON, DashboardWriteTimeout)
+	return s.callAPI(ctx, DashboardWriteTimeout, func(ctx context.Context, api *apiclient.Client) (*http.Response, error) {
+		return api.UpdateDashboardV2WithBody(ctx, id, jsonContentType, bytes.NewReader(dashboardJSON))
+	})
 }
 
 // PatchDashboardRaw applies an RFC 6902 JSON Patch to a v2 dashboard via
 // PATCH /api/v2/dashboards/{id}. The body is the JSON Patch operation array.
 func (s *SigNoz) PatchDashboardRaw(ctx context.Context, id string, patchJSON []byte) (json.RawMessage, error) {
-	reqURL := fmt.Sprintf("%s/api/v2/dashboards/%s", s.baseURL, url.PathEscape(id))
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Patching dashboard (raw)", slog.String("id", id))
-	return s.doRequest(ctx, http.MethodPatch, reqURL, patchJSON, DashboardWriteTimeout)
+	return s.callAPI(ctx, DashboardWriteTimeout, func(ctx context.Context, api *apiclient.Client) (*http.Response, error) {
+		return api.PatchDashboardV2WithBody(ctx, id, jsonContentType, bytes.NewReader(patchJSON))
+	})
 }
 
 func (s *SigNoz) DeleteDashboard(ctx context.Context, id string) error {
-	reqURL := fmt.Sprintf("%s/api/v2/dashboards/%s", s.baseURL, url.PathEscape(id))
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Deleting dashboard", slog.String("id", id))
-	_, err := s.doRequest(ctx, http.MethodDelete, reqURL, nil, DashboardWriteTimeout)
+	_, err := s.callAPI(ctx, DashboardWriteTimeout, func(ctx context.Context, api *apiclient.Client) (*http.Response, error) {
+		return api.DeleteDashboardV2(ctx, id)
+	})
 	return err
 }
 
 // ChannelWriteTimeout is used for notification channel create/test operations.
 const ChannelWriteTimeout = 30 * time.Second
 
-func (s *SigNoz) ListNotificationChannels(ctx context.Context) (json.RawMessage, error) {
-	channels, err := s.ListNotificationChannelsV2(ctx, types.NotificationChannelListParams{})
-	if err != nil {
-		return nil, err
-	}
-	return json.Marshal(channels)
-}
-
 func (s *SigNoz) GetNotificationChannel(ctx context.Context, id string) (json.RawMessage, error) {
 	return s.getNotificationChannelV2(ctx, id)
 }
 
 func (s *SigNoz) CreateNotificationChannel(ctx context.Context, receiverJSON []byte) (json.RawMessage, error) {
-	reqURL := fmt.Sprintf("%s/api/v2/notification_channels", s.baseURL)
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Creating notification channel")
-	response, requestErr := s.doNotificationChannelWrite(ctx, http.MethodPost, reqURL, receiverJSON, ChannelWriteTimeout)
+	response, requestErr := s.notificationChannelWrite(ctx, func(ctx context.Context, api *apiclient.Client) (*http.Response, error) {
+		return api.CreateNotificationChannelWithBody(ctx, jsonContentType, bytes.NewReader(receiverJSON))
+	})
 	if requestErr != nil {
 		return nil, requestErr
 	}
@@ -760,9 +746,10 @@ func (s *SigNoz) CreateNotificationChannel(ctx context.Context, receiverJSON []b
 }
 
 func (s *SigNoz) UpdateNotificationChannel(ctx context.Context, id string, receiverJSON []byte) error {
-	reqURL := fmt.Sprintf("%s/api/v2/notification_channels/%s", s.baseURL, url.PathEscape(id))
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Updating notification channel", slog.String("id", id))
-	response, requestErr := s.doNotificationChannelWrite(ctx, http.MethodPut, reqURL, receiverJSON, ChannelWriteTimeout)
+	response, requestErr := s.notificationChannelWrite(ctx, func(ctx context.Context, api *apiclient.Client) (*http.Response, error) {
+		return api.UpdateNotificationChannelWithBody(ctx, id, jsonContentType, bytes.NewReader(receiverJSON))
+	})
 	if requestErr != nil {
 		return requestErr
 	}
@@ -773,9 +760,10 @@ func (s *SigNoz) UpdateNotificationChannel(ctx context.Context, id string, recei
 }
 
 func (s *SigNoz) DeleteNotificationChannel(ctx context.Context, id string) error {
-	reqURL := fmt.Sprintf("%s/api/v2/notification_channels/%s", s.baseURL, url.PathEscape(id))
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Deleting notification channel", slog.String("id", id))
-	_, err := s.doNotificationChannelWrite(ctx, http.MethodDelete, reqURL, nil, ChannelWriteTimeout)
+	_, err := s.notificationChannelWrite(ctx, func(ctx context.Context, api *apiclient.Client) (*http.Response, error) {
+		return api.DeleteNotificationChannel(ctx, id)
+	})
 	return err
 }
 
@@ -791,15 +779,17 @@ func (s *SigNoz) GetTopMetrics(ctx context.Context, start, end int64, limit int)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
-	reqURL := fmt.Sprintf("%s/api/v2/metrics/treemap", s.baseURL)
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching metrics treemap",
 		slog.Int("limit", limit))
-	return s.doReplaySafePost(ctx, reqURL, body, DefaultQueryTimeout)
+	return s.callAPI(withReplaySafe(ctx, true), DefaultQueryTimeout, func(ctx context.Context, api *apiclient.Client) (*http.Response, error) {
+		return api.GetMetricsTreemapWithBody(ctx, jsonContentType, bytes.NewReader(body))
+	})
 }
 
 func (s *SigNoz) TestNotificationChannel(ctx context.Context, receiverJSON []byte) error {
-	reqURL := fmt.Sprintf("%s/api/v2/notification_channels/test", s.baseURL)
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Testing notification channel")
-	_, err := s.doNotificationChannelWrite(ctx, http.MethodPost, reqURL, receiverJSON, ChannelWriteTimeout)
+	_, err := s.notificationChannelWrite(ctx, func(ctx context.Context, api *apiclient.Client) (*http.Response, error) {
+		return api.TestNotificationChannelWithBody(ctx, jsonContentType, bytes.NewReader(receiverJSON))
+	})
 	return err
 }

@@ -215,6 +215,10 @@ func (h *Handler) handleListAlerts(ctx context.Context, req mcp.CallToolRequest)
 	return listResult(resultJSON, limitClamped), nil
 }
 
+// alertRulesUpstreamPageSize is the most rules GET /api/v3/rules returns per
+// call (SigNoz clamps larger limits instead of rejecting them).
+const alertRulesUpstreamPageSize = 200
+
 func (h *Handler) handleListAlertRules(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	h.logger.DebugContext(ctx, "Tool called: signoz_list_alert_rules")
 	limit, offset, limitClamped := paginate.ParseParamsClamped(req.Params.Arguments)
@@ -223,52 +227,47 @@ func (h *Handler) handleListAlertRules(ctx context.Context, req mcp.CallToolRequ
 	if clientErr != nil {
 		return clientErr, nil
 	}
-	rules, err := client.ListAlertRules(ctx)
-	if err != nil {
-		h.logUpstreamFailure(ctx, "Failed to list alert rules", err)
-		return upstreamError(err), nil
-	}
-
-	var apiResponse types.APIAlertRulesResponse
-	if err := json.Unmarshal(rules, &apiResponse); err != nil {
-		h.logger.ErrorContext(ctx, "Failed to parse alert rules response", logpkg.ErrAttr(err), slog.String("response", logpkg.TruncBody(rules)))
-		return upstreamResponseError("failed to parse alert rules response: " + err.Error()), nil
-	}
-
-	ruleSummaries := make([]types.AlertRuleSummary, 0, len(apiResponse.Data))
-	for _, apiRule := range apiResponse.Data {
-		createdAt := apiRule.CreatedAt
-		if createdAt == "" {
-			createdAt = apiRule.CreateAt
-		}
-		updatedAt := apiRule.UpdatedAt
-		if updatedAt == "" {
-			updatedAt = apiRule.UpdateAt
+	// SigNoz pages the v3 list at most alertRulesUpstreamPageSize rules per
+	// call, so the requested window is assembled from as many pages as it spans.
+	pagedRules := make([]any, 0, limit)
+	total := 0
+	for pageOffset := offset; pageOffset < offset+limit; {
+		pageLimit := min(alertRulesUpstreamPageSize, offset+limit-pageOffset)
+		rules, err := client.ListAlertRules(ctx, pageLimit, pageOffset)
+		if err != nil {
+			h.logUpstreamFailure(ctx, "Failed to list alert rules", err)
+			return upstreamError(err), nil
 		}
 
-		webURL, _ := util.ResourceWebURL(base, "alert", apiRule.ID)
-		ruleSummaries = append(ruleSummaries, types.AlertRuleSummary{
-			RuleID:      apiRule.ID,
-			Alert:       apiRule.Alert,
-			AlertType:   apiRule.AlertType,
-			RuleType:    apiRule.RuleType,
-			State:       apiRule.State,
-			Disabled:    apiRule.Disabled,
-			Severity:    apiRule.Labels["severity"],
-			Description: apiRule.Description,
-			Labels:      apiRule.Labels,
-			CreatedAt:   createdAt,
-			UpdatedAt:   updatedAt,
-			WebURL:      webURL,
-		})
-	}
+		var apiResponse types.APIAlertRulesResponse
+		if err := json.Unmarshal(rules, &apiResponse); err != nil {
+			h.logger.ErrorContext(ctx, "Failed to parse alert rules response", logpkg.ErrAttr(err), slog.String("response", logpkg.TruncBody(rules)))
+			return upstreamResponseError("failed to parse alert rules response: " + err.Error()), nil
+		}
+		total = apiResponse.Data.Total
 
-	total := len(ruleSummaries)
-	rulesArray := make([]any, len(ruleSummaries))
-	for i, v := range ruleSummaries {
-		rulesArray[i] = v
+		for _, apiRule := range apiResponse.Data.Rules {
+			webURL, _ := util.ResourceWebURL(base, "alert", apiRule.ID)
+			pagedRules = append(pagedRules, types.AlertRuleSummary{
+				RuleID:      apiRule.ID,
+				Alert:       apiRule.Alert,
+				AlertType:   apiRule.AlertType,
+				RuleType:    apiRule.RuleType,
+				State:       apiRule.State,
+				Disabled:    apiRule.Disabled,
+				Severity:    apiRule.Labels["severity"],
+				Description: apiRule.Description,
+				Labels:      apiRule.Labels,
+				CreatedAt:   apiRule.CreatedAt,
+				UpdatedAt:   apiRule.UpdatedAt,
+				WebURL:      webURL,
+			})
+		}
+		pageOffset += len(apiResponse.Data.Rules)
+		if len(apiResponse.Data.Rules) < pageLimit || pageOffset >= total {
+			break
+		}
 	}
-	pagedRules := paginate.Array(rulesArray, offset, limit)
 
 	resultJSON, err := paginate.Wrap(pagedRules, total, offset, limit)
 	if err != nil {

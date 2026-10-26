@@ -16,7 +16,7 @@ type Client interface {
 	ListMetrics(ctx context.Context, start, end int64, limit int, searchText, source string) (json.RawMessage, error)
 	GetTopMetrics(ctx context.Context, start, end int64, limit int) (json.RawMessage, error)
 	ListAlerts(ctx context.Context, params types.ListAlertsParams) (json.RawMessage, error)
-	ListAlertRules(ctx context.Context) (json.RawMessage, error)
+	ListAlertRules(ctx context.Context, limit, offset int) (json.RawMessage, error)
 	GetAlertByRuleID(ctx context.Context, ruleID string) (json.RawMessage, error)
 	GetAlertHistory(ctx context.Context, ruleID string, req types.AlertHistoryRequest) (json.RawMessage, error)
 	ListDashboards(ctx context.Context, limit, offset int, filter, sort, order string) (json.RawMessage, error)
@@ -40,7 +40,6 @@ type Client interface {
 	UpdateAlertRule(ctx context.Context, ruleID string, alertJSON []byte) error
 	DeleteAlertRule(ctx context.Context, ruleID string) error
 	CheckMetricUsage(ctx context.Context, names []string) (map[string]MetricUsage, error)
-	ListNotificationChannels(ctx context.Context) (json.RawMessage, error)
 	ListNotificationChannelsV2(ctx context.Context, params types.NotificationChannelListParams) (types.NotificationChannelList, error)
 	GetNotificationChannel(ctx context.Context, id string) (json.RawMessage, error)
 	CreateNotificationChannel(ctx context.Context, receiverJSON []byte) (json.RawMessage, error)
