@@ -132,13 +132,17 @@ docs-index:
 ##@ Generated SigNoz API client
 
 # Bump SIGNOZ_SPEC_REF with each SigNoz release, then run `make gen` and commit the result.
-SKAFF_VERSION ?= v0.0.6
-SIGNOZ_SPEC_REF ?= v0.145.0
+# Pinned to the SigNoz/signoz#13200 head (field descriptions and request examples) until a
+# release carries it; bump to that release tag next.
+SKAFF_VERSION ?= v0.0.9
+SIGNOZ_SPEC_REF ?= 09bba8960dfc3e0a43dc54d6d7cf203aae9841f4
+SIGNOZ_SPEC_URL := https://raw.githubusercontent.com/SigNoz/signoz/$(SIGNOZ_SPEC_REF)/docs/api/openapi.yml
 SKAFF := bin/skaff-$(SKAFF_VERSION)
 APICLIENT_DIR := internal/apiclient
 APITYPES_DIR := $(APICLIENT_DIR)/apitypes
+SPECGEN := uv run --with pyyaml python -I tools/specgen/specgen.py
 
-.PHONY: gen gen-check
+.PHONY: gen gen-client gen-spec gen-check
 
 # SigNoz/skaff is private: downloading it needs a gh login that can read the repo.
 $(SKAFF):
@@ -150,22 +154,36 @@ $(SKAFF):
 	tar -xzf "$$tmp/$$asset.tar.gz" -C "$$tmp" && \
 	mv "$$tmp/$$asset/bin/skaff" $@ && chmod +x $@
 
-# apitypes takes several minutes, so this runs per spec or skaff bump, not in `make ci`.
-gen: $(SKAFF)
+# Everything derived from the pinned SigNoz spec: the API client (skaff), the dashboard
+# input schemas, and the examples resources (tools/specgen). apitypes takes several minutes,
+# so this runs per spec or skaff bump, not in `make ci`.
+gen: gen-client gen-spec
+	@echo "✅ Generated the client, schemas, and examples from SigNoz $(SIGNOZ_SPEC_REF). Commit them with skaff.yml and the version pins."
+
+gen-client: $(SKAFF)
 	@echo ">> Generating the SigNoz API client from SigNoz $(SIGNOZ_SPEC_REF)"
 	@tmp=$$(mktemp -d) && trap 'rm -rf "$$tmp"' EXIT && \
-	curl -sSfL https://raw.githubusercontent.com/SigNoz/signoz/$(SIGNOZ_SPEC_REF)/docs/api/openapi.yml -o "$$tmp/openapi.yml" && \
+	curl -sSfL $(SIGNOZ_SPEC_URL) -o "$$tmp/openapi.yml" && \
 	rm -rf $(APITYPES_DIR) $(APICLIENT_DIR)/zz_generated_client.go && \
 	$(SKAFF) apitypes --openapi "$$tmp/openapi.yml" --config skaff.yml --output $(APITYPES_DIR) --package apitypes && \
 	$(SKAFF) client --openapi "$$tmp/openapi.yml" --config skaff.yml \
 		--output $(APICLIENT_DIR)/zz_generated_client.go --package apiclient \
 		--apitypes-import github.com/SigNoz/signoz-mcp-server/$(APITYPES_DIR)
-	@echo "✅ Generated client written to $(APICLIENT_DIR). Commit it with skaff.yml and the version pins."
 
-# Fails when the committed client differs from a fresh generation (hand edits or stale output).
+# Needs no skaff or gh login: regenerates the dashboard schemas and the examples resources.
+gen-spec:
+	@echo ">> Generating the dashboard schemas and examples resources from SigNoz $(SIGNOZ_SPEC_REF)"
+	@tmp=$$(mktemp -d) && trap 'rm -rf "$$tmp"' EXIT && \
+	curl -sSfL $(SIGNOZ_SPEC_URL) -o "$$tmp/openapi.yml" && \
+	$(SPECGEN) --openapi "$$tmp/openapi.yml" --repo-root .
+
+# Fails when a committed generated file differs from a fresh generation (hand edits or stale output).
+GENERATED_PATHS := $(APICLIENT_DIR) internal/handler/tools/schemas pkg/alert/examples.generated.md \
+	pkg/views/examples.generated.md pkg/dashboard/examples.generated.md \
+	pkg/notificationchannel/examples.generated.md pkg/querybuilder/examples.generated.md
 gen-check: gen
-	@git diff --exit-code -- $(APICLIENT_DIR) && \
-	untracked=$$(git ls-files -o --exclude-standard -- $(APICLIENT_DIR)) && \
+	@git diff --exit-code -- $(GENERATED_PATHS) && \
+	untracked=$$(git ls-files -o --exclude-standard -- $(GENERATED_PATHS)) && \
 	if [ -n "$$untracked" ]; then printf '%s\n' "$$untracked"; echo "Generated files are not committed."; exit 1; fi
 
 bundle:

@@ -528,7 +528,7 @@ func (h *Handler) registerAlertResources(s *mcp.Server) {
 	alertInstructions := mcp.NewResource(
 		"signoz://alert/instructions",
 		"Alert Rule Instructions",
-		mcp.WithResourceDescription("Read this before creating or updating an alert unless its current content was already read for the same prepared operation. It explains fields, rule types, queries, thresholds, evaluation, and when to reuse or call signoz_list_notification_channels. Read signoz://alert/examples only when examples are still needed."),
+		mcp.WithResourceDescription("Read this before creating or updating an alert unless its current content was already read for the same prepared operation. It explains the query envelopes, threshold tiers, and evaluation specs the input schema does not describe, the v1 anomaly shape, and when to reuse or call signoz_list_notification_channels. Read signoz://alert/examples only when examples are still needed."),
 		mcp.WithMIMEType("text/markdown"),
 		mcp.WithResourceSize(int64(len(alert.Instructions))),
 	)

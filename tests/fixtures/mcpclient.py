@@ -77,6 +77,14 @@ class MCPClient:
         result = self._run(self._session.call_tool(name, arguments or {}))
         return self._dump(result)
 
+    def read_resource(self, uri: str) -> str:
+        """Read a resource and return its concatenated text contents."""
+        if self._session is None:
+            self.initialize()
+        logger.info("mcp -> resources/read %s", uri)
+        result = self._dump(self._run(self._session.read_resource(uri)))
+        return "\n".join(content.get("text", "") for content in result.get("contents", []))
+
     def close(self) -> None:
         try:
             if self._client_task is not None and not self._client_task.done():

@@ -15,7 +15,7 @@ import (
 // served at signoz://dashboard/widgets-examples must satisfy the schema clients
 // are handed. This specifically pins the discriminated-union contract: the Perses
 // query/panel/variable unions rely on OAS `discriminator`, which JSON-Schema
-// validators ignore, so extract_schemas.py narrows each branch's discriminator to
+// validators ignore, so tools/specgen/specgen.py narrows each branch's discriminator to
 // a `const`. If a future regen drops that, the signoz/CompositeQuery examples
 // (multiple builder queries + a formula) stop validating here — failing the test
 // instead of silently shipping a schema that rejects the very pattern the docs teach.

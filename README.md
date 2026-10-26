@@ -481,13 +481,13 @@ Docs tools use the same authentication path as other MCP tools.
 | Resource | Read when you need |
 |---|---|
 | `signoz://alert/instructions` | Alert schemas, fields, thresholds, evaluation, and notification workflow |
-| `signoz://alert/examples` | Alert payload examples for v2 direct/policy routing and v1 direct anomaly routing |
+| `signoz://alert/examples` | Alert payloads from the SigNoz OpenAPI spec (threshold, formula, PromQL, anomaly, tiered routing, notification settings) plus a Cost Meter budget example |
 | `signoz://dashboard/instructions` | Dashboard fields, variables, chaining, and layout |
 | `signoz://dashboard/widgets-instructions` | Panel choices and query-specific guides |
 | `signoz://dashboard/widgets-examples` | Panel examples and validation patterns |
 | `signoz://dashboard/list-filter-guide` | `signoz_list_dashboards` filter DSL: grammar, per-key operators, and examples |
 | `signoz://dashboard/patch-instructions` | `signoz_patch_dashboard` JSON Patch recipes and exact paths (add/edit/move/remove a panel, query, variable) |
-| `signoz://dashboard/examples` | Complete server-verified dashboard payloads (metrics timeseries, dynamic-variable filter, number panel, multi-panel) |
+| `signoz://dashboard/examples` | Dashboard payloads from the SigNoz OpenAPI spec: create bodies, a full replacement, and JSON Patch arrays |
 | `signoz://dashboard/query-builder-example` | Dashboard Query Builder aggregations, filters, legends, and functions |
 | `signoz://promql/instructions` | PromQL widgets or alerts, especially dotted OTel metric names |
 | `signoz://dashboard/clickhouse-schema-for-logs` | Bundled logs schema snapshot for dashboard SQL |
@@ -499,8 +499,10 @@ Docs tools use the same authentication path as other MCP tools.
 | `signoz://logs/query-builder-guide` | Logs Query Builder v5 JSON or unfamiliar log fields |
 | `signoz://traces/query-builder-guide` | Traces Query Builder v5 JSON or unfamiliar trace fields |
 | `signoz://metrics-aggregation-guide` | Metric aggregations, formulas, grouping, limits, and Cost Meter queries |
+| `signoz://query-builder/examples` | `query_range` requests from the SigNoz OpenAPI spec, per query type and request type for `signoz_execute_builder_query` |
+| `signoz://notification-channel/examples` | Every notification channel kind, its `config.spec` fields, and a worked payload per kind |
 | `signoz://view/instructions` | Saved view fields, the v2 typed spec, and read-before-replace workflow |
-| `signoz://view/examples` | Saved-view typed-spec payloads for traces, logs, metrics, and Cost Meter |
+| `signoz://view/examples` | Saved-view payloads from the SigNoz OpenAPI spec for logs, traces, metrics, and Cost Meter, plus a replacement body |
 | `signoz://docs/sitemap` | Indexed official-doc catalog and page URLs |
 
 ### Resource Template Migration
@@ -796,6 +798,7 @@ Fully replace an existing saved Explorer view. Fetch it with `signoz_get_view`, 
 - **Parameters**:
   - `id` (required) - UUID of the view to replace
   - `view` (required) - Full `source`/`spec` pair (required); drop `name` and server-populated fields
+- **Migration**: the retired flat shape (`source` and `spec` beside `id`) returns a coded `VALIDATION_FAILED` error naming the `view` wrapper; pass `{"id": "<uuid>", "view": {"source": ..., "spec": ...}}`.
 - **Resource rule**: Read `signoz://view/instructions` and `signoz://view/examples` when changing `source` or `spec`. Skip them for a pass-through of the fetched body. Call `signoz_get_view` first; partial bodies wipe unspecified fields.
 
 #### `signoz_delete_view`
@@ -989,13 +992,12 @@ display names before creating a channel.
   `generateName: true` with a `displayName`. SigNoz defaults `displayName` from
   an explicit `name` when omitted. Both names become immutable after creation.
   Alert routing references use `displayName`, not `name`.
-- **Provider kinds**: for example `slack`, `email`, `webhook`, `pagerduty`,
-  `opsgenie`, `msteams`, `googlechat`, `jira`, `jsmops`, and `incidentio`;
-  SigNoz validates the value and its rejection lists the kinds it accepts.
-  SigNoz also rejects an unknown or missing `config.spec` field with the exact
-  requirement, and a duplicate name with `already-exists`. Slack also accepts
-  message settings: `color`, `titleLink`, `pretext`, `fallback`, `footer`,
-  `fields`, and `actions`.
+- **Provider kinds**: `signoz://notification-channel/examples` lists every
+  kind the pinned SigNoz release accepts, each kind's `config.spec` fields, and a
+  worked payload per kind; it is generated from the SigNoz OpenAPI spec by
+  `make gen`. SigNoz validates the kind and its rejection lists the kinds it
+  accepts. SigNoz also rejects an unknown or missing `config.spec` field with
+  the exact requirement, and a duplicate name with `already-exists`.
 - **Resolve notifications**: `config.spec.sendResolved` uses the provider's
   default when omitted. Get returns its effective value; preserve it on update.
 - **Test sends**: `test` defaults to `false`. Set `test: true` only when a test

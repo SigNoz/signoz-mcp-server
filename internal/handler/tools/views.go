@@ -3,12 +3,14 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/SigNoz/signoz-mcp-server/pkg/paginate"
+	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 	"github.com/SigNoz/signoz-mcp-server/pkg/views"
 )
 
@@ -40,31 +42,19 @@ func (h *Handler) RegisterViewHandlers(s *mcp.Server) {
 
 	createTool := mcp.NewTool("signoz_create_view",
 		withCreateToolAnnotations(),
-		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
 		mcp.WithDescription(
-			"Use this when the user wants to save one reusable query spec for Logs, Traces, Metrics, or Cost Meter; use signoz_create_dashboard for a multi-widget dashboard. Before composing any payload, you must read both signoz://view/instructions and signoz://view/examples. Cost Meter views use source=\"meter\" while each builder spec uses signal=\"metrics\" and source=\"meter\". Do not send server-populated IDs or timestamps.",
+			"Use this when the user wants to save one reusable query spec for Logs, Traces, Metrics, or Cost Meter; use signoz_create_dashboard for a multi-widget dashboard. Before composing any payload, you must read both signoz://view/instructions and signoz://view/examples. Do not send server-populated IDs or timestamps.",
 		),
-		mcp.WithString("name", mcp.Description("The view's machine name, a DNS-1123 label (lowercase letters, digits, hyphens). The human-facing display name lives in spec.displayName. Required unless generateName is true.")),
-		mcp.WithBoolean("generateName", mcp.Description("When true, the server generates the view name from spec.displayName; name must be empty. Default: false.")),
-		mcp.WithString("source", mcp.Required(), mcp.Description(`Which Explorer this view belongs to, for example "traces", "logs", "metrics", or "meter" (Cost Meter). SigNoz validates the value. Use "meter" for Cost Meter views (queried as metrics with source "meter").`)),
-		mcp.WithObject("spec", mcp.Required(), mcp.AdditionalProperties(true), mcp.Description("The saved-view spec object: displayName, panelType, requestType, queries, selectedFields, and display. See signoz://view/instructions and signoz://view/examples.")),
+		mcp.WithInputSchema[types.CreateViewInput](),
 	)
 	h.addTool(s, createTool, h.handleCreateView)
 
 	updateTool := mcp.NewTool("signoz_update_view",
 		withUpdateToolAnnotations(),
-		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
 		mcp.WithDescription(
 			"Use this when the user wants to change an existing saved view. This is a full replacement: call signoz_get_view first, modify its data object, preserve every unrequested field, and pass that full object as view. Upstream keeps name immutable on update; the display name lives in spec.displayName. Read signoz://view/instructions and signoz://view/examples when changing source or spec. Keep the UUID only in id; omit server-populated IDs and timestamps from view.",
 		),
-		mcp.WithString("id", mcp.Description("UUID of the view to replace. Required.")),
-		mcp.WithObject("view",
-			mcp.Required(),
-			mcp.Properties(savedViewSchemaProperties()),
-			mcp.AdditionalProperties(true),
-			withRequiredFields("source", "spec"),
-			mcp.Description("Complete saved view after the requested changes. Start with the data returned by signoz_get_view and pass the full object here."),
-		),
+		mcp.WithInputSchema[types.UpdateViewInput](),
 	)
 	h.addTool(s, updateTool, h.handleUpdateView)
 
@@ -109,29 +99,6 @@ func (h *Handler) RegisterViewHandlers(s *mcp.Server) {
 			},
 		}, nil
 	})
-}
-
-// savedViewSchemaProperties is kept manual because mcp.WithInputSchema cannot
-// currently render the SavedView input structs used here without producing an
-// empty effective schema for tools/list clients.
-func savedViewSchemaProperties() map[string]any {
-	return map[string]any{
-		"source": map[string]any{
-			"type":        "string",
-			"description": `Which Explorer this view belongs to, for example "traces", "logs", "metrics", or "meter" (Cost Meter). SigNoz validates the value. Use "meter" for Cost Meter views (queried as metrics with source "meter").`,
-		},
-		"spec": map[string]any{
-			"type":                 "object",
-			"additionalProperties": true,
-			"description":          "The saved-view spec object: displayName, panelType, requestType, queries, selectedFields, and display. See signoz://view/instructions and signoz://view/examples.",
-		},
-	}
-}
-
-func withRequiredFields(fields ...string) mcp.PropertyOption {
-	return func(schema map[string]any) {
-		schema["required"] = fields
-	}
 }
 
 // serverPopulatedViewFields are set by the SigNoz API on create/read and
@@ -319,26 +286,20 @@ func (h *Handler) handleUpdateView(ctx context.Context, req mcp.CallToolRequest)
 		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "id" is required. Use signoz_list_views to find the UUID.`), nil
 	}
 
-	// The canonical shape (per input schema) wraps the body under "view".
-	// Back-compat: also accept the SavedView fields flat at the top level
-	// (pre-wrapper call sites), and the wrapped get_view envelope shape
-	// ({status,data:{...}}) pasted straight under "view".
-	var view map[string]any
-	if v, ok := args["view"].(map[string]any); ok {
-		view = v
-		unwrapViewEnvelope(view)
-	} else {
-		view = map[string]any{}
-		for k, v := range args {
-			// Skip the MCP-level fields and the top-level id/viewId path param;
-			// the SavedView body's own id is server-populated and stripped later.
-			if k == "id" || k == "viewId" || k == "searchContext" || k == "view" {
-				continue
+	// The input schema requires the body under "view". The retired flat shape
+	// ({id, source, spec} at the top level) gets a coded error naming the
+	// replacement, not a bare "view is required". The signoz_get_view envelope
+	// ({status, data: {...}}) pasted under "view" is still unwrapped.
+	view, ok := args["view"].(map[string]any)
+	if !ok {
+		for _, legacy := range []string{"source", "spec", "name", "schemaVersion", "generateName"} {
+			if _, present := args[legacy]; present {
+				return errorWithCode(CodeValidationFailed, fmt.Sprintf(`Parameter validation failed: %q is no longer accepted at the top level; pass the saved view under "view", for example {"id": "<uuid>", "view": {"source": "logs", "spec": {...}}}. Call signoz_get_view first and use the "data" object it returns.`, legacy)), nil
 			}
-			view[k] = v
 		}
-		unwrapViewEnvelope(view)
+		view = map[string]any{}
 	}
+	unwrapViewEnvelope(view)
 	if len(view) == 0 {
 		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "view" is required. Pass the SavedView body under "view". Call signoz_get_view first and use the "data" field it returns.`), nil
 	}

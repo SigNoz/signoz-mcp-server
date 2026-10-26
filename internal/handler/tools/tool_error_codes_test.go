@@ -71,6 +71,9 @@ func TestToolHandlers_RejectInvalidArgumentsBeforeCallingSigNoz(t *testing.T) {
 		{tool: "signoz_get_dashboard", arguments: `{}`, wantText: `"id" is required`},
 		{tool: "signoz_get_dashboard", arguments: `{"uuid":true}`, wantText: `"uuid" is no longer accepted`},
 		{tool: "signoz_get_view", arguments: `{}`, wantText: `"id" is required`},
+		// The retired flat update body names the "view" wrapper that replaced it.
+		{tool: "signoz_update_view", arguments: `{"id":"019947a7-f200-7000-8000-000000000001","source":"logs","spec":{"displayName":"x"}}`, wantText: `"source" is no longer accepted at the top level; pass the saved view under "view"`},
+		{tool: "signoz_update_view", arguments: `{"id":"019947a7-f200-7000-8000-000000000001"}`, wantText: `"view" is required`},
 		{tool: "signoz_get_notification_channel", arguments: `{}`, wantText: `"id" is required`},
 		{tool: "signoz_execute_builder_query", arguments: `{}`, wantText: `"query" must be a JSON object`},
 		{tool: "signoz_get_trace_details", arguments: `{"traceId":"deadbeefdeadbeefdeadbeefdeadbeef","start":"not-a-timestamp","end":"also-bad"}`, wantText: "start"},

@@ -1,0 +1,269 @@
+# Saved view request examples
+
+Source: the request examples published by the SigNoz OpenAPI spec.
+
+## Create a view with signoz_create_view
+
+### 1. logs_list_generated_name — Logs list view with a generated name
+
+A list panel over error logs of one service. generateName lets the server derive the machine name from displayName; the display preferences set the row format and font size.
+
+```json
+{
+  "generateName": true,
+  "schemaVersion": "v2",
+  "source": "logs",
+  "spec": {
+    "display": {
+      "fontSize": "small",
+      "format": "list",
+      "maxLines": 2
+    },
+    "displayName": "Payment errors",
+    "panelType": "list",
+    "queries": [
+      {
+        "spec": {
+          "filter": {
+            "expression": "service.name = 'paymentservice' AND severity_text = 'ERROR'"
+          },
+          "limit": 100,
+          "name": "A",
+          "order": [
+            {
+              "direction": "desc",
+              "key": {
+                "name": "timestamp"
+              }
+            },
+            {
+              "direction": "desc",
+              "key": {
+                "name": "id"
+              }
+            }
+          ],
+          "signal": "logs"
+        },
+        "type": "builder_query"
+      }
+    ],
+    "requestType": "raw",
+    "selectedFields": [
+      {
+        "fieldContext": "resource",
+        "fieldDataType": "string",
+        "name": "service.name",
+        "signal": "logs"
+      },
+      {
+        "fieldContext": "log",
+        "fieldDataType": "string",
+        "name": "severity_text",
+        "signal": "logs"
+      }
+    ]
+  }
+}
+```
+
+### 2. meter_time_series — Cost meter graph view
+
+A graph panel on the meter explorer. Meter views are queried as metrics with the builder spec source set to meter; the meter rolls up hourly, so the step is 3600 seconds.
+
+```json
+{
+  "name": "log-ingestion-volume",
+  "schemaVersion": "v2",
+  "source": "meter",
+  "spec": {
+    "displayName": "Log ingestion volume",
+    "panelType": "graph",
+    "queries": [
+      {
+        "spec": {
+          "aggregations": [
+            {
+              "metricName": "signoz.meter.log.size",
+              "spaceAggregation": "sum",
+              "timeAggregation": "increase"
+            }
+          ],
+          "name": "A",
+          "signal": "metrics",
+          "source": "meter",
+          "stepInterval": 3600
+        },
+        "type": "builder_query"
+      }
+    ],
+    "requestType": "time_series",
+    "selectedFields": []
+  }
+}
+```
+
+### 3. metrics_time_series — Metrics graph view
+
+A graph panel plotting the per-second request rate of a counter, summed across series at one minute resolution.
+
+```json
+{
+  "name": "http-request-rate",
+  "schemaVersion": "v2",
+  "source": "metrics",
+  "spec": {
+    "displayName": "HTTP request rate",
+    "panelType": "graph",
+    "queries": [
+      {
+        "spec": {
+          "aggregations": [
+            {
+              "metricName": "http_requests_total",
+              "spaceAggregation": "sum",
+              "timeAggregation": "rate"
+            }
+          ],
+          "groupBy": [
+            {
+              "fieldContext": "resource",
+              "fieldDataType": "string",
+              "name": "service.name"
+            }
+          ],
+          "name": "A",
+          "signal": "metrics",
+          "stepInterval": 60
+        },
+        "type": "builder_query"
+      }
+    ],
+    "requestType": "time_series",
+    "selectedFields": []
+  }
+}
+```
+
+### 4. traces_list — Traces list view with filter and columns
+
+A list panel over spans slower than 500ms in one service, ordered newest first, with three explorer columns.
+
+```json
+{
+  "name": "slow-checkout-traces",
+  "schemaVersion": "v2",
+  "source": "traces",
+  "spec": {
+    "displayName": "Slow checkout traces",
+    "panelType": "list",
+    "queries": [
+      {
+        "spec": {
+          "filter": {
+            "expression": "service.name = 'checkoutservice' AND duration_nano > 500000000"
+          },
+          "limit": 100,
+          "name": "A",
+          "order": [
+            {
+              "direction": "desc",
+              "key": {
+                "name": "timestamp"
+              }
+            }
+          ],
+          "signal": "traces"
+        },
+        "type": "builder_query"
+      }
+    ],
+    "requestType": "raw",
+    "selectedFields": [
+      {
+        "fieldContext": "resource",
+        "fieldDataType": "string",
+        "name": "service.name",
+        "signal": "traces"
+      },
+      {
+        "fieldContext": "span",
+        "fieldDataType": "string",
+        "name": "name",
+        "signal": "traces"
+      },
+      {
+        "fieldContext": "span",
+        "fieldDataType": "float64",
+        "name": "duration_nano",
+        "signal": "traces"
+      }
+    ]
+  }
+}
+```
+
+## Replace a view with signoz_update_view
+
+### 1. traces_list_widen_filter — Replace a traces list view
+
+Replaces the spec of an existing traces list view with a wider latency filter and one more column. Every field of spec must be sent again; the machine name stays as created.
+
+```json
+{
+  "schemaVersion": "v2",
+  "source": "traces",
+  "spec": {
+    "displayName": "Slow checkout traces (over 250ms)",
+    "panelType": "list",
+    "queries": [
+      {
+        "spec": {
+          "filter": {
+            "expression": "service.name = 'checkoutservice' AND duration_nano > 250000000"
+          },
+          "limit": 100,
+          "name": "A",
+          "order": [
+            {
+              "direction": "desc",
+              "key": {
+                "name": "timestamp"
+              }
+            }
+          ],
+          "signal": "traces"
+        },
+        "type": "builder_query"
+      }
+    ],
+    "requestType": "raw",
+    "selectedFields": [
+      {
+        "fieldContext": "resource",
+        "fieldDataType": "string",
+        "name": "service.name",
+        "signal": "traces"
+      },
+      {
+        "fieldContext": "span",
+        "fieldDataType": "string",
+        "name": "name",
+        "signal": "traces"
+      },
+      {
+        "fieldContext": "span",
+        "fieldDataType": "float64",
+        "name": "duration_nano",
+        "signal": "traces"
+      },
+      {
+        "fieldContext": "attribute",
+        "fieldDataType": "string",
+        "name": "http.status_code",
+        "signal": "traces"
+      }
+    ]
+  }
+}
+```
