@@ -389,7 +389,6 @@
                       "queries": {
                         "description": "The queries to evaluate, at least one. Every envelope type must match queryType: builder_query and builder_formula for builder, promql for promql, clickhouse_sql for clickhouse_sql.",
                         "items": {
-                          "properties": {},
                           "type": "object"
                         },
                         "type": [
@@ -474,7 +473,6 @@
                   },
                   "thresholds": {
                     "description": "The thresholds to evaluate, as a kind and spec. Required when schemaVersion is v2alpha1; derived from op, target and matchType for v1.",
-                    "properties": {},
                     "type": [
                       "null",
                       "object"
@@ -509,7 +507,6 @@
               },
               "evaluation": {
                 "description": "The evaluation window, as a kind and spec. Required when schemaVersion is v2alpha1; derived from evalWindow and frequency for v1.",
-                "properties": {},
                 "type": [
                   "null",
                   "object"
@@ -4660,7 +4657,6 @@
                   "queries": {
                     "description": "The query envelopes the view runs, in the v5 query builder shape. At least one is required and the set is validated for the requestType.",
                     "items": {
-                      "properties": {},
                       "type": "object"
                     },
                     "type": [
@@ -4865,7 +4861,6 @@
                       "queries": {
                         "description": "The queries to run, each wrapped in a type-discriminated envelope. Names must be unique; formulas and trace operators reference other queries by name.",
                         "items": {
-                          "properties": {},
                           "type": "object"
                         },
                         "type": [
@@ -4949,10 +4944,12 @@
                         },
                         "value": {
                           "description": "The selected value: a string, number or boolean, or a list of them for multi-select variables. The string __all__ is special only for dynamic variables in builder filters and PromQL, where it removes the condition that references the variable; query, custom and text variables, and ClickHouse SQL for every type, substitute it literally.",
-                          "properties": {},
                           "type": [
                             "null",
-                            "object"
+                            "array",
+                            "boolean",
+                            "number",
+                            "string"
                           ]
                         }
                       },
@@ -7418,7 +7415,6 @@
                       "queries": {
                         "description": "The queries to evaluate, at least one. Every envelope type must match queryType: builder_query and builder_formula for builder, promql for promql, clickhouse_sql for clickhouse_sql.",
                         "items": {
-                          "properties": {},
                           "type": "object"
                         },
                         "type": [
@@ -7503,7 +7499,6 @@
                   },
                   "thresholds": {
                     "description": "The thresholds to evaluate, as a kind and spec. Required when schemaVersion is v2alpha1; derived from op, target and matchType for v1.",
-                    "properties": {},
                     "type": [
                       "null",
                       "object"
@@ -7538,7 +7533,6 @@
               },
               "evaluation": {
                 "description": "The evaluation window, as a kind and spec. Required when schemaVersion is v2alpha1; derived from evalWindow and frequency for v1.",
-                "properties": {},
                 "type": [
                   "null",
                   "object"
@@ -11675,7 +11669,6 @@
                       "queries": {
                         "description": "The query envelopes the view runs, in the v5 query builder shape. At least one is required and the set is validated for the requestType.",
                         "items": {
-                          "properties": {},
                           "type": "object"
                         },
                         "type": [
