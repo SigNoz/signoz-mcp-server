@@ -139,7 +139,16 @@ replay-safe requests on transport errors and 429/502/503/504, and buffers each r
   the pinned SigNoz release. It builds paths, query strings, and request bodies. Calls go through
   `callAPI`, which also rejects a 2xx HTML page (a SigNoz version without the route, or an auth
   proxy's login page) with `ErrNonJSONResponse`. Generated files are never hand-edited; regenerate
-  after bumping `SIGNOZ_SPEC_REF`, `SKAFF_VERSION`, or `skaff.yml`.
+  after bumping `SIGNOZ_SPEC_REF`, `SKAFF_VERSION`, or `skaff.yml`. The generated types carry the
+  upstream field descriptions as `jsonschema` struct tags, so a tool that registers its input with
+  `mcp.WithInputSchema[T]` over an embedded generated type (alerts, notification channels, saved
+  views) advertises those descriptions with no hand-written copy.
+- **Spec-derived files** (`tools/specgen/specgen.py`, also run by `make gen`): the dashboard input
+  schemas in `internal/handler/tools/schemas/` (raw JSON Schema, because the Perses unions need
+  `oneOf` with discriminators that struct reflection cannot express) and the
+  `pkg/*/examples.generated.md` files that the `signoz://*/examples` resources embed, rendered
+  from the request examples the spec publishes on each operation. `make gen-spec` regenerates
+  them without skaff; `make gen-check` fails when any generated file is stale.
 - **Hand-written requests** (`doRequest`): for areas not yet moved to the generated client and for
   routes missing from the spec, such as the services endpoints.
 
