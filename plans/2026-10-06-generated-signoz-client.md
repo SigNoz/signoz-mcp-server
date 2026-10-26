@@ -1,8 +1,8 @@
 # Plan: Generated SigNoz API Client
 
-Status: In Progress
+Status: Done
 Issue: [SigNoz/nerve-pod#26](https://github.com/SigNoz/nerve-pod/issues/26)
-PR:
+PR: [signoz-mcp-server#379](https://github.com/SigNoz/signoz-mcp-server/pull/379)
 
 ## Context
 
@@ -352,7 +352,10 @@ Phases 2 and 3 (2026-10-26, local, branch `refactor/client-generated-requests`):
   `limit=200&offset=100` then `limit=100&offset=300`, returns the 300 rules in order, and reports
   the server's total of 450.
 - The wire catalog did not change: no tool schema, description, or resource moved.
-- e2e: see the PR for the run against the pinned release.
+- e2e against the v0.143.0 cast: 51 of 54 passed. The three failures were all
+  `signoz_list_alert_rules` returning the HTML-2xx coded error, because `GET /api/v3/rules`
+  first shipped in v0.144.0. `tests/casting.yaml` now pins SigNoz v0.147.0 (the latest release)
+  with collector v0.144.15, and the e2e result on that cast is in the PR.
 
 ## Outcome
 

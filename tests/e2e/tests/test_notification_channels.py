@@ -285,7 +285,11 @@ def test_update_unsets_template_field_by_omission_never_by_blanking(mcp_client: 
             },
         )
         assert result.get("isError", False), "SigNoz accepted an empty template field; drop the omit-to-unset teaching"
-        assert "invalid spec JSON" in text_blocks(result), f"unexpected rejection: {text_blocks(result)[:300]}"
+        # The rejection is SigNoz's own validation (a 400), surfaced as the coded
+        # error; its sentence changes between releases and is not the claim here.
+        rejection = result.get("structuredContent") or {}
+        assert rejection.get("code") == "VALIDATION_FAILED", f"unexpected rejection: {text_blocks(result)[:300]}"
+        assert rejection.get("status") == 400, f"unexpected rejection: {rejection}"
     finally:
         delete_channel(mcp_client, channel_id)
         assert channel_gone(mcp_client, channel_id), "blanked-field channel remained after cleanup"
