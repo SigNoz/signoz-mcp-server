@@ -11,6 +11,7 @@ import (
 
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/SigNoz/signoz-mcp-server/pkg/querybuilder"
+	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
 
 func (h *Handler) RegisterQueryBuilderV5Handlers(s *mcp.Server) {
@@ -19,14 +20,13 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *mcp.Server) {
 	// SigNoz Query Builder v5 tool - LLM builds structured query JSON and executes it
 	executeQuery := mcp.NewTool("signoz_execute_builder_query",
 		withReadOnlyToolAnnotations(),
-		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
 		mcp.WithDescription(
 			"Use this only when dedicated log, trace, and metric tools cannot express the request, including multi-query requests, formulas, PromQL, and ClickHouse SQL. "+
 				"Use signoz_search_logs/signoz_search_traces for raw rows, signoz_aggregate_logs/signoz_aggregate_traces for grouped or top-N analysis, and signoz_query_metrics for ordinary metrics queries. "+
 				"Read the matching signoz://logs/query-builder-guide, signoz://traces/query-builder-guide, or signoz://metrics-aggregation-guide; formulas require the metrics guide, and PromQL requires signoz://promql/instructions. signoz://query-builder/examples holds a complete request per query type and request type. "+
 				"Set each input builder_query limit to 10000, the builder_formula result limit to 100, and non-empty spec.order (not dashboard orderBy) on each builder_query and builder_formula; the server normalizes omissions.",
 		),
-		mcp.WithObject("query", mcp.Required(), mcp.Description("Complete SigNoz Query Builder v5 JSON object with schemaVersion, start, end, requestType, compositeQuery, formatOptions, and variables; SigNoz validates it. requestType has no default: use raw, trace, time_series, or scalar. For predictable bounds, explicitly supply a positive spec.limit and non-empty spec.order (not dashboard orderBy) for every builder_query and builder_formula; the server inserts signal-aware defaults when they are omitted. Missing or zero standalone and formula-result limits normalize to 100; builder queries feeding a formula normalize to 10000 because input limits apply before formula evaluation.")),
+		mcp.WithInputSchema[types.ExecuteBuilderQueryInput](),
 	)
 
 	h.addTool(s, executeQuery, h.handleExecuteBuilderQuery)

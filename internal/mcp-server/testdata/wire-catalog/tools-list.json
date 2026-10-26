@@ -4857,8 +4857,114 @@
           "inputSchema": {
             "properties": {
               "query": {
-                "description": "Complete SigNoz Query Builder v5 JSON object with schemaVersion, start, end, requestType, compositeQuery, formatOptions, and variables; SigNoz validates it. requestType has no default: use raw, trace, time_series, or scalar. For predictable bounds, explicitly supply a positive spec.limit and non-empty spec.order (not dashboard orderBy) for every builder_query and builder_formula; the server inserts signal-aware defaults when they are omitted. Missing or zero standalone and formula-result limits normalize to 100; builder queries feeding a formula normalize to 10000 because input limits apply before formula evaluation.",
-                "properties": {},
+                "description": "The complete query_range request; apart from the result bounds below it reaches SigNoz verbatim and SigNoz validates it. start and end are required. requestType has no default: use raw, trace, time_series, or scalar. For predictable bounds, supply a positive spec.limit and non-empty spec.order (not dashboard orderBy) on every builder_query and builder_formula; the server inserts signal-aware defaults when they are omitted. Missing or zero standalone and formula-result limits normalize to 100; builder queries feeding a formula normalize to 10000 because input limits apply before formula evaluation.",
+                "properties": {
+                  "compositeQuery": {
+                    "description": "The queries to execute together; at least one is required and formulas may reference the others by name.",
+                    "properties": {
+                      "queries": {
+                        "description": "The queries to run, each wrapped in a type-discriminated envelope. Names must be unique; formulas and trace operators reference other queries by name.",
+                        "items": {
+                          "properties": {},
+                          "type": "object"
+                        },
+                        "type": [
+                          "null",
+                          "array"
+                        ]
+                      }
+                    },
+                    "type": [
+                      "null",
+                      "object"
+                    ]
+                  },
+                  "end": {
+                    "description": "The end of the time range as a Unix timestamp in milliseconds; must be greater than start except for raw_stream requests.",
+                    "type": [
+                      "null",
+                      "integer"
+                    ]
+                  },
+                  "formatOptions": {
+                    "description": "Post-processing applied to the result before it is returned.",
+                    "properties": {
+                      "fillGaps": {
+                        "description": "When true, every builder query and formula in a time_series result gets a zero value for each missing step, whatever its aggregation, so averages and percentiles read as zero where no data exists. PromQL and ClickHouse SQL queries keep their gaps. Defaults to false.",
+                        "type": [
+                          "null",
+                          "boolean"
+                        ]
+                      },
+                      "formatTableResultForUI": {
+                        "description": "When true, scalar results from several queries are merged into one table keyed by their group-by columns. Defaults to false.",
+                        "type": [
+                          "null",
+                          "boolean"
+                        ]
+                      }
+                    },
+                    "type": [
+                      "null",
+                      "object"
+                    ]
+                  },
+                  "noCache": {
+                    "description": "When true, results are computed fresh instead of being served from the query result cache. Defaults to false.",
+                    "type": [
+                      "null",
+                      "boolean"
+                    ]
+                  },
+                  "requestType": {
+                    "description": "The shape of the result: scalar, time_series, raw, raw_stream, trace, distribution or heatmap. It decides which result type data.results carries.",
+                    "type": [
+                      "null",
+                      "string"
+                    ]
+                  },
+                  "schemaVersion": {
+                    "description": "The version of the request payload schema, currently v1.",
+                    "type": [
+                      "null",
+                      "string"
+                    ]
+                  },
+                  "start": {
+                    "description": "The inclusive start of the time range as a Unix timestamp in milliseconds.",
+                    "type": [
+                      "null",
+                      "integer"
+                    ]
+                  },
+                  "variables": {
+                    "additionalProperties": {
+                      "properties": {
+                        "type": {
+                          "description": "The kind of dashboard variable: query, dynamic, custom or text.",
+                          "type": [
+                            "null",
+                            "string"
+                          ]
+                        },
+                        "value": {
+                          "description": "The selected value: a string, number or boolean, or a list of them for multi-select variables. The string __all__ is special only for dynamic variables in builder filters and PromQL, where it removes the condition that references the variable; query, custom and text variables, and ClickHouse SQL for every type, substitute it literally.",
+                          "properties": {},
+                          "type": [
+                            "null",
+                            "object"
+                          ]
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "description": "Dashboard variable values keyed by variable name. Builder filters substitute only the $name form and leave a quoted {{name}} unchanged; PromQL and ClickHouse SQL substitute $name, {{name}}, [[name]] and the Go template form {{.name}}.",
+                    "type": [
+                      "null",
+                      "object"
+                    ]
+                  }
+                },
                 "type": "object"
               },
               "searchContext": {
