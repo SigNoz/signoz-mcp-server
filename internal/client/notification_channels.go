@@ -7,18 +7,17 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"net/url"
-	"strconv"
-	"time"
 
+	"github.com/SigNoz/signoz-mcp-server/internal/apiclient"
+	"github.com/SigNoz/signoz-mcp-server/internal/apiclient/apitypes"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
 
-// doNotificationChannelWrite is the single-attempt boundary for every channel
-// mutation. PUT and DELETE are replay-safe in the generic client, but these
-// endpoints have no idempotency key and a lost response can follow a commit.
-func (s *SigNoz) doNotificationChannelWrite(ctx context.Context, method, reqURL string, body []byte, timeout time.Duration) (json.RawMessage, error) {
-	return s.doRequestWithReplayPolicy(ctx, method, reqURL, body, timeout, false)
+// notificationChannelWrite is the single-attempt boundary for every channel
+// mutation. PUT and DELETE are replay-safe by method, but these endpoints have
+// no idempotency key and a lost response can follow a commit.
+func (s *SigNoz) notificationChannelWrite(ctx context.Context, call apiCall) (json.RawMessage, error) {
+	return s.callAPI(withReplaySafe(ctx, false), ChannelWriteTimeout, call)
 }
 
 type notificationChannelResponse struct {
@@ -45,21 +44,18 @@ func (s *SigNoz) ListNotificationChannelsV2(ctx context.Context, params types.No
 	if err := params.Normalize(); err != nil {
 		return types.NotificationChannelList{}, err
 	}
-	query := url.Values{}
-	if params.Query != "" {
-		query.Set("query", params.Query)
+	query := &apiclient.ListNotificationChannelsParams{
+		Query:  optString(params.Query),
+		Kind:   optEnum[apitypes.AlertmanagertypesChannelKind](params.Kind),
+		Sort:   ptr(apitypes.AlertmanagertypesChannelListSort(params.Sort)),
+		Order:  ptr(apitypes.AlertmanagertypesChannelListOrder(params.Order)),
+		Limit:  ptr(params.Limit),
+		Offset: ptr(params.Offset),
 	}
-	if params.Kind != "" {
-		query.Set("kind", params.Kind)
-	}
-	query.Set("sort", params.Sort)
-	query.Set("order", params.Order)
-	query.Set("limit", strconv.Itoa(params.Limit))
-	query.Set("offset", strconv.Itoa(params.Offset))
-
-	reqURL := fmt.Sprintf("%s/api/v2/notification_channels?%s", s.baseURL, query.Encode())
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Listing notification channels")
-	response, err := s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
+	response, err := s.callAPI(ctx, DefaultQueryTimeout, func(ctx context.Context, api *apiclient.Client) (*http.Response, error) {
+		return api.ListNotificationChannels(ctx, query)
+	})
 	if err != nil {
 		return types.NotificationChannelList{}, err
 	}
@@ -98,9 +94,10 @@ func (s *SigNoz) ListNotificationChannelsV2(ctx context.Context, params types.No
 }
 
 func (s *SigNoz) getNotificationChannelV2(ctx context.Context, id string) (json.RawMessage, error) {
-	reqURL := fmt.Sprintf("%s/api/v2/notification_channels/%s", s.baseURL, url.PathEscape(id))
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching notification channel", slog.String("id", id))
-	response, err := s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
+	response, err := s.callAPI(ctx, DefaultQueryTimeout, func(ctx context.Context, api *apiclient.Client) (*http.Response, error) {
+		return api.GetNotificationChannel(ctx, id)
+	})
 	if err != nil {
 		return nil, err
 	}

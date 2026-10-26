@@ -17,6 +17,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/SigNoz/signoz-mcp-server/internal/apiclient"
+	"github.com/SigNoz/signoz-mcp-server/internal/apiclient/apitypes"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -56,18 +58,18 @@ func TestGetAlertByRuleID(t *testing.T) {
 func TestListAlertRules(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
-		assert.Equal(t, "/api/v2/rules", r.URL.Path)
-		assert.Equal(t, "", r.URL.RawQuery)
+		assert.Equal(t, "/api/v3/rules", r.URL.Path)
+		assert.Equal(t, "limit=200&offset=400", r.URL.RawQuery)
 
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status":"success","data":[{"id":"rule-1","alert":"High CPU","state":"inactive"}]}`))
+		_, _ = w.Write([]byte(`{"status":"success","data":{"rules":[{"id":"rule-1","alert":"High CPU","state":"inactive"}],"total":401}}`))
 	}))
 	defer server.Close()
 
 	logger := logpkg.New("debug")
 	client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
-	result, err := client.ListAlertRules(context.Background())
+	result, err := client.ListAlertRules(context.Background(), 200, 400)
 	require.NoError(t, err)
 	assert.Contains(t, string(result), `"id":"rule-1"`)
 }
@@ -494,14 +496,14 @@ func TestGetAlertHistory(t *testing.T) {
 	logger := logpkg.New("debug")
 	client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
-	_, err := client.GetAlertHistory(context.Background(), "ruleid-abc", types.AlertHistoryRequest{
+	_, err := client.GetAlertHistory(context.Background(), "ruleid-abc", &apiclient.GetRuleHistoryTimelineParams{
 		Start:            1640995200000,
 		End:              1641081600000,
-		State:            "firing",
-		FilterExpression: "severity = 'warning'",
-		Limit:            20,
-		Order:            "desc",
-		Cursor:           "eyJvZmZzZXQiOjIwLCJsaW1pdCI6MjB9",
+		State:            ptr(apitypes.RuletypesAlertState("firing")),
+		FilterExpression: ptr("severity = 'warning'"),
+		Limit:            ptr(int64(20)),
+		Order:            ptr(apitypes.Querybuildertypesv5OrderDirection("desc")),
+		Cursor:           ptr("eyJvZmZzZXQiOjIwLCJsaW1pdCI6MjB9"),
 	})
 	require.NoError(t, err)
 }

@@ -20,7 +20,7 @@ const clientNotificationID = "550e8400-e29b-41d4-a716-446655440000"
 func TestListNotificationChannelsV2_QueryAndFilteredTotal(t *testing.T) {
 	var query string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		query = r.URL.RawQuery
+		query = r.URL.Query().Encode()
 		_, _ = io.WriteString(w, `{"status":"success","data":{"channels":[{"id":"`+clientNotificationID+`","name":"channel","displayName":"Channel","kind":"webhook","createdAt":"2026-09-18T00:00:00Z","updatedAt":"2026-09-18T00:00:00Z"}],"total":9}}`)
 	}))
 	defer server.Close()
