@@ -923,7 +923,7 @@ func (h *Handler) registerDashboardResources(s *mcp.Server) {
 	dashboardExamples := mcp.NewResource(
 		"signoz://dashboard/examples",
 		"Dashboard Examples",
-		mcp.WithResourceDescription("Read this when assembling a complete dashboard (panels + layout) with signoz_create_dashboard, replacing one with signoz_update_dashboard, or patching one. It provides the upstream-published v6 payloads: a service overview with a variable, a time series panel and a number panel; a logs table with a text panel; a full replacement; and two JSON Patch arrays. For single-panel shapes see signoz://dashboard/widgets-examples; for layout and variable rules see signoz://dashboard/instructions."),
+		mcp.WithResourceDescription("Read this when assembling a complete dashboard (panels + layout) with signoz_create_dashboard, replacing one with signoz_update_dashboard, or patching one. It provides the v6 payloads the SigNoz OpenAPI spec publishes: a service overview with a variable, a time series panel and a number panel; a logs table with a text panel; a full replacement; and two JSON Patch arrays. For single-panel shapes see signoz://dashboard/widgets-examples; for layout and variable rules see signoz://dashboard/instructions."),
 		mcp.WithMIMEType("text/markdown"),
 		mcp.WithResourceSize(int64(len(dashboard.DashboardExamples))),
 	)

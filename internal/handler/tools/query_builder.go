@@ -34,7 +34,7 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *mcp.Server) {
 	queryBuilderExamples := mcp.NewResource(
 		"signoz://query-builder/examples",
 		"Query Builder Request Examples",
-		mcp.WithResourceDescription("Read this when composing the query argument of signoz_execute_builder_query and a complete request shape is still needed after the signal's guide. It provides one upstream-published query_range request per query type (builder, formula, PromQL, ClickHouse SQL) and request type (raw, scalar, time_series) across logs, traces, and metrics."),
+		mcp.WithResourceDescription("Read this when composing the query argument of signoz_execute_builder_query and a complete request shape is still needed after the signal's guide. It provides one query_range request from the SigNoz OpenAPI spec per query type (builder, formula, PromQL, ClickHouse SQL) and request type (raw, scalar, time_series) across logs, traces, and metrics."),
 		mcp.WithMIMEType("text/markdown"),
 		mcp.WithResourceSize(int64(len(querybuilder.Examples))),
 	)

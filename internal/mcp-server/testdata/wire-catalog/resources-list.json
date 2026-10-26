@@ -20,7 +20,7 @@
           "description": "Read this after signoz://alert/instructions only when examples are still needed. Resolve illustrative direct/anomaly names with signoz_list_notification_channels; if none fits, offer signoz_create_notification_channel. Confirmed v2 policy routing may omit direct channels; anomaly cannot use policy routing.",
           "mimeType": "text/markdown",
           "name": "Alert Rule Examples",
-          "size": 33361,
+          "size": 33369,
           "uri": "signoz://alert/examples"
         },
         {
@@ -80,7 +80,7 @@
           "uri": "signoz://dashboard/instructions"
         },
         {
-          "description": "Read this when assembling a complete dashboard (panels + layout) with signoz_create_dashboard, replacing one with signoz_update_dashboard, or patching one. It provides the upstream-published v6 payloads: a service overview with a variable, a time series panel and a number panel; a logs table with a text panel; a full replacement; and two JSON Patch arrays. For single-panel shapes see signoz://dashboard/widgets-examples; for layout and variable rules see signoz://dashboard/instructions.",
+          "description": "Read this when assembling a complete dashboard (panels + layout) with signoz_create_dashboard, replacing one with signoz_update_dashboard, or patching one. It provides the v6 payloads the SigNoz OpenAPI spec publishes: a service overview with a variable, a time series panel and a number panel; a logs table with a text panel; a full replacement; and two JSON Patch arrays. For single-panel shapes see signoz://dashboard/widgets-examples; for layout and variable rules see signoz://dashboard/instructions.",
           "mimeType": "text/markdown",
           "name": "Dashboard Examples",
           "size": 14288,
@@ -150,7 +150,7 @@
           "uri": "signoz://dashboard/query-builder-example"
         },
         {
-          "description": "Read this when composing the query argument of signoz_execute_builder_query and a complete request shape is still needed after the signal's guide. It provides one upstream-published query_range request per query type (builder, formula, PromQL, ClickHouse SQL) and request type (raw, scalar, time_series) across logs, traces, and metrics.",
+          "description": "Read this when composing the query argument of signoz_execute_builder_query and a complete request shape is still needed after the signal's guide. It provides one query_range request from the SigNoz OpenAPI spec per query type (builder, formula, PromQL, ClickHouse SQL) and request type (raw, scalar, time_series) across logs, traces, and metrics.",
           "mimeType": "text/markdown",
           "name": "Query Builder Request Examples",
           "size": 13399,

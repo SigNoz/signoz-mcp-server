@@ -9,8 +9,8 @@ import _ "embed"
 var generatedExamples string
 
 // Examples is the MCP resource content for signoz://alert/examples: the
-// upstream examples between a hand-written routing preamble and the Cost
-// Meter budget example upstream does not publish yet.
+// SigNoz-published examples between a hand-written routing preamble and the
+// Cost Meter budget example the spec does not carry yet.
 var Examples = examplesPreamble + generatedExamples + examplesAddendum
 
 const examplesPreamble = `# SigNoz Alert Rule Examples
@@ -24,7 +24,7 @@ Threshold and PromQL rules use schemaVersion v2alpha1; the anomaly example uses 
 const examplesAddendum = `
 ## Cost Meter budget alert (cumulative window, source "meter")
 
-Not published upstream yet. Fires when today's total log ingestion exceeds 10 GiB. The query targets Cost Meter (source "meter") with timeAggregation increase; the threshold uses matchType in_total over a cumulative daily window. For a currency budget, add a builder_formula converting bytes to cost (for example "(A / 1e9) * cost_per_gb") and set selectedQueryName to the formula.
+Not in the SigNoz OpenAPI spec yet. Fires when today's total log ingestion exceeds 10 GiB. The query targets Cost Meter (source "meter") with timeAggregation increase; the threshold uses matchType in_total over a cumulative daily window. For a currency budget, add a builder_formula converting bytes to cost (for example "(A / 1e9) * cost_per_gb") and set selectedQueryName to the formula.
 
 ` + "```" + `json
 {
