@@ -355,7 +355,11 @@ Phases 2 and 3 (2026-10-26, local, branch `refactor/client-generated-requests`):
 - e2e against the v0.143.0 cast: 51 of 54 passed. The three failures were all
   `signoz_list_alert_rules` returning the HTML-2xx coded error, because `GET /api/v3/rules`
   first shipped in v0.144.0. `tests/casting.yaml` now pins SigNoz v0.147.0 (the latest release)
-  with collector v0.144.15, and the e2e result on that cast is in the PR.
+  with collector v0.144.15.
+- e2e against the v0.147.0 cast: 53 of 54 passed. The one failure pinned SigNoz's sentence for
+  an empty channel template field, which v0.147.0 changed; the test now asserts the coded
+  `VALIDATION_FAILED` error. A fresh cast then passed that test and the three rules-list tests
+  (4 passed, 50 deselected), with teardown confirmed.
 
 ## Outcome
 
