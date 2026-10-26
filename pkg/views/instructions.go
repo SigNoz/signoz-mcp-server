@@ -12,7 +12,7 @@ to the "Saved Views" feature in the SigNoz UI (traces, logs, metrics,
 and meter / Cost Meter explorers). The tools call the
 /api/v2/saved_views endpoints; schemaVersion is "v2".
 
-The tool's input schema describes the view and spec fields (name and generateName, source, panelType, requestType, selectedFields, display). The MCP server fills schemaVersion ("v2") in when omitted and strips the server-populated fields (id, createdAt, createdBy, updatedAt, updatedBy) from what it forwards. This resource covers what the schema cannot: the query envelopes inside spec.queries and the workflow around them.
+The tool's input schema describes the view and spec fields (name and generateName, source, panelType, requestType, selectedFields, display). The MCP server fills schemaVersion ("v2") in when omitted and strips the server-populated fields (id, createdAt, createdBy, updatedAt, updatedBy) from what it forwards. This resource covers the query envelopes inside spec.queries, which the schema shows as plain objects, and the workflow around them.
 
 ## spec.queries[] entries
 

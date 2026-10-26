@@ -28,7 +28,7 @@ A repeatable mental model for going from a user request ("alert me when login p9
 7. **Evaluation.** Set evaluation explicitly (SigNoz requires it for v2alpha1): kind=rolling with evalWindow=5m and frequency=1m unless the user asked for a different window.
 8. **Notification.** Set notificationSettings.groupBy on high-cardinality queries to reduce noise.
 
-The tool's input schema describes every top-level and condition field (accepted values, defaults, which schemaVersion reads each). This resource covers what the schema cannot: the query envelopes, threshold tiers, and evaluation specs inside the union-typed fields, and the workflow around them.
+The tool's input schema describes every top-level and condition field (accepted values, defaults, which schemaVersion reads each). This resource covers the fields the schema shows as plain objects (query envelopes, threshold tiers, evaluation specs) and the workflow around them.
 
 ## Composite Query Structure
 
@@ -236,7 +236,7 @@ A general evaluation kind, independent of signal/source. Use it for any period-t
 }
 ` + "```" + `
 
-Set groupBy on high-cardinality queries to reduce noise. usePolicy=false (the default) requires existing channels on every threshold tier; usePolicy=true routes by the org-level policies so tier channels may be omitted. Anomaly rules omit notificationSettings.
+Set groupBy on high-cardinality queries to reduce noise. usePolicy=false (the default) requires existing channels on every threshold tier; usePolicy=true routes by the organization's notification policies, so tier channels may be omitted. Anomaly rules omit notificationSettings.
 
 ## Labels & Routing
 

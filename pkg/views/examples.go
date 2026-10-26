@@ -16,6 +16,6 @@ var Examples = examplesPreamble + generatedExamples
 
 const examplesPreamble = `# Saved View Examples (v2 typed spec)
 
-Every payload below is accepted verbatim by signoz_create_view; the replace example is the "view" argument of signoz_update_view. Copy the structure, not the attribute names: discover the target workspace's fields with signoz_get_field_keys first. A Cost Meter view is source "meter" with signal "metrics" and builder spec source "meter" in every query; see the meter_time_series example.
+Each create example is a complete signoz_create_view argument; the replace example is the "view" argument of signoz_update_view. Copy the structure, not the attribute names: discover the target workspace's fields with signoz_get_field_keys first. A Cost Meter view is source "meter" with signal "metrics" and builder spec source "meter" in every query; see the meter_time_series example.
 
 `

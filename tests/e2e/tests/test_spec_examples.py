@@ -64,7 +64,7 @@ def channel_names(rule: dict) -> set[str]:
 @pytest.fixture
 def routing_channels(mcp_client: MCPClient, test_id: str) -> Iterator[dict[str, str]]:
     """Webhook channels named exactly as the alert examples route to."""
-    rules = section(mcp_client.read_resource("signoz://alert/examples"), "Create or replace a rule")
+    rules = section(mcp_client.read_resource("signoz://alert/examples"), "Create a rule")
     addendum = section(mcp_client.read_resource("signoz://alert/examples"), "Cost Meter budget alert")
     names: set[str] = set()
     for _, rule in rules + addendum:
@@ -95,7 +95,7 @@ def routing_channels(mcp_client: MCPClient, test_id: str) -> Iterator[dict[str, 
 
 def test_alert_examples_create_and_delete(mcp_client: MCPClient, routing_channels: dict[str, str]) -> None:
     text = mcp_client.read_resource("signoz://alert/examples")
-    examples = section(text, "Create or replace a rule") + section(text, "Cost Meter budget alert")
+    examples = section(text, "Create a rule") + section(text, "Cost Meter budget alert")
     for title, rule in examples:
         result = mcp_client.call_tool("signoz_create_alert", {"searchContext": f"create {title}", **rule})
         assert not result.get("isError", False), f"{title}: {text_blocks(result)[:600]}"

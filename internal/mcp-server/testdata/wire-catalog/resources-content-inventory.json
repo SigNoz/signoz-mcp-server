@@ -7,8 +7,8 @@
         "kind": "text",
         "uri": "signoz://alert/examples",
         "mimeType": "text/markdown",
-        "serializedLength": 36985,
-        "sha256": "e0e80c98b7fc2954d9d9830904afda5293e3ca16157b34d2143dd377af068891"
+        "serializedLength": 36869,
+        "sha256": "cf263f318509a27a9e6470d40137d2bdd92daafe14225d600543f49d8ff2a662"
       }
     ]
   },
@@ -20,8 +20,8 @@
         "kind": "text",
         "uri": "signoz://alert/instructions",
         "mimeType": "text/markdown",
-        "serializedLength": 22061,
-        "sha256": "f296fadc5afaf5ca945b78b07e431b6400268ebb790ebb777cc870ff7aa49758"
+        "serializedLength": 22064,
+        "sha256": "abd53a789c3078bb3a53766875cf696dc44fe11b6bfb44530027e7e7f67c3151"
       }
     ]
   },
@@ -111,8 +111,8 @@
         "kind": "text",
         "uri": "signoz://dashboard/examples",
         "mimeType": "text/markdown",
-        "serializedLength": 15733,
-        "sha256": "83f4ba4a94b50bd7b8d43a689fa45736b6ffe64b91d302d954cf93dc9cf38efa"
+        "serializedLength": 15580,
+        "sha256": "d01744558a4a64293154089d7667d3aa7899252a6b9fa7cb988784eb29d1b053"
       }
     ]
   },
@@ -241,8 +241,8 @@
         "kind": "text",
         "uri": "signoz://notification-channel/examples",
         "mimeType": "text/markdown",
-        "serializedLength": 16349,
-        "sha256": "eb35ebff1aba3934ff56c2c8aa9d656e624f243dec003964cbbb14b7be6b1866"
+        "serializedLength": 16199,
+        "sha256": "181adb6d8e9d33b678464354ff835e58883d504b4720b5b0c6c02fae6ab1ca44"
       }
     ]
   },
@@ -267,8 +267,8 @@
         "kind": "text",
         "uri": "signoz://query-builder/examples",
         "mimeType": "text/markdown",
-        "serializedLength": 14974,
-        "sha256": "bbb86ad4a0c63cfbb69235978d4d5ec9c36f9905a8e41b5e35f1783e54845f54"
+        "serializedLength": 14830,
+        "sha256": "bcd513f79c288af497caa7afa85df4ac3021ee013820b2796591ecf282bc3417"
       }
     ]
   },
@@ -293,8 +293,8 @@
         "kind": "text",
         "uri": "signoz://view/examples",
         "mimeType": "text/markdown",
-        "serializedLength": 7798,
-        "sha256": "75c63ad357c3154a81c5251805a213a64453f011598f1853d663324ef71d6f2d"
+        "serializedLength": 7636,
+        "sha256": "3ad47b66b8c2f14bb4b8b737efc215113fc1d908ac46410e883da6f0aab2f259"
       }
     ]
   },
@@ -306,8 +306,8 @@
         "kind": "text",
         "uri": "signoz://view/instructions",
         "mimeType": "text/markdown",
-        "serializedLength": 6009,
-        "sha256": "23b6513cb635b476b50c047805c073761cd9b775b41a8f62bf69875f74e298c9"
+        "serializedLength": 6027,
+        "sha256": "0eb546a3c38079cca781645f1e283b25732a7af2ebc7afb789963c4824913882"
       }
     ]
   }
