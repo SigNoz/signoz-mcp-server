@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
@@ -285,26 +286,20 @@ func (h *Handler) handleUpdateView(ctx context.Context, req mcp.CallToolRequest)
 		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "id" is required. Use signoz_list_views to find the UUID.`), nil
 	}
 
-	// The canonical shape (per input schema) wraps the body under "view".
-	// Back-compat: also accept the SavedView fields flat at the top level
-	// (pre-wrapper call sites), and the wrapped get_view envelope shape
-	// ({status,data:{...}}) pasted straight under "view".
-	var view map[string]any
-	if v, ok := args["view"].(map[string]any); ok {
-		view = v
-		unwrapViewEnvelope(view)
-	} else {
-		view = map[string]any{}
-		for k, v := range args {
-			// Skip the MCP-level fields and the top-level id/viewId path param;
-			// the SavedView body's own id is server-populated and stripped later.
-			if k == "id" || k == "viewId" || k == "searchContext" || k == "view" {
-				continue
+	// The input schema requires the body under "view". The retired flat shape
+	// ({id, source, spec} at the top level) gets a coded error naming the
+	// replacement, not a bare "view is required". The signoz_get_view envelope
+	// ({status, data: {...}}) pasted under "view" is still unwrapped.
+	view, ok := args["view"].(map[string]any)
+	if !ok {
+		for _, legacy := range []string{"source", "spec", "name", "schemaVersion", "generateName"} {
+			if _, present := args[legacy]; present {
+				return errorWithCode(CodeValidationFailed, fmt.Sprintf(`Parameter validation failed: %q is no longer accepted at the top level; pass the saved view under "view", for example {"id": "<uuid>", "view": {"source": "logs", "spec": {...}}}. Call signoz_get_view first and use the "data" object it returns.`, legacy)), nil
 			}
-			view[k] = v
 		}
-		unwrapViewEnvelope(view)
+		view = map[string]any{}
 	}
+	unwrapViewEnvelope(view)
 	if len(view) == 0 {
 		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "view" is required. Pass the SavedView body under "view". Call signoz_get_view first and use the "data" field it returns.`), nil
 	}

@@ -798,6 +798,7 @@ Fully replace an existing saved Explorer view. Fetch it with `signoz_get_view`, 
 - **Parameters**:
   - `id` (required) - UUID of the view to replace
   - `view` (required) - Full `source`/`spec` pair (required); drop `name` and server-populated fields
+- **Migration**: the retired flat shape (`source` and `spec` beside `id`) returns a coded `VALIDATION_FAILED` error naming the `view` wrapper; pass `{"id": "<uuid>", "view": {"source": ..., "spec": ...}}`.
 - **Resource rule**: Read `signoz://view/instructions` and `signoz://view/examples` when changing `source` or `spec`. Skip them for a pass-through of the fetched body. Call `signoz_get_view` first; partial bodies wipe unspecified fields.
 
 #### `signoz_delete_view`

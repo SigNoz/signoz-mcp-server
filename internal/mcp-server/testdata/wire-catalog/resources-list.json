@@ -20,14 +20,14 @@
           "description": "Read this after signoz://alert/instructions only when examples are still needed. Resolve illustrative direct/anomaly names with signoz_list_notification_channels; if none fits, offer signoz_create_notification_channel. Confirmed v2 policy routing may omit direct channels; anomaly cannot use policy routing.",
           "mimeType": "text/markdown",
           "name": "Alert Rule Examples",
-          "size": 26860,
+          "size": 33361,
           "uri": "signoz://alert/examples"
         },
         {
-          "description": "Read this before creating or updating an alert unless its current content was already read for the same prepared operation. It explains fields, rule types, queries, thresholds, evaluation, and when to reuse or call signoz_list_notification_channels. Read signoz://alert/examples only when examples are still needed.",
+          "description": "Read this before creating or updating an alert unless its current content was already read for the same prepared operation. It explains the query envelopes, threshold tiers, and evaluation specs the input schema leaves open, the v1 anomaly shape, and when to reuse or call signoz_list_notification_channels. Read signoz://alert/examples only when examples are still needed.",
           "mimeType": "text/markdown",
           "name": "Alert Rule Instructions",
-          "size": 23773,
+          "size": 21268,
           "uri": "signoz://alert/instructions"
         },
         {
@@ -80,10 +80,10 @@
           "uri": "signoz://dashboard/instructions"
         },
         {
-          "description": "Read this when assembling a complete dashboard (panels + layout) with signoz_create_dashboard, or for a worked metrics Query Builder panel. It provides whole server-verified v6 create payloads: a timeseries grouped by an attribute, the same with a dynamic variable used as a filter, a number/value panel, and a multi-panel dashboard. For single-panel shapes see signoz://dashboard/widgets-examples; for layout and variable rules see signoz://dashboard/instructions.",
+          "description": "Read this when assembling a complete dashboard (panels + layout) with signoz_create_dashboard, replacing one with signoz_update_dashboard, or patching one. It provides the upstream-published v6 payloads: a service overview with a variable, a time series panel and a number panel; a logs table with a text panel; a full replacement; and two JSON Patch arrays. For single-panel shapes see signoz://dashboard/widgets-examples; for layout and variable rules see signoz://dashboard/instructions.",
           "mimeType": "text/markdown",
           "name": "Dashboard Examples",
-          "size": 16833,
+          "size": 14288,
           "uri": "signoz://dashboard/examples"
         },
         {
@@ -104,7 +104,7 @@
           "description": "Read this when choosing or building dashboard widgets. It explains when to use each panel type, required layout and legend fields, and which detailed guide to read for each query type. Also read signoz://dashboard/instructions.",
           "mimeType": "text/markdown",
           "name": "Dashboard Widget Instructions",
-          "size": 13890,
+          "size": 14276,
           "uri": "signoz://dashboard/widgets-instructions"
         },
         {
@@ -129,6 +129,13 @@
           "uri": "signoz://metrics-aggregation-guide"
         },
         {
+          "description": "Read this before composing config for signoz_create_notification_channel or signoz_update_notification_channel unless already read in the same prepared operation. It lists every provider kind SigNoz accepts, each kind's config.spec fields with the required ones marked, and a worked create payload per kind plus two replacement configs.",
+          "mimeType": "text/markdown",
+          "name": "Notification Channel Reference and Examples",
+          "size": 15559,
+          "uri": "signoz://notification-channel/examples"
+        },
+        {
           "description": "Read this when composing a PromQL dashboard widget or promql_rule alert. It explains SigNoz's Prometheus 3.x quoted-selector form for dotted OTel metric names, resource labels, examples, and query checks; do not use it for Query Builder or ClickHouse SQL.",
           "mimeType": "text/markdown",
           "name": "PromQL Instructions",
@@ -143,17 +150,24 @@
           "uri": "signoz://dashboard/query-builder-example"
         },
         {
+          "description": "Read this when composing the query argument of signoz_execute_builder_query and a complete request shape is still needed after the signal's guide. It provides one upstream-published query_range request per query type (builder, formula, PromQL, ClickHouse SQL) and request type (raw, scalar, time_series) across logs, traces, and metrics.",
+          "mimeType": "text/markdown",
+          "name": "Query Builder Request Examples",
+          "size": 13399,
+          "uri": "signoz://query-builder/examples"
+        },
+        {
           "description": "Read this after signoz://view/instructions when composing a saved view. It provides complete typed spec payloads for traces, logs, metrics, and Cost Meter sources.",
           "mimeType": "text/markdown",
           "name": "Saved View Examples",
-          "size": 5533,
+          "size": 6936,
           "uri": "signoz://view/examples"
         },
         {
           "description": "Read this before creating or updating a saved view. It explains view fields, source, the typed spec (schemaVersion v2), Cost Meter views, and how to read a view before replacing it. It does not describe dashboards.",
           "mimeType": "text/markdown",
           "name": "Saved View Instructions",
-          "size": 7008,
+          "size": 5587,
           "uri": "signoz://view/instructions"
         },
         {

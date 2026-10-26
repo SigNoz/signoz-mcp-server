@@ -112,6 +112,17 @@ internals the typed schemas cannot express.
 - Rationale: the descriptions exist nowhere else yet; the commit's spec is a superset of
   v0.147.0, so no type regresses.
 
+### 2026-10-27 — Retire the flat saved-view update body
+
+- Decision: `signoz_update_view` rejects `source`, `spec`, `name`, `schemaVersion`, or
+  `generateName` at the top level with a coded `VALIDATION_FAILED` error that names the `view`
+  wrapper, instead of silently accepting them.
+- Rationale: review finding on PR #377. The schema has required `view` since the wrapper landed,
+  so schema-validating clients already rejected the flat shape while direct callers succeeded; the
+  handler and the schema now agree, and the error carries the migration (CMP-2).
+- Alternatives rejected: keep the silent flat path (two contracts for one tool); advertise
+  the flat fields in the schema (a second copy of the generated view type).
+
 ## Reference Links
 
 - [SigNoz/signoz#13200](https://github.com/SigNoz/signoz/pull/13200)
