@@ -347,10 +347,15 @@ Phases 2 and 3 (2026-10-26, local, branch `refactor/client-generated-requests`):
   transport: the rules list test now expects `GET /api/v3/rules?limit=200&offset=400`, and the
   channel list test compares parsed query values, because the generated encoder keeps
   declaration order rather than sorting keys.
-- New `TestListAlertRules_AssemblesWindowFromUpstreamPages` runs the real client against an
-  httptest SigNoz that pages at 200: a window of 300 from offset 100 sends
-  `limit=200&offset=100` then `limit=100&offset=300`, returns the 300 rules in order, and reports
-  the server's total of 450.
+- The hand-copied alert response and request structs in `pkg/types/alerts.go` are gone: the
+  alerts list decodes `AlertmanagertypesDeprecatedGettableAlert`, the rules list decodes
+  `RuletypesListableRules`, and the history tool builds `GetRuleHistoryTimelineParams` directly.
+  Only the tool output shapes (`Alert`, `AlertRuleSummary`) and `ListAlertsParams`, whose
+  parameters the spec lacks, remain. Timestamps render with `time.RFC3339Nano`, the form SigNoz
+  serialized them in.
+- The page walk behind the rules list has no unit test on purpose: one would pin the sequence of
+  upstream requests, which the testing standard treats as a change detector, and the e2e cast
+  never holds more than 200 rules. The e2e rules-list tests cover the single-page path.
 - The wire catalog did not change: no tool schema, description, or resource moved.
 - e2e against the v0.143.0 cast: 51 of 54 passed. The three failures were all
   `signoz_list_alert_rules` returning the HTML-2xx coded error, because `GET /api/v3/rules`

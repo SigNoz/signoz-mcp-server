@@ -5,20 +5,6 @@ import (
 	"strconv"
 )
 
-// AlertHistoryRequest carries the query parameters for the v2 rule state-history
-// timeline endpoint (GET /api/v2/rules/{id}/history/timeline). v2 replaced the v1
-// POST body: the structured `filters` set became a single `filterExpression`
-// string, and raw `offset` paging became an opaque `cursor`.
-type AlertHistoryRequest struct {
-	Start            int64
-	End              int64
-	State            string // "" omitted; one of inactive|pending|recovering|firing|nodata|disabled
-	FilterExpression string // "" omitted; v5 query-builder filter expression
-	Limit            int
-	Order            string // "asc" | "desc"
-	Cursor           string // "" omitted; opaque cursor from a prior response's nextCursor
-}
-
 // Alert contains only essential information
 type Alert struct {
 	Alertname string `json:"alertname"`
@@ -28,28 +14,6 @@ type Alert struct {
 	EndsAt    string `json:"endsAt"`
 	State     string `json:"state"`
 	WebURL    string `json:"webUrl,omitempty"`
-}
-
-type APIAlertLabels struct {
-	Alertname string `json:"alertname"`
-	RuleID    string `json:"ruleId"`
-	Severity  string `json:"severity"`
-}
-
-type APIAlertStatus struct {
-	State string `json:"state"`
-}
-
-type APIAlert struct {
-	Labels   APIAlertLabels `json:"labels"`
-	Status   APIAlertStatus `json:"status"`
-	StartsAt string         `json:"startsAt"`
-	EndsAt   string         `json:"endsAt"`
-}
-
-type APIAlertsResponse struct {
-	Status string     `json:"status"`
-	Data   []APIAlert `json:"data"`
 }
 
 // AlertRuleSummary contains the fields needed to discover configured rules.
@@ -66,30 +30,6 @@ type AlertRuleSummary struct {
 	CreatedAt   string            `json:"createdAt,omitempty"`
 	UpdatedAt   string            `json:"updatedAt,omitempty"`
 	WebURL      string            `json:"webUrl,omitempty"`
-}
-
-// APIAlertRule mirrors the compact fields used from a GET /api/v3/rules page.
-type APIAlertRule struct {
-	ID          string            `json:"id"`
-	Alert       string            `json:"alert"`
-	AlertType   string            `json:"alertType"`
-	RuleType    string            `json:"ruleType"`
-	State       string            `json:"state"`
-	Disabled    bool              `json:"disabled"`
-	Description string            `json:"description"`
-	Labels      map[string]string `json:"labels"`
-	CreatedAt   string            `json:"createdAt"`
-	UpdatedAt   string            `json:"updatedAt"`
-}
-
-// APIAlertRulesResponse is one GET /api/v3/rules page: the rules in the page
-// and the number matching across every page.
-type APIAlertRulesResponse struct {
-	Status string `json:"status"`
-	Data   struct {
-		Rules []APIAlertRule `json:"rules"`
-		Total int            `json:"total"`
-	} `json:"data"`
 }
 
 // ListAlertsParams contains query parameters for the GET /api/v1/alerts endpoint.

@@ -17,6 +17,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/SigNoz/signoz-mcp-server/internal/apiclient"
+	"github.com/SigNoz/signoz-mcp-server/internal/apiclient/apitypes"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -494,14 +496,14 @@ func TestGetAlertHistory(t *testing.T) {
 	logger := logpkg.New("debug")
 	client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
-	_, err := client.GetAlertHistory(context.Background(), "ruleid-abc", types.AlertHistoryRequest{
+	_, err := client.GetAlertHistory(context.Background(), "ruleid-abc", &apiclient.GetRuleHistoryTimelineParams{
 		Start:            1640995200000,
 		End:              1641081600000,
-		State:            "firing",
-		FilterExpression: "severity = 'warning'",
-		Limit:            20,
-		Order:            "desc",
-		Cursor:           "eyJvZmZzZXQiOjIwLCJsaW1pdCI6MjB9",
+		State:            ptr(apitypes.RuletypesAlertState("firing")),
+		FilterExpression: ptr("severity = 'warning'"),
+		Limit:            ptr(int64(20)),
+		Order:            ptr(apitypes.Querybuildertypesv5OrderDirection("desc")),
+		Cursor:           ptr("eyJvZmZzZXQiOjIwLCJsaW1pdCI6MjB9"),
 	})
 	require.NoError(t, err)
 }

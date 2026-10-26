@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/SigNoz/signoz-mcp-server/internal/apiclient"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
 
@@ -18,7 +19,7 @@ type Client interface {
 	ListAlerts(ctx context.Context, params types.ListAlertsParams) (json.RawMessage, error)
 	ListAlertRules(ctx context.Context, limit, offset int) (json.RawMessage, error)
 	GetAlertByRuleID(ctx context.Context, ruleID string) (json.RawMessage, error)
-	GetAlertHistory(ctx context.Context, ruleID string, req types.AlertHistoryRequest) (json.RawMessage, error)
+	GetAlertHistory(ctx context.Context, ruleID string, params *apiclient.GetRuleHistoryTimelineParams) (json.RawMessage, error)
 	ListDashboards(ctx context.Context, limit, offset int, filter, sort, order string) (json.RawMessage, error)
 	GetDashboard(ctx context.Context, id string) (json.RawMessage, error)
 	CreateDashboardRaw(ctx context.Context, dashboardJSON []byte) (json.RawMessage, error)

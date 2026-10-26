@@ -553,16 +553,7 @@ func (s *SigNoz) QueryBuilderV5(ctx context.Context, body []byte) (json.RawMessa
 	})
 }
 
-func (s *SigNoz) GetAlertHistory(ctx context.Context, ruleID string, req types.AlertHistoryRequest) (json.RawMessage, error) {
-	params := &apiclient.GetRuleHistoryTimelineParams{
-		Start:            req.Start,
-		End:              req.End,
-		State:            optEnum[apitypes.RuletypesAlertState](req.State),
-		FilterExpression: optString(req.FilterExpression),
-		Limit:            optInt64(int64(req.Limit)),
-		Order:            optEnum[apitypes.Querybuildertypesv5OrderDirection](req.Order),
-		Cursor:           optString(req.Cursor),
-	}
+func (s *SigNoz) GetAlertHistory(ctx context.Context, ruleID string, params *apiclient.GetRuleHistoryTimelineParams) (json.RawMessage, error) {
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching alert history", slog.String("ruleID", ruleID))
 	return s.callAPI(ctx, DefaultQueryTimeout, func(ctx context.Context, api *apiclient.Client) (*http.Response, error) {
 		return api.GetRuleHistoryTimeline(ctx, ruleID, params)

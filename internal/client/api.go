@@ -94,13 +94,6 @@ func optInt(v int) *int {
 	return &v
 }
 
-func optInt64(v int64) *int64 {
-	if v <= 0 {
-		return nil
-	}
-	return &v
-}
-
 func optEnum[T ~string](v string) *T {
 	if v == "" {
 		return nil
