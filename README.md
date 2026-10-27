@@ -428,7 +428,7 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 | `signoz_get_top_metrics` | Return top 100 metrics ranked by ingested sample volume with pre-computed percentages for cost and volume analysis |
 | `signoz_check_metric_usage` | Given a list of metric names (up to 50 per call), return which dashboards and alerts reference each one |
 | `signoz_check_metric_cardinality` | Return label/attribute keys for a single metric with cardinality counts and sample values, sorted highest-cardinality first |
-| `signoz_get_field_keys` | Discover available field keys for metrics, traces, or logs |
+| `signoz_get_field_keys` | Discover available field keys for metrics, traces, logs, or AI traces |
 | `signoz_get_field_values` | Get possible values for a field key |
 | `signoz_list_alerts` | List firing/silenced/inhibited Alertmanager alert *instances* (not rule definitions) |
 | `signoz_list_alert_rules` | List configured alert-rule summaries, including inactive/OK and disabled rules |
@@ -868,6 +868,7 @@ Discover field names available for filtering or grouping metrics, traces, or log
   - `fieldContext` (optional) - Restrict to a field context. Enum: `resource`, `attribute`, `scope`, `log`/`span`/`metric` (intrinsic columns), `body` (JSON log body). Use `attribute`, not the legacy Query Builder context `tag`, which SigNoz ignores here.
   - `fieldDataType` (optional) - Restrict to a data type: `string`, `bool`, `int64`, `float64`, `number`. An array form like `[]string` is treated as its element type.
   - `source` (optional) - For metrics, use `meter` for Cost Meter fields; omit for the default metrics store
+  - `queryType` (optional) - `builder_query` (default) or `builder_ai_query`. `builder_ai_query` lists AI fields for traces: the per-trace cost, token, and call-count columns (such as `trace.estimated_total_cost`) plus `gen_ai.*` span attributes, even before AI data arrives. The per-trace columns come back as bare names with `fieldContext` `trace`; write them with the `trace.` prefix in queries. It always returns trace fields and does not use `signal`, `source`, or `metricName`.
 
 #### `signoz_get_field_values`
 

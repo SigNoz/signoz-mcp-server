@@ -5201,7 +5201,7 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user needs to discover field names available for filtering or grouping metrics, traces, or logs. It returns keys, not their observed values, scoped by signal and optional metric, context, or data type. SigNoz sets data.complete=false when it truncated the key list; narrow with searchText or fieldContext to see more. After choosing a key, use signoz_get_field_values to discover valid values.",
+          "description": "Use this when the user needs to discover field names available for filtering or grouping metrics, traces, or logs. It returns keys, not their observed values, scoped by signal and optional metric, context, or data type. SigNoz sets data.complete=false when it truncated the key list; narrow with searchText or fieldContext to see more. For AI trace fields (per-trace cost, tokens, call counts, gen_ai.*), set queryType=builder_ai_query. After choosing a key, use signoz_get_field_values to discover valid values.",
           "inputSchema": {
             "properties": {
               "fieldContext": {
@@ -5223,6 +5223,15 @@
               },
               "metricName": {
                 "description": "Metric name to scope field keys (optional, only relevant when signal=metrics).",
+                "type": "string"
+              },
+              "queryType": {
+                "default": "builder_query",
+                "description": "Query type the keys are for. Default 'builder_query' lists the regular fields of the signal. 'builder_ai_query' is for AI fields with signal=traces: the per-trace cost, token, and call-count columns (such as trace.estimated_total_cost and trace.llm_call_count) plus gen_ai.* span attributes. The per-trace columns come back as bare names with fieldContext 'trace'; write them with the trace. prefix in filters, groupBy, and orderBy. It lists these keys even before AI data arrives, always returns trace fields, and does not use signal, source, or metricName.",
+                "enum": [
+                  "builder_query",
+                  "builder_ai_query"
+                ],
                 "type": "string"
               },
               "searchContext": {

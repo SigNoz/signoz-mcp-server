@@ -17,6 +17,16 @@ import (
 	"github.com/oapi-codegen/runtime"
 )
 
+// GetAIObservabilityFieldsKeysParams defines parameters for GetAIObservabilityFieldsKeys.
+type GetAIObservabilityFieldsKeysParams struct {
+	SearchText     *string                               `form:"searchText,omitempty" json:"searchText,omitempty"`
+	FieldContext   *apitypes.TelemetrytypesFieldContext  `form:"fieldContext,omitempty" json:"fieldContext,omitempty"`
+	FieldDataType  *apitypes.TelemetrytypesFieldDataType `form:"fieldDataType,omitempty" json:"fieldDataType,omitempty"`
+	StartUnixMilli *int64                                `form:"startUnixMilli,omitempty" json:"startUnixMilli,omitempty"`
+	EndUnixMilli   *int64                                `form:"endUnixMilli,omitempty" json:"endUnixMilli,omitempty"`
+	Limit          *int                                  `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // GetFieldsKeysParams defines parameters for GetFieldsKeys.
 type GetFieldsKeysParams struct {
 	// Signal The signal to look up keys in: traces, logs or metrics. Empty searches every signal.
@@ -320,6 +330,13 @@ func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
 
 // The interface specification for the client above.
 type ClientInterface interface {
+
+	// GetAIObservabilityFieldsKeys Get AI observability field keys
+	//
+	// This endpoint returns the field keys the AI observability explorer can filter on, including the computed per-trace aggregates
+	//
+	// Corresponds with GET /api/v1/ai_observability/fields/keys (the `GetAIObservabilityFieldsKeys` operationId).
+	GetAIObservabilityFieldsKeys(ctx context.Context, params *GetAIObservabilityFieldsKeysParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetAlerts Get alerts
 	//
@@ -704,6 +721,23 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /api/v5/query_range (the `QueryRangeV5` operationId).
 	QueryRangeV5(ctx context.Context, body QueryRangeV5JSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+}
+
+// GetAIObservabilityFieldsKeys Get AI observability field keys
+//
+// # This endpoint returns the field keys the AI observability explorer can filter on, including the computed per-trace aggregates
+//
+// Corresponds with GET /api/v1/ai_observability/fields/keys (the `GetAIObservabilityFieldsKeys` operationId).
+func (c *Client) GetAIObservabilityFieldsKeys(ctx context.Context, params *GetAIObservabilityFieldsKeysParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAIObservabilityFieldsKeysRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
 }
 
 // GetAlerts Get alerts
@@ -1568,6 +1602,120 @@ func (c *Client) QueryRangeV5(ctx context.Context, body QueryRangeV5JSONRequestB
 		return nil, err
 	}
 	return c.Client.Do(req)
+}
+
+// NewGetAIObservabilityFieldsKeysRequest constructs an http.Request for the GetAIObservabilityFieldsKeys method
+func NewGetAIObservabilityFieldsKeysRequest(server string, params *GetAIObservabilityFieldsKeysParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/ai_observability/fields/keys")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.SearchText != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "searchText", *params.SearchText, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.FieldContext != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "fieldContext", *params.FieldContext, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.FieldDataType != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "fieldDataType", *params.FieldDataType, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.StartUnixMilli != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "startUnixMilli", *params.StartUnixMilli, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.EndUnixMilli != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "endUnixMilli", *params.EndUnixMilli, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
 }
 
 // NewGetAlertsRequest constructs an http.Request for the GetAlerts method
@@ -3681,6 +3829,15 @@ func WithBaseURL(baseURL string) ClientOption {
 // ClientWithResponsesInterface is the interface specification for the client with responses above.
 type ClientWithResponsesInterface interface {
 
+	// GetAIObservabilityFieldsKeysWithResponse Get AI observability field keys
+	//
+	// This endpoint returns the field keys the AI observability explorer can filter on, including the computed per-trace aggregates
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/ai_observability/fields/keys (the `GetAIObservabilityFieldsKeys` operationId).
+	GetAIObservabilityFieldsKeysWithResponse(ctx context.Context, params *GetAIObservabilityFieldsKeysParams, reqEditors ...RequestEditorFn) (*GetAIObservabilityFieldsKeysResponse, error)
+
 	// GetAlertsWithResponse Get alerts
 	//
 	// This endpoint returns alerts for the organization.
@@ -4112,6 +4269,74 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /api/v5/query_range (the `QueryRangeV5` operationId).
 	QueryRangeV5WithResponse(ctx context.Context, body QueryRangeV5JSONRequestBody, reqEditors ...RequestEditorFn) (*QueryRangeV5Response, error)
+}
+
+type GetAIObservabilityFieldsKeysResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *struct {
+		Data   apitypes.TelemetrytypesGettableFieldKeys `json:"data"`
+		Status string                                   `json:"status"`
+	}
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *apitypes.RenderErrorResponse
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *apitypes.RenderErrorResponse
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *apitypes.RenderErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetAIObservabilityFieldsKeysResponse) GetJSON200() *struct {
+	Data   apitypes.TelemetrytypesGettableFieldKeys `json:"data"`
+	Status string                                   `json:"status"`
+} {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetAIObservabilityFieldsKeysResponse) GetJSON401() *apitypes.RenderErrorResponse {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r GetAIObservabilityFieldsKeysResponse) GetJSON403() *apitypes.RenderErrorResponse {
+	return r.JSON403
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetAIObservabilityFieldsKeysResponse) GetJSON500() *apitypes.RenderErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetAIObservabilityFieldsKeysResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAIObservabilityFieldsKeysResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAIObservabilityFieldsKeysResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetAIObservabilityFieldsKeysResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
 }
 
 type GetAlertsResponse struct {
@@ -6767,6 +6992,21 @@ func (r QueryRangeV5Response) ContentType() string {
 	return ""
 }
 
+// GetAIObservabilityFieldsKeysWithResponse Get AI observability field keys
+//
+// # This endpoint returns the field keys the AI observability explorer can filter on, including the computed per-trace aggregates
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/ai_observability/fields/keys (the `GetAIObservabilityFieldsKeys` operationId).
+func (c *ClientWithResponses) GetAIObservabilityFieldsKeysWithResponse(ctx context.Context, params *GetAIObservabilityFieldsKeysParams, reqEditors ...RequestEditorFn) (*GetAIObservabilityFieldsKeysResponse, error) {
+	rsp, err := c.GetAIObservabilityFieldsKeys(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAIObservabilityFieldsKeysResponse(rsp)
+}
+
 // GetAlertsWithResponse Get alerts
 //
 // This endpoint returns alerts for the organization.
@@ -7485,6 +7725,56 @@ func (c *ClientWithResponses) QueryRangeV5WithResponse(ctx context.Context, body
 		return nil, err
 	}
 	return ParseQueryRangeV5Response(rsp)
+}
+
+// ParseGetAIObservabilityFieldsKeysResponse parses an HTTP response from a GetAIObservabilityFieldsKeysWithResponse call
+func ParseGetAIObservabilityFieldsKeysResponse(rsp *http.Response) (*GetAIObservabilityFieldsKeysResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAIObservabilityFieldsKeysResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			Data   apitypes.TelemetrytypesGettableFieldKeys `json:"data"`
+			Status string                                   `json:"status"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest apitypes.RenderErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest apitypes.RenderErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest apitypes.RenderErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
 }
 
 // ParseGetAlertsResponse parses an HTTP response from a GetAlertsWithResponse call

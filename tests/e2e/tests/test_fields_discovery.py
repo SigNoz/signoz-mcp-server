@@ -6,7 +6,9 @@ filter, values returns empty). These tests pin both halves of that teaching
 against the pinned release: taught contexts are honored (a context filter
 restricts keys to that context, span intrinsics surface under "span", a seeded
 resource attribute's observed values come back in values.stringValues), and the
-"tag" trap behaves as the descriptions say it does.
+"tag" trap behaves as the descriptions say it does. queryType=builder_ai_query
+pins what the AI field keys endpoint returns: per-trace columns without AI
+data, and trace fields whatever the signal.
 """
 
 from fixtures.mcpclient import MCPClient, assert_tool_ok, text_blocks
@@ -112,3 +114,47 @@ def test_span_intrinsics_discoverable_under_span_context(mcp_client: MCPClient) 
     keys = field_key_entries(result)
     entries = keys.get("duration_nano", [])
     assert any(e.get("fieldContext") == "span" for e in entries), f"duration_nano missing from span context: {keys}"
+
+
+AI_TRACE_COLUMNS = {
+    "llm_call_count",
+    "tool_call_count",
+    "distinct_tool_count",
+    "input_tokens",
+    "output_tokens",
+    "total_tokens",
+    "estimated_total_cost",
+    "max_llm_duration_nano",
+}
+
+
+def ai_trace_column_names(signal: str, mcp_client: MCPClient) -> set:
+    """Names that queryType=builder_ai_query lists under the per-trace "trace" context."""
+    result = mcp_client.call_tool(
+        "signoz_get_field_keys",
+        {
+            "searchContext": "which AI fields can I filter AI traces on, like cost and token counts",
+            "signal": signal,
+            "queryType": "builder_ai_query",
+        },
+    )
+    assert_tool_ok(result)
+    keys = field_key_entries(result)
+    return {name for name, entries in keys.items() if any(e.get("fieldContext") == "trace" for e in entries)}
+
+
+def test_ai_field_keys_list_per_trace_columns_without_ai_data(mcp_client: MCPClient) -> None:
+    """queryType=builder_ai_query lists the per-trace cost, token and call-count columns before any AI span exists."""
+    names = ai_trace_column_names("traces", mcp_client)
+    assert "estimated_total_cost" in names, f"per-trace AI columns missing: {names}"
+    assert AI_TRACE_COLUMNS <= names, f"per-trace AI columns missing: {AI_TRACE_COLUMNS - names}"
+
+
+def test_ai_field_keys_ignore_signal(mcp_client: MCPClient) -> None:
+    """signal=logs with queryType=builder_ai_query still lists the AI trace fields, as the queryType description says.
+
+    The AI fields endpoint takes no signal and always reads traces, and the MCP
+    does not validate the combination; if SigNoz starts scoping AI keys by
+    signal, this pin fails and the description must change with it.
+    """
+    assert ai_trace_column_names("logs", mcp_client) == ai_trace_column_names("traces", mcp_client)
