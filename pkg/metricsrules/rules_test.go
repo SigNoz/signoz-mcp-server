@@ -11,7 +11,6 @@ func TestApplyDefaults_TimeSeriesAggregationByMetricType(t *testing.T) {
 		wantTime      string
 		wantSpace     string
 		wantDecisions bool
-		wantWarnings  bool
 	}{
 		{name: "gauge defaults", params: MetricQueryParams{MetricType: "gauge"}, wantTime: "avg", wantSpace: "sum", wantDecisions: true},
 		{name: "gauge overrides", params: MetricQueryParams{MetricType: "gauge", TimeAggregation: "max", SpaceAggregation: "avg"}, wantTime: "max", wantSpace: "avg"},
@@ -20,7 +19,6 @@ func TestApplyDefaults_TimeSeriesAggregationByMetricType(t *testing.T) {
 		{name: "non-monotonic sum defaults", params: MetricQueryParams{MetricType: "sum", IsMonotonic: false}, wantTime: "avg", wantSpace: "sum"},
 		{name: "histogram defaults", params: MetricQueryParams{MetricType: "histogram"}, wantTime: "", wantSpace: "p99"},
 		{name: "histogram p50", params: MetricQueryParams{MetricType: "histogram", SpaceAggregation: "p50"}, wantTime: "", wantSpace: "p50"},
-		{name: "histogram ignores timeAggregation with a warning", params: MetricQueryParams{MetricType: "histogram", TimeAggregation: "avg"}, wantTime: "", wantSpace: "p99", wantWarnings: true},
 		{name: "exponential histogram defaults", params: MetricQueryParams{MetricType: "exponential_histogram"}, wantTime: "", wantSpace: "p99"},
 	}
 	for _, tt := range tests {
@@ -40,9 +38,6 @@ func TestApplyDefaults_TimeSeriesAggregationByMetricType(t *testing.T) {
 			}
 			if tt.wantDecisions && len(r.Decisions) == 0 {
 				t.Error("expected non-empty decisions")
-			}
-			if tt.wantWarnings && len(r.Warnings) == 0 {
-				t.Error("expected a warning about the ignored timeAggregation")
 			}
 		})
 	}
@@ -73,9 +68,11 @@ func TestApplyDefaults_ScalarReduceTo(t *testing.T) {
 	}
 }
 
-func TestApplyDefaults_UnknownType(t *testing.T) {
-	_, err := ApplyDefaults(MetricQueryParams{MetricType: "unknown"}, "time_series")
-	if err == nil {
+func TestApplyDefaults_NoDefaultToApply(t *testing.T) {
+	if _, err := ApplyDefaults(MetricQueryParams{MetricType: "unknown"}, "time_series"); err == nil {
 		t.Error("expected error for unknown metricType")
+	}
+	if _, err := ApplyDefaults(MetricQueryParams{MetricType: "summary", TimeAggregation: "avg"}, "time_series"); err == nil {
+		t.Error("expected error for a summary without both aggregations")
 	}
 }

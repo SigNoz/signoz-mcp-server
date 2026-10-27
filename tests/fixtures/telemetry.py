@@ -268,10 +268,14 @@ def seed_metrics(
     value: float = 42.0,
     count: int = 1,
     age_seconds: float = 0,
+    kind: str = "gauge",
 ) -> None:
-    """Push gauge data points for `metric_name` via OTLP/HTTP.
+    """Push data points for `metric_name` via OTLP/HTTP.
 
-    `age_seconds` lets tests place samples behind a completed query bucket.
+    `kind` is "gauge", "counter" (cumulative monotonic sum rising to
+    value+count-1 at the newest point), or "histogram" (delta, bounds 10 and 100, one
+    observation per bucket). `age_seconds` lets tests place samples behind a
+    completed query bucket.
     """
     now = time.time_ns() - int(age_seconds * 1_000_000_000)
     points = [
@@ -283,6 +287,20 @@ def seed_metrics(
         }
         for i in range(count)
     ]
+    if kind == "gauge":
+        data = {"gauge": {"dataPoints": points}}
+    elif kind == "counter":
+        # Newest point first in `points`, so it gets the largest running total.
+        for i, point in enumerate(points):
+            point["asDouble"] = value + (count - 1 - i)
+        data = {"sum": {"dataPoints": points, "aggregationTemporality": 2, "isMonotonic": True}}
+    elif kind == "histogram":
+        for point in points:
+            del point["asDouble"]
+            point.update({"count": "3", "sum": 165.0, "bucketCounts": ["1", "1", "1"], "explicitBounds": [10.0, 100.0]})
+        data = {"histogram": {"dataPoints": points, "aggregationTemporality": 1}}
+    else:
+        raise ValueError(f"unknown metric kind {kind!r}")
     payload = {
         "resourceMetrics": [
             {
@@ -290,7 +308,7 @@ def seed_metrics(
                 "scopeMetrics": [
                     {
                         "scope": {"name": "signoz-mcp-e2e"},
-                        "metrics": [{"name": metric_name, "unit": "1", "gauge": {"dataPoints": points}}],
+                        "metrics": [{"name": metric_name, "unit": "1", **data}],
                     }
                 ],
             }

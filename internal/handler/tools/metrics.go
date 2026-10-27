@@ -28,7 +28,7 @@ func (h *Handler) RegisterMetricsHandlers(s *mcp.Server) {
 
 	h.addTool(s, listMetricsTool, h.handleListMetrics)
 
-	// signoz_query_metrics — smart metrics query tool with aggregation validation and defaults
+	// signoz_query_metrics — metrics query tool that fills aggregation defaults
 	queryMetricsTool := mcp.NewTool("signoz_query_metrics",
 		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description(searchContextParamDescription)),
