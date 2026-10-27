@@ -22,83 +22,67 @@ const (
 	requestTypeTrace = string(apitypes.Querybuildertypesv5RequestTypeTrace)
 )
 
-const tracesFilterParamDescription = "Filter expression using SigNoz search syntax (see signoz://traces/query-builder-guide). search() is logs-only; traces use field predicates. Combine conditions with AND, OR, and parentheses for precedence. Unknown keys hard-error; keys present in multiple contexts default to resource context. Disambiguate with attribute.<key>, resource.<key>, or span.<key>. Discover valid keys with signoz_get_field_keys, then confirm values with signoz_get_field_values, before filtering. Examples: \"service.name = 'payment-svc' AND has_error = true\", \"http_method = 'POST' AND (has_error = true OR duration_nano > 1000000000)\"."
-
-const tracesAggregationsParamDescription = "Aggregation expressions to compute, written as the Query Builder writes them: count(), count_distinct(name), avg(duration_nano), sum(x), min(x), max(x), p50(duration_nano) to p99(duration_nano), rate(), or a conditional such as countIf(has_error = true). " +
-	"duration_nano is span latency in nanoseconds. One expression or an array; results come back as __result_0, __result_1, ... in that order. Example: [\"count()\", \"p99(duration_nano)\"]. SigNoz validates the expressions."
-
-const traceSelectFieldsDescription = "Extra fields to return on each span row, added to the default set: timestamp, trace_id, span_id, parent_span_id, name, service.name, kind_string, duration_nano, has_error, status_code_string, status_message, response_status_code, http_method. Pass an array of names or a comma-separated string, at most 50. Names can be span columns (db_name), resource attributes (k8s.pod.name), or span attributes (http.route); a resource., attribute., or span. prefix picks the context. Each field comes back as its own row key. Discover names with signoz_get_field_keys (signal=\"traces\"). Example: [\"http.route\", \"db.statement\"]."
-
-// aiTraceKeys are the per-trace AI columns SigNoz computes only for builder_ai_query.
-const aiTraceKeys = "trace.llm_call_count, trace.tool_call_count, trace.distinct_tool_count, trace.input_tokens, trace.output_tokens, trace.total_tokens, trace.estimated_total_cost, trace.max_llm_duration_nano"
-
-const searchTracesQueryTypeDescription = "'builder_query' (default) searches all traces. Set 'builder_ai_query' for AI observability queries: it searches AI traces (traces with an LLM, tool, or agent span), its span rows are only those LLM, tool, and agent spans, and filter also accepts the trace-level fields " + aiTraceKeys + "."
-
-const searchTracesRequestTypeDescription = "Row shape. raw (default) returns one row per span. trace returns one row per trace: span-level filters, including operation, error, minDuration, and maxDuration, keep the traces with at least one matching span, and selectFields does not apply. builder_query trace rows carry trace_id, the root span name, service.name, duration_nano, and span_count (the spans matching the filter). builder_ai_query trace rows carry the trace-level fields without the trace. prefix (such as llm_call_count), plus root_span_name, span_count, trace_duration_nano, error_count, and the input and output message JSON."
-
-const searchTracesOrderByDescription = "Row order as '<expression> <direction>', e.g. 'duration_nano desc'; the direction defaults to desc. Span rows order by span fields and default to 'timestamp desc'. builder_ai_query trace rows order by a trace-level field or trace.last_activity_time, e.g. 'trace.estimated_total_cost desc', and default to latest activity first. builder_query trace rows always come back slowest first; SigNoz ignores orderBy for them."
-
 func (h *Handler) RegisterTracesHandlers(s *mcp.Server) {
 	h.logger.Debug("Registering traces handlers")
 
 	// aggregate_traces: compute statistics over traces with GROUP BY
 	aggregateTracesTool := mcp.NewTool("signoz_aggregate_traces",
 		withReadOnlyToolAnnotations(),
-		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
+		mcp.WithString("searchContext", mcp.Description(searchContextParamDescription)),
 		mcp.WithDescription("Use this when the user wants custom aggregate statistics over spans (counts, rates, latency percentiles, grouped/top-N breakdowns, or time series) rather than individual span rows or a full trace hierarchy. For the built-in operation table for one traced service, ranked by p99, use signoz_get_service_top_operations. Use signoz_search_traces for raw spans, trace-ID discovery, or one row per trace (such as the most expensive AI traces), and signoz_get_trace_details for one known trace ID. Before calling, read signoz://traces/query-builder-guide; discover unfamiliar workspace fields with signoz_get_field_keys. Defaults to the last 1 hour."),
 		mcp.WithString("aggregations", mcp.Required(), stringOrStringArrayType(), mcp.Description(tracesAggregationsParamDescription)),
-		mcp.WithString("groupBy", stringOrStringArrayType(), mcp.Description("Field names to group results by, as an array or a comma-separated string (e.g. [\"service.name\", \"name\"] or 'service.name, name'). Leave empty for a single aggregate value.")),
+		mcp.WithString("groupBy", stringOrStringArrayType(), mcp.Description(tracesGroupByParamDescription)),
 		mcp.WithString("having", mcp.Description(havingParamDescription)),
-		mcp.WithString("filter", mcp.Description(tracesFilterParamDescription+" Combined with service/operation/error/duration params using AND.")),
-		mcp.WithString("service", mcp.Description("Shortcut filter for service name. Equivalent to adding service.name = '<value>' to filter.")),
-		mcp.WithString("operation", mcp.Description("Shortcut filter for span/operation name. Equivalent to adding name = '<value>' to filter.")),
-		mcp.WithBoolean("error", boolOrStringType(), mcp.Description("Shortcut filter for error spans (true or false). Equivalent to adding has_error = true/false to filter.")),
-		mcp.WithString("minDuration", mcp.Description("Minimum span duration in nanoseconds. Example: '500000000' for 500ms.")),
-		mcp.WithString("maxDuration", mcp.Description("Maximum span duration in nanoseconds. Example: '2000000000' for 2s.")),
-		mcp.WithString("orderBy", mcp.Description("How to order results. Format: '<expression> <direction>', e.g. 'count() desc' or 'avg(duration_nano) asc'. Defaults to the first aggregation expression descending.")),
-		mcp.WithString("limit", mcp.DefaultString(strconv.Itoa(querybuilder.DefaultAggregateQueryLimit)), intOrStringType(), mcp.Description("Maximum number of groups to return (default: 100, max: 10000; higher values are clamped). For time_series queries, groups are ranked across the entire time range, so a short-lived spike can fall outside the selected top groups.")),
+		mcp.WithString("filter", mcp.Description(aggregateTracesFilterParamDescription)),
+		mcp.WithString("service", mcp.Description(aggregateTracesServiceParamDescription)),
+		mcp.WithString("operation", mcp.Description(aggregateTracesOperationParamDescription)),
+		mcp.WithBoolean("error", boolOrStringType(), mcp.Description(aggregateTracesErrorParamDescription)),
+		mcp.WithString("minDuration", mcp.Description(minDurationParamDescription)),
+		mcp.WithString("maxDuration", mcp.Description(maxDurationParamDescription)),
+		mcp.WithString("orderBy", mcp.Description(aggregateTracesOrderByParamDescription)),
+		mcp.WithString("limit", mcp.DefaultString(strconv.Itoa(querybuilder.DefaultAggregateQueryLimit)), intOrStringType(), mcp.Description(aggregateLimitParamDescription)),
 		functionsProperty(),
-		mcp.WithString("timeRange", mcp.DefaultString("1h"), mcp.Description(timeRangeDesc("Defaults to '1h'."))),
-		mcp.WithString("start", intOrStringType(), mcp.Description("Start time in unix milliseconds (optional). When both start and end are provided, they override timeRange.")),
-		mcp.WithString("end", intOrStringType(), mcp.Description("End time in unix milliseconds (optional). When both start and end are provided, they override timeRange.")),
-		mcp.WithString("requestType", mcp.DefaultString("scalar"), mcp.Enum("scalar", "time_series"), mcp.Description(aggregateRequestTypeDescription)),
-		mcp.WithString("stepInterval", intOrStringType(), mcp.Description(stepIntervalDesc)),
+		mcp.WithString("timeRange", mcp.DefaultString("1h"), mcp.Description(timeRangeParamDescription("Defaults to '1h'."))),
+		mcp.WithString("start", intOrStringType(), mcp.Description(startParamDescription)),
+		mcp.WithString("end", intOrStringType(), mcp.Description(endParamDescription)),
+		mcp.WithString("requestType", mcp.DefaultString("scalar"), mcp.Enum("scalar", "time_series"), mcp.Description(aggregateRequestTypeParamDescription)),
+		mcp.WithString("stepInterval", intOrStringType(), mcp.Description(stepIntervalParamDescription)),
 	)
 
 	h.addTool(s, aggregateTracesTool, h.handleAggregateTraces)
 
 	searchTracesTool := mcp.NewTool("signoz_search_traces",
 		withReadOnlyToolAnnotations(),
-		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
+		mcp.WithString("searchContext", mcp.Description(searchContextParamDescription)),
 		mcp.WithDescription("Use this when the user wants individual span rows matching service, operation, error, duration, or field filters, needs to discover trace IDs, or wants one row per trace (requestType=trace), such as the slowest traces or the most expensive AI traces. It returns paginated rows, not aggregate trends/groups or a full trace hierarchy; use signoz_aggregate_traces for statistics and signoz_get_trace_details for one known trace ID. Span rows carry a default set of span fields; name other fields in selectFields. A field missing from a row was not selected, so do not read it as absent from the span. Read signoz://traces/query-builder-guide before using unfamiliar workspace fields. To search AI traces, including by per-trace cost, token, or call counts, set queryType to builder_ai_query. Defaults to the last 1 hour."),
-		mcp.WithString("filter", mcp.Description(tracesFilterParamDescription+" Combined with shortcut params using AND.")),
-		mcp.WithString("service", mcp.Description("Optional service name to filter by.")),
-		mcp.WithString("operation", mcp.Description("Operation/span name to filter by.")),
-		mcp.WithBoolean("error", boolOrStringType(), mcp.Description("Filter by error status (true or false).")),
-		mcp.WithString("minDuration", mcp.Description("Minimum span duration in nanoseconds. Example: '500000000' for 500ms.")),
-		mcp.WithString("maxDuration", mcp.Description("Maximum span duration in nanoseconds. Example: '2000000000' for 2s.")),
-		mcp.WithString("timeRange", mcp.DefaultString("1h"), mcp.Description(timeRangeDesc("Defaults to '1h'."))),
-		mcp.WithString("start", intOrStringType(), mcp.Description("Start time in unix milliseconds (optional). When both start and end are provided, they override timeRange.")),
-		mcp.WithString("end", intOrStringType(), mcp.Description("End time in unix milliseconds (optional). When both start and end are provided, they override timeRange.")),
-		mcp.WithString("limit", mcp.DefaultString(strconv.Itoa(querybuilder.DefaultRawQueryLimit)), intOrStringType(), mcp.Description("Maximum number of rows to return (default: 100, max: 10000; higher values are clamped; paginate with offset).")),
-		mcp.WithString("offset", mcp.DefaultString("0"), intOrStringType(), mcp.Description("Number of rows to skip for pagination (default: 0).")),
-		mcp.WithString("selectFields", stringOrStringArrayType(), mcp.Description(traceSelectFieldsDescription)),
-		mcp.WithString("orderBy", mcp.Description(searchTracesOrderByDescription)),
-		mcp.WithString("queryType", mcp.DefaultString(querybuilder.QueryTypeBuilder), mcp.Enum(querybuilder.QueryTypeBuilder, querybuilder.QueryTypeBuilderAI), mcp.Description(searchTracesQueryTypeDescription)),
-		mcp.WithString("requestType", mcp.DefaultString(requestTypeRaw), mcp.Enum(requestTypeRaw, requestTypeTrace), mcp.Description(searchTracesRequestTypeDescription)),
+		mcp.WithString("filter", mcp.Description(searchTracesFilterParamDescription)),
+		mcp.WithString("service", mcp.Description(searchTracesServiceParamDescription)),
+		mcp.WithString("operation", mcp.Description(searchTracesOperationParamDescription)),
+		mcp.WithBoolean("error", boolOrStringType(), mcp.Description(searchTracesErrorParamDescription)),
+		mcp.WithString("minDuration", mcp.Description(minDurationParamDescription)),
+		mcp.WithString("maxDuration", mcp.Description(maxDurationParamDescription)),
+		mcp.WithString("timeRange", mcp.DefaultString("1h"), mcp.Description(timeRangeParamDescription("Defaults to '1h'."))),
+		mcp.WithString("start", intOrStringType(), mcp.Description(startParamDescription)),
+		mcp.WithString("end", intOrStringType(), mcp.Description(endParamDescription)),
+		mcp.WithString("limit", mcp.DefaultString(strconv.Itoa(querybuilder.DefaultRawQueryLimit)), intOrStringType(), mcp.Description(searchTracesLimitParamDescription)),
+		mcp.WithString("offset", mcp.DefaultString("0"), intOrStringType(), mcp.Description(searchTracesOffsetParamDescription)),
+		mcp.WithString("selectFields", stringOrStringArrayType(), mcp.Description(tracesSelectFieldsParamDescription)),
+		mcp.WithString("orderBy", mcp.Description(searchTracesOrderByParamDescription)),
+		mcp.WithString("queryType", mcp.DefaultString(querybuilder.QueryTypeBuilder), mcp.Enum(querybuilder.QueryTypeBuilder, querybuilder.QueryTypeBuilderAI), mcp.Description(searchTracesQueryTypeParamDescription)),
+		mcp.WithString("requestType", mcp.DefaultString(requestTypeRaw), mcp.Enum(requestTypeRaw, requestTypeTrace), mcp.Description(searchTracesRequestTypeParamDescription)),
 	)
 
 	h.addTool(s, searchTracesTool, h.handleSearchTraces)
 
 	getTraceDetailsTool := mcp.NewTool("signoz_get_trace_details",
 		withReadOnlyToolAnnotations(),
-		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
+		mcp.WithString("searchContext", mcp.Description(searchContextParamDescription)),
 		mcp.WithDescription("Use this when the user already has a known trace ID and wants that trace's spans, metadata, and hierarchy. If the ID is unknown, discover it with signoz_search_traces first. Supply a time window containing the trace; the default last 6 hours can miss an older trace. Do not use this for filtering many spans or aggregate analysis."),
-		mcp.WithString("traceId", mcp.Required(), mcp.Description("Known trace ID to retrieve. Discover it with signoz_search_traces when the user has not supplied one.")),
-		mcp.WithString("timeRange", mcp.DefaultString("6h"), mcp.Description(timeRangeDesc("Defaults to last 6 hours if not provided."))),
-		mcp.WithString("start", intOrStringType(), mcp.Description("Start time in unix milliseconds (optional, defaults to 6 hours ago).")),
-		mcp.WithString("end", intOrStringType(), mcp.Description("End time in unix milliseconds (optional, defaults to now).")),
-		mcp.WithBoolean("includeSpans", boolOrStringType(), mcp.Description("Include detailed span information (default: true).")),
+		mcp.WithString("traceId", mcp.Required(), mcp.Description(traceIDParamDescription)),
+		mcp.WithString("timeRange", mcp.DefaultString("6h"), mcp.Description(timeRangeParamDescription("Defaults to last 6 hours if not provided."))),
+		mcp.WithString("start", intOrStringType(), mcp.Description(traceDetailsStartParamDescription)),
+		mcp.WithString("end", intOrStringType(), mcp.Description(traceDetailsEndParamDescription)),
+		mcp.WithBoolean("includeSpans", boolOrStringType(), mcp.Description(includeSpansParamDescription)),
 	)
 
 	h.addTool(s, getTraceDetailsTool, h.handleGetTraceDetails)

@@ -27,7 +27,7 @@ func (h *Handler) RegisterFieldsHandlers(s *mcp.Server) {
 
 	getFieldKeysTool := mcp.NewTool("signoz_get_field_keys",
 		withReadOnlyToolAnnotations(),
-		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
+		mcp.WithString("searchContext", mcp.Description(searchContextParamDescription)),
 		mcp.WithDescription("Use this when the user needs to discover field names available for filtering or grouping metrics, traces, or logs. It returns keys, not their observed values, scoped by signal and optional metric, context, or data type. SigNoz sets data.complete=false when it truncated the key list; narrow with searchText or fieldContext to see more. For AI trace fields (per-trace cost, tokens, call counts, gen_ai.*), set queryType=builder_ai_query. After choosing a key, use signoz_get_field_values to discover valid values."),
 		mcp.WithString("signal", mcp.Required(), mcp.Enum("metrics", "traces", "logs"), mcp.Description("Signal type: 'metrics', 'traces', or 'logs'.")),
 		mcp.WithString("searchText", mcp.Description("Filter field names by substring (optional).")),
@@ -42,7 +42,7 @@ func (h *Handler) RegisterFieldsHandlers(s *mcp.Server) {
 
 	getFieldValuesTool := mcp.NewTool("signoz_get_field_values",
 		withReadOnlyToolAnnotations(),
-		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
+		mcp.WithString("searchContext", mcp.Description(searchContextParamDescription)),
 		mcp.WithDescription("Use this when the user knows a field key and needs its observed values for a metrics, traces, or logs filter. It returns values, not field names; use signoz_get_field_keys when the key is unknown. Match signal and fieldContext to the query that will use the value. SigNoz sets data.complete=false when it truncated the value list; narrow with searchText to see more."),
 		mcp.WithString("signal", mcp.Required(), mcp.Enum("metrics", "traces", "logs"), mcp.Description("Signal type: 'metrics', 'traces', or 'logs'.")),
 		mcp.WithString("name", mcp.Required(), mcp.Description("Field name to get values for (e.g., 'service.name', 'http.status_code').")),

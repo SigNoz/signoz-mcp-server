@@ -207,7 +207,7 @@ func (h *Handler) RegisterOrgOverviewHandlers(s *mcp.Server) {
 		mcp.WithOutputSchema[orgOverviewOutput](),
 		withReadOnlyToolAnnotations(),
 		mcp.WithDescription("Get the current status and overall posture of the SigNoz deployment in one call. Returns typed telemetry, infrastructure, dashboard, alert, integration, access, license, and configuration summaries plus sourceStats with every reported stats field. Use dedicated list and query tools for exact inventories or time-windowed data. Missing fields are unreported, not zero; metadata.incompleteGroups provides recovery guidance for partial projections."),
-		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
+		mcp.WithString("searchContext", mcp.Description(searchContextParamDescription)),
 	)
 
 	h.addTool(s, tool, h.handleGetOrgOverview)
