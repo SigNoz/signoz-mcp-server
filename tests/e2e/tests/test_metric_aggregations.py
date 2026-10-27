@@ -6,6 +6,7 @@ with rate and sum.
 """
 
 import json
+import time
 
 import pytest
 
@@ -145,3 +146,51 @@ def test_scalar_requires_an_explicit_reduce_to(mcp_client: MCPClient, test_id: s
     )
     assert result.get("isError", False), f"a scalar query without reduceTo ran: {first_text_block(result)[:400]}"
     assert "reduceTo is required" in first_text_block(result), first_text_block(result)[:400]
+
+
+def test_formula_over_disabled_inputs_returns_only_the_formula(
+    mcp_client: MCPClient, test_id: str, telemetry: None
+) -> None:
+    """Pins the guide's claim: SigNoz evaluates a formula from disabled inputs and returns only the formula."""
+    metric = f"mcp_e2e_formula_{test_id.replace('-', '_')}"
+    seed_metrics(f"mcp-e2e-{test_id}", metric, value=5.0, count=2, age_seconds=120)
+    now = int(time.time() * 1000)
+
+    def results() -> dict:
+        query = {
+            "schemaVersion": "v1",
+            "start": now - 3_600_000,
+            "end": now,
+            "requestType": "scalar",
+            "compositeQuery": {
+                "queries": [
+                    {
+                        "type": "builder_query",
+                        "spec": {
+                            "name": "A",
+                            "signal": "metrics",
+                            "disabled": True,
+                            "aggregations": [
+                                {
+                                    "metricName": metric,
+                                    "timeAggregation": "avg",
+                                    "spaceAggregation": "sum",
+                                    "reduceTo": "avg",
+                                }
+                            ],
+                        },
+                    },
+                    {"type": "builder_formula", "spec": {"name": "F1", "expression": "A * 2"}},
+                ]
+            },
+        }
+        result = mcp_client.call_tool(
+            "signoz_execute_builder_query", {"searchContext": "formula over a disabled input", "query": query}
+        )
+        if result.get("isError", False):
+            return {}
+        by_name = {r.get("queryName"): r for r in json.loads(first_text_block(result))["data"]["data"]["results"]}
+        return by_name if (by_name.get("F1") or {}).get("data") else {}
+
+    by_name = wait_for(results, f"formula over {metric} returns values")
+    assert set(by_name) == {"F1"}, f"a disabled input came back next to the formula: {sorted(by_name)}"

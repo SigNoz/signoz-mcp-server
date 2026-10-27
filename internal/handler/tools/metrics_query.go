@@ -183,8 +183,13 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 
 	// Formula query spec
 	if mqr.Formula != "" {
+		inputNames := make([]string, 0, len(querySpecs))
+		for _, q := range querySpecs {
+			inputNames = append(inputNames, q.Name)
+		}
+		resultName := formulaName(querySpecs)
 		querySpecs = append(querySpecs, querybuilder.MetricsQuery{
-			Name:       formulaName(querySpecs),
+			Name:       resultName,
 			IsFormula:  true,
 			Expression: mqr.Formula,
 			Legend:     "formula_result",
@@ -193,6 +198,9 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 			OrderDir:   mqr.OrderDir,
 		})
 		decisions = append(decisions, fmt.Sprintf("formula: %s", mqr.Formula))
+		decisions = append(decisions, fmt.Sprintf(
+			"formula result: query %s; the input queries %s are returned too, because SigNoz returns every query that is not disabled (to get only the formula, use signoz_execute_builder_query with disabled: true on each input)",
+			resultName, strings.Join(inputNames, ", ")))
 	}
 	resultLimit, resultOrder := querybuilder.DefaultAggregateQueryLimit, "__result desc"
 	if mqr.Limit > 0 {

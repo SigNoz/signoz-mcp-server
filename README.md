@@ -561,7 +561,7 @@ Query a known metric for values, trends, breakdowns, or formulas. The tool appli
   - `stepInterval` (optional) - Step in seconds (auto-calculated if omitted)
   - `requestType` (optional) - Response format. Enum: `time_series` (default), `scalar`. Unknown values are rejected.
   - `reduceTo` (required when `requestType` is `scalar`) - How to reduce each series to one value: `last`, `max`, `min`, `avg`, `sum`, `count`, `median`. It has no default; SigNoz rejects a scalar request without it. For a total count use `timeAggregation: increase` with `reduceTo: sum`
-  - `formula` (optional) - Expression over named queries (e.g., "A / B * 100")
+  - `formula` (optional) - Expression over named queries (e.g., "A / B * 100"). The result carries each input query's series next to the formula's, because SigNoz returns every query that is not disabled; to get only the formula, send the request through `signoz_execute_builder_query` with `disabled: true` on each input
   - `formulaQueries` (optional) - Array of additional named metric queries for `formula`, or a JSON-encoded string of that array. The item schema is typed: `name` and `metricName` are required; `metricType`, `isMonotonic`, `temporality`, `timeAggregation`, `spaceAggregation`, `reduceTo`, `groupBy` (array or comma-separated string), and `filter` mirror the top-level parameters and are auto-fetched or defaulted the same way.
   - `limit` (optional) - Maximum number of groups (series) in the result (default: 100, max: 10000; higher values are clamped). With a formula, limit applies to the formula result; formula inputs are not limited
   - `orderBy` (optional) - Result order as `<key> <direction>`, where the key is `__result` or a `groupBy` field (e.g. `__result asc`; default: `__result desc`)
