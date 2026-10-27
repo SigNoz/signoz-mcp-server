@@ -52,7 +52,10 @@ Use these directly by name in filter expressions:
 
   timestamp       datetime  - log timestamp (stored as Unix NANOSECONDS; see TIMESTAMP FORMAT)
   body            string    - rendered log body
-  severity_text   string    - recorded severity; DEBUG, INFO, WARN, ERROR, and FATAL are common examples, not an exhaustive enum
+  severity_text   string    - recorded severity, as the source wrote it; DEBUG, INFO, WARN, ERROR, and FATAL are common
+                              examples, not an exhaustive enum. = is case-sensitive, so ERROR does not match error;
+                              discover the values first, or use IN ('ERROR', 'error') when both spellings occur.
+                              The severity shortcut on the log tools matches any case
   severity_number number    - numeric severity when present
   trace_id        string    - linked trace identifier
   span_id         string    - linked span identifier

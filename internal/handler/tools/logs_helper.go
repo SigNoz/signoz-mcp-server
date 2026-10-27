@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/SigNoz/signoz-mcp-server/pkg/querybuilder"
 )
@@ -185,12 +187,30 @@ func buildLogFilterExpr(filter, service, severity, searchText, searchScope strin
 		parts = append(parts, "service.name = "+querybuilder.QuoteFilterLiteral(service))
 	}
 	if severity != "" {
-		parts = append(parts, "severity_text = "+querybuilder.QuoteFilterLiteral(severity))
+		parts = append(parts, severityPredicate(severity))
 	}
 	if searchText != "" {
 		parts = append(parts, logSearchTextPredicate(searchText, searchScope))
 	}
 	return strings.Join(parts, " AND ")
+}
+
+// severityPredicate matches the severity shortcut in any case, because sources
+// write the same level as ERROR, error, or Error. Exact values keep LIKE
+// wildcards in the input literal.
+func severityPredicate(severity string) string {
+	var quoted []string
+	lower := strings.ToLower(severity)
+	title := lower
+	if r, size := utf8.DecodeRuneInString(lower); size > 0 {
+		title = string(unicode.ToUpper(r)) + lower[size:]
+	}
+	for _, spelling := range []string{severity, strings.ToUpper(severity), lower, title} {
+		if literal := querybuilder.QuoteFilterLiteral(spelling); !slices.Contains(quoted, literal) {
+			quoted = append(quoted, literal)
+		}
+	}
+	return "severity_text IN (" + strings.Join(quoted, ", ") + ")"
 }
 
 // logSearchScopes maps searchScope values to search() scopes. body keeps the

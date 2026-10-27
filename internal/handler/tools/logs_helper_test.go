@@ -15,7 +15,8 @@ func TestQuoteLogContainsLiteralEscapesGrammarAndLIKE(t *testing.T) {
 func TestBuildLogFilterExpr(t *testing.T) {
 	t.Run("individual convenience filters", func(t *testing.T) {
 		require.Equal(t, "service.name = 'checkout'", buildLogFilterExpr("", "checkout", "", "", ""))
-		require.Equal(t, "severity_text = 'ERROR'", buildLogFilterExpr("", "", "ERROR", "", ""))
+		require.Equal(t, "severity_text IN ('ERROR', 'error', 'Error')", buildLogFilterExpr("", "", "ERROR", "", ""))
+		require.Equal(t, "severity_text IN ('warn', 'WARN', 'Warn')", buildLogFilterExpr("", "", "warn", "", ""))
 		require.Equal(t, "body CONTAINS 'timeout'", buildLogFilterExpr("", "", "", "timeout", ""))
 	})
 
@@ -39,7 +40,7 @@ func TestBuildLogFilterExpr(t *testing.T) {
 	t.Run("combined filter preserves inner bytes and escapes convenience literals", func(t *testing.T) {
 		filter := `search('timeout', body) AND body CONTAINS 'raw%_ \\'`
 		got := buildLogFilterExpr(filter, "payment's%_", "WARN_%", `timed out: it's C:\logs%_`, "")
-		want := "(" + filter + `) AND service.name = 'payment\'s%_' AND severity_text = 'WARN_%' AND body CONTAINS 'timed out: it\'s C:\\\\logs\\%\\_'`
+		want := "(" + filter + `) AND service.name = 'payment\'s%_' AND severity_text IN ('WARN_%', 'warn_%', 'Warn_%') AND body CONTAINS 'timed out: it\'s C:\\\\logs\\%\\_'`
 		require.Equal(t, want, got)
 	})
 }
