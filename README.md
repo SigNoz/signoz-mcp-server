@@ -941,13 +941,10 @@ Return custom aggregate statistics over spans (counts, rates, latency percentile
 
 #### `signoz_get_trace_details`
 
-For a known trace ID, return its spans, metadata, and hierarchy. Use `signoz_search_traces` first when the ID is unknown, and choose a time window that contains the trace; the default last six hours can miss older traces.
+For a known trace ID, return its spans, metadata, and hierarchy. Use `signoz_search_traces` first when the ID is unknown. SigNoz locates the trace by its ID alone, so the tool takes no time window; an ID SigNoz does not know returns no spans.
 
 - **Parameters**:
   - `traceId` (required) - Known trace ID, usually discovered with `signoz_search_traces`
-  - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '7d'; defaults to last 6 hours; ignored when both `start` and `end` are provided)
-  - `start` (optional) - Start time in unix milliseconds (defaults to 6 hours ago).
-  - `end` (optional) - End time in unix milliseconds (defaults to now)
   - `includeSpans` (optional) - Include detailed span information. Boolean (or the strings `"true"`/`"false"`), default: true
 
 

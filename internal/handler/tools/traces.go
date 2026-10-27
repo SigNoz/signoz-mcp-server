@@ -12,7 +12,6 @@ import (
 
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/SigNoz/signoz-mcp-server/pkg/querybuilder"
-	"github.com/SigNoz/signoz-mcp-server/pkg/timeutil"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 )
 
@@ -78,11 +77,8 @@ func (h *Handler) RegisterTracesHandlers(s *mcp.Server) {
 	getTraceDetailsTool := mcp.NewTool("signoz_get_trace_details",
 		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description(searchContextParamDescription)),
-		mcp.WithDescription("Use this when the user already has a known trace ID and wants that trace's spans, metadata, and hierarchy. If the ID is unknown, discover it with signoz_search_traces first. Supply a time window containing the trace; the default last 6 hours can miss an older trace. Do not use this for filtering many spans or aggregate analysis."),
+		mcp.WithDescription("Use this when the user already has a known trace ID and wants that trace's spans, metadata, and hierarchy. If the ID is unknown, discover it with signoz_search_traces first. SigNoz locates the trace by its ID alone, so no time window is needed; an ID SigNoz does not know returns no spans. Do not use this for filtering many spans or aggregate analysis."),
 		mcp.WithString("traceId", mcp.Required(), mcp.Description(traceIDParamDescription)),
-		mcp.WithString("timeRange", mcp.DefaultString("6h"), mcp.Description(timeRangeParamDescription("Defaults to last 6 hours if not provided."))),
-		mcp.WithString("start", intOrStringType(), mcp.Description(traceDetailsStartParamDescription)),
-		mcp.WithString("end", intOrStringType(), mcp.Description(traceDetailsEndParamDescription)),
 		mcp.WithBoolean("includeSpans", boolOrStringType(), mcp.Description(includeSpansParamDescription)),
 	)
 
@@ -197,15 +193,6 @@ func (h *Handler) handleGetTraceDetails(ctx context.Context, req mcp.CallToolReq
 		return errResult, nil
 	}
 
-	// Reject a present-but-malformed start/end loudly; otherwise
-	// GetTimestampsWithDefaults silently falls back to the default window.
-	if err := timeutil.ValidateExplicitTimestamps(args); err != nil {
-		h.logger.WarnContext(ctx, "Invalid explicit timestamp", logpkg.ErrAttr(err))
-		return errorWithCode(CodeValidationFailed, "Parameter validation failed: "+err.Error()), nil
-	}
-
-	start, end := timeutil.GetTimestampsWithDefaults(args, "ms")
-
 	includeSpans := true
 	if v, present, err := parseBoolArg(args, "includeSpans"); err != nil {
 		return errorWithCode(CodeValidationFailed, fmt.Sprintf(`Parameter validation failed: %s`, err.Error())), nil
@@ -213,20 +200,12 @@ func (h *Handler) handleGetTraceDetails(ctx context.Context, req mcp.CallToolReq
 		includeSpans = v
 	}
 
-	var startTime, endTime int64
-	if err := json.Unmarshal([]byte(start), &startTime); err != nil {
-		return validationErrorf("start", `invalid timestamp format: %s. Use "timeRange" instead (e.g., "1h", "24h")`, start), nil
-	}
-	if err := json.Unmarshal([]byte(end), &endTime); err != nil {
-		return validationErrorf("end", `invalid timestamp format: %s. Use "timeRange" instead (e.g., "1h", "24h")`, end), nil
-	}
-
-	h.logger.DebugContext(ctx, "Tool called: signoz_get_trace_details", slog.String("traceId", traceID), slog.Bool("includeSpans", includeSpans), slog.String("start", start), slog.String("end", end))
+	h.logger.DebugContext(ctx, "Tool called: signoz_get_trace_details", slog.String("traceId", traceID), slog.Bool("includeSpans", includeSpans))
 	client, base, clientErr := h.getResourceClient(ctx)
 	if clientErr != nil {
 		return clientErr, nil
 	}
-	result, err := client.GetTraceDetails(ctx, traceID, includeSpans, startTime, endTime)
+	result, err := client.GetTraceDetails(ctx, traceID, includeSpans)
 	if err != nil {
 		h.logUpstreamFailure(ctx, "Failed to get trace details", err, slog.String("traceId", traceID))
 		return upstreamError(err), nil

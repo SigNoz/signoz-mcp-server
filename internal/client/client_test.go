@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -508,47 +509,52 @@ func TestGetAlertHistory(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestGetTraceDetails_UsesCanonicalTraceIDFilter(t *testing.T) {
+func TestGetTraceDetails_LetsSigNozNarrowAWindowThatCoversAnyTrace(t *testing.T) {
 	var captured []byte
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
 		assert.Equal(t, "/api/v5/query_range", r.URL.Path)
 		body, err := io.ReadAll(r.Body)
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		captured = body
-
-		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"success","data":{"result":[]}}`))
 	}))
 	defer server.Close()
 
-	logger := logpkg.New("debug")
-	client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+	client := NewClient(logpkg.New("error"), server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
-	_, err := client.GetTraceDetails(context.Background(), "abc123", true, 1711123200000, 1711130400000)
+	before := time.Now().UnixMilli()
+	_, err := client.GetTraceDetails(context.Background(), "abc123", true)
 	require.NoError(t, err)
-
-	payload := string(captured)
-	require.Contains(t, payload, `"expression":"trace_id = 'abc123'"`)
-
-	// A quote in the ID stays inside the literal instead of adding conditions.
-	_, err = client.GetTraceDetails(context.Background(), "x' OR trace_id != 'y", true, 1711123200000, 1711130400000)
-	require.NoError(t, err)
-	require.Contains(t, string(captured), `"expression":"trace_id = 'x\\' OR trace_id != \\'y'"`)
-	require.Contains(t, payload, `"limit":1000`)
-	require.NotContains(t, payload, `"expression":"traceID = 'abc123'"`)
 	var request struct {
+		Start          int64 `json:"start"`
+		End            int64 `json:"end"`
 		CompositeQuery struct {
 			Queries []struct {
 				Spec struct {
+					Filter struct {
+						Expression string `json:"expression"`
+					} `json:"filter"`
+					Limit int             `json:"limit"`
 					Order json.RawMessage `json:"order"`
 				} `json:"spec"`
 			} `json:"queries"`
 		} `json:"compositeQuery"`
 	}
 	require.NoError(t, json.Unmarshal(captured, &request))
+	require.Less(t, request.Start, time.Date(2002, 1, 1, 0, 0, 0, 0, time.UTC).UnixMilli(), "the window reaches back past any stored trace")
+	require.Len(t, strconv.FormatInt(request.Start, 10), 13, "SigNoz reads only a 13-digit start as milliseconds")
+	require.GreaterOrEqual(t, request.End, before, "the window reaches the present")
 	require.Len(t, request.CompositeQuery.Queries, 1)
-	require.JSONEq(t, `[{"key":{"name":"timestamp"},"direction":"desc"}]`, string(request.CompositeQuery.Queries[0].Spec.Order))
+	spec := request.CompositeQuery.Queries[0].Spec
+	require.Equal(t, "trace_id = 'abc123'", spec.Filter.Expression)
+	require.Equal(t, 1000, spec.Limit)
+	require.JSONEq(t, `[{"key":{"name":"timestamp"},"direction":"desc"}]`, string(spec.Order))
+
+	// A quote in the ID stays inside the literal instead of adding conditions.
+	_, err = client.GetTraceDetails(context.Background(), "x' OR trace_id != 'y", true)
+	require.NoError(t, err)
+	require.Contains(t, string(captured), `"expression":"trace_id = 'x\\' OR trace_id != \\'y'"`)
 }
 
 func TestGetFieldKeys(t *testing.T) {

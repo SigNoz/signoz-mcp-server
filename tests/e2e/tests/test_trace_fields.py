@@ -212,3 +212,26 @@ def test_shortcut_filters_narrow_an_or_filter(mcp_client: MCPClient, test_id: st
     assert rows, f"the service shortcut with an OR filter returned no spans for {service}"
     services = {r.get("service.name") for r in rows}
     assert services == {service}, f"service shortcut did not narrow the OR filter; got services {services}"
+
+
+def test_trace_details_finds_a_trace_by_id_alone(mcp_client: MCPClient, test_id: str, telemetry: None) -> None:
+    """Pins the contract the get_trace_details description teaches: no time window, and no spans for an unknown ID."""
+    trace_id = seed_traces(f"mcp-e2e-{test_id}", count=1)[0]
+
+    def spans() -> list[dict]:
+        result = mcp_client.call_tool(
+            "signoz_get_trace_details", {"searchContext": f"trace {trace_id}", "traceId": trace_id}
+        )
+        if result.get("isError", False):
+            return []
+        return query_range_rows(first_text_block(result))
+
+    rows = wait_for(spans, f"trace {trace_id} found by ID")
+    assert {r.get("trace_id") for r in rows} == {trace_id}, f"the trace lookup returned other traces: {rows}"
+
+    unknown = assert_tool_ok(
+        mcp_client.call_tool(
+            "signoz_get_trace_details", {"searchContext": "trace that never existed", "traceId": "0" * 32}
+        )
+    )
+    assert not query_range_rows(first_text_block(unknown)), "an unknown trace ID returned spans"
