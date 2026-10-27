@@ -554,7 +554,7 @@ Query a known metric for values, trends, breakdowns, or formulas. The tool appli
   - `timeAggregation` (optional) - Aggregation within each series per time bucket (defaulted by type when omitted; SigNoz validates the combination)
   - `spaceAggregation` (optional) - Aggregation across series (defaulted by type when omitted; percentiles are histogram-only). Summary metrics need both aggregations set
   - `groupBy` (optional) - Label names to group by, as an array or a comma-separated string. Metric labels hold resource and data-point attributes in one set, so names need no context prefix. An array item that is not a string is rejected with a coded error
-  - `filter` (optional) - Filter expression
+  - `filter` (optional) - Filter expression. The former `query` alias is rejected with a coded error that names `filter`
   - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '7d'; default: '1h'; ignored when both `start` and `end` are provided)
   - `start`/`end` (optional) - Unix ms timestamps. When both are provided, they override `timeRange`.
   - `stepInterval` (optional) - Step in seconds (auto-calculated if omitted)
