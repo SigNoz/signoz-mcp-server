@@ -207,23 +207,23 @@ func parseTraceSelectFields(raw any) ([]querybuilder.FieldKey, error) {
 }
 
 // traceSelectFieldContexts maps accepted name prefixes to the Query Builder
-// field context; selectFields uses "tag" for span attributes.
+// field context. "tag." is the legacy spelling of "attribute.".
 var traceSelectFieldContexts = []struct{ prefix, context string }{
 	{"resource.", "resource"},
-	{"attribute.", "tag"},
-	{"tag.", "tag"},
+	{"attribute.", "attribute"},
+	{"tag.", "attribute"},
 	{"span.", "span"},
 }
 
+// traceSelectField keeps a context prefix the caller wrote and otherwise
+// sends the bare name, which SigNoz resolves against the workspace's own
+// field metadata, type included.
 func traceSelectField(name string) (querybuilder.FieldKey, bool) {
 	if name == "" {
 		return querybuilder.FieldKey{}, false
 	}
 	for _, c := range traceSelectFieldContexts {
 		if bare, found := strings.CutPrefix(name, c.prefix); found && bare != "" {
-			if known, ok := traceGroupByFieldMetadata[bare]; ok && querybuilder.FieldContextOf(known) == c.context {
-				return known, true
-			}
 			return querybuilder.NewFieldKey(bare, "traces", c.context, ""), true
 		}
 	}

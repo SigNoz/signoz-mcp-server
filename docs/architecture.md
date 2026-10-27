@@ -161,6 +161,17 @@ so fields the spec doesn't model still reach clients. Request bodies go through 
 `WithBody` methods with the bytes the tool built, and the generated enum `Valid()` helpers are
 never called, so SigNoz stays the only validator.
 
+### Field names in query tools
+
+SigNoz owns field metadata. The query tools send a field name the caller gives in `groupBy`,
+`selectFields`, or `orderBy` without a context or data type, and SigNoz resolves it against the
+workspace's own field metadata; a name in several contexts defaults to resource. A caller who
+writes a context prefix (`resource.`, `attribute.`, `span.`, or `log.`) gets that context. The
+server keeps no field catalog of its own, except the fixed intrinsic columns each search tool
+returns by default. Metrics are the one exception to bare names: every metrics label is sent in
+attribute context, because SigNoz keeps resource and point attributes in one labels set and a
+name with no context would read an intrinsic column instead.
+
 ## MCP Runtime and Transports
 
 The runtime is `github.com/modelcontextprotocol/go-sdk` v1.8.0. The same

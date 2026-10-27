@@ -5,6 +5,8 @@ narrow on the canonical keys, group-bys work, and selectFields adds flat keys.
 All read-only against seeded traces (the Go test read staging's).
 """
 
+import json
+
 from fixtures.mcpclient import MCPClient, assert_tool_ok, text_blocks
 from fixtures.results import aggregate_columns_and_row_count, first_text_block, note_blocks, query_range_rows
 from fixtures.telemetry import seed_traces, wait_for
@@ -257,3 +259,33 @@ def test_is_root_selects_root_spans(mcp_client: MCPClient, test_id: str, telemet
     assert sorted(r.get("name") for r in rows) == ["e2e-operation", "e2e-operation"], (
         f"isRoot = true must return only the two roots: {rows}"
     )
+
+
+def test_group_by_resolves_custom_and_intrinsic_trace_fields(
+    mcp_client: MCPClient, test_id: str, telemetry: None
+) -> None:
+    """SigNoz resolves bare groupBy names; no MCP field list names e2e.marker."""
+    service = f"mcp-e2e-{test_id}"
+    seed_traces(service, count=3)
+
+    def grouped() -> list:
+        result = mcp_client.call_tool(
+            "signoz_aggregate_traces",
+            {
+                "searchContext": f"span count by marker and error for {service}",
+                "service": service,
+                "aggregations": "count()",
+                "groupBy": ["e2e.marker", "has_error"],
+                "timeRange": "1h",
+                "requestType": "scalar",
+            },
+        )
+        if result.get("isError", False):
+            return []
+        payload = json.loads(first_text_block(result))
+        rows = [row for r in payload["data"]["data"]["results"] for row in r.get("data") or []]
+        return rows if sum(row[-1] for row in rows) == 3 else []
+
+    rows = wait_for(grouped, f"grouped spans for {service}")
+    # The seeding sets e2e.marker to the service name and marks one span as an error.
+    assert {(row[0], str(row[1]).lower()) for row in rows} == {(service, "true"), (service, "false")}, rows
