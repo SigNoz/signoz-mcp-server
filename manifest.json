@@ -51,7 +51,7 @@
     },
     {
       "name": "signoz_get_field_keys",
-      "description": "Discover available field names for filtering or grouping metrics, traces, logs, or AI traces; use signoz_get_field_values after choosing a key"
+      "description": "Discover available field names for filtering or grouping metrics, traces, or logs, including AI trace fields; use signoz_get_field_values after choosing a key"
     },
     {
       "name": "signoz_get_field_values",

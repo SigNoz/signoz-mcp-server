@@ -13,8 +13,8 @@ Server" ([PRD] ai-olly). It supersedes PR #279.
 
 The pinned SigNoz spec (`SIGNOZ_SPEC_REF` 09bba89) already has the `builder_ai_query` envelope
 type, the `signoz/AIBuilderQuery` dashboard plugin, and the AI fields, pricing, span mapper and
-trace thread endpoints, so no spec bump is needed. Each PR adds the operations it uses to `skaff.yml` and
-regenerates the client.
+trace thread endpoints, so no spec bump is needed. Each PR adds the operations it uses to
+`skaff.yml` and regenerates the client.
 
 Not planned: evals and scores (no backend), AI-specific ClickHouse SQL guides, sessions (until
 SigNoz supports them).
@@ -48,7 +48,8 @@ pagination contract.
 ### PR breakdown
 
 1. **`feat(fields)`: `queryType` on field keys.** `builder_ai_query` lists the per-trace columns
-   and `gen_ai.*` before data arrives, and returns trace fields whatever the `signal`.
+   (even before data arrives) with the span fields and `gen_ai.*` attributes, and lists
+   traces-signal keys whatever the `signal`.
    `fieldContext=trace` filters to the per-trace columns; only the AI endpoint honors it, so
    its description ties it to `builder_ai_query`. `signoz_get_field_values` gets neither: the
    per-trace columns have no value suggestions, and `gen_ai.*` values already come from the
@@ -101,6 +102,8 @@ pagination contract.
 
 - Decision: only `builder_ai_query` selects the AI endpoint; other values run on the default one
   with the schema's "Input validation notice", as an out-of-enum `signal` does.
+- Rationale: SigNoz never sees `queryType` on this tool, so the MCP must pick an endpoint, and
+  the notice keeps the substitution visible.
 
 ### 2026-10-27 — Reads only for pricing and mappings
 
@@ -115,7 +118,7 @@ pagination contract.
 
 ## Reference Links
 
-- Notion: AI Observability in the MCP Server ([PRD] ai-olly)
+- [Notion: AI Observability in the MCP Server](https://app.notion.com/p/signoz/AI-Observability-in-the-MCP-Server-3f1fcc6bcd198054ab68e01f77ac8aed) ([PRD] ai-olly)
 
 ## Verification
 
@@ -124,8 +127,9 @@ pagination contract.
   eight `trace` columns and `gen_ai.*` keys, `signal=logs` returns the same set, the default
   keys omit the `trace` columns, and an out-of-enum `queryType` runs on the default endpoint with
   the validation notice. `fieldContext=trace` returns exactly the eight columns on the AI
-  endpoint and is ignored by the default one. With fresh `gen_ai.*` spans, the default values endpoint returns
-  `gen_ai.request.model` and `gen_ai.tool.name` values, confirming values need no `queryType`.
+  endpoint and is ignored by the default one. With fresh `gen_ai.*` spans, the default values
+  endpoint returns `gen_ai.request.model` and `gen_ai.tool.name` values, confirming values need
+  no `queryType`.
   The e2e cases run in CI.
 - Agent eval by hand: about 25 questions, including negative ones that must not set
   `builder_ai_query`, against a local SigNoz seeded with gen_ai traces, pricing rules and one

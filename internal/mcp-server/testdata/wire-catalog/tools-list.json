@@ -5228,7 +5228,7 @@
               },
               "queryType": {
                 "default": "builder_query",
-                "description": "Query type the keys are for. Default 'builder_query' lists the regular fields of the signal. 'builder_ai_query' is for AI fields with signal=traces: the per-trace cost, token, and call-count columns (such as trace.estimated_total_cost and trace.llm_call_count) plus gen_ai.* span attributes. The per-trace columns come back as bare names with fieldContext 'trace'; write them with the trace. prefix in filters, groupBy, and orderBy. It lists these keys even before AI data arrives, always returns trace fields, and does not use signal, source, or metricName.",
+                "description": "Query type the keys are for. Default 'builder_query' lists the regular fields of the signal. 'builder_ai_query' lists AI trace fields: the per-trace cost, token, and call-count columns (such as trace.estimated_total_cost and trace.llm_call_count), listed even before AI data arrives, plus gen_ai.* span attributes. The per-trace columns come back as bare names with fieldContext 'trace'; write them with the trace. prefix in queries. signal is still required but ignored: builder_ai_query always lists traces-signal keys, including span fields and attributes.",
                 "enum": [
                   "builder_query",
                   "builder_ai_query"
