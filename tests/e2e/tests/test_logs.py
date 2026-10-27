@@ -301,3 +301,32 @@ def test_severity_shortcut_matches_any_case_as_a_prefix(mcp_client: MCPClient, t
     rows = wait_for(lambda: search(severity="warn"), f"WARNING logs for {service} found by severity=warn")
     assert len(rows) == 2, rows
     assert not search(filter="severity_text = 'warning'"), "= in a filter matched logs recorded as WARNING"
+
+
+def test_all_fields_returns_each_log_record_complete(mcp_client: MCPClient, test_id: str, telemetry: None) -> None:
+    """Pins the allFields contract: complete records with attribute and resource maps, and the selectFields note."""
+    service = f"mcp-e2e-{test_id}"
+    body = f"marker-{test_id}"
+    seed_logs(service, body, count=1)
+
+    def complete() -> dict:
+        result = mcp_client.call_tool(
+            "signoz_search_logs",
+            {
+                "searchContext": "complete log records",
+                "service": service,
+                "allFields": True,
+                "selectFields": ["k8s.pod.name"],
+                "timeRange": "1h",
+                "limit": "5",
+            },
+        )
+        if result.get("isError", False) or not query_range_rows(first_text_block(result)):
+            return {}
+        return result
+
+    result = wait_for(complete, f"complete records for {service}")
+    row = query_range_rows(first_text_block(result))[0]
+    assert row.get("attributes_string", {}).get("e2e.marker") == body, f"attribute map missing: {row}"
+    assert row.get("resources_string", {}).get("service.name") == service, f"resource map missing: {row}"
+    assert "selectFields was ignored" in note_blocks(result), note_blocks(result)

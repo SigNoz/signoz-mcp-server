@@ -294,3 +294,20 @@ def test_group_by_resolves_custom_and_intrinsic_trace_fields(
     rows = wait_for(grouped, f"grouped spans for {service}")
     # The seeding sets e2e.marker to the service name and marks one span as an error.
     assert {(row[0], str(row[1]).lower()) for row in rows} == {(service, "true"), (service, "false")}, rows
+
+
+def test_all_fields_returns_each_span_complete(mcp_client: MCPClient, test_id: str, telemetry: None) -> None:
+    """Pins the allFields contract on traces: the same span record signoz_get_trace_details returns."""
+    service = f"mcp-e2e-{test_id}"
+    seed_traces(service, count=1)
+
+    def spans() -> list[dict]:
+        result = mcp_client.call_tool(
+            "signoz_search_traces",
+            {"searchContext": "complete spans", "service": service, "allFields": True, "timeRange": "1h"},
+        )
+        return [] if result.get("isError", False) else query_range_rows(first_text_block(result))
+
+    span = wait_for(spans, f"complete spans for {service}")[0]
+    assert span.get("attributes", {}).get("e2e.marker") == service, f"span attributes missing: {span}"
+    assert span.get("resource", {}).get("service.name") == service, f"span resource missing: {span}"

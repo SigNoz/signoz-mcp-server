@@ -7499,9 +7499,16 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user wants individual log records or messages matching text, service, severity, or field filters. It returns paginated rows, not counts, trends, or grouped breakdowns; use signoz_aggregate_logs for those, and signoz_execute_builder_query only for queries this tool cannot express. Rows carry a default set of log columns; to include other attributes, such as service.name, name them in selectFields. A field missing from a row was not selected. You do not need the guide when using only searchText, service, severity, time, or pagination. Read signoz://logs/query-builder-guide before filtering on unfamiliar fields. Defaults to the last 1 hour.",
+          "description": "Use this when the user wants individual log records or messages matching text, service, severity, or field filters. It returns paginated rows, not counts, trends, or grouped breakdowns; use signoz_aggregate_logs for those, and signoz_execute_builder_query only for queries this tool cannot express. Rows carry a default set of log columns; to include other attributes, such as service.name, name them in selectFields, or set allFields for each row's complete record. A field missing from a row was not selected. You do not need the guide when using only searchText, service, severity, time, or pagination. Read signoz://logs/query-builder-guide before filtering on unfamiliar fields. Defaults to the last 1 hour.",
           "inputSchema": {
             "properties": {
+              "allFields": {
+                "description": "Return each row's complete record instead of the default columns: every log column plus the attributes_string, attributes_number, attributes_bool, resources_string, and scope_string maps. Rows are much larger, so search with the default columns first, then fetch the rows you need with filter id = '\u003clog id\u003e' and a small limit. selectFields is ignored when this is true.",
+                "type": [
+                  "boolean",
+                  "string"
+                ]
+              },
               "end": {
                 "description": "End time in unix milliseconds (optional). When both start and end are provided, they override timeRange.",
                 "type": [
@@ -7594,9 +7601,16 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user wants individual span rows matching service, operation, error, duration, or field filters, needs to discover trace IDs, or wants one row per trace (requestType=trace), such as the slowest traces or the most expensive AI traces. It returns paginated rows, not aggregate trends/groups or a full trace hierarchy; use signoz_aggregate_traces for statistics and signoz_get_trace_details for one known trace ID. Span rows carry a default set of span fields; name other fields in selectFields. A field missing from a row was not selected, so do not read it as absent from the span. Read signoz://traces/query-builder-guide before using unfamiliar workspace fields. For the user's LLM, AI agent, token, cost, model, tool-call, or prompt questions (AI observability), set queryType to builder_ai_query and read signoz://ai/query-builder-guide. Defaults to the last 1 hour.",
+          "description": "Use this when the user wants individual span rows matching service, operation, error, duration, or field filters, needs to discover trace IDs, or wants one row per trace (requestType=trace), such as the slowest traces or the most expensive AI traces. It returns paginated rows, not aggregate trends/groups or a full trace hierarchy; use signoz_aggregate_traces for statistics and signoz_get_trace_details for one known trace ID. Span rows carry a default set of span fields; name other fields in selectFields, or set allFields for each span's complete record. A field missing from a row was not selected, so do not read it as absent from the span. Read signoz://traces/query-builder-guide before using unfamiliar workspace fields. For the user's LLM, AI agent, token, cost, model, tool-call, or prompt questions (AI observability), set queryType to builder_ai_query and read signoz://ai/query-builder-guide. Defaults to the last 1 hour.",
           "inputSchema": {
             "properties": {
+              "allFields": {
+                "description": "Return each span's complete record instead of the default fields: the span fields plus attributes and resource maps, events, and links, the same shape signoz_get_trace_details returns. Rows are much larger, so search with the default fields first, then fetch the spans you need with filter span_id = '\u003cspan id\u003e' and a small limit. selectFields is ignored when this is true. Like selectFields, it does not apply to trace rows (requestType=trace).",
+                "type": [
+                  "boolean",
+                  "string"
+                ]
+              },
               "end": {
                 "description": "End time in unix milliseconds (optional). When both start and end are provided, they override timeRange.",
                 "type": [

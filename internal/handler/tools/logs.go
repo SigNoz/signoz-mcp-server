@@ -43,7 +43,7 @@ func (h *Handler) RegisterLogsHandlers(s *mcp.Server) {
 	searchLogsTool := mcp.NewTool("signoz_search_logs",
 		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description(searchContextParamDescription)),
-		mcp.WithDescription("Use this when the user wants individual log records or messages matching text, service, severity, or field filters. It returns paginated rows, not counts, trends, or grouped breakdowns; use signoz_aggregate_logs for those, and signoz_execute_builder_query only for queries this tool cannot express. Rows carry a default set of log columns; to include other attributes, such as service.name, name them in selectFields. A field missing from a row was not selected. You do not need the guide when using only searchText, service, severity, time, or pagination. Read signoz://logs/query-builder-guide before filtering on unfamiliar fields. Defaults to the last 1 hour."),
+		mcp.WithDescription("Use this when the user wants individual log records or messages matching text, service, severity, or field filters. It returns paginated rows, not counts, trends, or grouped breakdowns; use signoz_aggregate_logs for those, and signoz_execute_builder_query only for queries this tool cannot express. Rows carry a default set of log columns; to include other attributes, such as service.name, name them in selectFields, or set allFields for each row's complete record. A field missing from a row was not selected. You do not need the guide when using only searchText, service, severity, time, or pagination. Read signoz://logs/query-builder-guide before filtering on unfamiliar fields. Defaults to the last 1 hour."),
 		mcp.WithString("filter", mcp.Description(logsFilterParamDescription)),
 		mcp.WithString("service", mcp.Description(searchLogsServiceParamDescription)),
 		mcp.WithString("severity", mcp.Description(searchLogsSeverityParamDescription)),
@@ -56,6 +56,7 @@ func (h *Handler) RegisterLogsHandlers(s *mcp.Server) {
 		mcp.WithString("offset", mcp.DefaultString("0"), intOrStringType(), mcp.Description(searchLogsOffsetParamDescription)),
 		mcp.WithString("orderBy", mcp.Description(searchLogsOrderByParamDescription)),
 		mcp.WithString("selectFields", stringOrStringArrayType(), mcp.Description(logsSelectFieldsParamDescription)),
+		mcp.WithBoolean("allFields", boolOrStringType(), mcp.Description(searchLogsAllFieldsParamDescription)),
 	)
 
 	h.addTool(s, searchLogsTool, h.handleSearchLogs)
@@ -169,6 +170,9 @@ func (h *Handler) handleSearchLogs(ctx context.Context, req mcp.CallToolRequest)
 	var notes []string
 	if reqData.SearchScopeIgnored {
 		notes = append(notes, searchScopeIgnoredNote)
+	}
+	if reqData.SelectFieldsIgnored {
+		notes = append(notes, selectFieldsIgnoredNote)
 	}
 	return rawSearchResult(ctx, h.logger, "signoz_search_logs", result, reqData.Limit, reqData.Offset, reqData.LimitClamped, notes...), nil
 }
