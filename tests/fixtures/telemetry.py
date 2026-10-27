@@ -143,21 +143,30 @@ def _attr(key: str, value: str | float) -> dict:
     return {"key": key, "value": {"doubleValue": value}}
 
 
-def seed_ai_trace(service_name: str, *, model: str = "gpt-4o-mini", tool_calls: int = 12) -> str:
+def seed_ai_trace(service_name: str, *, model: str = "gpt-4o-mini", llm_calls: int = 2, tool_calls: int = 12) -> str:
     """Push one AI agent trace via OTLP/HTTP and return its trace id (hex).
 
-    The trace has an agent root span, two LLM calls on `model` with gen_ai token
-    usage and a per-call cost, and `tool_calls` calls alternating between two
-    tools, so trace.tool_call_count > 10 AND trace.distinct_tool_count < 3 holds.
-    The last tool call is marked ERROR. Cost is set on the span directly; a
-    pricing rule in SigNoz may restamp it at ingest.
+    The trace has an agent root span covering the whole trace, `llm_calls` LLM
+    calls on `model` with gen_ai token usage and a per-call cost, and
+    `tool_calls` calls alternating between two tools, so with the defaults
+    trace.tool_call_count > 10 AND trace.distinct_tool_count < 3 holds. Every
+    child span has a distinct duration. The last tool call is marked ERROR. Cost
+    is set on the span directly; a pricing rule in SigNoz may restamp it at ingest.
     """
     now = time.time_ns()
     trace_id = uuid.uuid4().hex
     root_id = uuid.uuid4().hex[:16]
     start = now - 5_000_000_000
 
-    def span(name: str, offset_ms: int, attributes: list[dict], *, parent: str = root_id, error: bool = False) -> dict:
+    def span(
+        name: str,
+        offset_ms: int,
+        duration_ms: int,
+        attributes: list[dict],
+        *,
+        parent: str = root_id,
+        error: bool = False,
+    ) -> dict:
         begin = start + offset_ms * 1_000_000
         return {
             "traceId": trace_id,
@@ -166,24 +175,27 @@ def seed_ai_trace(service_name: str, *, model: str = "gpt-4o-mini", tool_calls: 
             "name": name,
             "kind": 1,  # SPAN_KIND_INTERNAL
             "startTimeUnixNano": str(begin),
-            "endTimeUnixNano": str(begin + 50_000_000),
+            "endTimeUnixNano": str(begin + duration_ms * 1_000_000),
             "attributes": attributes,
             "status": {"code": 2 if error else 1},
         }
 
+    root_duration_ms = 400 + tool_calls * 60 + 50
     root = span(
         "invoke_agent e2e-agent",
         0,
+        root_duration_ms,
         [_attr("gen_ai.operation.name", "invoke_agent"), _attr("gen_ai.agent.name", "e2e-agent")],
         parent="",
     )
     root["spanId"] = root_id
     spans = [root]
-    for i in range(2):
+    for i in range(llm_calls):
         spans.append(
             span(
                 f"chat {model}",
                 100 + i * 100,
+                80 + i * 5,
                 [
                     _attr("gen_ai.operation.name", "chat"),
                     _attr("gen_ai.provider.name", "openai"),
@@ -200,6 +212,7 @@ def seed_ai_trace(service_name: str, *, model: str = "gpt-4o-mini", tool_calls: 
             span(
                 f"execute_tool {tool}",
                 400 + i * 60,
+                (i + 1) * 4,
                 [_attr("gen_ai.operation.name", "execute_tool"), _attr("gen_ai.tool.name", tool)],
                 error=i == tool_calls - 1,
             )

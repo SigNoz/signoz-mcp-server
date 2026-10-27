@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"strconv"
 
+	"github.com/SigNoz/signoz-mcp-server/internal/apiclient/apitypes"
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
@@ -17,20 +18,20 @@ import (
 
 // Row shapes of signoz_search_traces, sent as the query_range requestType.
 const (
-	requestTypeRaw   = "raw"
-	requestTypeTrace = "trace"
+	requestTypeRaw   = string(apitypes.Querybuildertypesv5RequestTypeRaw)
+	requestTypeTrace = string(apitypes.Querybuildertypesv5RequestTypeTrace)
 )
 
 const tracesFilterParamDescription = "Filter expression using SigNoz search syntax (see signoz://traces/query-builder-guide). search() is logs-only; traces use field predicates. Combine conditions with AND, OR, and parentheses for precedence. Unknown keys hard-error; keys present in multiple contexts default to resource context. Disambiguate with attribute.<key>, resource.<key>, or span.<key>. Discover valid keys with signoz_get_field_keys, then confirm values with signoz_get_field_values, before filtering. Examples: \"service.name = 'payment-svc' AND has_error = true\", \"http_method = 'POST' AND (has_error = true OR duration_nano > 1000000000)\"."
 
-const traceSelectFieldsDescription = "Extra fields to return on each row, added to the default set: timestamp, trace_id, span_id, parent_span_id, name, service.name, kind_string, duration_nano, has_error, status_code_string, status_message, response_status_code, http_method. Pass an array of names or a comma-separated string, at most 50. Names can be span columns (db_name), resource attributes (k8s.pod.name), or span attributes (http.route); a resource., attribute., or span. prefix picks the context. Each field comes back as its own row key. Discover names with signoz_get_field_keys (signal=\"traces\"). Example: [\"http.route\", \"db.statement\"]."
+const traceSelectFieldsDescription = "Extra fields to return on each span row, added to the default set: timestamp, trace_id, span_id, parent_span_id, name, service.name, kind_string, duration_nano, has_error, status_code_string, status_message, response_status_code, http_method. Pass an array of names or a comma-separated string, at most 50. Names can be span columns (db_name), resource attributes (k8s.pod.name), or span attributes (http.route); a resource., attribute., or span. prefix picks the context. Each field comes back as its own row key. Discover names with signoz_get_field_keys (signal=\"traces\"). Example: [\"http.route\", \"db.statement\"]."
 
 // aiTraceKeys are the per-trace AI columns SigNoz computes only for builder_ai_query.
 const aiTraceKeys = "trace.llm_call_count, trace.tool_call_count, trace.distinct_tool_count, trace.input_tokens, trace.output_tokens, trace.total_tokens, trace.estimated_total_cost, trace.max_llm_duration_nano"
 
-const searchTracesQueryTypeDescription = "Query type, copied into the query envelope. builder_query (default) searches all spans. builder_ai_query searches AI traces (traces with a gen_ai model, tool, or agent span) and also accepts these per-trace keys in filter: " + aiTraceKeys + "; builder_query returns no rows for them instead of an error. With requestType=trace, builder_ai_query rows carry estimated_total_cost, token counts, and call counts (keyed without the trace. prefix, such as llm_call_count), plus root_span_name, span_count, trace_duration_nano, error_count, and the input and output message JSON."
+const searchTracesQueryTypeDescription = "Query type. builder_query (default) searches all traces. builder_ai_query searches AI traces (traces with a gen_ai model, tool, or agent span) and also accepts these per-trace keys in filter: " + aiTraceKeys + "; builder_query returns no rows for them instead of an error. With requestType=trace, builder_ai_query rows carry estimated_total_cost, token counts, and call counts (keyed without the trace. prefix, such as llm_call_count), plus root_span_name, span_count, trace_duration_nano, error_count, and the input and output message JSON."
 
-const searchTracesRequestTypeDescription = "Row shape. raw (default) returns one row per span. trace returns one row per trace: span-level filters keep the traces with at least one matching span, and selectFields does not apply. builder_query trace rows carry trace_id, the root span name, service.name, duration_nano, and span_count (the spans matching the filter); builder_ai_query trace rows carry the per-trace columns described under queryType."
+const searchTracesRequestTypeDescription = "Row shape. raw (default) returns one row per span. trace returns one row per trace: span-level filters, including operation, error, minDuration, and maxDuration, keep the traces with at least one matching span, and selectFields does not apply. builder_query trace rows carry trace_id, the root span name, service.name, duration_nano, and span_count (the spans matching the filter); builder_ai_query trace rows carry the per-trace columns described under queryType."
 
 const searchTracesOrderByDescription = "How to order rows. Format: '<expression> <direction>', e.g. 'duration_nano desc'; the direction defaults to desc. Span rows default to 'timestamp desc' and order by span fields; SigNoz rejects trace. keys there. AI trace rows (requestType=trace, queryType=builder_ai_query) default to latest activity first and order by a per-trace key or trace.last_activity_time, e.g. 'trace.estimated_total_cost desc'. builder_query trace rows always come back slowest first; SigNoz ignores orderBy for them."
 
@@ -41,7 +42,7 @@ func (h *Handler) RegisterTracesHandlers(s *mcp.Server) {
 	aggregateTracesTool := mcp.NewTool("signoz_aggregate_traces",
 		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
-		mcp.WithDescription("Use this when the user wants custom aggregate statistics over spans (counts, rates, latency percentiles, grouped/top-N breakdowns, or time series) rather than individual span rows or a full trace hierarchy. For the built-in operation table for one traced service, ranked by p99, use signoz_get_service_top_operations. Use signoz_search_traces for raw spans or trace-ID discovery, and signoz_get_trace_details for one known trace ID. Before calling, read signoz://traces/query-builder-guide; discover unfamiliar workspace fields with signoz_get_field_keys. Defaults to the last 1 hour."),
+		mcp.WithDescription("Use this when the user wants custom aggregate statistics over spans (counts, rates, latency percentiles, grouped/top-N breakdowns, or time series) rather than individual span rows or a full trace hierarchy. For the built-in operation table for one traced service, ranked by p99, use signoz_get_service_top_operations. Use signoz_search_traces for raw spans, trace-ID discovery, or one row per trace (such as the most expensive AI traces), and signoz_get_trace_details for one known trace ID. Before calling, read signoz://traces/query-builder-guide; discover unfamiliar workspace fields with signoz_get_field_keys. Defaults to the last 1 hour."),
 		mcp.WithString("aggregation", mcp.Required(), mcp.Description("Aggregation function to apply. One of: count, count_distinct, avg, sum, min, max, p50, p75, p90, p95, p99, rate")),
 		mcp.WithString("aggregateOn", mcp.Description("Field name to aggregate on (e.g., 'duration_nano'). Required for all aggregations except count and rate.")),
 		mcp.WithString("groupBy", mcp.Description("Comma-separated list of field names to group results by (e.g., 'service.name' or 'service.name, name'). Leave empty for a single aggregate value.")),
@@ -157,8 +158,8 @@ func (h *Handler) handleSearchTraces(ctx context.Context, req mcp.CallToolReques
 		return errorWithCode(CodeValidationFailed, err.Error()), nil
 	}
 
-	// Like an out-of-enum queryType, an out-of-enum requestType runs best-effort
-	// (here as span rows) and the schema validation notice flags it.
+	// Out-of-enum requestType and queryType values run best-effort (span rows,
+	// builder_query) and the schema validation notice flags them.
 	build := querybuilder.SpanSearch
 	if reqData.RequestType == requestTypeTrace {
 		build = querybuilder.TraceList

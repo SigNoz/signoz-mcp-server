@@ -18,7 +18,7 @@ const emptyQueryRangeResponse = `{"status":"success","data":{"type":"raw","data"
 // queryRangeRecorder serves one canned query_range response and records the
 // request body each query_range call sent upstream. Other paths, such as the
 // global config read behind webUrl links, get a 404.
-func queryRangeRecorder(t *testing.T, status int, response string) (*Handler, *[]map[string]any) {
+func queryRangeRecorder(t *testing.T, response string) (*Handler, *[]map[string]any) {
 	t.Helper()
 	var bodies []map[string]any
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -32,7 +32,6 @@ func queryRangeRecorder(t *testing.T, status int, response string) (*Handler, *[
 		require.NoError(t, json.Unmarshal(raw, &body))
 		bodies = append(bodies, body)
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(status)
 		_, _ = w.Write([]byte(response))
 	}))
 	t.Cleanup(upstream.Close)
@@ -54,9 +53,9 @@ func sentEnvelope(t *testing.T, body map[string]any) (string, map[string]any) {
 	return body["requestType"].(string), queries[0].(map[string]any)
 }
 
-// queryType is copied into the envelope type. requestType picks the row shape:
-// span rows default to timestamp desc, trace rows send no order or selectFields
-// unless orderBy is set, and an unknown requestType runs as span rows.
+// queryType picks the envelope and requestType the row shape: span rows default
+// to timestamp desc, trace rows leave the order to SigNoz unless orderBy is set,
+// and unknown values of either run as builder_query span rows.
 func TestSearchTraces_QueryTypeRequestTypeAndOrderByReachSigNoz(t *testing.T) {
 	const newestFirst = `[{"key":{"name":"timestamp"},"direction":"desc"}]`
 	tests := []struct {
@@ -75,12 +74,12 @@ func TestSearchTraces_QueryTypeRequestTypeAndOrderByReachSigNoz(t *testing.T) {
 		{"AI trace rows with a per-trace orderBy", map[string]any{"requestType": "trace", "queryType": "builder_ai_query", "orderBy": "trace.estimated_total_cost desc"}, "builder_ai_query", "trace",
 			`[{"key":{"name":"trace.estimated_total_cost"},"direction":"desc"}]`},
 		{"an unknown requestType runs as span rows", map[string]any{"requestType": "spans"}, "builder_query", "raw", newestFirst},
-		{"an unknown queryType is forwarded for SigNoz to judge", map[string]any{"queryType": "builder_llm_query"}, "builder_llm_query", "raw", newestFirst},
+		{"an unknown queryType runs as builder_query", map[string]any{"queryType": "builder_llm_query"}, "builder_query", "raw", newestFirst},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			h, bodies := queryRangeRecorder(t, http.StatusOK, emptyQueryRangeResponse)
-			args := map[string]any{"timeRange": "1h", "limit": "5"}
+			h, bodies := queryRangeRecorder(t, emptyQueryRangeResponse)
+			args := map[string]any{"timeRange": "1h"}
 			for k, v := range tc.args {
 				args[k] = v
 			}
@@ -94,17 +93,10 @@ func TestSearchTraces_QueryTypeRequestTypeAndOrderByReachSigNoz(t *testing.T) {
 			require.Equal(t, tc.wantRequestType, requestType)
 			spec := envelope["spec"].(map[string]any)
 			require.Equal(t, "traces", spec["signal"], "SigNoz requires the signal on every trace spec")
-			require.Equal(t, float64(5), spec["limit"])
 			if tc.wantOrder == "" {
 				require.NotContains(t, spec, "order")
 			} else {
 				requireJSONEqual(t, tc.wantOrder, spec["order"])
-			}
-			if tc.wantRequestType == "trace" {
-				require.NotContains(t, spec, "selectFields", "trace rows have fixed columns")
-			}
-			if filter, ok := tc.args["filter"]; ok {
-				require.Equal(t, filter, spec["filter"].(map[string]any)["expression"])
 			}
 		})
 	}

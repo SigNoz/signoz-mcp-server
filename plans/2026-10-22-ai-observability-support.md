@@ -122,8 +122,9 @@ pagination contract.
 ### 2026-10-27 — `requestType` on `signoz_search_traces`
 
 - Decision: `requestType` (`raw` default, `trace`) picks span or trace rows, independent of
-  `queryType`; search takes a guardrail exception at 16 parameters. An out-of-enum value runs as
-  `raw` with the validation notice, like an out-of-enum `queryType` on field keys.
+  `queryType`; search takes a guardrail exception at 16 parameters. Out-of-enum `requestType` and
+  `queryType` values run as `raw` `builder_query` with the validation notice, like an
+  out-of-enum `queryType` on field keys.
 - Rationale: `requestType: trace` is not AI-specific (it is the Traces tab list for
   `builder_query`), so tying it to `queryType` would couple row shape to the data source.
 - Alternatives rejected: inferring trace rows from `trace.*` keys (fails for AI questions with no
