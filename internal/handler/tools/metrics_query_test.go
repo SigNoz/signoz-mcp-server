@@ -107,3 +107,16 @@ func TestParseMetricMetadataFromResponse_PartialFieldDrift(t *testing.T) {
 		})
 	}
 }
+
+// The metrics search matches substrings, so a longer neighbor's row must never
+// stand in for the requested name and lend it the wrong type.
+func TestParseMetricMetadataFromResponse_SubstringMatchIsNotTheMetric(t *testing.T) {
+	body := `{"status":"success","data":{"metrics":[{"metricName":"http_requests_total","type":"sum","temporality":"cumulative","isMonotonic":true}]}}`
+	meta, err := parseMetricMetadataFromResponse(json.RawMessage(body), "http_requests")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if meta != nil {
+		t.Fatalf("a substring match was used as the metric: %+v", meta)
+	}
+}

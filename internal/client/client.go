@@ -465,6 +465,16 @@ func (s *SigNoz) ListMetrics(ctx context.Context, start, end int64, limit int, s
 	})
 }
 
+// GetMetricMetadata returns one metric's type, temporality, and monotonicity
+// by exact name. SigNoz answers 404 when it has no metadata for the name.
+func (s *SigNoz) GetMetricMetadata(ctx context.Context, metricName string) (json.RawMessage, error) {
+	params := &apiclient.GetMetricMetadataParams{MetricName: metricName}
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching metric metadata", slog.String("metricName", metricName))
+	return s.callAPI(ctx, DefaultQueryTimeout, func(ctx context.Context, api *apiclient.Client) (*http.Response, error) {
+		return api.GetMetricMetadata(ctx, params)
+	})
+}
+
 // ListAlerts lists alert instances. The SigNoz spec does not yet document the
 // Alertmanager filter parameters of GET /api/v1/alerts, so they are appended to
 // the generated request.
