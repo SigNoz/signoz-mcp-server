@@ -58,6 +58,7 @@ type formulaSubQuery struct {
 	SpaceAggregation string   `json:"spaceAggregation,omitempty" jsonschema:"Aggregation across series: sum, avg, min, max, count, or p50 to p99 for histograms. Defaulted by metric type."`
 	GroupBy          []string `json:"groupBy,omitempty" jsonschema:"Field names to group by, as an array or a comma-separated string. Use the same groupBy as the primary query so the formula can match series."`
 	Filter           string   `json:"filter,omitempty" jsonschema:"Filter expression, for example \"service.name = 'checkout'\"."`
+	ReduceTo         string   `json:"reduceTo,omitempty" jsonschema:"Required when requestType is scalar: how to reduce each series to one value (last, max, min, avg, sum, count, or median)."`
 }
 
 // formulaSubQuerySchema is the formulaQueries item schema, derived from
@@ -170,7 +171,7 @@ func parseMetricsQueryArgs(args map[string]any) (*metricsQueryRequest, error) {
 				return nil, fmt.Errorf("invalid formulaQueries: %w", err)
 			}
 			if err := json.Unmarshal(data, &req.FormulaQueries); err != nil {
-				return nil, fmt.Errorf(`%s "formulaQueries" has the wrong shape: %v; each item is {name, metricName, metricType, isMonotonic, temporality, timeAggregation, spaceAggregation, groupBy, filter}`, validationErrorPrefix, err)
+				return nil, fmt.Errorf(`%s "formulaQueries" has the wrong shape: %v; each item is {name, metricName, metricType, isMonotonic, temporality, timeAggregation, spaceAggregation, reduceTo, groupBy, filter}`, validationErrorPrefix, err)
 			}
 		}
 	}

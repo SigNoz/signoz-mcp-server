@@ -107,7 +107,13 @@ def test_metadata_lookup_matches_the_exact_name(mcp_client: MCPClient, test_id: 
     def resolved() -> dict:
         result = mcp_client.call_tool(
             "signoz_query_metrics",
-            {"searchContext": f"query {gauge}", "metricName": gauge, "timeRange": "1h", "requestType": "scalar"},
+            {
+                "searchContext": f"query {gauge}",
+                "metricName": gauge,
+                "timeRange": "1h",
+                "requestType": "scalar",
+                "reduceTo": "last",
+            },
         )
         return {} if result.get("isError", False) else result
 
@@ -123,3 +129,19 @@ def test_metadata_lookup_matches_the_exact_name(mcp_client: MCPClient, test_id: 
     assert missing.get("isError", False), f"the prefix of {gauge} resolved as a metric: {note_blocks(missing)}"
     assert result_code(missing) == "VALIDATION_FAILED", f"unexpected code: {missing}"
     assert "Search for the right name with signoz_list_metrics" in first_text_block(missing), first_text_block(missing)
+
+
+def test_scalar_requires_an_explicit_reduce_to(mcp_client: MCPClient, test_id: str, telemetry: None) -> None:
+    """Pins the reduceTo contract the tool teaches: no default, and SigNoz rejects a scalar query without it."""
+    result = mcp_client.call_tool(
+        "signoz_query_metrics",
+        {
+            "searchContext": "scalar query without a reducer",
+            "metricName": f"mcp_e2e_reduce_{test_id.replace('-', '_')}",
+            "metricType": "gauge",
+            "requestType": "scalar",
+            "timeRange": "1h",
+        },
+    )
+    assert result.get("isError", False), f"a scalar query without reduceTo ran: {first_text_block(result)[:400]}"
+    assert "reduceTo is required" in first_text_block(result), first_text_block(result)[:400]

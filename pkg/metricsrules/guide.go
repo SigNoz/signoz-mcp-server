@@ -44,20 +44,25 @@ Values: sum, avg, min, max, count, and p50, p75, p90, p95, p99 for histograms.
 | histogram, exponential_histogram | **p99** |
 | summary | no default; set it |
 
-### ReduceTo (only for requestType=scalar — collapses time dimension to a single value)
+### ReduceTo (requestType=scalar only, and required there)
 
-| Metric Type | Default reduceTo |
+reduceTo collapses each series to one value: last, max, min, avg, sum, count, median. There is no
+default, because the metric type cannot say what the question asks:
+
+| Question | reduceTo |
 |---|---|
-| gauge | avg |
-| sum (monotonic) | sum |
-| sum (non-monotonic) | avg |
-| histogram | avg |
+| Current value | last |
+| Peak | max |
+| Typical value | avg |
+| Total count over the window | sum, with timeAggregation increase on a counter |
 
-Valid reduceTo values: sum, count, avg, min, max, last, median
+Summing a rate series is not a total count, and averaging per-bucket percentiles is not a
+whole-window percentile. Each formula input query in a scalar request needs its own reduceTo.
 
 ### What SigNoz rejects
 
 - A percentile spaceAggregation (p50 to p99) on anything but a histogram.
+- A scalar request whose metric queries lack reduceTo.
 - An exponential histogram that is not delta temporality.
 
 ---
