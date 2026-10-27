@@ -7278,7 +7278,7 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user wants individual raw span rows matching service, operation, error, duration, or field filters, or needs to discover trace IDs. It returns paginated spans, not aggregate trends/groups or a full trace hierarchy; use signoz_aggregate_traces for statistics and signoz_get_trace_details for one known trace ID. Rows carry a default set of span fields; name other fields in selectFields. A field missing from a row was not selected, so do not read it as absent from the span. Read signoz://traces/query-builder-guide before using unfamiliar workspace fields. Defaults to the last 1 hour.",
+          "description": "Use this when the user wants individual span rows matching service, operation, error, duration, or field filters, needs to discover trace IDs, or wants one row per trace (requestType=trace), such as the slowest traces or the most expensive AI traces. It returns paginated rows, not aggregate trends/groups or a full trace hierarchy; use signoz_aggregate_traces for statistics and signoz_get_trace_details for one known trace ID. Span rows carry a default set of span fields; name other fields in selectFields. A field missing from a row was not selected, so do not read it as absent from the span. Read signoz://traces/query-builder-guide before using unfamiliar workspace fields. To search AI traces, including by per-trace cost, token, or call counts, set queryType to builder_ai_query. Defaults to the last 1 hour.",
           "inputSchema": {
             "properties": {
               "end": {
@@ -7301,7 +7301,7 @@
               },
               "limit": {
                 "default": "100",
-                "description": "Maximum number of span rows to return (default: 100, max: 10000; higher values are clamped; paginate with offset).",
+                "description": "Maximum number of rows to return (default: 100, max: 10000; higher values are clamped; paginate with offset).",
                 "type": [
                   "integer",
                   "string"
@@ -7317,7 +7317,7 @@
               },
               "offset": {
                 "default": "0",
-                "description": "Number of span rows to skip for pagination (default: 0).",
+                "description": "Number of rows to skip for pagination (default: 0).",
                 "type": [
                   "integer",
                   "string"
@@ -7325,6 +7325,28 @@
               },
               "operation": {
                 "description": "Operation/span name to filter by.",
+                "type": "string"
+              },
+              "orderBy": {
+                "description": "How to order rows. Format: '\u003cexpression\u003e \u003cdirection\u003e', e.g. 'duration_nano desc'; the direction defaults to desc. Span rows default to 'timestamp desc' and order by span fields; SigNoz rejects trace. keys there. AI trace rows (requestType=trace, queryType=builder_ai_query) default to latest activity first and order by a per-trace key or trace.last_activity_time, e.g. 'trace.estimated_total_cost desc'. builder_query trace rows always come back slowest first; SigNoz ignores orderBy for them.",
+                "type": "string"
+              },
+              "queryType": {
+                "default": "builder_query",
+                "description": "Query type, copied into the query envelope. builder_query (default) searches all spans. builder_ai_query searches AI traces (traces with a gen_ai model, tool, or agent span) and also accepts these per-trace keys in filter: trace.llm_call_count, trace.tool_call_count, trace.distinct_tool_count, trace.input_tokens, trace.output_tokens, trace.total_tokens, trace.estimated_total_cost, trace.max_llm_duration_nano; builder_query returns no rows for them instead of an error. With requestType=trace, builder_ai_query rows carry estimated_total_cost, token counts, and call counts (keyed without the trace. prefix, such as llm_call_count), plus root_span_name, span_count, trace_duration_nano, error_count, and the input and output message JSON.",
+                "enum": [
+                  "builder_query",
+                  "builder_ai_query"
+                ],
+                "type": "string"
+              },
+              "requestType": {
+                "default": "raw",
+                "description": "Row shape. raw (default) returns one row per span. trace returns one row per trace: span-level filters keep the traces with at least one matching span, and selectFields does not apply. builder_query trace rows carry trace_id, the root span name, service.name, duration_nano, and span_count (the spans matching the filter); builder_ai_query trace rows carry the per-trace columns described under queryType.",
+                "enum": [
+                  "raw",
+                  "trace"
+                ],
                 "type": "string"
               },
               "searchContext": {

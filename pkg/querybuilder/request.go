@@ -148,28 +148,106 @@ func LogsSearch(start, end int64, filter string, limit, offset int) (Request, er
 	return newRequest(start, end, "raw", []apitypes.Querybuildertypesv5QueryEnvelope{envelope}), nil
 }
 
-// TracesSearch builds the raw span-row request signoz_search_traces and
-// signoz_get_trace_details send, newest span first.
-func TracesSearch(start, end int64, filter string, limit, offset int, selectFields []FieldKey) (Request, error) {
-	envelope, err := builderEnvelope(func(spec *apitypes.Querybuildertypesv5BuilderQuerySpec) error {
-		query := traceQuery{
-			Name:     new("A"),
-			Disabled: new(false),
-			Filter:   filterOf(filter),
-			Limit:    new(limit),
-			Offset:   new(offset),
-			Order:    &[]orderBy{newOrderBy("timestamp", "desc")},
-			Having:   emptyHaving(),
-		}
-		if len(selectFields) > 0 {
-			query.SelectFields = new(append([]FieldKey(nil), selectFields...))
-		}
-		return spec.FromQuerybuildertypesv5QueryBuilderQueryGithubComSigNozSignozPkgTypesQuerybuildertypesQuerybuildertypesv5TraceAggregation(query)
-	})
+// Query envelope types the trace tools send. builder_ai_query runs over AI traces
+// (traces with a gen_ai model, tool, or agent span).
+const (
+	QueryTypeBuilder   = string(apitypes.Querybuildertypesv5QueryTypeBuilderQuery)
+	QueryTypeBuilderAI = string(apitypes.Querybuildertypesv5QueryTypeBuilderAiQuery)
+)
+
+// TraceSearchOptions describes one span or trace search.
+type TraceSearchOptions struct {
+	Filter       string
+	Limit        int
+	Offset       int
+	SelectFields []FieldKey
+	// QueryType is copied into the envelope type; "" means builder_query.
+	QueryType string
+	// OrderExpr and OrderDir set the order; an empty OrderExpr keeps the default.
+	OrderExpr string
+	OrderDir  string
+}
+
+// SpanSearch builds the raw request signoz_search_traces and
+// signoz_get_trace_details send: one row per span, newest first unless
+// OrderExpr is set. With builder_ai_query the spans come from AI traces.
+func SpanSearch(start, end int64, opts TraceSearchOptions) (Request, error) {
+	order := newOrderBy("timestamp", "desc")
+	if opts.OrderExpr != "" {
+		order = newOrderBy(opts.OrderExpr, opts.OrderDir)
+	}
+	query := traceQuery{
+		Name:     new("A"),
+		Disabled: new(false),
+		Filter:   filterOf(opts.Filter),
+		Limit:    new(opts.Limit),
+		Offset:   new(opts.Offset),
+		Order:    &[]orderBy{order},
+		Having:   emptyHaving(),
+	}
+	if len(opts.SelectFields) > 0 {
+		query.SelectFields = new(append([]FieldKey(nil), opts.SelectFields...))
+	}
+	envelope, err := traceEnvelope(opts.QueryType, query)
 	if err != nil {
 		return Request{}, err
 	}
 	return newRequest(start, end, "raw", []apitypes.Querybuildertypesv5QueryEnvelope{envelope}), nil
+}
+
+// TraceList builds a trace request: one row per trace, with fixed columns, so
+// it sends no selectFields. SigNoz picks the order unless OrderExpr is set.
+func TraceList(start, end int64, opts TraceSearchOptions) (Request, error) {
+	query := traceQuery{
+		Name:     new("A"),
+		Disabled: new(false),
+		Filter:   filterOf(opts.Filter),
+		Limit:    new(opts.Limit),
+		Offset:   new(opts.Offset),
+		Having:   emptyHaving(),
+	}
+	if opts.OrderExpr != "" {
+		query.Order = &[]orderBy{newOrderBy(opts.OrderExpr, opts.OrderDir)}
+	}
+	envelope, err := traceEnvelope(opts.QueryType, query)
+	if err != nil {
+		return Request{}, err
+	}
+	return newRequest(start, end, "trace", []apitypes.Querybuildertypesv5QueryEnvelope{envelope}), nil
+}
+
+// traceEnvelope wraps a trace query in the envelope queryType names. The
+// builder_ai_query spec is the trace query itself, so its signal is set here;
+// any other non-empty value is sent as the envelope type for SigNoz to judge.
+func traceEnvelope(queryType string, query traceQuery) (apitypes.Querybuildertypesv5QueryEnvelope, error) {
+	var envelope apitypes.Querybuildertypesv5QueryEnvelope
+	if queryType == QueryTypeBuilderAI {
+		query.Signal = apitypes.Querybuildertypesv5QueryBuilderQueryGithubComSigNozSignozPkgTypesQuerybuildertypesQuerybuildertypesv5TraceAggregationSignalTraces
+		err := envelope.FromQuerybuildertypesv5QueryEnvelopeBuilderAI(apitypes.Querybuildertypesv5QueryEnvelopeBuilderAI{Spec: &query})
+		return envelope, err
+	}
+	envelope, err := builderEnvelope(func(spec *apitypes.Querybuildertypesv5BuilderQuerySpec) error {
+		return spec.FromQuerybuildertypesv5QueryBuilderQueryGithubComSigNozSignozPkgTypesQuerybuildertypesQuerybuildertypesv5TraceAggregation(query)
+	})
+	if err != nil || queryType == "" || queryType == QueryTypeBuilder {
+		return envelope, err
+	}
+	body, err := envelope.MarshalJSON()
+	if err != nil {
+		return envelope, err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(body, &fields); err != nil {
+		return envelope, err
+	}
+	if fields["type"], err = json.Marshal(queryType); err != nil {
+		return envelope, err
+	}
+	if body, err = json.Marshal(fields); err != nil {
+		return envelope, err
+	}
+	err = envelope.UnmarshalJSON(body)
+	return envelope, err
 }
 
 // Aggregate builds the grouped request signoz_aggregate_logs and

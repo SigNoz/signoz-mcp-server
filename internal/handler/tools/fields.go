@@ -6,6 +6,8 @@ import (
 	"log/slog"
 
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
+
+	"github.com/SigNoz/signoz-mcp-server/pkg/querybuilder"
 )
 
 const fieldContextParamDesc = "Restrict results to a single field context (optional). Valid values: " +
@@ -20,11 +22,6 @@ const fieldDataTypeParamDesc = "Restrict results to a single field data type (op
 	"Valid values: 'string', 'bool', 'int64', 'float64', 'number'. " +
 	"SigNoz treats an array form like '[]string' as its element type."
 
-const (
-	queryTypeBuilder   = "builder_query"
-	queryTypeBuilderAI = "builder_ai_query"
-)
-
 func (h *Handler) RegisterFieldsHandlers(s *mcp.Server) {
 	h.logger.Debug("Registering fields handlers")
 
@@ -38,7 +35,7 @@ func (h *Handler) RegisterFieldsHandlers(s *mcp.Server) {
 		mcp.WithString("fieldContext", mcp.Enum("resource", "attribute", "scope", "log", "span", "metric", "trace", "body"), mcp.Description(fieldContextParamDesc+" 'trace' (fields of a whole trace rather than one span, such as values computed over all of its spans; write them with the trace. prefix in queries).")),
 		mcp.WithString("fieldDataType", mcp.Description(fieldDataTypeParamDesc)),
 		mcp.WithString("source", mcp.Description("For signal=metrics, set \"meter\" to discover Cost Meter fields; omit for the default metrics store. Omit for logs and traces.")),
-		mcp.WithString("queryType", mcp.DefaultString(queryTypeBuilder), mcp.Enum(queryTypeBuilder, queryTypeBuilderAI), mcp.Description("'builder_query' (default) lists the fields of signal. Set 'builder_ai_query' for AI observability queries; it also lists the trace-level fields, such as trace.estimated_total_cost, and gen_ai.* attributes.")),
+		mcp.WithString("queryType", mcp.DefaultString(querybuilder.QueryTypeBuilder), mcp.Enum(querybuilder.QueryTypeBuilder, querybuilder.QueryTypeBuilderAI), mcp.Description("'builder_query' (default) lists the fields of signal. Set 'builder_ai_query' for AI observability queries; it also lists the trace-level fields, such as trace.estimated_total_cost, and gen_ai.* attributes.")),
 	)
 
 	h.addTool(s, getFieldKeysTool, h.handleGetFieldKeys)
@@ -80,7 +77,7 @@ func (h *Handler) handleGetFieldKeys(ctx context.Context, req mcp.CallToolReques
 	var result json.RawMessage
 	// Like an out-of-enum signal, an out-of-enum queryType runs best-effort (here on the
 	// default endpoint) and the schema validation notice flags it.
-	if queryType == queryTypeBuilderAI {
+	if queryType == querybuilder.QueryTypeBuilderAI {
 		result, err = client.GetAIFieldKeys(ctx, searchText, fieldContext, fieldDataType)
 	} else {
 		result, err = client.GetFieldKeys(ctx, signal, metricName, searchText, fieldContext, fieldDataType, source)

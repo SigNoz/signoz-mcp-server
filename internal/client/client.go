@@ -677,7 +677,11 @@ func (s *SigNoz) GetTraceDetails(ctx context.Context, traceID string, includeSpa
 	filterExpression := fmt.Sprintf("trace_id = '%s'", traceID)
 	limit := 1000
 
-	queryPayload, err := querybuilder.TracesSearch(startTime, endTime, filterExpression, limit, 0, querybuilder.TraceDetailSelectFields)
+	queryPayload, err := querybuilder.SpanSearch(startTime, endTime, querybuilder.TraceSearchOptions{
+		Filter:       filterExpression,
+		Limit:        limit,
+		SelectFields: querybuilder.TraceDetailSelectFields,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to build query payload: %w", err)
 	}

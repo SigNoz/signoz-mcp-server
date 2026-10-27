@@ -457,7 +457,7 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 | `signoz_aggregate_logs` | Aggregate log statistics and grouped or top-N breakdowns |
 | `signoz_search_logs` | Return individual log records matching filters |
 | `signoz_aggregate_traces` | Aggregate span statistics and grouped or top-N breakdowns |
-| `signoz_search_traces` | Return individual span rows or discover trace IDs |
+| `signoz_search_traces` | Return span rows or one row per trace (including AI traces), or discover trace IDs |
 | `signoz_get_trace_details` | Get one known trace with all spans and hierarchy |
 | `signoz_execute_builder_query` | Query Builder v5 requests the dedicated tools cannot express |
 | `signoz_list_notification_channels` | List channel IDs, names, and display names without provider settings |
@@ -885,7 +885,7 @@ Get observed values for a known field key. Use `signoz_get_field_keys` when the 
 
 #### `signoz_search_traces`
 
-Return individual paginated span rows matching service, operation, error, duration, or field filters, and use them to discover trace IDs. Use `signoz_aggregate_traces` for statistics or `signoz_get_trace_details` for one known trace.
+Return individual paginated span rows matching service, operation, error, duration, or field filters, and use them to discover trace IDs. With `requestType: trace` it returns one row per trace instead. With `queryType: builder_ai_query` it searches AI traces, also filters on per-trace cost, token, and call counts, and its trace rows carry those per-trace values. Use `signoz_aggregate_traces` for statistics or `signoz_get_trace_details` for one known trace.
 
 - **Parameters**:
   - `filter` (optional) - Filter expression using SigNoz search syntax. Combine conditions with AND, OR, and parentheses (e.g., "service.name = 'payment-svc' AND (has_error = true OR attribute.http.response.status_code >= 500)"). Legacy `query` is still accepted for backward compatibility, but `filter` is canonical. See `signoz://traces/query-builder-guide`
@@ -899,7 +899,9 @@ Return individual paginated span rows matching service, operation, error, durati
   - `offset` (optional) - Number of span rows to skip (default: 0)
   - `selectFields` (optional) - Extra fields to return on each row, added to the default set. An array of field names or a comma-separated string, at most 50. Names can be span columns (`db_name`), resource attributes (`k8s.pod.name`), or span attributes (`http.route`); a `resource.`, `attribute.`, or `span.` prefix picks the context. Discover names with `signoz_get_field_keys` (`signal="traces"`)
   - **Default fields**: each row carries `timestamp`, `trace_id`, `span_id`, `parent_span_id`, `name`, `service.name`, `kind_string`, `duration_nano`, `has_error`, `status_code_string`, `status_message`, `response_status_code`, and `http_method`, plus any `selectFields`. Every field is a flat row key; a field missing from a row was not selected
-  - **Ordering**: generated raw trace queries use `timestamp desc`.
+  - `orderBy` (optional) - Order as `'<expression> <direction>'` (e.g. `'duration_nano desc'`; direction defaults to `desc`). Span rows default to `timestamp desc` and order by span fields; SigNoz rejects the per-trace `trace.` keys there. AI trace rows default to latest activity first and order by a per-trace key or `trace.last_activity_time`, e.g. `'trace.estimated_total_cost desc'`. `builder_query` trace rows always come back slowest first; SigNoz ignores `orderBy` for them
+  - `queryType` (optional) - `builder_query` (default; all traces) or `builder_ai_query` (AI traces). Copied into the query envelope `type` without local checks; SigNoz validates it. `builder_ai_query` also accepts `trace.llm_call_count`, `trace.tool_call_count`, `trace.distinct_tool_count`, `trace.input_tokens`, `trace.output_tokens`, `trace.total_tokens`, `trace.estimated_total_cost`, and `trace.max_llm_duration_nano` in `filter`, e.g. `trace.tool_call_count > 10`; `builder_query` returns no rows for them instead of an error. With `requestType: trace`, AI trace rows carry `estimated_total_cost`, token counts, and call counts (without the `trace.` prefix), plus `root_span_name`, `span_count`, `trace_duration_nano`, `error_count`, and the input and output message JSON
+  - `requestType` (optional) - `raw` (default; one row per span) or `trace` (one row per trace). Span-level filters keep the traces with at least one matching span, and `selectFields` does not apply to trace rows. `builder_query` trace rows carry `trace_id`, the root span `name`, `service.name`, `duration_nano`, and `span_count` (the spans matching the filter). An unknown value runs as `raw` with an input validation notice
   - **Completeness note**: the response appends a note reporting `hasMore` (inferred from `returnedRows == limit`) and the `nextOffset` to fetch, so a truncated page is never mistaken for the full result set
   - **Output note**: raw result row keys follow canonical Query Builder field names (for example `trace_id`, `span_id`, `duration_nano`, `has_error`). Legacy caller-provided filters such as `hasError` still pass through to the backend alias layer, but new response parsers should read the canonical snake_case keys.
   - **Key-not-found errors**: a filter referencing a key absent from this workspace's traces metadata fails with recovery guidance in the error text plus a machine-readable `missingKeys` array in the structured error content

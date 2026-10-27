@@ -23,8 +23,8 @@ func TestLogsSearch_OrdersByTimestampThenIDForStablePagination(t *testing.T) {
 	requireJSONEqual(t, `[{"key":{"name":"timestamp"},"direction":"desc"},{"key":{"name":"id"},"direction":"desc"}]`, spec["order"])
 }
 
-func TestTracesSearch_PropagatesOffsetAndSelectsNoDeprecatedFields(t *testing.T) {
-	request, err := TracesSearch(1000, 2000, "service.name = 'x'", 50, 25, TraceDetailSelectFields)
+func TestSpanSearch_PropagatesOffsetAndSelectsNoDeprecatedFields(t *testing.T) {
+	request, err := SpanSearch(1000, 2000, TraceSearchOptions{Filter: "service.name = 'x'", Limit: 50, Offset: 25, SelectFields: TraceDetailSelectFields})
 	require.NoError(t, err)
 	spec := builtSpec(t, request, 0)
 	require.Equal(t, float64(50), spec["limit"])

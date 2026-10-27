@@ -235,20 +235,9 @@ func parseAggregateArgs(args map[string]any, signal string, filterExpr string) (
 		}
 	}
 
-	orderByRaw, _ := args["orderBy"].(string)
-	orderByStr := strings.TrimSpace(orderByRaw)
-	orderExpr, orderDir := aggregationExpr, "desc"
-	if orderByStr != "" {
-		lower := strings.ToLower(orderByStr)
-		switch {
-		case strings.HasSuffix(lower, " asc"):
-			orderExpr = strings.TrimSpace(orderByStr[:len(orderByStr)-4])
-			orderDir = "asc"
-		case strings.HasSuffix(lower, " desc"):
-			orderExpr = strings.TrimSpace(orderByStr[:len(orderByStr)-5])
-		default:
-			orderExpr = orderByStr
-		}
+	orderExpr, orderDir := parseOrderBy(args)
+	if orderExpr == "" {
+		orderExpr, orderDir = aggregationExpr, "desc"
 	}
 
 	limit, err := intArg(args, "limit", querybuilder.DefaultAggregateQueryLimit)
@@ -291,6 +280,26 @@ func parseAggregateArgs(args map[string]any, signal string, filterExpr string) (
 		StepInterval:        stepInterval,
 		StepIntervalWarning: stepIntervalWarning,
 	}, nil
+}
+
+// parseOrderBy splits an "orderBy" argument of the form '<expression> <direction>'.
+// It returns an empty expression when orderBy is absent; the direction defaults
+// to desc.
+func parseOrderBy(args map[string]any) (expression, direction string) {
+	raw, _ := args["orderBy"].(string)
+	orderBy := strings.TrimSpace(raw)
+	if orderBy == "" {
+		return "", ""
+	}
+	lower := strings.ToLower(orderBy)
+	switch {
+	case strings.HasSuffix(lower, " asc"):
+		return strings.TrimSpace(orderBy[:len(orderBy)-4]), "asc"
+	case strings.HasSuffix(lower, " desc"):
+		return strings.TrimSpace(orderBy[:len(orderBy)-5]), "desc"
+	default:
+		return orderBy, "desc"
+	}
 }
 
 func aggregateGroupByField(signal, name string) querybuilder.FieldKey {

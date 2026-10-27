@@ -91,6 +91,26 @@ var GrandfatheredWideSchemaProperties = map[string][]string{
 		"timeAggregation",
 		"timeRange",
 	},
+	// requestType (trace for one row per trace) was added on purpose: a separate
+	// trace-list tool would repeat the filter, time, and paging parameters.
+	"signoz_search_traces": {
+		"end",
+		"error",
+		"filter",
+		"limit",
+		"maxDuration",
+		"minDuration",
+		"offset",
+		"operation",
+		"orderBy",
+		"queryType",
+		"requestType",
+		"searchContext",
+		"selectFields",
+		"service",
+		"start",
+		"timeRange",
+	},
 	"signoz_update_alert": {
 		"alert",
 		"alertType",
