@@ -9,7 +9,6 @@ import (
 
 	"github.com/SigNoz/signoz-mcp-server/internal/client"
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
-	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/SigNoz/signoz-mcp-server/pkg/notificationchannel"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
@@ -340,8 +339,8 @@ func unknownNotificationTestResult() map[string]any {
 }
 
 func (h *Handler) logNotificationChannelFailure(ctx context.Context, msg string, err error, attrs ...slog.Attr) {
-	level := logpkg.LevelForError(err)
-	if level != slog.LevelError {
+	level := upstreamFailureLevel(err)
+	if level == slog.LevelDebug {
 		msg += " (request cancelled by client)"
 	}
 	args := make([]any, 0, len(attrs)+2)

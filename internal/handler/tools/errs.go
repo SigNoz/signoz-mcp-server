@@ -243,15 +243,25 @@ func notAConfigObjectError() *mcp.CallToolResult {
 	return errorWithCode(CodeValidationFailed, notAConfigObjectMessage)
 }
 
-// logUpstreamFailure logs a failed outbound call (SigNoz backend, template
-// fetch) at a severity derived from its cause: context.Canceled — the MCP
-// client disconnected or aborted the request mid-flight — logs at DEBUG with a
-// cancellation note, while everything else, including context.DeadlineExceeded
-// (a real operational signal), stays ERROR. The record is always emitted at
-// the chosen level, never dropped (fail open, never fail silent).
-func (h *Handler) logUpstreamFailure(ctx context.Context, msg string, err error, attrs ...slog.Attr) {
+// upstreamFailureLevel picks the severity for a failed outbound call:
+// context.Canceled (the MCP client went away) is DEBUG, a 4xx is WARN because
+// SigNoz rejected the caller's input or credentials and the tool result
+// carries the code, and everything else, including timeouts and 5xx, is ERROR.
+func upstreamFailureLevel(err error) slog.Level {
 	level := logpkg.LevelForError(err)
-	if level != slog.LevelError {
+	var statusErr *signozclient.HTTPStatusError
+	if level == slog.LevelError && errors.As(err, &statusErr) && statusErr.StatusCode >= 400 && statusErr.StatusCode < 500 {
+		return slog.LevelWarn
+	}
+	return level
+}
+
+// logUpstreamFailure logs a failed outbound call (SigNoz backend, template
+// fetch) at upstreamFailureLevel. The record is always emitted, never
+// dropped (fail open, never fail silent).
+func (h *Handler) logUpstreamFailure(ctx context.Context, msg string, err error, attrs ...slog.Attr) {
+	level := upstreamFailureLevel(err)
+	if level == slog.LevelDebug {
 		msg += " (request cancelled by client)"
 	}
 	args := make([]any, 0, len(attrs)+1)
