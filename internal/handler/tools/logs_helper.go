@@ -162,21 +162,12 @@ func parseLogSelectFields(raw any) ([]querybuilder.FieldKey, error) {
 	return fields, nil
 }
 
-// quoteLogFilterLiteral escapes a literal for a single-quoted Query Builder
-// string: each backslash becomes two backslashes first, then each apostrophe
-// is backslash-escaped, matching the backend's FilterStringLiteral rules.
-func quoteLogFilterLiteral(value string) string {
-	escaped := strings.ReplaceAll(value, "\\", "\\\\")
-	escaped = strings.ReplaceAll(escaped, "'", "\\'")
-	return "'" + escaped + "'"
-}
-
 var logContainsPatternEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
 
 // quoteLogContainsLiteral first makes LIKE metacharacters literal for the
 // backend's ILIKE pattern, then escapes the result for Query Builder grammar.
 func quoteLogContainsLiteral(value string) string {
-	return quoteLogFilterLiteral(logContainsPatternEscaper.Replace(value))
+	return querybuilder.QuoteFilterLiteral(logContainsPatternEscaper.Replace(value))
 }
 
 // buildLogFilterExpr combines the caller's filter expression with the log
@@ -191,10 +182,10 @@ func buildLogFilterExpr(filter, service, severity, searchText, searchScope strin
 		parts = append(parts, "("+filter+")")
 	}
 	if service != "" {
-		parts = append(parts, "service.name = "+quoteLogFilterLiteral(service))
+		parts = append(parts, "service.name = "+querybuilder.QuoteFilterLiteral(service))
 	}
 	if severity != "" {
-		parts = append(parts, "severity_text = "+quoteLogFilterLiteral(severity))
+		parts = append(parts, "severity_text = "+querybuilder.QuoteFilterLiteral(severity))
 	}
 	if searchText != "" {
 		parts = append(parts, logSearchTextPredicate(searchText, searchScope))
@@ -224,8 +215,8 @@ func logSearchTextPredicate(searchText, scope string) string {
 	case "", "body":
 		return "body CONTAINS " + quoteLogContainsLiteral(searchText)
 	case "all":
-		return "search(" + quoteLogFilterLiteral(searchText) + ")"
+		return "search(" + querybuilder.QuoteFilterLiteral(searchText) + ")"
 	default:
-		return "search(" + quoteLogFilterLiteral(searchText) + ", " + scope + ")"
+		return "search(" + querybuilder.QuoteFilterLiteral(searchText) + ", " + scope + ")"
 	}
 }

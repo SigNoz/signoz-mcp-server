@@ -530,6 +530,11 @@ func TestGetTraceDetails_UsesCanonicalTraceIDFilter(t *testing.T) {
 
 	payload := string(captured)
 	require.Contains(t, payload, `"expression":"trace_id = 'abc123'"`)
+
+	// A quote in the ID stays inside the literal instead of adding conditions.
+	_, err = client.GetTraceDetails(context.Background(), "x' OR trace_id != 'y", true, 1711123200000, 1711130400000)
+	require.NoError(t, err)
+	require.Contains(t, string(captured), `"expression":"trace_id = 'x\\' OR trace_id != \\'y'"`)
 	require.Contains(t, payload, `"limit":1000`)
 	require.NotContains(t, payload, `"expression":"traceID = 'abc123'"`)
 	var request struct {
