@@ -809,8 +809,8 @@ func warnRowCountUnknown(ctx context.Context, logger *slog.Logger, toolName stri
 // search_traces), which support offset pagination. It appends a completeness
 // note (hasMore + nextOffset) inferred from the returned row count so callers
 // never silently assume a truncated page is complete.
-func rawSearchResult(ctx context.Context, logger *slog.Logger, toolName string, payload []byte, limit, offset int, limitClamped bool) *mcp.CallToolResult {
-	var notes []string
+func rawSearchResult(ctx context.Context, logger *slog.Logger, toolName string, payload []byte, limit, offset int, limitClamped bool, extraNotes ...string) *mcp.CallToolResult {
+	notes := append([]string(nil), extraNotes...)
 	if limitClamped {
 		notes = append(notes, fmt.Sprintf(
 			"note: result limited to %d rows to bound server memory; paginate with \"offset\" (or narrow the time range/filters) for more.",

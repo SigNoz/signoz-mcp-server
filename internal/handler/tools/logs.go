@@ -166,5 +166,9 @@ func (h *Handler) handleSearchLogs(ctx context.Context, req mcp.CallToolRequest)
 		return upstreamQueryError(err, "logs"), nil
 	}
 
-	return rawSearchResult(ctx, h.logger, "signoz_search_logs", result, reqData.Limit, reqData.Offset, reqData.LimitClamped), nil
+	var notes []string
+	if reqData.SearchScopeIgnored {
+		notes = append(notes, searchScopeIgnoredNote)
+	}
+	return rawSearchResult(ctx, h.logger, "signoz_search_logs", result, reqData.Limit, reqData.Offset, reqData.LimitClamped, notes...), nil
 }

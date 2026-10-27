@@ -7478,7 +7478,7 @@
                 "type": "string"
               },
               "searchScope": {
-                "description": "Where searchText matches: body (default) for message text; attribute or resource for their keys and values; all for every field. Scopes other than body are slower, and SigNoz may reject them over wide time ranges. Use them only when you don't know which key holds the text; when you do, put a predicate such as attribute.\u003ckey\u003e CONTAINS 'text' in filter instead.",
+                "description": "Where searchText matches: body (default) for message text; attribute or resource for their keys and values; all for every field. Scopes other than body are slower, and SigNoz may reject them over wide time ranges. Use them only when you don't know which key holds the text; when you do, put a predicate such as attribute.\u003ckey\u003e CONTAINS 'text' in filter instead. Ignored, with a note, when searchText is empty.",
                 "enum": [
                   "body",
                   "attribute",
