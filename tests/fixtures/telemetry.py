@@ -91,22 +91,26 @@ def seed_field_tokens(
     logger.info("seeded distinct body/attribute/resource tokens for %s", service_name)
 
 
-def seed_traces(service_name: str, *, span_name: str = "e2e-operation", count: int = 1) -> list[str]:
+def seed_traces(
+    service_name: str, *, span_name: str = "e2e-operation", count: int = 1, with_child: bool = False
+) -> list[str]:
     """Push spans to the cast SigNoz via OTLP/HTTP; return the trace ids (hex).
 
     The last span is marked ERROR so error=true/false searches both have data.
+    `with_child` gives each trace a child span named `<span_name>-child` under its root.
     """
     now = time.time_ns()
     trace_ids: list[str] = []
     spans = []
     for i in range(count):
         trace_id = uuid.uuid4().hex
+        span_id = uuid.uuid4().hex[:16]
         is_error = i == count - 1
         start = now - (count - i) * 1_000_000_000
         spans.append(
             {
                 "traceId": trace_id,
-                "spanId": uuid.uuid4().hex[:16],
+                "spanId": span_id,
                 "name": span_name,
                 "kind": 2,  # SPAN_KIND_SERVER
                 "startTimeUnixNano": str(start),
@@ -115,6 +119,20 @@ def seed_traces(service_name: str, *, span_name: str = "e2e-operation", count: i
                 "status": {"code": 2 if is_error else 1},  # STATUS_CODE_ERROR / OK
             }
         )
+        if with_child:
+            spans.append(
+                {
+                    "traceId": trace_id,
+                    "spanId": uuid.uuid4().hex[:16],
+                    "parentSpanId": span_id,
+                    "name": f"{span_name}-child",
+                    "kind": 1,  # SPAN_KIND_INTERNAL
+                    "startTimeUnixNano": str(start + 50_000_000),
+                    "endTimeUnixNano": str(start + 150_000_000),
+                    "attributes": [{"key": "e2e.marker", "value": {"stringValue": service_name}}],
+                    "status": {"code": 1},
+                }
+            )
         trace_ids.append(trace_id)
     payload = {
         "resourceSpans": [

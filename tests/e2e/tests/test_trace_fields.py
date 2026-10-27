@@ -235,3 +235,25 @@ def test_trace_details_finds_a_trace_by_id_alone(mcp_client: MCPClient, test_id:
         )
     )
     assert not query_range_rows(first_text_block(unknown)), "an unknown trace ID returned spans"
+
+
+def test_is_root_selects_root_spans(mcp_client: MCPClient, test_id: str, telemetry: None) -> None:
+    """Pins the isRoot span-scope filter the traces guide teaches: child spans are excluded."""
+    service = f"mcp-e2e-{test_id}"
+    seed_traces(service, count=2, with_child=True)
+
+    def search(extra: dict) -> list[dict]:
+        result = mcp_client.call_tool(
+            "signoz_search_traces",
+            {"searchContext": f"spans of {service}", "service": service, "timeRange": "1h", "limit": "20", **extra},
+        )
+        if result.get("isError", False):
+            return []
+        return query_range_rows(first_text_block(result))
+
+    # Wait until the child spans are visible, so the isRoot search below can fail.
+    wait_for(lambda: len(search({})) == 4, f"root and child spans for {service} visible")
+    rows = search({"filter": "isRoot = true"})
+    assert sorted(r.get("name") for r in rows) == ["e2e-operation", "e2e-operation"], (
+        f"isRoot = true must return only the two roots: {rows}"
+    )
