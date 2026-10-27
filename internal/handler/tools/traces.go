@@ -78,7 +78,7 @@ func (h *Handler) RegisterTracesHandlers(s *mcp.Server) {
 	getTraceDetailsTool := mcp.NewTool("signoz_get_trace_details",
 		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description(searchContextParamDescription)),
-		mcp.WithDescription("Use this when the user already has a known trace ID and wants that trace's spans, metadata, and hierarchy. If the ID is unknown, discover it with signoz_search_traces first. SigNoz locates the trace by its ID alone, so no time window is needed; an ID SigNoz does not know returns no spans. Do not use this for filtering many spans or aggregate analysis."),
+		mcp.WithDescription("Use this when the user already has a known trace ID and wants that trace's spans, metadata, and hierarchy. If the ID is unknown, discover it with signoz_search_traces first. Each span comes back as its complete record: the span fields plus its attributes and resource maps, events, and links. SigNoz locates the trace by its ID alone, so no time window is needed; an ID SigNoz does not know returns no spans. Do not use this for filtering many spans or aggregate analysis."),
 		mcp.WithString("traceId", mcp.Required(), mcp.Description(traceIDParamDescription)),
 		mcp.WithBoolean("includeSpans", boolOrStringType(), mcp.Description(includeSpansParamDescription)),
 	)

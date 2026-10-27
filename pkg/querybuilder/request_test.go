@@ -29,7 +29,7 @@ func TestLogsSearch_OrdersByTimestampThenIDForStablePagination(t *testing.T) {
 }
 
 func TestSpanSearch_PropagatesOffsetAndSelectsNoDeprecatedFields(t *testing.T) {
-	request, err := SpanSearch(1000, 2000, TraceSearchOptions{Filter: "service.name = 'x'", Limit: 50, Offset: 25, SelectFields: TraceDetailSelectFields})
+	request, err := SpanSearch(1000, 2000, TraceSearchOptions{Filter: "service.name = 'x'", Limit: 50, Offset: 25, SelectFields: TraceSearchCoreFields})
 	require.NoError(t, err)
 	spec := builtSpec(t, request, 0)
 	require.Equal(t, float64(50), spec["limit"])

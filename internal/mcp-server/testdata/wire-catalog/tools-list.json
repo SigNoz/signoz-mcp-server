@@ -6414,7 +6414,7 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user already has a known trace ID and wants that trace's spans, metadata, and hierarchy. If the ID is unknown, discover it with signoz_search_traces first. SigNoz locates the trace by its ID alone, so no time window is needed; an ID SigNoz does not know returns no spans. Do not use this for filtering many spans or aggregate analysis.",
+          "description": "Use this when the user already has a known trace ID and wants that trace's spans, metadata, and hierarchy. If the ID is unknown, discover it with signoz_search_traces first. Each span comes back as its complete record: the span fields plus its attributes and resource maps, events, and links. SigNoz locates the trace by its ID alone, so no time window is needed; an ID SigNoz does not know returns no spans. Do not use this for filtering many spans or aggregate analysis.",
           "inputSchema": {
             "properties": {
               "includeSpans": {
