@@ -5205,7 +5205,7 @@
           "inputSchema": {
             "properties": {
               "fieldContext": {
-                "description": "Restrict results to a single field context (optional). Valid values: 'resource' (resource attributes, e.g. service.name, k8s.namespace.name), 'attribute' (user-ingested span/log attributes), 'scope' (instrumentation scope), 'log' / 'span' / 'metric' (intrinsic columns of the logs/traces/metrics signal), 'body' (fields inside a JSON log body). For span/log attributes use 'attribute', not the legacy Query Builder context 'tag': SigNoz ignores 'tag' when listing keys and returns no values for it.",
+                "description": "Restrict results to a single field context (optional). Valid values: 'resource' (resource attributes, e.g. service.name, k8s.namespace.name), 'attribute' (user-ingested span/log attributes), 'scope' (instrumentation scope), 'log' / 'span' / 'metric' (intrinsic columns of the logs/traces/metrics signal), 'body' (fields inside a JSON log body). For span/log attributes use 'attribute', not the legacy Query Builder context 'tag': SigNoz ignores 'tag' when listing keys and returns no values for it. 'trace' lists the per-trace AI columns and works only with queryType=builder_ai_query.",
                 "enum": [
                   "resource",
                   "attribute",
@@ -5213,6 +5213,7 @@
                   "log",
                   "span",
                   "metric",
+                  "trace",
                   "body"
                 ],
                 "type": "string"

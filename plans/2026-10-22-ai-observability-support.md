@@ -49,8 +49,10 @@ pagination contract.
 
 1. **`feat(fields)`: `queryType` on field keys.** `builder_ai_query` lists the per-trace columns
    and `gen_ai.*` before data arrives, and returns trace fields whatever the `signal`.
-   `signoz_get_field_values` gets no `queryType`: the per-trace columns have no value
-   suggestions, and `gen_ai.*` values already come from the default endpoint.
+   `fieldContext=trace` filters to the per-trace columns; only the AI endpoint honors it, so
+   its description ties it to `builder_ai_query`. `signoz_get_field_values` gets neither: the
+   per-trace columns have no value suggestions, and `gen_ai.*` values already come from the
+   default endpoint.
 2. **`feat(traces)`: query AI data.** `queryType` on search and aggregate, `orderBy` on search,
    the `builder_ai_query` default limit in `ApplyBounds`, the AI guide, and the instructions
    line. Companion agent-skills PR.
@@ -121,7 +123,8 @@ pagination contract.
 - PR 1: `make ci` passes. Checked by hand against a local SigNoz: `builder_ai_query` lists the
   eight `trace` columns and `gen_ai.*` keys, `signal=logs` returns the same set, the default
   keys omit the `trace` columns, and an out-of-enum `queryType` runs on the default endpoint with
-  the validation notice. With fresh `gen_ai.*` spans, the default values endpoint returns
+  the validation notice. `fieldContext=trace` returns exactly the eight columns on the AI
+  endpoint and is ignored by the default one. With fresh `gen_ai.*` spans, the default values endpoint returns
   `gen_ai.request.model` and `gen_ai.tool.name` values, confirming values need no `queryType`.
   The e2e cases run in CI.
 - Agent eval by hand: about 25 questions, including negative ones that must not set
@@ -132,5 +135,6 @@ pagination contract.
 
 This plan spans PRs 1 to 5 and stays `In Progress` until PR 5 merges; each PR updates its line.
 
-- PR 1 (`feat(fields)`): `queryType` on `signoz_get_field_keys`.
+- PR 1 (`feat(fields)`): `queryType` and `fieldContext=trace` on `signoz_get_field_keys`;
+  `trace` is honored only by the AI fields keys endpoint.
 - PRs 2 to 5: not started.

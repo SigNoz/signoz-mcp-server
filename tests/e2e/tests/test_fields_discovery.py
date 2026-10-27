@@ -158,3 +158,22 @@ def test_ai_field_keys_ignore_signal(mcp_client: MCPClient) -> None:
     signal, this pin fails and the description must change with it.
     """
     assert ai_trace_column_names("logs", mcp_client) == ai_trace_column_names("traces", mcp_client)
+
+
+def test_ai_field_keys_filter_to_trace_context(mcp_client: MCPClient) -> None:
+    """fieldContext=trace with queryType=builder_ai_query returns only the per-trace AI columns, with no schema notice."""
+    result = mcp_client.call_tool(
+        "signoz_get_field_keys",
+        {
+            "searchContext": "which per-trace AI columns can I filter on",
+            "signal": "traces",
+            "queryType": "builder_ai_query",
+            "fieldContext": "trace",
+        },
+    )
+    assert_tool_ok(result)
+    assert "Input validation notice" not in text_blocks(result), "fieldContext=trace drew a schema notice"
+    keys = field_key_entries(result)
+    contexts = {entry.get("fieldContext") for entries in keys.values() for entry in entries}
+    assert contexts == {"trace"}, f"fieldContext=trace returned other contexts: {keys}"
+    assert AI_TRACE_COLUMNS <= set(keys), f"per-trace AI columns missing: {AI_TRACE_COLUMNS - set(keys)}"
