@@ -88,7 +88,7 @@ func handleLatencyAnalysis(_ context.Context, req mcp.GetPromptRequest) (*mcp.Ge
 
 1. Use signoz_aggregate_traces with service="%s", aggregations=["p99(duration_nano)"], groupBy="name", timeRange="%s" to find the slowest operations.
 2. Use signoz_aggregate_traces with service="%s", aggregations=["p99(duration_nano)"], requestType="time_series", timeRange="%s" to see how latency has changed over time.
-3. Use signoz_search_traces with service="%s", minDuration="1000000000", timeRange="%s" to find specific slow traces (>1s).
+3. Use signoz_search_traces with service="%s", minDuration="1s", timeRange="%s" to find specific slow traces (>1s).
 4. For the slowest trace found, use signoz_get_trace_details to examine the span breakdown.
 5. Summarize: which operations are slow, whether latency is trending up, and what spans contribute most to latency.`, service, timeRange, service, timeRange, service, timeRange, service, timeRange),
 				},
