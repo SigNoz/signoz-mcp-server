@@ -23,7 +23,9 @@ Examples:
 
 == FIELD DISCOVERY ==
 
-Unknown keys hard-error. Built-in span columns are stable, but resource and span attributes depend
+An unknown key may not fail: SigNoz can match a guessed attribute, return the warning
+"key <name> not found in metadata", and match no rows; read that warning as an absent key.
+Built-in span columns are stable, but resource and span attributes depend
 on this workspace's instrumentation. Do not guess unfamiliar field names. Discover keys, then confirm
 their observed values before filtering:
   signoz_get_field_keys(signal="traces", fieldContext="span")
