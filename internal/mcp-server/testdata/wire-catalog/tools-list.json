@@ -7296,7 +7296,7 @@
                 ]
               },
               "groupBy": {
-                "description": "Comma-separated field names or an array of field names. Context is inferred as resource for k8s.*, container.*, host.*, cloud.*, deployment.*, process.*, service.*, telemetry.*, and os.*; all other names use attribute context.",
+                "description": "Label names to group by, as an array or a comma-separated string (e.g. [\"service.name\", \"k8s.pod.name\"]). Metric labels hold resource and data-point attributes in one set, so names need no context prefix. Discover them with signoz_get_field_keys (signal=\"metrics\", metricName).",
                 "items": {
                   "type": "string"
                 },

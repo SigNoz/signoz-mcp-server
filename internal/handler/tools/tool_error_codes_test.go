@@ -87,6 +87,7 @@ func TestToolHandlers_RejectInvalidArgumentsBeforeCallingSigNoz(t *testing.T) {
 		{tool: "signoz_query_metrics", arguments: `{"metricName":"x","formulaQueries":"{\"name\":\"B\"}"}`, wantText: `"formulaQueries"`},
 		{tool: "signoz_query_metrics", arguments: `{"metricName":"x","formulaQueries":[{"name":"B","metricName":"y","metricType":"sum","isMonotonic":"tru"}]}`, wantText: `"isMonotonic"`},
 		{tool: "signoz_search_logs", arguments: `{"selectFields":["attribute.body"]}`, wantText: `"attribute.body"`},
+		{tool: "signoz_query_metrics", arguments: `{"metricName":"m","groupBy":[{"key":"service.name"}]}`, wantText: `"groupBy"`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.tool+" "+tt.arguments, func(t *testing.T) {

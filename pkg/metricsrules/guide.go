@@ -73,16 +73,12 @@ Valid reduceTo values: sum, count, avg, min, max, last, median
 
 ---
 
-## groupBy Field Context
+## groupBy and Filter Keys
 
-When specifying groupBy fields, the fieldContext is auto-detected:
-
-**Resource attributes** (fieldContext="resource"):
-Prefixes: k8s., container., host., cloud., deployment., process., service., telemetry., os.
-Examples: k8s.namespace.name, host.name, container.id, service.name, os.type
-
-**Metric attributes** (fieldContext="attribute"):
-Everything else. Examples: service_name, http.method, status_code
+Metric labels hold resource attributes and data-point attributes in one set, so groupBy and filter
+keys are plain label names with no context prefix: k8s.namespace.name, host.name, service_name,
+http.method. Discover them with signoz_get_field_keys (signal="metrics", metricName). The tool
+sends every groupBy key in attribute context, which reads the label.
 
 ---
 
