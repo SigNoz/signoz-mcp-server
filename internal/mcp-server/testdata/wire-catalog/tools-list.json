@@ -5214,6 +5214,55 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
+          "description": "Use this when the user asks which per-token price SigNoz uses for an AI model's cost, or which models have no price. view=rules (default) lists the pricing rules: provider, model name and match patterns, input, output, and cache prices in USD per million tokens, and whether each rule is enabled. view=unpriced_models lists the models seen in spans during the last hour that no rule prices, with span counts; their spans carry no cost. SigNoz stamps cost on each span at ingest, so a price change does not touch spans already stored. Prices are changed on the Model pricing tab of AI Observability in SigNoz; this tool cannot change them.",
+          "inputSchema": {
+            "properties": {
+              "limit": {
+                "default": "50",
+                "description": "Maximum number of entries to return per page. Default: 50, max: 1000 (higher values are clamped).",
+                "type": [
+                  "integer",
+                  "string"
+                ]
+              },
+              "offset": {
+                "default": "0",
+                "description": "Number of entries to skip. Use pagination.nextOffset from the previous page. Default: 0.",
+                "type": [
+                  "integer",
+                  "string"
+                ]
+              },
+              "searchContext": {
+                "description": "Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.",
+                "type": "string"
+              },
+              "searchText": {
+                "description": "Case-insensitive substring of the model name or provider, for example 'anthropic'; 'gpt-4o' also matches gpt-4o-mini. An empty page with searchText means no entry matched; omit it to see whether any entries exist.",
+                "type": "string"
+              },
+              "view": {
+                "default": "rules",
+                "description": "Which list to return. rules: the configured model prices. unpriced_models: models seen in the last hour that no rule prices. Default: rules.",
+                "enum": [
+                  "rules",
+                  "unpriced_models"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "name": "signoz_get_ai_pricing"
+        },
+        {
+          "annotations": {
+            "destructiveHint": false,
+            "idempotentHint": true,
+            "openWorldHint": true,
+            "readOnlyHint": true
+          },
           "description": "Use this when the user wants one configured alert rule's full definition, or before signoz_update_alert when a complete current definition is not already available for the prepared operation. Reuse a still-current definition fetched for that operation instead of repeating this preflight. It requires a known rule ID; use signoz_list_alert_rules to discover IDs. Do not use it for current alert instances or firing history: use signoz_list_alerts or signoz_get_alert_history.",
           "inputSchema": {
             "properties": {
@@ -6440,6 +6489,26 @@
             "type": "object"
           },
           "name": "signoz_import_dashboard"
+        },
+        {
+          "annotations": {
+            "destructiveHint": false,
+            "idempotentHint": true,
+            "openWorldHint": true,
+            "readOnlyHint": true
+          },
+          "description": "Use this when the user asks why AI spans show no model, tokens, or cost, or which vendor attributes SigNoz maps to gen_ai.* keys. At ingest, a mapping group runs on spans whose attribute keys contain one of its condition substrings, and each mapper fills one gen_ai.* key from the first source key present, by priority. Mappings apply only to spans ingested afterwards and are changed on the Attribute Mapping tab of AI Observability in SigNoz. For spans with a model but no cost, use signoz_get_ai_pricing. If incomplete is true, failedGroups names the groups whose mappers could not be read.",
+          "inputSchema": {
+            "properties": {
+              "searchContext": {
+                "description": "Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.",
+                "type": "string"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "name": "signoz_list_ai_attribute_mappings"
         },
         {
           "annotations": {

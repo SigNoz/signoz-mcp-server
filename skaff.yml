@@ -50,3 +50,7 @@ data_sources:
   metric_attributes: {read: {path: /api/v2/metrics/attributes, method: GET}}
   metric_dashboards: {read: {path: /api/v3/metrics/dashboards, method: GET}}
   metric_alerts: {read: {path: /api/v2/metrics/alerts, method: GET}}
+  llm_pricing_rules: {read: {path: /api/v1/llm_pricing_rules, method: GET}}
+  llm_unmapped_models: {read: {path: /api/v1/llm_pricing_rules/unmapped_models, method: GET}}
+  span_mapper_groups: {read: {path: /api/v1/span_mapper_groups, method: GET}}
+  span_mappers: {read: {path: "/api/v1/span_mapper_groups/{groupId}/span_mappers", method: GET}}

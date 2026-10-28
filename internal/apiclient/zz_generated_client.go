@@ -99,6 +99,19 @@ type GetFieldsValuesParams struct {
 	ExistingQuery *string `form:"existingQuery,omitempty" json:"existingQuery,omitempty"`
 }
 
+// ListLLMPricingRulesParams defines parameters for ListLLMPricingRules.
+type ListLLMPricingRulesParams struct {
+	Offset     *int    `form:"offset,omitempty" json:"offset,omitempty"`
+	Limit      *int    `form:"limit,omitempty" json:"limit,omitempty"`
+	Q          *string `form:"q,omitempty" json:"q,omitempty"`
+	IsOverride *bool   `form:"isOverride,omitempty" json:"isOverride,omitempty"`
+}
+
+// ListSpanMapperGroupsParams defines parameters for ListSpanMapperGroups.
+type ListSpanMapperGroupsParams struct {
+	Enabled *bool `form:"enabled,omitempty" json:"enabled,omitempty"`
+}
+
 // ListDashboardsV2Params defines parameters for ListDashboardsV2.
 type ListDashboardsV2Params struct {
 	// Query A filter expression over the reserved keys name, description, created_at, updated_at, created_by and locked, and over tag keys, using the SigNoz filter grammar: comparisons such as =, !=, CONTAINS, LIKE, IN, < and >, single-quoted strings, RFC3339 timestamps in quotes for created_at and updated_at, combined with AND, OR and NOT, for example name CONTAINS 'overview' AND created_at >= '2026-10-21T00:00:00Z'. At most 1024 characters. Empty matches every dashboard.
@@ -366,12 +379,40 @@ type ClientInterface interface {
 	// Corresponds with GET /api/v1/global/config (the `GetGlobalConfig` operationId).
 	GetGlobalConfig(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListLLMPricingRules List pricing rules
+	//
+	// Returns all LLM pricing rules for the authenticated org, with pagination.
+	//
+	// Corresponds with GET /api/v1/llm_pricing_rules (the `ListLLMPricingRules` operationId).
+	ListLLMPricingRules(ctx context.Context, params *ListLLMPricingRulesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListUnmappedLLMModels List unmapped models
+	//
+	// Returns models seen in the last hour of trace data (gen_ai.request.model) that no pricing rule pattern matches, so the user can add them to an existing rule or create a new one.
+	//
+	// Corresponds with GET /api/v1/llm_pricing_rules/unmapped_models (the `ListUnmappedLLMModels` operationId).
+	ListUnmappedLLMModels(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetMyServiceAccount Gets my service account
 	//
 	// This endpoint gets my service account.
 	//
 	// Corresponds with GET /api/v1/service_accounts/me (the `GetMyServiceAccount` operationId).
 	GetMyServiceAccount(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListSpanMapperGroups List span attribute mapping groups
+	//
+	// Returns all span attribute mapping groups for the authenticated org.
+	//
+	// Corresponds with GET /api/v1/span_mapper_groups (the `ListSpanMapperGroups` operationId).
+	ListSpanMapperGroups(ctx context.Context, params *ListSpanMapperGroupsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListSpanMappers List span mappers for a group
+	//
+	// Returns all mappers belonging to a mapping group.
+	//
+	// Corresponds with GET /api/v1/span_mapper_groups/{groupId}/span_mappers (the `ListSpanMappers` operationId).
+	ListSpanMappers(ctx context.Context, groupId string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetStats Get stats
 	//
@@ -808,6 +849,40 @@ func (c *Client) GetGlobalConfig(ctx context.Context, reqEditors ...RequestEdito
 	return c.Client.Do(req)
 }
 
+// ListLLMPricingRules List pricing rules
+//
+// Returns all LLM pricing rules for the authenticated org, with pagination.
+//
+// Corresponds with GET /api/v1/llm_pricing_rules (the `ListLLMPricingRules` operationId).
+func (c *Client) ListLLMPricingRules(ctx context.Context, params *ListLLMPricingRulesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListLLMPricingRulesRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListUnmappedLLMModels List unmapped models
+//
+// Returns models seen in the last hour of trace data (gen_ai.request.model) that no pricing rule pattern matches, so the user can add them to an existing rule or create a new one.
+//
+// Corresponds with GET /api/v1/llm_pricing_rules/unmapped_models (the `ListUnmappedLLMModels` operationId).
+func (c *Client) ListUnmappedLLMModels(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListUnmappedLLMModelsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // GetMyServiceAccount Gets my service account
 //
 // This endpoint gets my service account.
@@ -815,6 +890,40 @@ func (c *Client) GetGlobalConfig(ctx context.Context, reqEditors ...RequestEdito
 // Corresponds with GET /api/v1/service_accounts/me (the `GetMyServiceAccount` operationId).
 func (c *Client) GetMyServiceAccount(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetMyServiceAccountRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListSpanMapperGroups List span attribute mapping groups
+//
+// Returns all span attribute mapping groups for the authenticated org.
+//
+// Corresponds with GET /api/v1/span_mapper_groups (the `ListSpanMapperGroups` operationId).
+func (c *Client) ListSpanMapperGroups(ctx context.Context, params *ListSpanMapperGroupsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListSpanMapperGroupsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListSpanMappers List span mappers for a group
+//
+// Returns all mappers belonging to a mapping group.
+//
+// Corresponds with GET /api/v1/span_mapper_groups/{groupId}/span_mappers (the `ListSpanMappers` operationId).
+func (c *Client) ListSpanMappers(ctx context.Context, groupId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListSpanMappersRequest(c.Server, groupId)
 	if err != nil {
 		return nil, err
 	}
@@ -2120,6 +2229,123 @@ func NewGetGlobalConfigRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewListLLMPricingRulesRequest constructs an http.Request for the ListLLMPricingRules method
+func NewListLLMPricingRulesRequest(server string, params *ListLLMPricingRulesParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/llm_pricing_rules")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Offset != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "offset", *params.Offset, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Q != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "q", *params.Q, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.IsOverride != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "isOverride", *params.IsOverride, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListUnmappedLLMModelsRequest constructs an http.Request for the ListUnmappedLLMModels method
+func NewListUnmappedLLMModelsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/llm_pricing_rules/unmapped_models")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetMyServiceAccountRequest constructs an http.Request for the GetMyServiceAccount method
 func NewGetMyServiceAccountRequest(server string) (*http.Request, error) {
 	var err error
@@ -2130,6 +2356,94 @@ func NewGetMyServiceAccountRequest(server string) (*http.Request, error) {
 	}
 
 	operationPath := fmt.Sprintf("/api/v1/service_accounts/me")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListSpanMapperGroupsRequest constructs an http.Request for the ListSpanMapperGroups method
+func NewListSpanMapperGroupsRequest(server string, params *ListSpanMapperGroupsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/span_mapper_groups")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Enabled != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "enabled", *params.Enabled, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListSpanMappersRequest constructs an http.Request for the ListSpanMappers method
+func NewListSpanMappersRequest(server string, groupId string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "groupId", groupId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/span_mapper_groups/%s/span_mappers", pathParam0)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -3874,6 +4188,24 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/v1/global/config (the `GetGlobalConfig` operationId).
 	GetGlobalConfigWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetGlobalConfigResponse, error)
 
+	// ListLLMPricingRulesWithResponse List pricing rules
+	//
+	// Returns all LLM pricing rules for the authenticated org, with pagination.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/llm_pricing_rules (the `ListLLMPricingRules` operationId).
+	ListLLMPricingRulesWithResponse(ctx context.Context, params *ListLLMPricingRulesParams, reqEditors ...RequestEditorFn) (*ListLLMPricingRulesResponse, error)
+
+	// ListUnmappedLLMModelsWithResponse List unmapped models
+	//
+	// Returns models seen in the last hour of trace data (gen_ai.request.model) that no pricing rule pattern matches, so the user can add them to an existing rule or create a new one.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/llm_pricing_rules/unmapped_models (the `ListUnmappedLLMModels` operationId).
+	ListUnmappedLLMModelsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListUnmappedLLMModelsResponse, error)
+
 	// GetMyServiceAccountWithResponse Gets my service account
 	//
 	// This endpoint gets my service account.
@@ -3882,6 +4214,24 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /api/v1/service_accounts/me (the `GetMyServiceAccount` operationId).
 	GetMyServiceAccountWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetMyServiceAccountResponse, error)
+
+	// ListSpanMapperGroupsWithResponse List span attribute mapping groups
+	//
+	// Returns all span attribute mapping groups for the authenticated org.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/span_mapper_groups (the `ListSpanMapperGroups` operationId).
+	ListSpanMapperGroupsWithResponse(ctx context.Context, params *ListSpanMapperGroupsParams, reqEditors ...RequestEditorFn) (*ListSpanMapperGroupsResponse, error)
+
+	// ListSpanMappersWithResponse List span mappers for a group
+	//
+	// Returns all mappers belonging to a mapping group.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/span_mapper_groups/{groupId}/span_mappers (the `ListSpanMappers` operationId).
+	ListSpanMappersWithResponse(ctx context.Context, groupId string, reqEditors ...RequestEditorFn) (*ListSpanMappersResponse, error)
 
 	// GetStatsWithResponse Get stats
 	//
@@ -4597,6 +4947,156 @@ func (r GetGlobalConfigResponse) ContentType() string {
 	return ""
 }
 
+type ListLLMPricingRulesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *struct {
+		Data   apitypes.LlmpricingruletypesGettablePricingRules `json:"data"`
+		Status string                                           `json:"status"`
+	}
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *apitypes.RenderErrorResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *apitypes.RenderErrorResponse
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *apitypes.RenderErrorResponse
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *apitypes.RenderErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListLLMPricingRulesResponse) GetJSON200() *struct {
+	Data   apitypes.LlmpricingruletypesGettablePricingRules `json:"data"`
+	Status string                                           `json:"status"`
+} {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ListLLMPricingRulesResponse) GetJSON400() *apitypes.RenderErrorResponse {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListLLMPricingRulesResponse) GetJSON401() *apitypes.RenderErrorResponse {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ListLLMPricingRulesResponse) GetJSON403() *apitypes.RenderErrorResponse {
+	return r.JSON403
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ListLLMPricingRulesResponse) GetJSON500() *apitypes.RenderErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r ListLLMPricingRulesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListLLMPricingRulesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListLLMPricingRulesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListLLMPricingRulesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListUnmappedLLMModelsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *struct {
+		Data   apitypes.LlmpricingruletypesGettableUnmappedModels `json:"data"`
+		Status string                                             `json:"status"`
+	}
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *apitypes.RenderErrorResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *apitypes.RenderErrorResponse
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *apitypes.RenderErrorResponse
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *apitypes.RenderErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListUnmappedLLMModelsResponse) GetJSON200() *struct {
+	Data   apitypes.LlmpricingruletypesGettableUnmappedModels `json:"data"`
+	Status string                                             `json:"status"`
+} {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ListUnmappedLLMModelsResponse) GetJSON400() *apitypes.RenderErrorResponse {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListUnmappedLLMModelsResponse) GetJSON401() *apitypes.RenderErrorResponse {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ListUnmappedLLMModelsResponse) GetJSON403() *apitypes.RenderErrorResponse {
+	return r.JSON403
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ListUnmappedLLMModelsResponse) GetJSON500() *apitypes.RenderErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r ListUnmappedLLMModelsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListUnmappedLLMModelsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListUnmappedLLMModelsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListUnmappedLLMModelsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type GetMyServiceAccountResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -4652,6 +5152,163 @@ func (r GetMyServiceAccountResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetMyServiceAccountResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListSpanMapperGroupsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *struct {
+		Data   apitypes.SpantypesGettableSpanMapperGroups `json:"data"`
+		Status string                                     `json:"status"`
+	}
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *apitypes.RenderErrorResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *apitypes.RenderErrorResponse
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *apitypes.RenderErrorResponse
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *apitypes.RenderErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListSpanMapperGroupsResponse) GetJSON200() *struct {
+	Data   apitypes.SpantypesGettableSpanMapperGroups `json:"data"`
+	Status string                                     `json:"status"`
+} {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ListSpanMapperGroupsResponse) GetJSON400() *apitypes.RenderErrorResponse {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListSpanMapperGroupsResponse) GetJSON401() *apitypes.RenderErrorResponse {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ListSpanMapperGroupsResponse) GetJSON403() *apitypes.RenderErrorResponse {
+	return r.JSON403
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ListSpanMapperGroupsResponse) GetJSON500() *apitypes.RenderErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r ListSpanMapperGroupsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListSpanMapperGroupsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListSpanMapperGroupsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListSpanMapperGroupsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListSpanMappersResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *struct {
+		Data   apitypes.SpantypesGettableSpanMappers `json:"data"`
+		Status string                                `json:"status"`
+	}
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *apitypes.RenderErrorResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *apitypes.RenderErrorResponse
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *apitypes.RenderErrorResponse
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *apitypes.RenderErrorResponse
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *apitypes.RenderErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListSpanMappersResponse) GetJSON200() *struct {
+	Data   apitypes.SpantypesGettableSpanMappers `json:"data"`
+	Status string                                `json:"status"`
+} {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ListSpanMappersResponse) GetJSON400() *apitypes.RenderErrorResponse {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListSpanMappersResponse) GetJSON401() *apitypes.RenderErrorResponse {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ListSpanMappersResponse) GetJSON403() *apitypes.RenderErrorResponse {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ListSpanMappersResponse) GetJSON404() *apitypes.RenderErrorResponse {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ListSpanMappersResponse) GetJSON500() *apitypes.RenderErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r ListSpanMappersResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListSpanMappersResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListSpanMappersResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListSpanMappersResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -7067,6 +7724,36 @@ func (c *ClientWithResponses) GetGlobalConfigWithResponse(ctx context.Context, r
 	return ParseGetGlobalConfigResponse(rsp)
 }
 
+// ListLLMPricingRulesWithResponse List pricing rules
+//
+// Returns all LLM pricing rules for the authenticated org, with pagination.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/llm_pricing_rules (the `ListLLMPricingRules` operationId).
+func (c *ClientWithResponses) ListLLMPricingRulesWithResponse(ctx context.Context, params *ListLLMPricingRulesParams, reqEditors ...RequestEditorFn) (*ListLLMPricingRulesResponse, error) {
+	rsp, err := c.ListLLMPricingRules(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListLLMPricingRulesResponse(rsp)
+}
+
+// ListUnmappedLLMModelsWithResponse List unmapped models
+//
+// Returns models seen in the last hour of trace data (gen_ai.request.model) that no pricing rule pattern matches, so the user can add them to an existing rule or create a new one.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/llm_pricing_rules/unmapped_models (the `ListUnmappedLLMModels` operationId).
+func (c *ClientWithResponses) ListUnmappedLLMModelsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListUnmappedLLMModelsResponse, error) {
+	rsp, err := c.ListUnmappedLLMModels(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListUnmappedLLMModelsResponse(rsp)
+}
+
 // GetMyServiceAccountWithResponse Gets my service account
 //
 // This endpoint gets my service account.
@@ -7080,6 +7767,36 @@ func (c *ClientWithResponses) GetMyServiceAccountWithResponse(ctx context.Contex
 		return nil, err
 	}
 	return ParseGetMyServiceAccountResponse(rsp)
+}
+
+// ListSpanMapperGroupsWithResponse List span attribute mapping groups
+//
+// Returns all span attribute mapping groups for the authenticated org.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/span_mapper_groups (the `ListSpanMapperGroups` operationId).
+func (c *ClientWithResponses) ListSpanMapperGroupsWithResponse(ctx context.Context, params *ListSpanMapperGroupsParams, reqEditors ...RequestEditorFn) (*ListSpanMapperGroupsResponse, error) {
+	rsp, err := c.ListSpanMapperGroups(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListSpanMapperGroupsResponse(rsp)
+}
+
+// ListSpanMappersWithResponse List span mappers for a group
+//
+// Returns all mappers belonging to a mapping group.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/span_mapper_groups/{groupId}/span_mappers (the `ListSpanMappers` operationId).
+func (c *ClientWithResponses) ListSpanMappersWithResponse(ctx context.Context, groupId string, reqEditors ...RequestEditorFn) (*ListSpanMappersResponse, error) {
+	rsp, err := c.ListSpanMappers(ctx, groupId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListSpanMappersResponse(rsp)
 }
 
 // GetStatsWithResponse Get stats
@@ -7963,6 +8680,120 @@ func ParseGetGlobalConfigResponse(rsp *http.Response) (*GetGlobalConfigResponse,
 	return response, nil
 }
 
+// ParseListLLMPricingRulesResponse parses an HTTP response from a ListLLMPricingRulesWithResponse call
+func ParseListLLMPricingRulesResponse(rsp *http.Response) (*ListLLMPricingRulesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListLLMPricingRulesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			Data   apitypes.LlmpricingruletypesGettablePricingRules `json:"data"`
+			Status string                                           `json:"status"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest apitypes.RenderErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest apitypes.RenderErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest apitypes.RenderErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest apitypes.RenderErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListUnmappedLLMModelsResponse parses an HTTP response from a ListUnmappedLLMModelsWithResponse call
+func ParseListUnmappedLLMModelsResponse(rsp *http.Response) (*ListUnmappedLLMModelsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListUnmappedLLMModelsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			Data   apitypes.LlmpricingruletypesGettableUnmappedModels `json:"data"`
+			Status string                                             `json:"status"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest apitypes.RenderErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest apitypes.RenderErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest apitypes.RenderErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest apitypes.RenderErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseGetMyServiceAccountResponse parses an HTTP response from a GetMyServiceAccountWithResponse call
 func ParseGetMyServiceAccountResponse(rsp *http.Response) (*GetMyServiceAccountResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -7986,6 +8817,127 @@ func ParseGetMyServiceAccountResponse(rsp *http.Response) (*GetMyServiceAccountR
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest apitypes.RenderErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest apitypes.RenderErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListSpanMapperGroupsResponse parses an HTTP response from a ListSpanMapperGroupsWithResponse call
+func ParseListSpanMapperGroupsResponse(rsp *http.Response) (*ListSpanMapperGroupsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListSpanMapperGroupsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			Data   apitypes.SpantypesGettableSpanMapperGroups `json:"data"`
+			Status string                                     `json:"status"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest apitypes.RenderErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest apitypes.RenderErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest apitypes.RenderErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest apitypes.RenderErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListSpanMappersResponse parses an HTTP response from a ListSpanMappersWithResponse call
+func ParseListSpanMappersResponse(rsp *http.Response) (*ListSpanMappersResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListSpanMappersResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			Data   apitypes.SpantypesGettableSpanMappers `json:"data"`
+			Status string                                `json:"status"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest apitypes.RenderErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest apitypes.RenderErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest apitypes.RenderErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
 		var dest apitypes.RenderErrorResponse
