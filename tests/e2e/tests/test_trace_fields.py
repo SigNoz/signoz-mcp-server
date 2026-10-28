@@ -76,13 +76,24 @@ def test_trace_deep_links_shortcut_filters_and_group_by(mcp_client: MCPClient, t
         assert all(r.get("has_error") is error for r in filtered_rows), (
             f"error={error} returned rows with another has_error: {[r.get('has_error') for r in filtered_rows]}"
         )
-    too_short = assert_tool_ok(
-        mcp_client.call_tool(
-            "signoz_search_traces",
-            {"searchContext": "traces under 1ms", "service": service, "timeRange": "1h", "maxDuration": "1000000"},
+    # The seeded spans are 250ms long. Each bound below is written in a form the
+    # duration parameters document: a unit string, nanosecond digits, or a JSON number.
+    for bounds, want_rows in (
+        ({"maxDuration": "1000000"}, False),
+        ({"maxDuration": "1ms"}, False),
+        ({"maxDuration": 1000000}, False),
+        ({"minDuration": "200ms", "maxDuration": "1s"}, True),
+        ({"minDuration": "300ms"}, False),
+    ):
+        bounded = assert_tool_ok(
+            mcp_client.call_tool(
+                "signoz_search_traces",
+                {"searchContext": f"traces within {bounds}", "service": service, "timeRange": "1h", **bounds},
+            )
         )
-    )
-    assert not query_range_rows(first_text_block(too_short)), "maxDuration=1ms matched the 250ms seeded spans"
+        assert bool(query_range_rows(first_text_block(bounded))) is want_rows, (
+            f"duration bounds {bounds} should {'match' if want_rows else 'exclude'} the 250ms seeded spans"
+        )
 
     grouped = assert_tool_ok(
         mcp_client.call_tool(

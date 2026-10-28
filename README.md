@@ -903,7 +903,7 @@ Return individual paginated span rows matching service, operation, error, durati
   - `service` (optional) - Service name to filter by
   - `operation` (optional) - Operation/span name to filter by
   - `error` (optional) - Filter by error status. Boolean (or the strings `"true"`/`"false"`). An invalid value is rejected rather than silently dropped
-  - `minDuration` / `maxDuration` (optional) - Min/max span duration in nanoseconds (e.g., '500000000' for 500ms)
+  - `minDuration` / `maxDuration` (optional) - Min/max span duration as a duration such as `'500ms'` or `'2s'` (units `ns`, `us`, `ms`, `s`, `m`, `h`). A bare number, string or JSON, is nanoseconds. SigNoz rejects any other value
   - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '24h', '7d'; default: '1h'; ignored when both `start` and `end` are provided)
   - `start` / `end` (optional) - Start/end time in unix milliseconds. When both are provided, they override `timeRange`.
   - `limit` (optional) - Maximum rows to return (default: 100, max: 10000; higher values are clamped; paginate with `offset`)
@@ -929,6 +929,7 @@ Return custom aggregate statistics over spans (counts, rates, latency percentile
   - `service` (optional) - Shortcut filter for service name
   - `operation` (optional) - Shortcut filter for span/operation name
   - `error` (optional) - Shortcut filter for error spans. Boolean (or the strings `"true"`/`"false"`). An invalid value is rejected rather than silently dropped
+  - `minDuration` / `maxDuration` (optional) - Min/max span duration as a duration such as `'500ms'` or `'2s'` (units `ns`, `us`, `ms`, `s`, `m`, `h`). A bare number, string or JSON, is nanoseconds. SigNoz rejects any other value
   - `orderBy` (optional) - Order expression and direction (e.g., 'avg(duration_nano) desc'; default: the first aggregation expression descending)
   - `limit` (optional) - Maximum number of groups to return (default: 100, max: 10000; higher values are clamped to bound server memory)
   - `functions` (optional) - Post-query transforms applied to each `time_series` result, as an array of `{name, args}` objects (or a JSON-encoded string). SigNoz returns `scalar` results unchanged, and the response notes it. Names such as `cutOffMin`, `clampMax`, `absolute`, `runningDiff`, `ewma3`, `timeShift`, and `fillZero`; SigNoz validates names and args

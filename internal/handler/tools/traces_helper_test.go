@@ -56,3 +56,8 @@ func TestTraceShortcutsComposeWithFilter(t *testing.T) {
 		}
 	}
 }
+
+func TestTraceDurationRejectsNonScalar(t *testing.T) {
+	_, err := parseSearchTracesArgs(map[string]any{"minDuration": map[string]any{"ms": 500}})
+	require.EqualError(t, err, `parameter validation failed: "minDuration" must be a duration such as "500ms" or a number of nanoseconds`)
+}

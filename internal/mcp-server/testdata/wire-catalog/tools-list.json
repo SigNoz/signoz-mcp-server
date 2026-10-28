@@ -274,12 +274,18 @@
                 ]
               },
               "maxDuration": {
-                "description": "Maximum span duration in nanoseconds. Example: '2000000000' for 2s.",
-                "type": "string"
+                "description": "Maximum span duration, such as '500ms' or '2s' (units ns, us, ms, s, m, h). A bare number is nanoseconds: 500 means 500ns, not 500ms.",
+                "type": [
+                  "integer",
+                  "string"
+                ]
               },
               "minDuration": {
-                "description": "Minimum span duration in nanoseconds. Example: '500000000' for 500ms.",
-                "type": "string"
+                "description": "Minimum span duration, such as '500ms' or '2s' (units ns, us, ms, s, m, h). A bare number is nanoseconds: 500 means 500ns, not 500ms.",
+                "type": [
+                  "integer",
+                  "string"
+                ]
               },
               "operation": {
                 "description": "Shortcut filter for span/operation name. Equivalent to adding name = '\u003cvalue\u003e' to filter.",
@@ -7633,12 +7639,18 @@
                 ]
               },
               "maxDuration": {
-                "description": "Maximum span duration in nanoseconds. Example: '2000000000' for 2s.",
-                "type": "string"
+                "description": "Maximum span duration, such as '500ms' or '2s' (units ns, us, ms, s, m, h). A bare number is nanoseconds: 500 means 500ns, not 500ms.",
+                "type": [
+                  "integer",
+                  "string"
+                ]
               },
               "minDuration": {
-                "description": "Minimum span duration in nanoseconds. Example: '500000000' for 500ms.",
-                "type": "string"
+                "description": "Minimum span duration, such as '500ms' or '2s' (units ns, us, ms, s, m, h). A bare number is nanoseconds: 500 means 500ns, not 500ms.",
+                "type": [
+                  "integer",
+                  "string"
+                ]
               },
               "offset": {
                 "default": "0",
