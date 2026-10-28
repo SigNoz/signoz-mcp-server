@@ -33,6 +33,8 @@ var OfficialServerAliases = []string{"signoz", "signoz-mcp-server", "SigNozMCP"}
 // only schemas allowed above MaxTopLevelProperties. Adding or changing an
 // entry requires explicit guardrail review.
 var GrandfatheredWideSchemaProperties = map[string][]string{
+	// queryType takes aggregate to 18 on purpose: a separate AI aggregate tool
+	// would repeat every other parameter.
 	"signoz_aggregate_traces": {
 		"aggregations",
 		"end",
@@ -46,6 +48,7 @@ var GrandfatheredWideSchemaProperties = map[string][]string{
 		"minDuration",
 		"operation",
 		"orderBy",
+		"queryType",
 		"requestType",
 		"searchContext",
 		"service",

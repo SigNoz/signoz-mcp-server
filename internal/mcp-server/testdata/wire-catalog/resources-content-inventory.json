@@ -1,5 +1,18 @@
 [
   {
+    "identity": "signoz://ai/query-builder-guide",
+    "contents": [
+      {
+        "index": 0,
+        "kind": "text",
+        "uri": "signoz://ai/query-builder-guide",
+        "mimeType": "text/markdown",
+        "serializedLength": 7958,
+        "sha256": "50b43b9b8c1389738895c7ad036d7fd61a5a810be12a6a0f09d5da844ad6b7c1"
+      }
+    ]
+  },
+  {
     "identity": "signoz://alert/examples",
     "contents": [
       {
@@ -241,8 +254,8 @@
         "kind": "text",
         "uri": "signoz://notification-channel/examples",
         "mimeType": "text/markdown",
-        "serializedLength": 16155,
-        "sha256": "a8b35be49e2931a55c8d72a9669f0160ff1ce304aadf84fc9e8bbb3fb7fc6019"
+        "serializedLength": 16170,
+        "sha256": "ad58b7f7f977b271f52ba140bf07ef809907aea9ed0504ce85f7443847c01a52"
       }
     ]
   },
@@ -267,8 +280,8 @@
         "kind": "text",
         "uri": "signoz://query-builder/examples",
         "mimeType": "text/markdown",
-        "serializedLength": 14786,
-        "sha256": "2e628ae96b21e09d2b37f47a22c766b5cbb3dd60178afb30fe4f3a0f28927f4b"
+        "serializedLength": 20010,
+        "sha256": "0d4daff0693d0ec4f14dfa533c82d89cb57236fce27174a13d36e8acd308aaa8"
       }
     ]
   },

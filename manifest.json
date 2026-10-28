@@ -163,7 +163,7 @@
     },
     {
       "name": "signoz_aggregate_traces",
-      "description": "Return custom aggregate span statistics, groups, or time series; use signoz_get_service_top_operations for one service's built-in p99-ranked operation table"
+      "description": "Return custom aggregate span or per-AI-trace statistics, groups, or time series; use signoz_get_service_top_operations for one service's built-in p99-ranked operation table"
     },
     {
       "name": "signoz_search_traces",
@@ -317,6 +317,12 @@
       "uri": "signoz://traces/query-builder-guide",
       "name": "Traces Query Builder Guide",
       "description": "Read this before writing Query Builder v5 JSON for traces or filtering on unfamiliar trace fields. It explains filter syntax, field discovery, built-in span fields, row and aggregate queries, limits, ordering, timestamps, and examples for rows, single values, and time series.",
+      "mimeType": "text/markdown"
+    },
+    {
+      "uri": "signoz://ai/query-builder-guide",
+      "name": "AI Query Builder Guide",
+      "description": "Read this before AI observability queries: LLM cost, tokens, models, or tool calls, per call or per trace. It covers queryType builder_ai_query on signoz_search_traces and signoz_aggregate_traces, the trace-level fields and where they work, how cost and token totals are computed (including cache tokens), examples for both tools, and saving a builder_ai_query as an alert. Full requests are in signoz://query-builder/examples.",
       "mimeType": "text/markdown"
     },
     {

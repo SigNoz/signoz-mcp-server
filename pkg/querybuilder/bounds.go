@@ -39,6 +39,7 @@ func (b AppliedBounds) OrderText() string {
 // queryView is what bound selection reads from one query envelope.
 type queryView struct {
 	builder     bool
+	ai          bool // builder_ai_query: SigNoz picks the order
 	formula     bool
 	name        string
 	signal      string
@@ -56,7 +57,8 @@ type queryView struct {
 // forwarded verbatim for SigNoz, the only validator, to judge. A query whose
 // shape cannot be read is left untouched. Numeric strings in spec.limit and
 // spec.offset become JSON integers, because MCP clients are inconsistent about
-// encoding nested numbers.
+// encoding nested numbers. A builder_ai_query gets the same default limit as a
+// builder_query of its request type and no default order.
 func ApplyBounds(request map[string]any) []AppliedBounds {
 	composite, _ := request["compositeQuery"].(map[string]any)
 	queries, _ := composite["queries"].([]any)
@@ -74,7 +76,7 @@ func ApplyBounds(request map[string]any) []AppliedBounds {
 			continue
 		}
 		switch envelope["type"] {
-		case string(apitypes.Querybuildertypesv5QueryTypeBuilderQuery):
+		case string(apitypes.Querybuildertypesv5QueryTypeBuilderQuery), QueryTypeBuilderAI:
 			normalizeIntegerStrings(spec, "limit", "offset")
 		case string(apitypes.Querybuildertypesv5QueryTypeBuilderFormula):
 			normalizeIntegerStrings(spec, "limit")
@@ -158,6 +160,13 @@ func readQuery(envelope map[string]any) queryView {
 		case metricQuery:
 			return builderView(q.Name, "metrics", q.Limit, q.Order)
 		}
+	case apitypes.Querybuildertypesv5QueryEnvelopeBuilderAI:
+		if typed.Spec == nil {
+			return queryView{}
+		}
+		view := builderView(typed.Spec.Name, "traces", typed.Spec.Limit, typed.Spec.Order)
+		view.ai = true
+		return view
 	case apitypes.Querybuildertypesv5QueryEnvelopeFormula:
 		if typed.Spec == nil {
 			return queryView{}
@@ -205,8 +214,13 @@ func defaultLimit(requestType string) int {
 }
 
 // defaultOrder returns the signal-safe order for a query that omitted one, or
-// nil when none applies; SigNoz then judges the query as sent.
+// nil when none applies; SigNoz then judges the query as sent. A
+// builder_ai_query gets none: SigNoz orders AI trace rows by last activity, and
+// a span-level default such as timestamp is not a trace-list order key.
 func defaultOrder(view queryView, requestType string) []orderBy {
+	if view.ai {
+		return nil
+	}
 	if view.formula {
 		return resultDescending()
 	}

@@ -17,6 +17,9 @@ type Querybuildertypesv5PromQuery struct {
 	// Query The PromQL expression. Dotted metric and label names must use the UTF-8 quoted selector form, for example {'http.server.duration'}.
 	Query *string `json:"query,omitempty" jsonschema:"The PromQL expression. Dotted metric and label names must use the UTF-8 quoted selector form, for example {'http.server.duration'}."`
 
+	// SkipStepAlignment When true, start and end are evaluated as given instead of rounded down to the step, and the result is not cached. Defaults to false.
+	SkipStepAlignment *bool `json:"skipStepAlignment,omitempty" jsonschema:"When true, start and end are evaluated as given instead of rounded down to the step, and the result is not cached. Defaults to false."`
+
 	// Stats Reserved; currently has no effect.
 	Stats *bool `json:"stats,omitempty" jsonschema:"Reserved; currently has no effect."`
 
