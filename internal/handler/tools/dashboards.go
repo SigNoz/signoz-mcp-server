@@ -195,7 +195,7 @@ func (h *Handler) RegisterDashboardHandlers(s *mcp.Server) {
 
 	tool := mcp.NewTool("signoz_list_dashboards",
 		withReadOnlyToolAnnotations(),
-		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
+		mcp.WithString("searchContext", mcp.Description(searchContextParamDescription)),
 		mcp.WithDescription("Use this when the user wants to discover tenant dashboards, browse their summaries, or find a dashboard id. It returns names, descriptions, tags, timestamps, source, and a total count, not panel/query definitions; use signoz_get_dashboard for one full definition. source is user or integration; only user dashboards can be updated, patched, or deleted. source is not a list-filter column: filter by name, description, tags, creator, timestamps, or locked state, then distinguish user vs integration client-side across pages. When looking for a specific dashboard, page by raising offset by limit until you have covered total before concluding it is absent."),
 		mcp.WithString("limit", mcp.DefaultString("50"), intOrStringType(), mcp.Description("Maximum dashboard summaries per page. Default 50; values above 200 are clamped (the v2 API's server-side cap).")),
 		mcp.WithString("offset", mcp.DefaultString("0"), intOrStringType(), mcp.Description("Number of dashboard summaries to skip. Default 0; raise by limit to page until you reach total.")),
@@ -210,7 +210,7 @@ func (h *Handler) RegisterDashboardHandlers(s *mcp.Server) {
 
 	getDashboardTool := mcp.NewTool("signoz_get_dashboard",
 		withReadOnlyToolAnnotations(),
-		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
+		mcp.WithString("searchContext", mcp.Description(searchContextParamDescription)),
 		mcp.WithDescription("Use this when the user wants the complete definition of one known tenant dashboard, including its layout, variables, panels, and queries. Use signoz_list_dashboards first when the id is unknown. Do not use this to browse: signoz_list_dashboards lists tenant summaries and signoz_list_dashboard_templates lists curated templates. Get-by-id can return source user, system, or integration; keep source as returned. Only source=user dashboards can be updated, patched, or deleted; system and integration writes fail with a coded upstream error."),
 		mcp.WithString("id", mcp.Required(), mcp.Description("Known dashboard id. Required; use signoz_list_dashboards to discover it. Do not send uuid.")),
 	)
@@ -259,7 +259,7 @@ func (h *Handler) RegisterDashboardHandlers(s *mcp.Server) {
 
 	deleteDashboardTool := mcp.NewTool("signoz_delete_dashboard",
 		withDeleteToolAnnotations(),
-		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
+		mcp.WithString("searchContext", mcp.Description(searchContextParamDescription)),
 		mcp.WithDescription("Use this when the user has confirmed they want to permanently delete one user dashboard. The deletion is irreversible. Use signoz_list_dashboards to discover the id when needed. Only user dashboards can be deleted; upstream returns a coded denial for others. Use signoz_delete_view for saved Explorer views."),
 		mcp.WithString("id", mcp.Required(), mcp.Description("Dashboard id to delete. Required; use signoz_list_dashboards to discover it. Do not send uuid.")),
 	)
@@ -273,7 +273,7 @@ func (h *Handler) RegisterDashboardHandlers(s *mcp.Server) {
 			"Use this when the user wants a new dashboard from a curated SigNoz/dashboards template, not a custom configuration. Pass a known relative template path; if it is unknown, call signoz_list_dashboard_templates first. The server fetches the selected template and creates the dashboard (the v2 API validates it). Use signoz_create_dashboard for a custom layout or queries.",
 		),
 		mcp.WithString("path", mcp.Required(), mcp.Description("Relative JSON path from signoz_list_dashboard_templates, for example hostmetrics/hostmetrics.json. Do not pass a URL or absolute path.")),
-		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
+		mcp.WithString("searchContext", mcp.Description(searchContextParamDescription)),
 	)
 
 	h.addTool(s, importDashboardTool, h.handleImportDashboard)
@@ -285,7 +285,7 @@ func (h *Handler) RegisterDashboardHandlers(s *mcp.Server) {
 			"Use this when the user wants to browse curated dashboard templates or discover a path for signoz_import_dashboard. It returns the matching bundled templates with id, title, path, description, category, and keywords, plus their total. Pass searchText with the technology the user named; omit it only to browse the full catalog. It does not list dashboards already created in the tenant; use signoz_list_dashboards for those.",
 		),
 		mcp.WithString("searchText", mcp.Description(`Words matched case-insensitively against each template's id, title, path, category, description, and keywords; a template must match every word. Example: "postgres" or "kubernetes pod". At most 2048 characters. If nothing matches, retry with fewer words. Omit to return the full catalog.`)),
-		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
+		mcp.WithString("searchContext", mcp.Description(searchContextParamDescription)),
 	)
 
 	h.addTool(s, listTemplatesTool, h.handleListDashboardTemplates)

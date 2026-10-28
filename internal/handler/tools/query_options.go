@@ -11,14 +11,6 @@ import (
 
 // Shared descriptions for the result-shaping parameters the query tools expose.
 const (
-	havingParamDescription = "Condition on the aggregation results, in the filter syntax, applied after grouping. " +
-		"Reference an aggregation by its expression, for example \"count() > 100\" or \"p99(duration_nano) > 500000000\". SigNoz validates it."
-
-	functionsParamDescription = "Post-query transforms applied in order to each time_series result, as an array of {name, args} objects, or a JSON-encoded string of that array. " +
-		"SigNoz applies them to time_series results only and returns scalar results unchanged, so set requestType to time_series. " +
-		"Names are the Query Builder function names, for example cutOffMin, cutOffMax, clampMin, clampMax, absolute, runningDiff, cumulativeSum, ewma3, median5, timeShift, or fillZero; " +
-		"args carries the function's parameters, for example [{\"value\": 10}] for cutOffMin. SigNoz validates names and args."
-
 	// functionsIgnoredOnScalarNote tells the caller why functions had no effect.
 	functionsIgnoredOnScalarNote = "note: functions were not applied: SigNoz applies them to time_series results only and returns scalar results unchanged. Set requestType to time_series to use them."
 

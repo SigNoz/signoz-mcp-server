@@ -21,7 +21,7 @@ func (h *Handler) RegisterViewHandlers(s *mcp.Server) {
 
 	listTool := mcp.NewTool("signoz_list_views",
 		withReadOnlyToolAnnotations(),
-		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
+		mcp.WithString("searchContext", mcp.Description(searchContextParamDescription)),
 		mcp.WithDescription("Use this when the user wants to discover saved views or find a view UUID for the Logs, Traces, Metrics, or Cost Meter explorer pages. A view stores one query spec; it is not a multi-widget dashboard. Apply name filters before pagination, and follow pagination.nextOffset while pagination.hasMore is true before concluding a view is absent. Use signoz_get_view for one full definition."),
 		mcp.WithString("source", mcp.Description(`Explorer whose views to list, for example "traces", "logs", "metrics", or "meter" (Cost Meter). SigNoz validates the value. Omit to list views from every Explorer.`)),
 		mcp.WithString("name", mcp.Description("Partial, server-side match on the saved-view name. Omit to include every name.")),
@@ -32,7 +32,7 @@ func (h *Handler) RegisterViewHandlers(s *mcp.Server) {
 
 	getTool := mcp.NewTool("signoz_get_view",
 		withReadOnlyToolAnnotations(),
-		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
+		mcp.WithString("searchContext", mcp.Description(searchContextParamDescription)),
 		mcp.WithDescription("Use this when the user wants the complete definition of one known saved view. Use signoz_list_views first when its UUID is unknown. The returned data object is the required base for signoz_update_view because updates fully replace a view. Do not use this for multi-widget dashboards; use signoz_get_dashboard."),
 		// Not mcp.Required(): the legacy alias "viewId" must remain a valid call
 		// for schema-aware clients. The handler validates id/viewId presence.
@@ -60,7 +60,7 @@ func (h *Handler) RegisterViewHandlers(s *mcp.Server) {
 
 	deleteTool := mcp.NewTool("signoz_delete_view",
 		withDeleteToolAnnotations(),
-		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
+		mcp.WithString("searchContext", mcp.Description(searchContextParamDescription)),
 		mcp.WithDescription("Use this when the user has confirmed they want to permanently delete one saved view. The deletion is irreversible. Use signoz_list_views to discover the UUID when needed; do not use this for dashboards; delete those with signoz_delete_dashboard."),
 		mcp.WithString("id", mcp.Description("UUID of the saved view to delete. Required; use signoz_list_views to discover it.")),
 	)
