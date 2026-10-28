@@ -7,6 +7,13 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/pkg/querybuilder"
 )
 
+const tracesLegacyQueryAliasError = `parameter validation failed: "query" is not accepted by trace tools; use "filter" with a Query Builder filter expression (see signoz://traces/query-builder-guide)`
+
+// readTraceFilterExpr reads the canonical filter parameter for trace tools.
+func readTraceFilterExpr(args map[string]any) (string, error) {
+	return readFilterRejectingQueryAlias(args, tracesLegacyQueryAliasError)
+}
+
 // SearchTracesRequest holds the parsed parameters for a trace search query.
 type SearchTracesRequest struct {
 	FilterExpression string
@@ -26,7 +33,7 @@ type SearchTracesRequest struct {
 const maxTraceSelectFields = maxSelectFields
 
 func parseSearchTracesArgs(args map[string]any) (*SearchTracesRequest, error) {
-	filter, err := readFilterExpr(args)
+	filter, err := readTraceFilterExpr(args)
 	if err != nil {
 		return nil, err
 	}
@@ -93,7 +100,7 @@ func parseAggregateTracesArgs(args map[string]any) (*AggregateRequest, error) {
 	}
 	minDuration, _ := args["minDuration"].(string)
 	maxDuration, _ := args["maxDuration"].(string)
-	filter, err := readFilterExpr(args)
+	filter, err := readTraceFilterExpr(args)
 	if err != nil {
 		return nil, err
 	}

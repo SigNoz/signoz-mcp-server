@@ -11,12 +11,17 @@ import (
 
 const logsLegacyQueryAliasError = `parameter validation failed: "query" is not accepted by log tools; use "filter" with a Query Builder filter expression (see signoz://logs/query-builder-guide)`
 
-// readLogFilterExpr reads the canonical filter parameter for log tools. The
-// legacy query alias was removed from the changed log tools, so the presence
-// of query is a correctable validation error rather than a silent fallback.
+// readLogFilterExpr reads the canonical filter parameter for log tools.
 func readLogFilterExpr(args map[string]any) (string, error) {
+	return readFilterRejectingQueryAlias(args, logsLegacyQueryAliasError)
+}
+
+// readFilterRejectingQueryAlias reads the canonical filter parameter for a
+// tool that retired the legacy query alias: any supplied query is a coded
+// validation error naming filter, never a silent fallback (CMP-2).
+func readFilterRejectingQueryAlias(args map[string]any, aliasError string) (string, error) {
 	if _, exists := args["query"]; exists {
-		return "", errors.New(logsLegacyQueryAliasError)
+		return "", errors.New(aliasError)
 	}
 	filter := stringValue(args["filter"])
 	if strings.TrimSpace(filter) == "" {

@@ -897,7 +897,7 @@ Get observed values for a known field key. Use `signoz_get_field_keys` when the 
 Return individual paginated span rows matching service, operation, error, duration, or field filters, and use them to discover trace IDs. With `requestType: trace` it returns one row per trace instead. With `queryType: builder_ai_query` it searches AI traces, also filters on per-trace cost, token, and call counts, and its trace rows carry those per-trace values. Use `signoz_aggregate_traces` for statistics or `signoz_get_trace_details` for one known trace.
 
 - **Parameters**:
-  - `filter` (optional) - Filter expression using SigNoz search syntax. Combine conditions with AND, OR, and parentheses (e.g., "service.name = 'payment-svc' AND (has_error = true OR attribute.http.response.status_code >= 500)"). Legacy `query` is still accepted for backward compatibility, but `filter` is canonical. See `signoz://traces/query-builder-guide`
+  - `filter` (optional) - Filter expression using SigNoz search syntax. Combine conditions with AND, OR, and parentheses (e.g., "service.name = 'payment-svc' AND (has_error = true OR attribute.http.response.status_code >= 500)"). The former `query` alias is rejected with a coded error that names `filter`. See `signoz://traces/query-builder-guide`
   - `service` (optional) - Service name to filter by
   - `operation` (optional) - Operation/span name to filter by
   - `error` (optional) - Filter by error status. Boolean (or the strings `"true"`/`"false"`). An invalid value is rejected rather than silently dropped

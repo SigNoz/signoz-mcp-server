@@ -92,20 +92,25 @@ func TestParseFilterExpressionParam_CanonicalFilterContract(t *testing.T) {
 	})
 
 	// Every supplied query form is rejected at the parser layer
-	// (TestReadLogFilterExpr); each logs tool only has to route through it.
-	t.Run("logs reject the retired query alias", func(t *testing.T) {
-		for _, parser := range []parserCase{parsers[0], parsers[2]} {
+	// (TestReadLogFilterExpr); each logs and traces tool only has to route through it.
+	t.Run("logs and traces reject the retired query alias", func(t *testing.T) {
+		for parser, want := range map[*parserCase]string{
+			&parsers[0]: logsLegacyQueryAliasError,
+			&parsers[1]: tracesLegacyQueryAliasError,
+			&parsers[2]: logsLegacyQueryAliasError,
+			&parsers[3]: tracesLegacyQueryAliasError,
+		} {
 			t.Run(parser.name, func(t *testing.T) {
 				_, err := parser.parse(mergeArgs(parser.base, map[string]any{"query": "service.name = 'checkout'"}))
-				if err == nil || err.Error() != logsLegacyQueryAliasError {
-					t.Fatalf("error = %v, want %q", err, logsLegacyQueryAliasError)
+				if err == nil || err.Error() != want {
+					t.Fatalf("error = %v, want %q", err, want)
 				}
 			})
 		}
 	})
 
-	t.Run("traces and metrics retain legacy query alias", func(t *testing.T) {
-		aliasParsers := []parserCase{parsers[1], parsers[3], parsers[4]}
+	t.Run("metrics retains legacy query alias", func(t *testing.T) {
+		aliasParsers := []parserCase{parsers[4]}
 		tests := []struct {
 			name    string
 			args    map[string]any
