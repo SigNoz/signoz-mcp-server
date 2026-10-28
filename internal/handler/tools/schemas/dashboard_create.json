@@ -2365,7 +2365,7 @@
           "type": "string"
         },
         "threshold": {
-          "description": "Bucket bound the comparison uses, in the unit of the histogram metric. The count is an estimate, interpolated linearly between the two nearest bucket bounds.",
+          "description": "Bucket bound the comparison uses, in the unit of the histogram metric. The count is exact when threshold equals one of the metric's le bucket bounds, and otherwise an estimate interpolated linearly between the two nearest bounds.",
           "format": "double",
           "type": "number"
         }
@@ -2795,7 +2795,7 @@
               "$ref": "#/$defs/Querybuildertypesv5OrderByKey"
             }
           ],
-          "description": "The field, aggregation alias or expression to sort by, for example timestamp, service.name or count()."
+          "description": "The sort key. For aggregation requests name is a group-by field such as service.name, an aggregation alias, or the aggregation expression: count() or p99(duration_nano) for traces and logs; for metrics the spaceAggregation(timeAggregation(metricName)) form such as sum(rate(signoz_calls_total)), p99(metricName) for histogram metrics, or __result. Raw requests sort by any field, such as timestamp."
         }
       },
       "type": "object"
@@ -2868,6 +2868,10 @@
         "query": {
           "description": "The PromQL expression. Dotted metric and label names must use the UTF-8 quoted selector form, for example {'http.server.duration'}.",
           "type": "string"
+        },
+        "skipStepAlignment": {
+          "description": "When true, start and end are evaluated as given instead of rounded down to the step, and the result is not cached. Defaults to false.",
+          "type": "boolean"
         },
         "stats": {
           "description": "Reserved; currently has no effect.",

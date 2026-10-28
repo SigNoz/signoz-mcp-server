@@ -72,6 +72,28 @@ func TestApplyBounds_DefaultsByRequestType(t *testing.T) {
 	}
 }
 
+// SigNoz orders AI trace rows by last activity and accepts only per-trace keys
+// there, so a builder_ai_query gets a reported default limit but no inserted order.
+func TestApplyBounds_BuilderAIQueryGetsDefaultLimitAndNoOrder(t *testing.T) {
+	for _, tc := range []struct {
+		requestType string
+		spec        string
+		wantLimit   int
+	}{
+		{"trace", `{"name":"A","signal":"traces","filter":{"expression":"trace.tool_call_count > 10"}}`, DefaultRawQueryLimit},
+		{"scalar", `{"name":"A","signal":"traces","limit":"0","aggregations":[{"expression":"avg(trace.estimated_total_cost)"}]}`, DefaultAggregateQueryLimit},
+	} {
+		t.Run(tc.requestType, func(t *testing.T) {
+			request := decode(t, `{"requestType":"`+tc.requestType+`","compositeQuery":{"queries":[{"type":"builder_ai_query","spec":`+tc.spec+`}]}}`)
+			applied := ApplyBounds(request)
+			spec := querySpec(t, request, 0)
+			require.Equal(t, tc.wantLimit, spec["limit"])
+			require.NotContains(t, spec, "order", "a builder_ai_query must reach SigNoz without an inserted order")
+			require.Equal(t, []AppliedBounds{{QueryIndex: 0, QueryName: `query "A"`, Limit: tc.wantLimit, LimitDefaulted: true}}, applied)
+		})
+	}
+}
+
 func TestApplyBounds_LeavesAuthoredBoundsUntouched(t *testing.T) {
 	request := decode(t, `{"requestType":"time_series","compositeQuery":{"queries":[{"type":"builder_query","spec":{
 		"name":"A","signal":"logs","limit":42,"stepInterval":60,"aggregations":[{"expression":"count()"}],

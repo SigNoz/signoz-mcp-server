@@ -8,6 +8,6 @@ type MetrictypesComparisonSpaceAggregationParam struct {
 	// Operator Comparison applied to histogram bucket bounds when spaceAggregation is count: <= gives the estimated count of observations at or below threshold, > the estimated count above it.
 	Operator string `json:"operator" jsonschema:"Comparison applied to histogram bucket bounds when spaceAggregation is count: <= gives the estimated count of observations at or below threshold, > the estimated count above it."`
 
-	// Threshold Bucket bound the comparison uses, in the unit of the histogram metric. The count is an estimate, interpolated linearly between the two nearest bucket bounds.
-	Threshold float64 `json:"threshold" jsonschema:"Bucket bound the comparison uses, in the unit of the histogram metric. The count is an estimate, interpolated linearly between the two nearest bucket bounds."`
+	// Threshold Bucket bound the comparison uses, in the unit of the histogram metric. The count is exact when threshold equals one of the metric's le bucket bounds, and otherwise an estimate interpolated linearly between the two nearest bounds.
+	Threshold float64 `json:"threshold" jsonschema:"Bucket bound the comparison uses, in the unit of the histogram metric. The count is exact when threshold equals one of the metric's le bucket bounds, and otherwise an estimate interpolated linearly between the two nearest bounds."`
 }

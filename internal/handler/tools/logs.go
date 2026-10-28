@@ -77,6 +77,7 @@ func aggregateSpec(signal string, reqData *AggregateRequest) querybuilder.Aggreg
 		StepInterval: reqData.StepInterval,
 		Having:       reqData.Having,
 		Functions:    reqData.Functions,
+		QueryType:    reqData.QueryType,
 	}
 }
 

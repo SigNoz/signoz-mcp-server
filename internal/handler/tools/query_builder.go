@@ -23,7 +23,7 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *mcp.Server) {
 		mcp.WithDescription(
 			"Use this only when dedicated log, trace, and metric tools cannot express the request, including multi-query requests, formulas, PromQL, and ClickHouse SQL. "+
 				"Use signoz_search_logs/signoz_search_traces for raw rows, signoz_aggregate_logs/signoz_aggregate_traces for grouped or top-N analysis, and signoz_query_metrics for ordinary metrics queries. "+
-				"Read the matching signoz://logs/query-builder-guide, signoz://traces/query-builder-guide, or signoz://metrics-aggregation-guide; formulas require the metrics guide, and PromQL requires signoz://promql/instructions. signoz://query-builder/examples holds a complete request per query type and request type. "+
+				"Read the matching signoz://logs/query-builder-guide, signoz://traces/query-builder-guide, signoz://ai/query-builder-guide, or signoz://metrics-aggregation-guide; formulas require the metrics guide, and PromQL requires signoz://promql/instructions. signoz://query-builder/examples holds a complete request per query type and request type. "+
 				"Leave limit unset on each builder_query a formula references, because SigNoz applies an input's limit before the formula runs and drops series from its result. Give every other builder_query and each builder_formula a positive limit (100 for results) and non-empty spec.order (not dashboard orderBy); the server fills in omitted ones.",
 		),
 		mcp.WithInputSchema[types.ExecuteBuilderQueryInput](),
@@ -62,6 +62,24 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *mcp.Server) {
 				URI:      req.Params.URI,
 				MIMEType: "text/markdown",
 				Text:     querybuilder.TracesQueryBuilderGuide,
+			},
+		}, nil
+	})
+
+	aiQueryBuilderGuide := mcp.NewResource(
+		"signoz://ai/query-builder-guide",
+		"AI Query Builder Guide",
+		mcp.WithResourceDescription("Read this before AI observability queries: LLM cost, tokens, models, or tool calls, per call or per trace. It covers queryType builder_ai_query on signoz_search_traces and signoz_aggregate_traces, the trace-level fields and where they work, how cost and token totals are computed (including cache tokens), examples for both tools, and saving a builder_ai_query as an alert. Full requests are in signoz://query-builder/examples."),
+		mcp.WithMIMEType("text/markdown"),
+		mcp.WithResourceSize(int64(len(querybuilder.AIQueryBuilderGuide))),
+	)
+
+	h.addResource(s, aiQueryBuilderGuide, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+		return []mcp.ResourceContents{
+			mcp.TextResourceContents{
+				URI:      req.Params.URI,
+				MIMEType: "text/markdown",
+				Text:     querybuilder.AIQueryBuilderGuide,
 			},
 		}, nil
 	})

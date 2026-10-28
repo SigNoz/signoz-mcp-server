@@ -29,7 +29,7 @@ func (h *Handler) RegisterTracesHandlers(s *mcp.Server) {
 	aggregateTracesTool := mcp.NewTool("signoz_aggregate_traces",
 		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description(searchContextParamDescription)),
-		mcp.WithDescription("Use this when the user wants custom aggregate statistics over spans (counts, rates, latency percentiles, grouped/top-N breakdowns, or time series) rather than individual span rows or a full trace hierarchy. For the built-in operation table for one traced service, ranked by p99, use signoz_get_service_top_operations. Use signoz_search_traces for raw spans, trace-ID discovery, or one row per trace (such as the most expensive AI traces), and signoz_get_trace_details for one known trace ID. Before calling, read signoz://traces/query-builder-guide; discover unfamiliar workspace fields with signoz_get_field_keys. Defaults to the last 1 hour."),
+		mcp.WithDescription("Use this when the user wants custom aggregate statistics over spans (counts, rates, latency percentiles, grouped/top-N breakdowns, or time series) rather than individual span rows or a full trace hierarchy. For the built-in operation table for one traced service, ranked by p99, use signoz_get_service_top_operations. Use signoz_search_traces for raw spans, trace-ID discovery, or one row per trace (such as the most expensive AI traces), and signoz_get_trace_details for one known trace ID. Before calling, read signoz://traces/query-builder-guide; discover unfamiliar workspace fields with signoz_get_field_keys. For AI observability queries, set queryType to builder_ai_query and read signoz://ai/query-builder-guide. Defaults to the last 1 hour."),
 		mcp.WithString("aggregations", mcp.Required(), stringOrStringArrayType(), mcp.Description(tracesAggregationsParamDescription)),
 		mcp.WithString("groupBy", stringOrStringArrayType(), mcp.Description(tracesGroupByParamDescription)),
 		mcp.WithString("having", mcp.Description(havingParamDescription)),
@@ -47,6 +47,7 @@ func (h *Handler) RegisterTracesHandlers(s *mcp.Server) {
 		mcp.WithString("end", intOrStringType(), mcp.Description(endParamDescription)),
 		mcp.WithString("requestType", mcp.DefaultString("scalar"), mcp.Enum("scalar", "time_series"), mcp.Description(aggregateRequestTypeParamDescription)),
 		mcp.WithString("stepInterval", intOrStringType(), mcp.Description(stepIntervalParamDescription)),
+		mcp.WithString("queryType", mcp.DefaultString(querybuilder.QueryTypeBuilder), mcp.Enum(querybuilder.QueryTypeBuilder, querybuilder.QueryTypeBuilderAI), mcp.Description(aggregateTracesQueryTypeParamDescription)),
 	)
 
 	h.addTool(s, aggregateTracesTool, h.handleAggregateTraces)
@@ -54,7 +55,7 @@ func (h *Handler) RegisterTracesHandlers(s *mcp.Server) {
 	searchTracesTool := mcp.NewTool("signoz_search_traces",
 		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description(searchContextParamDescription)),
-		mcp.WithDescription("Use this when the user wants individual span rows matching service, operation, error, duration, or field filters, needs to discover trace IDs, or wants one row per trace (requestType=trace), such as the slowest traces or the most expensive AI traces. It returns paginated rows, not aggregate trends/groups or a full trace hierarchy; use signoz_aggregate_traces for statistics and signoz_get_trace_details for one known trace ID. Span rows carry a default set of span fields; name other fields in selectFields. A field missing from a row was not selected, so do not read it as absent from the span. Read signoz://traces/query-builder-guide before using unfamiliar workspace fields. To search AI traces, including by per-trace cost, token, or call counts, set queryType to builder_ai_query. Defaults to the last 1 hour."),
+		mcp.WithDescription("Use this when the user wants individual span rows matching service, operation, error, duration, or field filters, needs to discover trace IDs, or wants one row per trace (requestType=trace), such as the slowest traces or the most expensive AI traces. It returns paginated rows, not aggregate trends/groups or a full trace hierarchy; use signoz_aggregate_traces for statistics and signoz_get_trace_details for one known trace ID. Span rows carry a default set of span fields; name other fields in selectFields. A field missing from a row was not selected, so do not read it as absent from the span. Read signoz://traces/query-builder-guide before using unfamiliar workspace fields. For AI observability queries, set queryType to builder_ai_query and read signoz://ai/query-builder-guide. Defaults to the last 1 hour."),
 		mcp.WithString("filter", mcp.Description(searchTracesFilterParamDescription)),
 		mcp.WithString("service", mcp.Description(searchTracesServiceParamDescription)),
 		mcp.WithString("operation", mcp.Description(searchTracesOperationParamDescription)),

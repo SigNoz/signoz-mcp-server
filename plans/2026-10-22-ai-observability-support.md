@@ -43,9 +43,11 @@ pagination contract.
 - **Reads only** for pricing and mappings.
 - **Naming:** `ai`, never `llm`, on MCP surfaces; upstream column names stay as SigNoz defines
   them.
-- **A separate guide**, `signoz://ai/query-builder-guide`, plus one server-instructions line.
-- **Saved AI queries** need only e2e coverage; AI examples for `pkg/*/examples.generated.md` come
-  from an upstream SigNoz change and a later `make gen`.
+- **A separate guide**, `signoz://ai/query-builder-guide`, linked from the trace tool and
+  `signoz_execute_builder_query` descriptions.
+- **Saved AI queries** need only e2e coverage. Full `builder_ai_query` requests come from the
+  SigNoz spec (`ai_traces_*` examples on `query_range`) through `make gen`, so the guide holds
+  only MCP tool-call examples.
 
 ### PR breakdown
 
@@ -58,14 +60,15 @@ pagination contract.
 2. **`feat(traces)`: AI trace search.** `queryType`, `requestType` and `orderBy` on
    `signoz_search_traces`, built by `SpanSearch` (raw) and `TraceList` (trace).
    2b. **`feat(traces)`: AI aggregates and guide.** `queryType` on aggregate, the
-   `builder_ai_query` default limit in `ApplyBounds`, the AI guide, and the instructions line.
-   Companion agent-skills PR.
+   `builder_ai_query` default limit in `ApplyBounds`, and the AI guide. Companion agent-skills
+   PR.
 3. **`feat(ai)`: pricing and mapping read tools.** `signoz_get_ai_pricing`
    (`view: rules|unpriced_models`), `signoz_list_ai_attribute_mappings`,
    `signoz_test_ai_attribute_mapping`. Companion agent-skills PR (can share PR 2's).
 4. **`feat(ai)`: AI result content.** Notes on `builder_ai_query` results (window, cost is an
-   estimate in USD, wider window when empty, trace rows include spans outside the window,
-   `total_tokens` excludes cache and reasoning tokens); previews cut to 1,000 characters with a
+   estimate in USD, wider window when empty, trace-row columns include spans outside the window
+   while filters and order use only the window, `total_tokens` includes cache tokens inside input
+   tokens); previews cut to 1,000 characters with a
    truncation flag; a $0-cost hint naming unpriced models, with a WARN log when expected fields
    are missing; `gen_ai.*` in `signoz_get_trace_details` default columns. Depends on PRs 2 and 3.
 5. **`feat(traces)`: AI thread in `signoz_get_trace_details`.** Reads
@@ -79,10 +82,10 @@ pagination contract.
 - `internal/client/client.go`, `internal/client/interface.go` — client methods
 - `internal/handler/tools/fields.go` — `queryType` on field keys (PR 1)
 - `internal/handler/tools/traces.go` — `queryType`, `orderBy`, result notes, thread (PRs 2, 4, 5)
-- `pkg/querybuilder/` — default limit and AI guide (PR 2)
-- `pkg/instructions/instructions.go` — routing line (PR 2)
+- `pkg/querybuilder/` — default limit and AI guide (PR 2b)
 - `internal/handler/tools/` — pricing and mapping tools (PR 3)
-- `guardrails/policy.go` — exception for `signoz_aggregate_traces` (PR 2)
+- `guardrails/policy.go` — exceptions for `signoz_search_traces` (PR 2) and
+  `signoz_aggregate_traces` (PR 2b)
 - `manifest.json`, `README.md`, `internal/mcp-server/testdata/wire-catalog/`, `tests/e2e/tests/`
   — per PR
 
@@ -119,6 +122,39 @@ pagination contract.
 - Decision: accept going further over the 15-parameter cap with `queryType`.
 - Rationale: the alternative is a separate tool pair, rejected above.
 
+### 2026-10-27 — Full AI requests come from upstream examples
+
+- Decision: SigNoz publishes `ai_traces_raw`, `ai_traces_raw_select_fields`, `ai_traces_trace`,
+  `ai_traces_scalar` and `ai_traces_time_series` request examples ([SigNoz/signoz#13282](https://github.com/SigNoz/signoz/pull/13282));
+  PR 2b pins `SIGNOZ_SPEC_REF` to that branch head and the guide points to
+  `signoz://query-builder/examples` instead of carrying a request body.
+- Rationale: one source of truth (construction before detection); `test_spec_examples.py` runs
+  every published example against the pinned release.
+- Follow-up: the SigNoz change merges first; bump the ref to its merge commit before PR 2b
+  merges, then to the release tag.
+
+### 2026-10-28 — AI trace rows filter and rank on the window, then show full-trace values
+
+- Decision: the guide says trace-level filters, orderBy, and the limit use in-window spans, while
+  the returned columns cover each trace's full extent and the page is re-sorted on them.
+- Rationale: SigNoz's trace-list SQL (`matched` CTE, then an enrichment pass with no timestamp
+  bound; `TestBuild_FullSQL_TraceList_AggregateFilterOnly`) works this way; the guide had said
+  only that columns span the whole trace (found in review of #404).
+
+### 2026-10-28 — AI span rows are only the gen_ai spans
+
+- Decision: descriptions and the guide say `builder_ai_query` span rows are the LLM, tool, and
+  agent spans of AI traces, and the e2e seed adds a plain child span to prove it.
+- Rationale: SigNoz gates raw AI rows on `gen_ai.request.model`, `gen_ai.tool.name`, or
+  `gen_ai.agent.name` (found in review of SigNoz/signoz#13282); "spans of AI traces" overstated it.
+
+### 2026-10-27 — No server-instructions line for the AI guide
+
+- Decision: the trace tool and `signoz_execute_builder_query` descriptions link the guide; the
+  server instructions stay unchanged.
+- Rationale: the instructions hold cross-cutting rules and route to no other guide; agents reach
+  AI queries through those tools.
+
 ### 2026-10-27 — `requestType` on `signoz_search_traces`
 
 - Decision: `requestType` (`raw` default, `trace`) picks span or trace rows, independent of
@@ -150,6 +186,18 @@ pagination contract.
   filters on AI span rows, `trace.*` order keys rejected on span rows and honored on AI trace
   rows, plain trace rows slowest first with `orderBy` ignored, and an out-of-enum `requestType`
   running as span rows with the notice.
+- PR 2b: checked by hand against a local SigNoz: `count_distinct(trace_id)` counts 2 AI traces
+  with `builder_ai_query` and 3 traces without; `trace.` keys aggregate to null with
+  `builder_query`; per-call input tokens by model match the trace rows, with a null group for
+  spans without the model; SigNoz rejects OR across trace- and span-level filters; and
+  `signoz_execute_builder_query` reports the default limit and inserts no order. Seeded cost reads
+  back null, so the e2e asserts on tokens. The alert and dashboard round-trips run only in CI,
+  because the local key cannot create them.
+- PR 2b agent check: 15 questions through headless Claude Code against a local SigNoz. Routing
+  was right for all 15. Two fixes followed: the guide now names which `ai_traces_*` example to
+  copy (an agent had hand-built a request), and its resource description names cache tokens
+  (an agent searched the docs first). The `signoz-generating-queries` skill loaded in 6 sessions
+  and does not know the AI guide; the agent-skills companion should link it.
 - Agent eval by hand: about 25 questions, including negative ones that must not set
   `builder_ai_query`, against a local SigNoz seeded with gen_ai traces, pricing rules and one
   unpriced model. Baseline before PR 2, rerun after PR 5.
@@ -161,4 +209,6 @@ This plan spans PRs 1 to 5 and stays `In Progress` until PR 5 merges; each PR up
 - PR 1 (`feat(fields)`): `queryType` and `fieldContext=trace` on `signoz_get_field_keys`;
   `trace` is honored only by the AI fields keys endpoint.
 - PR 2 (`feat(traces)`): `queryType`, `requestType` and `orderBy` on `signoz_search_traces`.
-- PRs 2b to 5: not started.
+- PR 2b (`feat(traces)`): `queryType` on `signoz_aggregate_traces`, the AI guide, and the
+  `builder_ai_query` default limit in `signoz_execute_builder_query`.
+- PRs 3 to 5: not started.
