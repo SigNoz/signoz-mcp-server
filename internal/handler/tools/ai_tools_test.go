@@ -66,6 +66,7 @@ func TestGetAIPricing_RulesAssembleTheRequestedPageFromUpstreamPages(t *testing.
 		var offset, limit int
 		_, _ = fmt.Sscan(r.URL.Query().Get("offset"), &offset)
 		_, _ = fmt.Sscan(r.URL.Query().Get("limit"), &limit)
+		limit = min(limit, aiPricingRulesUpstreamPageSize) // SigNoz clamps a page to 100 rules
 		items := make([]string, 0, limit)
 		for i := offset; i < min(offset+limit, total); i++ {
 			items = append(items, fmt.Sprintf(`{"id":"rule-%d","modelName":"gpt-4o","provider":"openai","pricing":{"input":2.5,"output":10}}`, i))
@@ -78,22 +79,26 @@ func TestGetAIPricing_RulesAssembleTheRequestedPageFromUpstreamPages(t *testing.
 		t.Fatalf("unexpected failure: err=%v result=%v", err, result.Content)
 	}
 
-	got := requests()
-	if len(got) != 2 {
-		t.Fatalf("upstream requests = %#v, want two pages", got)
-	}
-	for i, want := range []string{"limit=100&offset=0&q=gpt", "limit=50&offset=100&q=gpt"} {
-		query, _ := url.ParseQuery(got[i].Query)
-		if got[i].Path != "/api/v1/llm_pricing_rules" || query.Encode() != want {
-			t.Fatalf("request %d = %s?%s, want /api/v1/llm_pricing_rules?%s", i, got[i].Path, got[i].Query, want)
+	for _, req := range requests() {
+		query, _ := url.ParseQuery(req.Query)
+		var limit int
+		_, _ = fmt.Sscan(query.Get("limit"), &limit)
+		if req.Path != "/api/v1/llm_pricing_rules" || query.Get("q") != "gpt" || limit < 1 || limit > aiPricingRulesUpstreamPageSize {
+			t.Fatalf("request %s?%s: want the rules path, q=gpt, and a limit within SigNoz's 100-rule cap", req.Path, req.Query)
 		}
 	}
 	out := successJSON(t, textContent(t, result))
 	if out["view"] != "rules" {
 		t.Fatalf("view = %v, want rules", out["view"])
 	}
-	if data := out["data"].([]any); len(data) != total {
+	data := out["data"].([]any)
+	if len(data) != total {
 		t.Fatalf("returned %d rules, want %d", len(data), total)
+	}
+	for i, item := range data {
+		if id := item.(map[string]any)["id"]; id != fmt.Sprintf("rule-%d", i) {
+			t.Fatalf("rule %d = %v, want rule-%d: rules must arrive in order without gaps or duplicates", i, id, i)
+		}
 	}
 	pagination := out["pagination"].(map[string]any)
 	if pagination["total"] != float64(total) || pagination["hasMore"] != false || pagination["nextOffset"] != float64(-1) {

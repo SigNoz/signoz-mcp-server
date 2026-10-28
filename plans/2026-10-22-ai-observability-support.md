@@ -73,8 +73,8 @@ pagination contract.
    are missing; `gen_ai.*` in `signoz_get_trace_details` default columns. Depends on PRs 2 and 3.
 5. **`feat(traces)`: AI thread in `signoz_get_trace_details`.** Reads
    `GET /api/v1/traces/{traceID}/thread`: the trace's model, tool and agent spans in time order
-   with decoded input and output messages, paged by cursor. Messages use PR 4's preview cut. The
-   endpoint is alpha upstream, so e2e pins its shape. Depends on PR 4.
+   with decoded input and output messages, paged by cursor. Deferred: see the 2026-10-28
+   decision below.
 
 ## Files to Modify
 
@@ -148,6 +148,14 @@ pagination contract.
   every published example against the pinned release.
 - Follow-up: the SigNoz change merges first; bump the ref to its merge commit before PR 2b
   merges, then to the release tag.
+
+### 2026-10-28 — The AI thread (PR 5) is deferred
+
+- Decision: no thread support in `signoz_get_trace_details` for now. A built version
+  (`view=thread`, with cursor paging, raw message attributes dropped, and a 1,000-character
+  cut) was closed unmerged.
+- Rationale: premature while SigNoz's thread endpoint is alpha; revisit when it stabilizes.
+  The preview cut planned for PR 4 then lands with PR 4.
 
 ### 2026-10-28 — AI trace rows filter and rank on the window, then show full-trace values
 
