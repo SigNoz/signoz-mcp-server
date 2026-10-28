@@ -76,7 +76,6 @@ func TestToolHandlers_RejectInvalidArgumentsBeforeCallingSigNoz(t *testing.T) {
 		{tool: "signoz_update_view", arguments: `{"id":"019947a7-f200-7000-8000-000000000001"}`, wantText: `"view" is required`},
 		{tool: "signoz_get_notification_channel", arguments: `{}`, wantText: `"id" is required`},
 		{tool: "signoz_execute_builder_query", arguments: `{}`, wantText: `"query" must be a JSON object`},
-		{tool: "signoz_get_trace_details", arguments: `{"traceId":"deadbeefdeadbeefdeadbeefdeadbeef","start":"not-a-timestamp","end":"also-bad"}`, wantText: "start"},
 		{tool: "signoz_get_trace_details", arguments: `{"traceId":"deadbeefdeadbeefdeadbeefdeadbeef","includeSpans":"perhaps"}`, wantText: "includeSpans"},
 		{tool: "signoz_aggregate_logs", arguments: `{"aggregation":"count"}`, wantText: `"aggregations"`},
 		{tool: "signoz_aggregate_logs", arguments: `{"aggregations":"p99(x)","aggregateOn":"x"}`, wantText: `"aggregations"`},

@@ -6414,16 +6414,9 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user already has a known trace ID and wants that trace's spans, metadata, and hierarchy. If the ID is unknown, discover it with signoz_search_traces first. Supply a time window containing the trace; the default last 6 hours can miss an older trace. Do not use this for filtering many spans or aggregate analysis.",
+          "description": "Use this when the user already has a known trace ID and wants that trace's spans, metadata, and hierarchy. If the ID is unknown, discover it with signoz_search_traces first. SigNoz locates the trace by its ID alone, so no time window is needed; an ID SigNoz does not know returns no spans. Do not use this for filtering many spans or aggregate analysis.",
           "inputSchema": {
             "properties": {
-              "end": {
-                "description": "End time in unix milliseconds (optional, defaults to now).",
-                "type": [
-                  "integer",
-                  "string"
-                ]
-              },
               "includeSpans": {
                 "description": "Include detailed span information (default: true).",
                 "type": [
@@ -6433,18 +6426,6 @@
               },
               "searchContext": {
                 "description": "Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.",
-                "type": "string"
-              },
-              "start": {
-                "description": "Start time in unix milliseconds (optional, defaults to 6 hours ago).",
-                "type": [
-                  "integer",
-                  "string"
-                ]
-              },
-              "timeRange": {
-                "default": "6h",
-                "description": "Relative time range. Format: \u003cnumber\u003e\u003cunit\u003e where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '3d', '7d'. Ignored when both start and end are provided. Defaults to last 6 hours if not provided.",
                 "type": "string"
               },
               "traceId": {

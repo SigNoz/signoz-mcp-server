@@ -77,8 +77,6 @@ const (
 	aggregateTracesQueryTypeParamDescription = "'builder_query' (default) aggregates spans of all traces. Set 'builder_ai_query' for AI observability queries: it aggregates spans of AI traces (traces with an LLM, tool, or agent span), and aggregations, filter, and orderBy also accept the trace-level fields " + aiTraceKeys + ", e.g. avg(trace.estimated_total_cost). One call cannot mix trace-level and span-level aggregations. To count AI traces, use count_distinct(trace_id)."
 	searchTracesRequestTypeParamDescription  = "Row shape. raw (default) returns one row per span. trace returns one row per trace: span-level filters, including operation, error, minDuration, and maxDuration, keep the traces with at least one matching span, and selectFields does not apply. builder_query trace rows carry trace_id, the root span name, service.name, duration_nano, and span_count (the spans matching the filter). builder_ai_query trace rows carry the trace-level fields without the trace. prefix (such as llm_call_count), plus root_span_name, span_count, trace_duration_nano, error_count, and the input and output message JSON."
 	traceIDParamDescription                  = "Known trace ID to retrieve. Discover it with signoz_search_traces when the user has not supplied one."
-	traceDetailsStartParamDescription        = "Start time in unix milliseconds (optional, defaults to 6 hours ago)."
-	traceDetailsEndParamDescription          = "End time in unix milliseconds (optional, defaults to now)."
 	includeSpansParamDescription             = "Include detailed span information (default: true)."
 )
 
