@@ -5205,7 +5205,7 @@
           "inputSchema": {
             "properties": {
               "fieldContext": {
-                "description": "Restrict results to a single field context (optional). Valid values: 'resource' (resource attributes, e.g. service.name, k8s.namespace.name), 'attribute' (user-ingested span/log attributes), 'scope' (instrumentation scope), 'log' / 'span' / 'metric' (intrinsic columns of the logs/traces/metrics signal), 'body' (fields inside a JSON log body). For span/log attributes use 'attribute', not the legacy Query Builder context 'tag': SigNoz ignores 'tag' when listing keys and returns no values for it. 'trace' lists the per-trace AI columns and works only with queryType=builder_ai_query.",
+                "description": "Restrict results to a single field context (optional). Valid values: 'resource' (resource attributes, e.g. service.name, k8s.namespace.name), 'attribute' (user-ingested span/log attributes), 'scope' (instrumentation scope), 'log' / 'span' / 'metric' (intrinsic columns of the logs/traces/metrics signal), 'body' (fields inside a JSON log body). For span/log attributes use 'attribute', not the legacy Query Builder context 'tag': SigNoz ignores 'tag' when listing keys and returns no values for it. 'trace' (fields of a whole trace rather than one span, such as values computed over all of its spans; write them with the trace. prefix in queries).",
                 "enum": [
                   "resource",
                   "attribute",
@@ -5228,7 +5228,7 @@
               },
               "queryType": {
                 "default": "builder_query",
-                "description": "Query type the keys are for. Default 'builder_query' lists the regular fields of the signal. 'builder_ai_query' lists AI trace fields: the per-trace cost, token, and call-count columns (such as trace.estimated_total_cost and trace.llm_call_count), listed even before AI data arrives, plus gen_ai.* span attributes. The per-trace columns come back as bare names with fieldContext 'trace'; write them with the trace. prefix in queries. signal is still required but ignored: builder_ai_query always lists traces-signal keys, including span fields and attributes.",
+                "description": "'builder_query' (default) lists the fields of signal. Set 'builder_ai_query' for AI observability queries; it also lists the trace-level fields, such as trace.estimated_total_cost, and gen_ai.* attributes.",
                 "enum": [
                   "builder_query",
                   "builder_ai_query"

@@ -7,8 +7,8 @@ against the pinned release: taught contexts are honored (a context filter
 restricts keys to that context, span intrinsics surface under "span", a seeded
 resource attribute's observed values come back in values.stringValues), and the
 "tag" trap behaves as the descriptions say it does. queryType=builder_ai_query
-pins what the AI field keys endpoint returns: the per-trace columns, and the
-same traces-signal keys whatever the signal.
+pins what the AI field keys endpoint returns: the computed per-trace fields
+under the trace context, and the same keys whatever the signal.
 """
 
 from fixtures.mcpclient import MCPClient, assert_tool_ok, text_blocks
@@ -171,7 +171,7 @@ def test_ai_field_keys_ignore_signal(mcp_client: MCPClient) -> None:
 
 
 def test_ai_field_keys_filter_to_trace_context(mcp_client: MCPClient) -> None:
-    """fieldContext=trace with queryType=builder_ai_query returns only the per-trace AI columns."""
+    """fieldContext=trace with queryType=builder_ai_query returns only the computed per-trace fields."""
     result = mcp_client.call_tool(
         "signoz_get_field_keys",
         {

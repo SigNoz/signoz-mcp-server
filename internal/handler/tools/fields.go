@@ -35,10 +35,10 @@ func (h *Handler) RegisterFieldsHandlers(s *mcp.Server) {
 		mcp.WithString("signal", mcp.Required(), mcp.Enum("metrics", "traces", "logs"), mcp.Description("Signal type: 'metrics', 'traces', or 'logs'.")),
 		mcp.WithString("searchText", mcp.Description("Filter field names by substring (optional).")),
 		mcp.WithString("metricName", mcp.Description("Metric name to scope field keys (optional, only relevant when signal=metrics).")),
-		mcp.WithString("fieldContext", mcp.Enum("resource", "attribute", "scope", "log", "span", "metric", "trace", "body"), mcp.Description(fieldContextParamDesc+" 'trace' lists the per-trace AI columns and works only with queryType=builder_ai_query.")),
+		mcp.WithString("fieldContext", mcp.Enum("resource", "attribute", "scope", "log", "span", "metric", "trace", "body"), mcp.Description(fieldContextParamDesc+" 'trace' (fields of a whole trace rather than one span, such as values computed over all of its spans; write them with the trace. prefix in queries).")),
 		mcp.WithString("fieldDataType", mcp.Description(fieldDataTypeParamDesc)),
 		mcp.WithString("source", mcp.Description("For signal=metrics, set \"meter\" to discover Cost Meter fields; omit for the default metrics store. Omit for logs and traces.")),
-		mcp.WithString("queryType", mcp.DefaultString(queryTypeBuilder), mcp.Enum(queryTypeBuilder, queryTypeBuilderAI), mcp.Description("Query type the keys are for. Default 'builder_query' lists the regular fields of the signal. 'builder_ai_query' lists AI trace fields: the per-trace cost, token, and call-count columns (such as trace.estimated_total_cost and trace.llm_call_count), listed even before AI data arrives, plus gen_ai.* span attributes. The per-trace columns come back as bare names with fieldContext 'trace'; write them with the trace. prefix in queries. signal is still required but ignored: builder_ai_query always lists traces-signal keys, including span fields and attributes.")),
+		mcp.WithString("queryType", mcp.DefaultString(queryTypeBuilder), mcp.Enum(queryTypeBuilder, queryTypeBuilderAI), mcp.Description("'builder_query' (default) lists the fields of signal. Set 'builder_ai_query' for AI observability queries; it also lists the trace-level fields, such as trace.estimated_total_cost, and gen_ai.* attributes.")),
 	)
 
 	h.addTool(s, getFieldKeysTool, h.handleGetFieldKeys)

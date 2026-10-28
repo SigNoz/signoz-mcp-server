@@ -865,10 +865,10 @@ Discover field names available for filtering or grouping metrics, traces, or log
   - `signal` (required) - Signal type. Enum: `metrics`, `traces`, `logs`
   - `searchText` (optional) - Filter field keys by name substring
   - `metricName` (optional) - Filter by metric name (relevant for metrics signal)
-  - `fieldContext` (optional) - Restrict to a field context. Enum: `resource`, `attribute`, `scope`, `log`/`span`/`metric` (intrinsic columns), `trace` (the per-trace AI columns; only with `queryType` `builder_ai_query`), `body` (JSON log body). Use `attribute`, not the legacy Query Builder context `tag`, which SigNoz ignores here.
+  - `fieldContext` (optional) - Restrict to a field context. Enum: `resource`, `attribute`, `scope`, `log`/`span`/`metric` (intrinsic columns), `trace` (fields of a whole trace rather than one span, such as values computed over all of its spans; written with the `trace.` prefix), `body` (JSON log body). Use `attribute`, not the legacy Query Builder context `tag`, which SigNoz ignores here.
   - `fieldDataType` (optional) - Restrict to a data type: `string`, `bool`, `int64`, `float64`, `number`. An array form like `[]string` is treated as its element type.
   - `source` (optional) - For metrics, use `meter` for Cost Meter fields; omit for the default metrics store
-  - `queryType` (optional) - `builder_query` (default) or `builder_ai_query`. `builder_ai_query` lists AI trace fields: the per-trace cost, token, and call-count columns (such as `trace.estimated_total_cost`), listed even before AI data arrives, plus `gen_ai.*` span attributes. The per-trace columns come back as bare names with `fieldContext` `trace`; write them with the `trace.` prefix in queries. `signal` is still required but ignored: `builder_ai_query` always lists traces-signal keys, including span fields and attributes.
+  - `queryType` (optional) - `builder_query` (default) lists the fields of `signal`. Set `builder_ai_query` for AI observability queries; it also lists the trace-level fields, such as `trace.estimated_total_cost`, and `gen_ai.*` attributes.
 
 #### `signoz_get_field_values`
 

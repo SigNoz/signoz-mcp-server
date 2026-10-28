@@ -47,13 +47,12 @@ pagination contract.
 
 ### PR breakdown
 
-1. **`feat(fields)`: `queryType` on field keys.** `builder_ai_query` lists the per-trace columns
-   (even before data arrives) with the span fields and `gen_ai.*` attributes, and lists
-   traces-signal keys whatever the `signal`.
-   `fieldContext=trace` filters to the per-trace columns; only the AI endpoint honors it, so
-   its description ties it to `builder_ai_query`. `signoz_get_field_values` gets neither: the
-   per-trace columns have no value suggestions, and `gen_ai.*` values already come from the
-   default endpoint.
+1. **`feat(fields)`: `queryType` on field keys.** `builder_ai_query` lists the computed per-trace
+   fields (even before data arrives) with the span fields and `gen_ai.*` attributes, whatever the
+   `signal`. `fieldContext` on field keys accepts `trace`, the whole-trace level; today only the
+   AI keys endpoint lists fields under it. `signoz_get_field_values` gets neither: nothing is
+   stored under `trace`, so its values are always empty, and `gen_ai.*` values already come
+   from the default endpoint.
 2. **`feat(traces)`: query AI data.** `queryType` on search and aggregate, `orderBy` on search,
    the `builder_ai_query` default limit in `ApplyBounds`, the AI guide, and the instructions
    line. Companion agent-skills PR.
