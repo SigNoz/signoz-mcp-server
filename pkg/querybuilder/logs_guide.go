@@ -24,15 +24,24 @@ Examples:
 
 == FIELD NAMES AND CONTEXTS ==
 
-Unknown keys hard-error. Do not guess field names. If unsure, call:
+An unknown key may not fail: SigNoz can match guessed attribute and body spellings, return the
+warning "key <name> not found in metadata", and match no rows. Read that warning as an absent key,
+not as an empty result. Do not guess field names. If unsure, call:
   signoz_get_field_keys(signal="logs", fieldContext="resource")
   signoz_get_field_keys(signal="logs", fieldContext="attribute")
   signoz_get_field_values(signal="logs", name="<field>")
 
 Log keys are workspace-specific: logs have no spec-mandated resource attributes, so even
 service.name exists only when the log pipeline sets it. A filter on a key this workspace's
-logs never carried fails with "key ... not found"; discover valid keys as above and use
+logs never carried usually returns no rows with the "not found in metadata" warning (some
+deployments reject it with "key ... not found" instead); discover valid keys as above and use
 an existing one (e.g. k8s.deployment.name) instead of retrying the same filter.
+
+Group by and select only keys signoz_get_field_keys returns. An unknown groupBy key can come
+back as one empty group. A body field (body.<path>) filters everywhere but is usually rejected
+for group by and selection: SigNoz answers "can be filtered but not selected or grouped", or
+"field not found" on workspaces that store JSON log bodies. Filter on the body field and group
+by an attribute instead.
 
 If a key matches BOTH the resource and attribute contexts, SigNoz defaults to the resource context (and warns). For other multi-context matches, every matching context is ORed together.
 Disambiguate explicitly in filter expressions with resource.<key> or attribute.<key> (scope.<key> also exists).

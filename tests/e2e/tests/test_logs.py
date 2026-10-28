@@ -1,3 +1,5 @@
+import pytest
+
 from fixtures.logger import setup_logger
 from fixtures.mcpclient import MCPClient, assert_tool_ok, first_json, text_blocks
 from fixtures.results import first_text_block, note_blocks, query_range_rows
@@ -173,3 +175,65 @@ def test_explicit_search_scopes_quoting_and_warning_round_trip(
     )
     assert query_range_rows(first_text_block(composed))
     assert _decoded_rows_contain(composed, body_token)
+
+
+@pytest.mark.skip(
+    reason="foundry casts set allow_simdjson: 0, so the body JSON fallback for a missing key returns a "
+    "ClickHouse 500 (SigNoz/events-pod#227); unskip once foundry drops the setting"
+)
+def test_missing_filter_key_returns_no_rows_with_the_taught_warning(
+    mcp_client: MCPClient, test_id: str, telemetry: None
+) -> None:
+    """A filter on a key the workspace never carried runs, returns no rows, and warns, as the log filter teaches."""
+    service = f"mcp-e2e-{test_id}"
+    seed_logs(service, f"marker-{test_id}", count=2)
+
+    def visible() -> bool:
+        result = mcp_client.call_tool(
+            "signoz_search_logs",
+            {"searchContext": "seeded logs", "service": service, "timeRange": "1h", "limit": "5"},
+        )
+        return not result.get("isError", False) and bool(query_range_rows(first_text_block(result)))
+
+    wait_for(visible, f"seeded logs for {service} visible")
+
+    missing_key = f"mcp_e2e_absent_{test_id.replace('-', '_')}"
+    filtered = assert_tool_ok(
+        mcp_client.call_tool(
+            "signoz_search_logs",
+            {
+                "searchContext": "filter on a key the workspace never carried",
+                "service": service,
+                "filter": f"{missing_key} = 'x'",
+                "timeRange": "1h",
+                "limit": "5",
+            },
+        )
+    )
+    assert not query_range_rows(first_text_block(filtered)), "a missing key matched rows"
+    assert f"key `{missing_key}` not found in metadata" in note_blocks(filtered), (
+        f"the taught warning is missing: {note_blocks(filtered)!r}"
+    )
+
+
+def test_body_field_group_by_fails_with_a_taught_message(mcp_client: MCPClient, test_id: str, telemetry: None) -> None:
+    """Grouping by a body field fails with one of the two messages the log groupBy description quotes."""
+    service = f"mcp-e2e-{test_id}"
+    seed_logs(service, f"marker-{test_id}", count=2)
+    grouped = mcp_client.call_tool(
+        "signoz_aggregate_logs",
+        {
+            "searchContext": "group by a JSON body field",
+            "service": service,
+            "aggregations": "count()",
+            "groupBy": "body.mcp_e2e_field",
+            "timeRange": "1h",
+        },
+    )
+    assert grouped.get("isError", False), (
+        f"a body-field group-by ran, but the descriptions teach that it is rejected: {first_text_block(grouped)[:400]}"
+    )
+    message = first_text_block(grouped)
+    assert "can be filtered but not selected or grouped" in message or "field not found" in message, (
+        f"a body-field group-by failed with a message other than the taught ones: {message[:400]}"
+    )
