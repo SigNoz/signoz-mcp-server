@@ -656,6 +656,19 @@ func (s *SigNoz) GetFieldValues(ctx context.Context, signal, name, metricName, s
 	})
 }
 
+// The AI fields endpoints always read trace fields, so they take no signal, source, or metricName.
+func (s *SigNoz) GetAIFieldKeys(ctx context.Context, searchText, fieldContext, fieldDataType string) (json.RawMessage, error) {
+	params := &apiclient.GetAIObservabilityFieldsKeysParams{
+		FieldContext:  optEnum[apitypes.TelemetrytypesFieldContext](fieldContext),
+		FieldDataType: optEnum[apitypes.TelemetrytypesFieldDataType](fieldDataType),
+		SearchText:    optString(searchText),
+	}
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching AI field keys", slog.String("searchText", searchText))
+	return s.callAPI(ctx, DefaultQueryTimeout, func(ctx context.Context, api *apiclient.Client) (*http.Response, error) {
+		return api.GetAIObservabilityFieldsKeys(ctx, params)
+	})
+}
+
 func (s *SigNoz) GetTraceDetails(ctx context.Context, traceID string, includeSpans bool, startTime, endTime int64) (json.RawMessage, error) {
 	if startTime == 0 || endTime == 0 {
 		return nil, fmt.Errorf("start and end time parameters are required")
