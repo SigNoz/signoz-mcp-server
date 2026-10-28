@@ -77,12 +77,17 @@ func (h *Handler) RegisterTracesHandlers(s *mcp.Server) {
 	getTraceDetailsTool := mcp.NewTool("signoz_get_trace_details",
 		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description(searchContextParamDescription)),
-		mcp.WithDescription("Use this when the user already has a known trace ID and wants that trace's spans, metadata, and hierarchy. If the ID is unknown, discover it with signoz_search_traces first. Supply a time window containing the trace; the default last 6 hours can miss an older trace. Do not use this for filtering many spans or aggregate analysis."),
+		mcp.WithDescription("Use this when the user already has a known trace ID and wants that trace's spans, metadata, and hierarchy. If the ID is unknown, discover it with signoz_search_traces first. Supply a time window containing the trace; the default last 6 hours can miss an older trace. For an AI agent trace, view=thread returns the conversation: its model, tool, and agent spans in time order with their input and output messages. Do not use this for filtering many spans or aggregate analysis."),
 		mcp.WithString("traceId", mcp.Required(), mcp.Description(traceIDParamDescription)),
 		mcp.WithString("timeRange", mcp.DefaultString("6h"), mcp.Description(timeRangeParamDescription("Defaults to last 6 hours if not provided."))),
 		mcp.WithString("start", intOrStringType(), mcp.Description(traceDetailsStartParamDescription)),
 		mcp.WithString("end", intOrStringType(), mcp.Description(traceDetailsEndParamDescription)),
 		mcp.WithBoolean("includeSpans", boolOrStringType(), mcp.Description(includeSpansParamDescription)),
+		mcp.WithString("view", mcp.DefaultString(traceDetailsViewSpans), mcp.Enum(traceDetailsViewSpans, traceDetailsViewThread), mcp.Description(traceDetailsViewParamDescription)),
+		mcp.WithString("limit", intOrStringType(), mcp.Description(traceThreadLimitParamDescription)),
+		mcp.WithString("after", mcp.Description(traceThreadAfterParamDescription)),
+		mcp.WithString("before", mcp.Description(traceThreadBeforeParamDescription)),
+		mcp.WithString("spanId", mcp.Description(traceThreadSpanIDParamDescription)),
 	)
 
 	h.addTool(s, getTraceDetailsTool, h.handleGetTraceDetails)
@@ -194,6 +199,10 @@ func (h *Handler) handleGetTraceDetails(ctx context.Context, req mcp.CallToolReq
 	traceID, errResult := requireStringArg(args, "traceId")
 	if errResult != nil {
 		return errResult, nil
+	}
+	// Out-of-enum views run as spans, and the schema validation notice flags them.
+	if view, _ := args["view"].(string); view == traceDetailsViewThread {
+		return h.handleGetTraceThread(ctx, args, traceID), nil
 	}
 
 	// Reject a present-but-malformed start/end loudly; otherwise

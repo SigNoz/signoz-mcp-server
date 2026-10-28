@@ -99,6 +99,21 @@ type GetFieldsValuesParams struct {
 	ExistingQuery *string `form:"existingQuery,omitempty" json:"existingQuery,omitempty"`
 }
 
+// GetTraceThreadParams defines parameters for GetTraceThread.
+type GetTraceThreadParams struct {
+	// Limit Page size, at most 100. 0 means 20.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// After The nextCursor of a page; returns the spans after it. Set only one of after, before and spanId.
+	After *string `form:"after,omitempty" json:"after,omitempty"`
+
+	// Before The prevCursor of a page; returns the spans before it. Set only one of after, before and spanId.
+	Before *string `form:"before,omitempty" json:"before,omitempty"`
+
+	// SpanId Returns the page around this span. Set only one of after, before and spanId.
+	SpanId *string `form:"spanId,omitempty" json:"spanId,omitempty"`
+}
+
 // ListDashboardsV2Params defines parameters for ListDashboardsV2.
 type ListDashboardsV2Params struct {
 	// Query A filter expression over the reserved keys name, description, created_at, updated_at, created_by and locked, and over tag keys, using the SigNoz filter grammar: comparisons such as =, !=, CONTAINS, LIKE, IN, < and >, single-quoted strings, RFC3339 timestamps in quotes for created_at and updated_at, combined with AND, OR and NOT, for example name CONTAINS 'overview' AND created_at >= '2026-10-21T00:00:00Z'. At most 1024 characters. Empty matches every dashboard.
@@ -379,6 +394,13 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /api/v1/stats (the `GetStats` operationId).
 	GetStats(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetTraceThread Get thread view for a trace
+	//
+	// Returns the gen_ai spans of a trace, model calls, tool calls and agent spans, in timestamp order. The messages a span carries are decoded into formattedInput and formattedOutput, with formatterWarnings holding what the converter could not resolve; a span without messages has both empty. Pass nextCursor as after or prevCursor as before to page, or spanId to open the page around a span.
+	//
+	// Corresponds with GET /api/v1/traces/{traceID}/thread (the `GetTraceThread` operationId).
+	GetTraceThread(ctx context.Context, traceID string, params *GetTraceThreadParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListDashboardsV2 List dashboards (v2)
 	//
@@ -832,6 +854,23 @@ func (c *Client) GetMyServiceAccount(ctx context.Context, reqEditors ...RequestE
 // Corresponds with GET /api/v1/stats (the `GetStats` operationId).
 func (c *Client) GetStats(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetStatsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetTraceThread Get thread view for a trace
+//
+// Returns the gen_ai spans of a trace, model calls, tool calls and agent spans, in timestamp order. The messages a span carries are decoded into formattedInput and formattedOutput, with formatterWarnings holding what the converter could not resolve; a span without messages has both empty. Pass nextCursor as after or prevCursor as before to page, or spanId to open the page around a span.
+//
+// Corresponds with GET /api/v1/traces/{traceID}/thread (the `GetTraceThread` operationId).
+func (c *Client) GetTraceThread(ctx context.Context, traceID string, params *GetTraceThreadParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetTraceThreadRequest(c.Server, traceID, params)
 	if err != nil {
 		return nil, err
 	}
@@ -2164,6 +2203,103 @@ func NewGetStatsRequest(server string) (*http.Request, error) {
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetTraceThreadRequest constructs an http.Request for the GetTraceThread method
+func NewGetTraceThreadRequest(server string, traceID string, params *GetTraceThreadParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "traceID", traceID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/traces/%s/thread", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.After != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "after", *params.After, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Before != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "before", *params.Before, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.SpanId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "spanId", *params.SpanId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -3892,6 +4028,15 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/v1/stats (the `GetStats` operationId).
 	GetStatsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetStatsResponse, error)
 
+	// GetTraceThreadWithResponse Get thread view for a trace
+	//
+	// Returns the gen_ai spans of a trace, model calls, tool calls and agent spans, in timestamp order. The messages a span carries are decoded into formattedInput and formattedOutput, with formatterWarnings holding what the converter could not resolve; a span without messages has both empty. Pass nextCursor as after or prevCursor as before to page, or spanId to open the page around a span.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/traces/{traceID}/thread (the `GetTraceThread` operationId).
+	GetTraceThreadWithResponse(ctx context.Context, traceID string, params *GetTraceThreadParams, reqEditors ...RequestEditorFn) (*GetTraceThreadResponse, error)
+
 	// ListDashboardsV2WithResponse List dashboards (v2)
 	//
 	// Returns a page of v2-shape dashboards for the org. This is the pure, user-independent list — it carries no pin state. Use ListDashboardsForUserV2 for the personalized, pin-aware list. Supports a filter DSL (`query`), sort (`updated_at`/`created_at`/`name`), order (`asc`/`desc`), and offset-based pagination (`limit`/`offset`).
@@ -4720,6 +4865,88 @@ func (r GetStatsResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetStatsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetTraceThreadResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *struct {
+		Data   apitypes.SpantypesGettableTraceThread `json:"data"`
+		Status string                                `json:"status"`
+	}
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *apitypes.RenderErrorResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *apitypes.RenderErrorResponse
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *apitypes.RenderErrorResponse
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *apitypes.RenderErrorResponse
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *apitypes.RenderErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetTraceThreadResponse) GetJSON200() *struct {
+	Data   apitypes.SpantypesGettableTraceThread `json:"data"`
+	Status string                                `json:"status"`
+} {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetTraceThreadResponse) GetJSON400() *apitypes.RenderErrorResponse {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetTraceThreadResponse) GetJSON401() *apitypes.RenderErrorResponse {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r GetTraceThreadResponse) GetJSON403() *apitypes.RenderErrorResponse {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetTraceThreadResponse) GetJSON404() *apitypes.RenderErrorResponse {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetTraceThreadResponse) GetJSON500() *apitypes.RenderErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetTraceThreadResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetTraceThreadResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetTraceThreadResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetTraceThreadResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -7097,6 +7324,21 @@ func (c *ClientWithResponses) GetStatsWithResponse(ctx context.Context, reqEdito
 	return ParseGetStatsResponse(rsp)
 }
 
+// GetTraceThreadWithResponse Get thread view for a trace
+//
+// Returns the gen_ai spans of a trace, model calls, tool calls and agent spans, in timestamp order. The messages a span carries are decoded into formattedInput and formattedOutput, with formatterWarnings holding what the converter could not resolve; a span without messages has both empty. Pass nextCursor as after or prevCursor as before to page, or spanId to open the page around a span.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/traces/{traceID}/thread (the `GetTraceThread` operationId).
+func (c *ClientWithResponses) GetTraceThreadWithResponse(ctx context.Context, traceID string, params *GetTraceThreadParams, reqEditors ...RequestEditorFn) (*GetTraceThreadResponse, error) {
+	rsp, err := c.GetTraceThread(ctx, traceID, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetTraceThreadResponse(rsp)
+}
+
 // ListDashboardsV2WithResponse List dashboards (v2)
 //
 // Returns a page of v2-shape dashboards for the org. This is the pure, user-independent list — it carries no pin state. Use ListDashboardsForUserV2 for the personalized, pin-aware list. Supports a filter DSL (`query`), sort (`updated_at`/`created_at`/`name`), order (`asc`/`desc`), and offset-based pagination (`limit`/`offset`).
@@ -8043,6 +8285,70 @@ func ParseGetStatsResponse(rsp *http.Response) (*GetStatsResponse, error) {
 			return nil, err
 		}
 		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest apitypes.RenderErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetTraceThreadResponse parses an HTTP response from a GetTraceThreadWithResponse call
+func ParseGetTraceThreadResponse(rsp *http.Response) (*GetTraceThreadResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetTraceThreadResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			Data   apitypes.SpantypesGettableTraceThread `json:"data"`
+			Status string                                `json:"status"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest apitypes.RenderErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest apitypes.RenderErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest apitypes.RenderErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest apitypes.RenderErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest apitypes.RenderErrorResponse

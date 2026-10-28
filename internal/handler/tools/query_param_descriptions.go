@@ -77,6 +77,11 @@ const (
 	traceDetailsStartParamDescription        = "Start time in unix milliseconds (optional, defaults to 6 hours ago)."
 	traceDetailsEndParamDescription          = "End time in unix milliseconds (optional, defaults to now)."
 	includeSpansParamDescription             = "Include detailed span information (default: true)."
+	traceDetailsViewParamDescription         = "spans (default): the trace's spans and hierarchy within the time window. thread: the AI conversation, meaning the trace's model, tool, and agent spans in time order with input and output messages decoded, paged by cursor; timeRange, start, end, and includeSpans do not apply, and message values over 1000 characters are cut."
+	traceThreadLimitParamDescription         = "view=thread only: spans per page, at most 100 (default 20)."
+	traceThreadAfterParamDescription         = "view=thread only: nextCursor from the previous page, for the spans after it. Set only one of after, before, and spanId."
+	traceThreadBeforeParamDescription        = "view=thread only: prevCursor of a page, for the spans before it. Set only one of after, before, and spanId."
+	traceThreadSpanIDParamDescription        = "view=thread only: a span ID, for the page around that span. Set only one of after, before, and spanId."
 )
 
 // aiTraceKeys are the per-trace AI columns SigNoz computes only for builder_ai_query.

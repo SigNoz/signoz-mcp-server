@@ -19,10 +19,6 @@ trace thread endpoints, so no spec bump is needed. Each PR adds the operations i
 Not planned: evals and scores (no backend), AI-specific ClickHouse SQL guides, sessions (until
 SigNoz supports them).
 
-Open question (PR 5): how `signoz_get_trace_details` exposes the thread, a mode parameter or
-thread parameters beside the existing ones, and how its cursor paging maps to the tool's
-pagination contract.
-
 ## Approach
 
 - **Same tools, explicit routing.** `queryType` (`builder_query` default, `builder_ai_query`) on
@@ -70,8 +66,9 @@ pagination contract.
    are missing; `gen_ai.*` in `signoz_get_trace_details` default columns. Depends on PRs 2 and 3.
 5. **`feat(traces)`: AI thread in `signoz_get_trace_details`.** Reads
    `GET /api/v1/traces/{traceID}/thread`: the trace's model, tool and agent spans in time order
-   with decoded input and output messages, paged by cursor. Messages use PR 4's preview cut. The
-   endpoint is alpha upstream, so e2e pins its shape. Depends on PR 4.
+   with decoded input and output messages, paged by cursor. It introduces the 1,000-character
+   preview cut that PR 4 reuses. The endpoint is alpha upstream, so e2e pins its shape.
+   Independent of PR 4.
 
 ## Files to Modify
 
@@ -87,6 +84,22 @@ pagination contract.
   — per PR
 
 ## Key Decisions
+
+### 2026-10-28 — The thread is `view=thread` on `signoz_get_trace_details`
+
+- Decision: `view` (`spans` default, `thread`) switches the result shape; `limit`, `after`,
+  `before`, and `spanId` apply only to the thread and reach SigNoz as given, and `nextCursor` /
+  `prevCursor` come back as SigNoz returns them. Each span drops the raw `gen_ai.input.messages`
+  and `gen_ai.output.messages` attributes, which repeat `formattedInput` and `formattedOutput`,
+  and string values over 1,000 characters are cut and flagged with `truncated`.
+- Rationale: one parameter switching the shape is easier to pick than a separate thread mode
+  spread across parameters; OUT-3 already allows cursor paging (`data.nextCursor`), so offsets
+  are not forced onto a cursor API. A probe of the endpoint showed one 5,000-character message
+  repeated four times in a 27 KB page (raw and decoded, carried into later calls), which the
+  dropped attributes and the cut keep out of the agent's context.
+- SigNoz validates the thread parameters (`trace_thread_invalid_anchor`, `_invalid_limit`,
+  `_invalid_cursor`); the MCP only rejects a `limit` it cannot parse, since the generated client
+  takes an integer.
 
 ### 2026-10-27 — Same tools with an explicit `queryType`
 

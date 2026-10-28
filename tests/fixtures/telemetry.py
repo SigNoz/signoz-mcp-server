@@ -1,3 +1,4 @@
+import json
 import time
 import uuid
 from typing import Any
@@ -233,6 +234,111 @@ def seed_ai_trace(service_name: str, *, model: str = "gpt-4o-mini", llm_calls: i
     resp = requests.post(f"{OTLP_ENDPOINT}/v1/traces", json=payload, timeout=30)
     resp.raise_for_status()
     logger.info("seeded AI trace %s (%d spans) for service %s", trace_id, len(spans), service_name)
+    return trace_id
+
+
+def seed_ai_conversation(service_name: str, *, long_message_chars: int = 1500) -> str:
+    """Push one AI agent conversation via OTLP/HTTP and return its trace id (hex).
+
+    Spans in time order: an agent root, an LLM call whose user message is
+    `long_message_chars` long and which asks for a tool, the tool call, a db
+    child span with no gen_ai attributes, and a final LLM answer. LLM spans carry
+    gen_ai.input.messages and gen_ai.output.messages in the OpenTelemetry GenAI
+    JSON message format, so SigNoz can decode them into the trace thread.
+    """
+    now = time.time_ns()
+    trace_id = uuid.uuid4().hex
+    root_id = uuid.uuid4().hex[:16]
+    start = now - 5_000_000_000
+
+    def span(name: str, offset_ms: int, attributes: list[dict], *, span_id: str = "", parent: str = root_id) -> dict:
+        begin = start + offset_ms * 1_000_000
+        return {
+            "traceId": trace_id,
+            "spanId": span_id or uuid.uuid4().hex[:16],
+            "parentSpanId": parent,
+            "name": name,
+            "kind": 1,  # SPAN_KIND_INTERNAL
+            "startTimeUnixNano": str(begin),
+            "endTimeUnixNano": str(begin + 50_000_000),
+            "attributes": attributes,
+            "status": {"code": 1},
+        }
+
+    def messages(value: list[dict]) -> str:
+        return json.dumps(value)
+
+    question = "Q" * long_message_chars
+    tool_call = {"type": "tool_call", "id": "call_1", "name": "search_docs", "arguments": {"q": "pricing"}}
+    tool_id = uuid.uuid4().hex[:16]
+    spans = [
+        span(
+            "invoke_agent e2e-agent",
+            0,
+            [_attr("gen_ai.operation.name", "invoke_agent"), _attr("gen_ai.agent.name", "e2e-agent")],
+            span_id=root_id,
+            parent="",
+        ),
+        span(
+            "chat gpt-4o-mini",
+            100,
+            [
+                _attr("gen_ai.operation.name", "chat"),
+                _attr("gen_ai.request.model", "gpt-4o-mini"),
+                _attr(
+                    "gen_ai.input.messages",
+                    messages([{"role": "user", "parts": [{"type": "text", "content": question}]}]),
+                ),
+                _attr(
+                    "gen_ai.output.messages",
+                    messages([{"role": "assistant", "parts": [tool_call], "finish_reason": "tool_call"}]),
+                ),
+            ],
+        ),
+        span(
+            "execute_tool search_docs",
+            200,
+            [_attr("gen_ai.operation.name", "execute_tool"), _attr("gen_ai.tool.name", "search_docs")],
+            span_id=tool_id,
+        ),
+        span("SELECT docs", 250, [_attr("db.system", "postgresql")], parent=tool_id),
+        span(
+            "chat gpt-4o-mini",
+            300,
+            [
+                _attr("gen_ai.operation.name", "chat"),
+                _attr("gen_ai.request.model", "gpt-4o-mini"),
+                _attr(
+                    "gen_ai.output.messages",
+                    messages(
+                        [
+                            {
+                                "role": "assistant",
+                                "parts": [{"type": "text", "content": "Done."}],
+                                "finish_reason": "stop",
+                            }
+                        ]
+                    ),
+                ),
+            ],
+        ),
+    ]
+    payload = {
+        "resourceSpans": [
+            {
+                "resource": {
+                    "attributes": [
+                        {"key": "service.name", "value": {"stringValue": service_name}},
+                        {"key": "telemetry.sdk.language", "value": {"stringValue": "e2e"}},
+                    ]
+                },
+                "scopeSpans": [{"scope": {"name": "signoz-mcp-e2e"}, "spans": spans}],
+            }
+        ]
+    }
+    resp = requests.post(f"{OTLP_ENDPOINT}/v1/traces", json=payload, timeout=30)
+    resp.raise_for_status()
+    logger.info("seeded AI conversation %s for service %s", trace_id, service_name)
     return trace_id
 
 

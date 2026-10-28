@@ -96,6 +96,9 @@ variables: `--reuse`, `--teardown`, `--foundry-binary-path`, `--license-key`.
 - `test_ai_traces.py` — a seeded agent trace searched with `queryType` and
   `requestType`: span rows for both query types, per-trace filters and order
   keys, AI trace rows with their per-trace columns, and plain trace rows.
+- `test_ai_trace_thread.py` — `signoz_get_trace_details` `view=thread` on a seeded
+  conversation: AI spans in order with decoded messages, raw message attributes
+  dropped, long values cut, cursor paging, and NOT_FOUND for an unknown trace.
 - `test_org_overview.py` — org overview conservation vs `GET /api/v1/stats`.
 - `test_upstream_errors.py` — coded NOT_FOUND and UNAUTHORIZED upstream errors
   with the uniform prefix.

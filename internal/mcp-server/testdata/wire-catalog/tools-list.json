@@ -6346,9 +6346,17 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user already has a known trace ID and wants that trace's spans, metadata, and hierarchy. If the ID is unknown, discover it with signoz_search_traces first. Supply a time window containing the trace; the default last 6 hours can miss an older trace. Do not use this for filtering many spans or aggregate analysis.",
+          "description": "Use this when the user already has a known trace ID and wants that trace's spans, metadata, and hierarchy. If the ID is unknown, discover it with signoz_search_traces first. Supply a time window containing the trace; the default last 6 hours can miss an older trace. For an AI agent trace, view=thread returns the conversation: its model, tool, and agent spans in time order with their input and output messages. Do not use this for filtering many spans or aggregate analysis.",
           "inputSchema": {
             "properties": {
+              "after": {
+                "description": "view=thread only: nextCursor from the previous page, for the spans after it. Set only one of after, before, and spanId.",
+                "type": "string"
+              },
+              "before": {
+                "description": "view=thread only: prevCursor of a page, for the spans before it. Set only one of after, before, and spanId.",
+                "type": "string"
+              },
               "end": {
                 "description": "End time in unix milliseconds (optional, defaults to now).",
                 "type": [
@@ -6363,8 +6371,19 @@
                   "string"
                 ]
               },
+              "limit": {
+                "description": "view=thread only: spans per page, at most 100 (default 20).",
+                "type": [
+                  "integer",
+                  "string"
+                ]
+              },
               "searchContext": {
                 "description": "Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.",
+                "type": "string"
+              },
+              "spanId": {
+                "description": "view=thread only: a span ID, for the page around that span. Set only one of after, before, and spanId.",
                 "type": "string"
               },
               "start": {
@@ -6381,6 +6400,15 @@
               },
               "traceId": {
                 "description": "Known trace ID to retrieve. Discover it with signoz_search_traces when the user has not supplied one.",
+                "type": "string"
+              },
+              "view": {
+                "default": "spans",
+                "description": "spans (default): the trace's spans and hierarchy within the time window. thread: the AI conversation, meaning the trace's model, tool, and agent spans in time order with input and output messages decoded, paged by cursor; timeRange, start, end, and includeSpans do not apply, and message values over 1000 characters are cut.",
+                "enum": [
+                  "spans",
+                  "thread"
+                ],
                 "type": "string"
               }
             },

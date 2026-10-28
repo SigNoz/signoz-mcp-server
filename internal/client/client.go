@@ -693,6 +693,25 @@ func (s *SigNoz) GetTraceDetails(ctx context.Context, traceID string, includeSpa
 	return s.QueryBuilderV5(ctx, queryJSON)
 }
 
+// TraceThreadPage selects one page of a trace's thread; nil or empty fields
+// leave SigNoz's defaults in charge.
+type TraceThreadPage struct {
+	Limit  *int
+	After  string
+	Before string
+	SpanID string
+}
+
+// GetTraceThread returns one page of a trace's model, tool, and agent spans in
+// time order, with their messages decoded.
+func (s *SigNoz) GetTraceThread(ctx context.Context, traceID string, page TraceThreadPage) (json.RawMessage, error) {
+	params := &apiclient.GetTraceThreadParams{Limit: page.Limit, After: optString(page.After), Before: optString(page.Before), SpanId: optString(page.SpanID)}
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching trace thread", slog.String("traceId", traceID))
+	return s.callAPI(ctx, DefaultQueryTimeout, func(ctx context.Context, api *apiclient.Client) (*http.Response, error) {
+		return api.GetTraceThread(ctx, traceID, params)
+	})
+}
+
 // CreateDashboardRaw creates a v2 (Perses) dashboard from raw JSON bytes.
 // The MCP server is a pass-through: the v2 API validates the payload
 // (schemaVersion, DisallowUnknownFields, panel/query rules), so the bytes are

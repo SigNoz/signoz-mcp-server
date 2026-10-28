@@ -938,7 +938,7 @@ Return custom aggregate statistics over spans (counts, rates, latency percentile
 
 #### `signoz_get_trace_details`
 
-For a known trace ID, return its spans, metadata, and hierarchy. Use `signoz_search_traces` first when the ID is unknown, and choose a time window that contains the trace; the default last six hours can miss older traces.
+For a known trace ID, return its spans, metadata, and hierarchy. Use `signoz_search_traces` first when the ID is unknown, and choose a time window that contains the trace; the default last six hours can miss older traces. For an AI agent trace, `view: thread` returns the conversation instead: the trace's model, tool, and agent spans in time order with their input and output messages decoded.
 
 - **Parameters**:
   - `traceId` (required) - Known trace ID, usually discovered with `signoz_search_traces`
@@ -946,6 +946,10 @@ For a known trace ID, return its spans, metadata, and hierarchy. Use `signoz_sea
   - `start` (optional) - Start time in unix milliseconds (defaults to 6 hours ago).
   - `end` (optional) - End time in unix milliseconds (defaults to now)
   - `includeSpans` (optional) - Include detailed span information. Boolean (or the strings `"true"`/`"false"`), default: true
+  - `view` (optional) - `spans` (default) or `thread`. `thread` returns the AI conversation, paged by cursor; `timeRange`, `start`, `end`, and `includeSpans` do not apply, and message values over 1000 characters are cut
+  - `limit` (optional, `thread` only) - Spans per page, at most 100 (default 20)
+  - `after` / `before` / `spanId` (optional, `thread` only) - `nextCursor` of the previous page, `prevCursor` of a page, or a span ID for the page around that span. Set only one
+- **Thread response**: `traceId`, `view`, `spans` (each with `formattedInput`, `formattedOutput`, `formatterWarnings`, attributes without the raw `gen_ai.input.messages`/`gen_ai.output.messages`, and `truncated` when a value was cut), `nextCursor`/`prevCursor` when more pages exist, `truncated`, `nextAction`, and `webUrl`
 
 
 

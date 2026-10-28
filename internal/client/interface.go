@@ -38,6 +38,7 @@ type Client interface {
 	GetFieldValues(ctx context.Context, signal, name, metricName, searchText, fieldContext, source string) (json.RawMessage, error)
 	GetAIFieldKeys(ctx context.Context, searchText, fieldContext, fieldDataType string) (json.RawMessage, error)
 	GetTraceDetails(ctx context.Context, traceID string, includeSpans bool, startTime, endTime int64) (json.RawMessage, error)
+	GetTraceThread(ctx context.Context, traceID string, page TraceThreadPage) (json.RawMessage, error)
 	CreateAlertRule(ctx context.Context, alertJSON []byte) (json.RawMessage, error)
 	UpdateAlertRule(ctx context.Context, ruleID string, alertJSON []byte) error
 	DeleteAlertRule(ctx context.Context, ruleID string) error
