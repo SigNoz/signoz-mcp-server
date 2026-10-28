@@ -145,11 +145,12 @@ def test_ai_trace_rows_carry_per_trace_columns(mcp_client: MCPClient, seeded: Se
     assert "/trace/" in str(row.get("webUrl")), f"AI trace row lacks a trace deep link: {row.get('webUrl')!r}"
 
 
-def test_ai_trace_rows_order_by_per_trace_cost(mcp_client: MCPClient, seeded: Seeded) -> None:
-    by_cost = ai_rows(mcp_client, seeded, "trace", orderBy="trace.estimated_total_cost desc")
-    assert [r["trace_id"] for r in by_cost] == [seeded.looping, seeded.cheap]
-    cheapest_first = ai_rows(mcp_client, seeded, "trace", orderBy="trace.estimated_total_cost asc")
-    assert [r["trace_id"] for r in cheapest_first] == [seeded.cheap, seeded.looping]
+def test_ai_trace_rows_order_by_per_trace_tokens(mcp_client: MCPClient, seeded: Seeded) -> None:
+    """Orders on token totals the fixture controls (2,400 vs 1,200); seeded cost reads back null."""
+    most_tokens_first = ai_rows(mcp_client, seeded, "trace", orderBy="trace.total_tokens desc")
+    assert [r["trace_id"] for r in most_tokens_first] == [seeded.looping, seeded.cheap]
+    fewest_tokens_first = ai_rows(mcp_client, seeded, "trace", orderBy="trace.total_tokens asc")
+    assert [r["trace_id"] for r in fewest_tokens_first] == [seeded.cheap, seeded.looping]
 
 
 def test_plain_trace_rows_come_back_slowest_first(mcp_client: MCPClient, seeded: Seeded) -> None:
