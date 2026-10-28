@@ -84,7 +84,7 @@ func TestApplyBounds_LeavesAuthoredBoundsUntouched(t *testing.T) {
 	require.Empty(t, applied)
 }
 
-func TestApplyBounds_WidensFormulaInputsAndBoundsFormulaResults(t *testing.T) {
+func TestApplyBounds_LeavesFormulaInputsUnboundedAndBoundsFormulaResults(t *testing.T) {
 	request := decode(t, `{"requestType":"time_series","compositeQuery":{"queries":[
 		{"type":"builder_query","spec":{"name":"A","signal":"metrics","aggregations":[{"metricName":"errors","spaceAggregation":"sum"}]}},
 		{"type":"builder_query","spec":{"name":"B","signal":"metrics","limit":42,"order":[{"key":{"name":"__result"},"direction":"desc"}],"aggregations":[{"metricName":"requests","spaceAggregation":"sum"}]}},
@@ -94,7 +94,8 @@ func TestApplyBounds_WidensFormulaInputsAndBoundsFormulaResults(t *testing.T) {
 	]}}`)
 	applied := ApplyBounds(request)
 
-	require.Equal(t, DefaultFormulaInputQueryLimit, querySpec(t, request, 0)["limit"], "a disabled intermediate formula still widens its inputs")
+	require.NotContains(t, querySpec(t, request, 0), "limit", "a formula input keeps every series, even under a disabled intermediate formula")
+	require.NotContains(t, querySpec(t, request, 0), "order")
 	require.Equal(t, float64(42), querySpec(t, request, 1)["limit"], "an authored input limit is kept")
 	require.Equal(t, DefaultAggregateQueryLimit, querySpec(t, request, 2)["limit"], "AA is not referenced by A / B")
 	require.Equal(t, DefaultAggregateQueryLimit, querySpec(t, request, 3)["limit"])
@@ -102,8 +103,7 @@ func TestApplyBounds_WidensFormulaInputsAndBoundsFormulaResults(t *testing.T) {
 	require.Equal(t, 25, querySpec(t, request, 4)["limit"], "a numeric-string formula limit is normalized and kept")
 	requireJSONEqual(t, `[{"key":{"name":"F2"},"direction":"asc"}]`, querySpec(t, request, 4)["order"])
 
-	require.True(t, applied[0].FormulaInput)
-	require.Len(t, applied, 3)
+	require.Len(t, applied, 2)
 }
 
 // Every field other than an inserted limit or order reaches SigNoz exactly as

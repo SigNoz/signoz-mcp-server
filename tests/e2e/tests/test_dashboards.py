@@ -473,14 +473,16 @@ def _execution_envelopes(plugin: dict) -> list[dict]:
 
 
 def _count_query(name: str, disabled: bool = False, filter_expression: str = "") -> dict:
+    """A count query; a disabled one is a formula input, which carries no limit or order."""
     spec = {
         "signal": "traces",
         "name": name,
         "aggregations": [{"expression": "count()"}],
-        "order": [{"key": {"name": "count()"}, "direction": "desc"}],
-        "limit": 10000 if disabled else 100,
         "disabled": disabled,
     }
+    if not disabled:
+        spec["order"] = [{"key": {"name": "count()"}, "direction": "desc"}]
+        spec["limit"] = 100
     if filter_expression:
         spec["filter"] = {"expression": filter_expression}
     return spec

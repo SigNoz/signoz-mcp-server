@@ -185,7 +185,7 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 		decisions = append(decisions, fmt.Sprintf("formula: %s", mqr.Formula))
 	}
 	if mqr.Formula != "" {
-		decisions = append(decisions, fmt.Sprintf("formula input bounds: limit=%d groups per query, order=__result desc", querybuilder.DefaultFormulaInputQueryLimit))
+		decisions = append(decisions, "formula input bounds: none; every input series reaches the formula")
 		decisions = append(decisions, fmt.Sprintf("formula result bounds: limit=%d groups, order=__result desc", querybuilder.DefaultAggregateQueryLimit))
 	} else {
 		decisions = append(decisions, fmt.Sprintf("result bounds: limit=%d groups, order=__result desc", querybuilder.DefaultAggregateQueryLimit))
