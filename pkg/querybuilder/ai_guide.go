@@ -29,14 +29,16 @@ and span fields are in signoz://traces/query-builder-guide.
   cached part at the model's cache rates.
 - Cost is an estimate in USD. SigNoz stamps signoz.gen_ai.usage.tokens.cost on each span at ingest
   from the pricing rule active then. Spans of an unpriced model carry no cost, so a null or 0 cost
-  means unpriced models, not missing calls.
+  means unpriced models, not missing calls; list them with signoz_get_ai_pricing
+  (view=unpriced_models).
 - builder_ai_query span rows (requestType=raw) are only the LLM, tool, and agent spans of AI
   traces, the spans with gen_ai.request.model, gen_ai.tool.name, or gen_ai.agent.name; other spans
   of those traces need builder_query with a trace_id filter.
 - builder_ai_query sees only spans with gen_ai.* keys. At ingest, SigNoz maps common vendor keys
   (OpenInference, OpenLLMetry, Vercel AI SDK, and others; for example llm.model_name to
   gen_ai.request.model), so those spans count. A span whose keys no mapping covers is not an AI span
-  to it: suggest the user add a mapping for those keys in SigNoz, which applies to spans ingested
+  to it: check the mappings with signoz_list_ai_attribute_mappings, suggest the user add a mapping
+  for those keys on the Attribute Mapping tab of AI Observability, which applies to spans ingested
   afterwards, and query spans already stored with builder_query on their own keys.
 
 == CHOOSING THE LEVEL ==
