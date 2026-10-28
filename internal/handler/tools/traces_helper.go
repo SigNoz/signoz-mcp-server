@@ -114,27 +114,20 @@ func parseAggregateTracesArgs(args map[string]any) (*AggregateRequest, error) {
 	return request, nil
 }
 
-// buildTraceFilterExpr combines free-form filter with trace-specific shortcut
-// filters. The error shortcut is applied only when errorPresent is true; an
-// invalid value is rejected upstream by parseBoolArg rather than silently
-// dropped here (which previously WIDENED results by omitting the filter).
-func buildTraceFilterExpr(query, service, operation string, errorFilter, errorPresent bool, minDuration, maxDuration string) string {
+// buildTraceFilterExpr combines the caller's filter with the trace shortcut
+// filters. The filter is parenthesized when shortcuts join it, because AND
+// binds tighter than OR, and shortcut values are quoted literals. The error
+// shortcut applies only when errorPresent is true.
+func buildTraceFilterExpr(filter, service, operation string, errorFilter, errorPresent bool, minDuration, maxDuration string) string {
 	var parts []string
-	if query != "" {
-		parts = append(parts, query)
-	}
 	if service != "" {
-		parts = append(parts, fmt.Sprintf("service.name = '%s'", service))
+		parts = append(parts, "service.name = "+querybuilder.QuoteFilterLiteral(service))
 	}
 	if operation != "" {
-		parts = append(parts, fmt.Sprintf("name = '%s'", operation))
+		parts = append(parts, "name = "+querybuilder.QuoteFilterLiteral(operation))
 	}
 	if errorPresent {
-		if errorFilter {
-			parts = append(parts, "has_error = true")
-		} else {
-			parts = append(parts, "has_error = false")
-		}
+		parts = append(parts, fmt.Sprintf("has_error = %t", errorFilter))
 	}
 	if minDuration != "" {
 		parts = append(parts, fmt.Sprintf("duration_nano >= %s", minDuration))
@@ -142,7 +135,13 @@ func buildTraceFilterExpr(query, service, operation string, errorFilter, errorPr
 	if maxDuration != "" {
 		parts = append(parts, fmt.Sprintf("duration_nano <= %s", maxDuration))
 	}
-	return strings.Join(parts, " AND ")
+	if filter == "" {
+		return strings.Join(parts, " AND ")
+	}
+	if len(parts) == 0 {
+		return filter
+	}
+	return "(" + filter + ") AND " + strings.Join(parts, " AND ")
 }
 
 // parseTraceSelectFields returns the core search columns plus any extra fields

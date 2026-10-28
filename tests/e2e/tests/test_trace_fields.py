@@ -166,3 +166,38 @@ def test_search_traces_core_fields_and_select_fields(mcp_client: MCPClient, test
     assert unknown_key in text_blocks(unknown), (
         f"unknown selectFields key {unknown_key!r} was dropped silently: {text_blocks(unknown)[:600]}"
     )
+
+
+def test_shortcut_filters_narrow_an_or_filter(mcp_client: MCPClient, test_id: str, telemetry: None) -> None:
+    """The service shortcut ANDs with the whole filter, so a top-level OR cannot escape it."""
+    service = f"mcp-e2e-{test_id}"
+    other = f"mcp-e2e-other-{test_id}"
+    seed_traces(service, count=2)
+    seed_traces(other, count=2)
+    either = f"service.name = '{other}' OR service.name = '{service}'"
+
+    def search(extra: dict) -> list[dict]:
+        result = mcp_client.call_tool(
+            "signoz_search_traces",
+            {
+                "searchContext": f"spans from {service} or {other}",
+                "filter": either,
+                "timeRange": "1h",
+                "limit": "20",
+                **extra,
+            },
+        )
+        if result.get("isError", False):
+            return []
+        return query_range_rows(first_text_block(result))
+
+    # Wait until both services are visible, so the narrowed search below can fail.
+    def both_visible() -> list[dict]:
+        rows = search({})
+        return rows if {r.get("service.name") for r in rows} == {service, other} else []
+
+    wait_for(both_visible, f"seeded spans for {service} and {other} visible")
+    rows = search({"service": service})
+    assert rows, f"the service shortcut with an OR filter returned no spans for {service}"
+    services = {r.get("service.name") for r in rows}
+    assert services == {service}, f"service shortcut did not narrow the OR filter; got services {services}"

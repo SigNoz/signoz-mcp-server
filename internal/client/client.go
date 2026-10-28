@@ -674,7 +674,7 @@ func (s *SigNoz) GetTraceDetails(ctx context.Context, traceID string, includeSpa
 		return nil, fmt.Errorf("start and end time parameters are required")
 	}
 
-	filterExpression := fmt.Sprintf("trace_id = '%s'", traceID)
+	filterExpression := "trace_id = " + querybuilder.QuoteFilterLiteral(traceID)
 	limit := 1000
 
 	queryPayload, err := querybuilder.SpanSearch(startTime, endTime, querybuilder.TraceSearchOptions{
