@@ -66,8 +66,9 @@ pagination contract.
    (`view: rules|unpriced_models`), `signoz_list_ai_attribute_mappings`,
    `signoz_test_ai_attribute_mapping`. Companion agent-skills PR (can share PR 2's).
 4. **`feat(ai)`: AI result content.** Notes on `builder_ai_query` results (window, cost is an
-   estimate in USD, wider window when empty, trace rows include spans outside the window,
-   `total_tokens` includes cache tokens inside input tokens); previews cut to 1,000 characters with a
+   estimate in USD, wider window when empty, trace-row columns include spans outside the window
+   while filters and order use only the window, `total_tokens` includes cache tokens inside input
+   tokens); previews cut to 1,000 characters with a
    truncation flag; a $0-cost hint naming unpriced models, with a WARN log when expected fields
    are missing; `gen_ai.*` in `signoz_get_trace_details` default columns. Depends on PRs 2 and 3.
 5. **`feat(traces)`: AI thread in `signoz_get_trace_details`.** Reads
@@ -131,6 +132,14 @@ pagination contract.
   every published example against the pinned release.
 - Follow-up: the SigNoz change merges first; bump the ref to its merge commit before PR 2b
   merges, then to the release tag.
+
+### 2026-10-28 — AI trace rows filter and rank on the window, then show full-trace values
+
+- Decision: the guide says trace-level filters, orderBy, and the limit use in-window spans, while
+  the returned columns cover each trace's full extent and the page is re-sorted on them.
+- Rationale: SigNoz's trace-list SQL (`matched` CTE, then an enrichment pass with no timestamp
+  bound; `TestBuild_FullSQL_TraceList_AggregateFilterOnly`) works this way; the guide had said
+  only that columns span the whole trace (found in review of #404).
 
 ### 2026-10-28 — AI span rows are only the gen_ai spans
 

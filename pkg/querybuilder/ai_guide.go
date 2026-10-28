@@ -14,9 +14,12 @@ and span fields are in signoz://traces/query-builder-guide.
 
 - Set queryType to builder_ai_query whenever aggregations, filter, or orderBy uses one of the eight
   per-trace keys below.
-- An AI trace row (signoz_search_traces with requestType=trace) covers the whole trace. The time
-  window selects which traces match, but SigNoz computes each trace's columns over all of its
-  spans, including spans outside the window.
+- AI trace rows (signoz_search_traces with requestType=trace) are built in two passes. Trace-level
+  filters, orderBy, and the limit use values computed from the spans inside the time window, so they
+  decide which traces match and make the page. The returned columns are then computed over all of
+  each trace's spans, including spans outside the window, and the page is sorted by those values. A
+  trace that crosses the window edge can therefore show a value that fails the filter, or sort in a
+  different place than it ranked.
 - Aggregations (signoz_aggregate_traces, scalar or time_series) count only spans inside the window,
   and a time series splits a trace across its buckets, so a trace's total there can be lower than
   in its trace row.
@@ -66,15 +69,22 @@ gen_ai.request.model, gen_ai.tool.name, or gen_ai.agent.name.
   trace.max_llm_duration_nano   duration of the slowest LLM call
 
 Where they work:
-- Aggregations: avg, sum, min, or max of a per-trace key, e.g. avg(trace.estimated_total_cost).
-  count() counts spans; count_distinct(trace_id) counts AI traces. Order by the aggregation, e.g.
-  sum(trace.total_tokens) desc.
+- Aggregations (signoz_aggregate_traces): wrap a per-trace key in a function, e.g.
+  avg(trace.estimated_total_cost) or max(trace.tool_call_count); SigNoz computes each trace's value,
+  then aggregates across traces. Rules SigNoz enforces:
+  - one call is all trace-level (trace.) or all span-level aggregations, never both;
+    avg(trace.estimated_total_cost) with p99(duration_nano) is rejected, so make two calls;
+  - no sumIf-style conditions on trace. keys; put the condition in filter.
+  count() counts spans; count_distinct(trace_id) counts AI traces.
 - Filters: with span rows and trace rows (signoz_search_traces) and with aggregations. Combine them
   with span-level conditions using a top-level AND; SigNoz rejects OR or NOT across the two levels.
-  A span-level condition keeps the traces that have at least one matching span.
-- Ordering trace rows (signoz_search_traces with requestType=trace): any of the eight, or
-  trace.last_activity_time. Without orderBy, SigNoz sorts them by last_activity_time descending.
-  SigNoz rejects them as orderBy on span rows (requestType=raw); order those by span fields.
+  A span-level condition keeps the traces that have at least one matching span inside the time
+  window.
+- orderBy: only trace rows (signoz_search_traces, requestType=trace) order by a per-trace key, any
+  of the eight or trace.last_activity_time, e.g. trace.input_tokens desc; they default to
+  last_activity_time descending. Span rows (requestType=raw) order by span fields such as timestamp
+  or duration_nano, as with builder_query. Aggregations order by one of the expressions in
+  aggregations or a groupBy key, e.g. avg(trace.input_tokens) desc.
 - Group by: never. Group by span attributes such as gen_ai.request.model or service.name. Each
   trace's values are then split by that attribute: a group counts only the trace's spans with its
   value, spans without the attribute fall in a null group, and one trace can appear in several groups.

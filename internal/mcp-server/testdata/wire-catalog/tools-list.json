@@ -291,7 +291,7 @@
               },
               "queryType": {
                 "default": "builder_query",
-                "description": "'builder_query' (default) aggregates spans of all traces. Set 'builder_ai_query' for AI observability queries: it aggregates spans of AI traces (traces with an LLM, tool, or agent span), and aggregations, filter, and orderBy also accept the trace-level fields trace.llm_call_count, trace.tool_call_count, trace.distinct_tool_count, trace.input_tokens, trace.output_tokens, trace.total_tokens, trace.estimated_total_cost, trace.max_llm_duration_nano, e.g. avg(trace.estimated_total_cost). To count AI traces, use count_distinct(trace_id).",
+                "description": "'builder_query' (default) aggregates spans of all traces. Set 'builder_ai_query' for AI observability queries: it aggregates spans of AI traces (traces with an LLM, tool, or agent span), and aggregations, filter, and orderBy also accept the trace-level fields trace.llm_call_count, trace.tool_call_count, trace.distinct_tool_count, trace.input_tokens, trace.output_tokens, trace.total_tokens, trace.estimated_total_cost, trace.max_llm_duration_nano, e.g. avg(trace.estimated_total_cost). One call cannot mix trace-level and span-level aggregations. To count AI traces, use count_distinct(trace_id).",
                 "enum": [
                   "builder_query",
                   "builder_ai_query"

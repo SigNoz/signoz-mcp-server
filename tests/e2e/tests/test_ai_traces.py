@@ -210,6 +210,22 @@ def test_ai_aggregate_per_trace_tokens_match_trace_rows(mcp_client: MCPClient, s
     assert float(only_value(total)) == trace_row_total(mcp_client, seeded, "total_tokens")
 
 
+def test_ai_aggregate_rejects_mixing_trace_and_span_aggregations(mcp_client: MCPClient, seeded: Seeded) -> None:
+    """The guide and queryType description say one call cannot mix trace-level and span-level aggregations."""
+    result = mcp_client.call_tool(
+        "signoz_aggregate_traces",
+        {
+            "searchContext": "average AI trace tokens and p99 span latency",
+            "service": seeded.service,
+            "timeRange": "1h",
+            "queryType": "builder_ai_query",
+            "aggregations": ["avg(trace.total_tokens)", "p99(duration_nano)"],
+        },
+    )
+    assert result.get("isError", False), f"mixed aggregations accepted: {first_text_block(result)[:300]}"
+    assert result_code(result) == "VALIDATION_FAILED"
+
+
 def test_ai_tokens_per_call_by_model_match_per_trace_tokens(mcp_client: MCPClient, seeded: Seeded) -> None:
     """Per-call totals by model (builder_query on a gen_ai.* span attribute) add up to the per-trace columns.
 
