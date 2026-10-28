@@ -111,7 +111,7 @@
           "description": "Read this after the dashboard and widget instructions when building panels. It provides one worked, server-verified v6 panel payload per panel type (timeseries, area, list, pie, table, value/number) to copy structurally. Verify field names in the target SigNoz workspace.",
           "mimeType": "text/markdown",
           "name": "Dashboard Widgets Examples",
-          "size": 31180,
+          "size": 30659,
           "uri": "signoz://dashboard/widgets-examples"
         },
         {
@@ -125,7 +125,7 @@
           "description": "Read this before choosing aggregations for signoz_query_metrics or building metrics Query Builder JSON. It explains timeAggregation, spaceAggregation, and reduceTo by metric type; formulas and limits; how groupBy field context is inferred; top-N selection across the full window; step intervals; examples; and Cost Meter queries.",
           "mimeType": "text/markdown",
           "name": "Metrics Aggregation Guide",
-          "size": 11409,
+          "size": 11147,
           "uri": "signoz://metrics-aggregation-guide"
         },
         {

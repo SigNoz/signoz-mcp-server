@@ -18,7 +18,6 @@ type AppliedBounds struct {
 	Order          []apitypes.Querybuildertypesv5OrderBy
 	LimitDefaulted bool
 	OrderDefaulted bool
-	FormulaInput   bool
 }
 
 // OrderText renders the inserted order as "key direction" pairs.
@@ -51,7 +50,9 @@ type queryView struct {
 
 // ApplyBounds inserts signal-aware default limits and orders into a Query
 // Builder v5 request decoded from JSON. It edits only spec.limit and spec.order
-// in place, and only where the caller left them unset; every other field is
+// in place, and only where the caller left them unset; builder queries a
+// formula references keep no limit or order unless the caller set them, so the
+// formula sees every input series. Every other field is
 // forwarded verbatim for SigNoz, the only validator, to judge. A query whose
 // shape cannot be read is left untouched. Numeric strings in spec.limit and
 // spec.offset become JSON integers, because MCP clients are inconsistent about
@@ -90,15 +91,14 @@ func ApplyBounds(request map[string]any) []AppliedBounds {
 		if !view.builder && !view.formula {
 			continue
 		}
+		if view.builder && inputs[strings.ToLower(strings.TrimSpace(view.name))] {
+			continue
+		}
 		bounds := AppliedBounds{QueryIndex: i, QueryName: displayName(view.name, i)}
 		if view.limit == nil || *view.limit == 0 {
-			switch {
-			case view.formula:
+			if view.formula {
 				bounds.Limit = DefaultAggregateQueryLimit
-			case inputs[strings.ToLower(strings.TrimSpace(view.name))]:
-				bounds.Limit = DefaultFormulaInputQueryLimit
-				bounds.FormulaInput = true
-			default:
+			} else {
 				bounds.Limit = defaultLimit(requestType)
 			}
 			specs[i]["limit"] = bounds.Limit
@@ -247,8 +247,8 @@ func jsonValue(v any) any {
 
 // formulaInputNames returns the builder-query names any formula in the same
 // request references. SigNoz applies each builder query's limit before it
-// evaluates formulas, including disabled intermediate formulas, so omitted
-// formula-input limits need a wider bound than standalone results.
+// evaluates formulas, including disabled intermediate formulas, so a limit on
+// an input silently drops series from the formula result.
 func formulaInputNames(views []queryView) map[string]bool {
 	inputs := make(map[string]bool)
 	for _, builder := range views {

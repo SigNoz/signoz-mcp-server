@@ -24,7 +24,7 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *mcp.Server) {
 			"Use this only when dedicated log, trace, and metric tools cannot express the request, including multi-query requests, formulas, PromQL, and ClickHouse SQL. "+
 				"Use signoz_search_logs/signoz_search_traces for raw rows, signoz_aggregate_logs/signoz_aggregate_traces for grouped or top-N analysis, and signoz_query_metrics for ordinary metrics queries. "+
 				"Read the matching signoz://logs/query-builder-guide, signoz://traces/query-builder-guide, or signoz://metrics-aggregation-guide; formulas require the metrics guide, and PromQL requires signoz://promql/instructions. signoz://query-builder/examples holds a complete request per query type and request type. "+
-				"Set each input builder_query limit to 10000, the builder_formula result limit to 100, and non-empty spec.order (not dashboard orderBy) on each builder_query and builder_formula; the server normalizes omissions.",
+				"Leave limit unset on each builder_query a formula references, because SigNoz applies an input's limit before the formula runs and drops series from its result. Give every other builder_query and each builder_formula a positive limit (100 for results) and non-empty spec.order (not dashboard orderBy); the server fills in omitted ones.",
 		),
 		mcp.WithInputSchema[types.ExecuteBuilderQueryInput](),
 	)
@@ -150,11 +150,7 @@ func queryBoundsDecisionsNote(applied []querybuilder.AppliedBounds, requestType 
 	for _, bounds := range applied {
 		var decisions []string
 		if bounds.LimitDefaulted {
-			if bounds.FormulaInput {
-				decisions = append(decisions, fmt.Sprintf("limit=%d (formula-input default; applied before formula evaluation)", bounds.Limit))
-			} else {
-				decisions = append(decisions, fmt.Sprintf("limit=%d (request-type default)", bounds.Limit))
-			}
+			decisions = append(decisions, fmt.Sprintf("limit=%d (request-type default)", bounds.Limit))
 		}
 		if bounds.OrderDefaulted {
 			decisions = append(decisions, fmt.Sprintf("order=%s (signal-safe default)", bounds.OrderText()))

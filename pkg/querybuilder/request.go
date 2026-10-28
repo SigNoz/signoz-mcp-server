@@ -11,10 +11,9 @@ import (
 // normalizes. MaxQueryLimit also caps the dedicated tools' limit parameters,
 // because every returned row is buffered in this server's memory.
 const (
-	DefaultRawQueryLimit          = 100
-	DefaultAggregateQueryLimit    = 100
-	MaxQueryLimit                 = 10000
-	DefaultFormulaInputQueryLimit = MaxQueryLimit
+	DefaultRawQueryLimit       = 100
+	DefaultAggregateQueryLimit = 100
+	MaxQueryLimit              = 10000
 )
 
 // Request is the upstream-generated Query Builder v5 range request.
