@@ -44,6 +44,7 @@ data_sources:
   query_range: {read: {path: /api/v5/query_range, method: POST}}
   field_keys: {read: {path: /api/v1/fields/keys, method: GET}}
   field_values: {read: {path: /api/v1/fields/values, method: GET}}
+  ai_field_keys: {read: {path: /api/v1/ai_observability/fields/keys, method: GET}}
   metrics: {read: {path: /api/v2/metrics, method: GET}}
   metrics_treemap: {read: {path: /api/v2/metrics/treemap, method: POST}}
   metric_attributes: {read: {path: /api/v2/metrics/attributes, method: GET}}
