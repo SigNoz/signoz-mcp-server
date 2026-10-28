@@ -167,7 +167,7 @@
     },
     {
       "name": "signoz_search_traces",
-      "description": "Return individual paginated span rows matching trace filters or discover trace IDs; use aggregate_traces for statistics and get_trace_details for a known trace"
+      "description": "Return paginated span rows or one row per trace, including AI traces with per-trace cost and token counts, or discover trace IDs; use aggregate_traces for statistics and get_trace_details for a known trace"
     },
     {
       "name": "signoz_get_trace_details",

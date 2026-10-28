@@ -16,6 +16,10 @@ type SearchTracesRequest struct {
 	Offset           int
 	StartTime        int64
 	EndTime          int64
+	QueryType        string // envelope type, forwarded as given; "" means builder_query
+	RequestType      string // "trace" lists one row per trace; anything else lists spans
+	OrderExpr        string // "" keeps the query type's default order
+	OrderDir         string
 }
 
 // maxTraceSelectFields bounds how many extra columns one search can request.
@@ -57,7 +61,15 @@ func parseSearchTracesArgs(args map[string]any) (*SearchTracesRequest, error) {
 		return nil, err
 	}
 
+	queryType, _ := args["queryType"].(string)
+	requestType, _ := args["requestType"].(string)
+	orderExpr, orderDir := parseOrderBy(args)
+
 	return &SearchTracesRequest{
+		QueryType:        queryType,
+		RequestType:      requestType,
+		OrderExpr:        orderExpr,
+		OrderDir:         orderDir,
 		FilterExpression: filterExpr,
 		SelectFields:     selectFields,
 		Limit:            limit,

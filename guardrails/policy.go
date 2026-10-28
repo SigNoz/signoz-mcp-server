@@ -91,6 +91,27 @@ var GrandfatheredWideSchemaProperties = map[string][]string{
 		"timeAggregation",
 		"timeRange",
 	},
+	// orderBy, queryType, and requestType take search to 16 on purpose: a
+	// separate trace-list or AI search tool would repeat the filter, time, and
+	// paging parameters.
+	"signoz_search_traces": {
+		"end",
+		"error",
+		"filter",
+		"limit",
+		"maxDuration",
+		"minDuration",
+		"offset",
+		"operation",
+		"orderBy",
+		"queryType",
+		"requestType",
+		"searchContext",
+		"selectFields",
+		"service",
+		"start",
+		"timeRange",
+	},
 	"signoz_update_alert": {
 		"alert",
 		"alertType",

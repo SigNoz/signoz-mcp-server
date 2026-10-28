@@ -116,7 +116,7 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user wants custom aggregate statistics over spans (counts, rates, latency percentiles, grouped/top-N breakdowns, or time series) rather than individual span rows or a full trace hierarchy. For the built-in operation table for one traced service, ranked by p99, use signoz_get_service_top_operations. Use signoz_search_traces for raw spans or trace-ID discovery, and signoz_get_trace_details for one known trace ID. Before calling, read signoz://traces/query-builder-guide; discover unfamiliar workspace fields with signoz_get_field_keys. Defaults to the last 1 hour.",
+          "description": "Use this when the user wants custom aggregate statistics over spans (counts, rates, latency percentiles, grouped/top-N breakdowns, or time series) rather than individual span rows or a full trace hierarchy. For the built-in operation table for one traced service, ranked by p99, use signoz_get_service_top_operations. Use signoz_search_traces for raw spans, trace-ID discovery, or one row per trace (such as the most expensive AI traces), and signoz_get_trace_details for one known trace ID. Before calling, read signoz://traces/query-builder-guide; discover unfamiliar workspace fields with signoz_get_field_keys. Defaults to the last 1 hour.",
           "inputSchema": {
             "properties": {
               "aggregateOn": {
@@ -7278,7 +7278,7 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user wants individual raw span rows matching service, operation, error, duration, or field filters, or needs to discover trace IDs. It returns paginated spans, not aggregate trends/groups or a full trace hierarchy; use signoz_aggregate_traces for statistics and signoz_get_trace_details for one known trace ID. Rows carry a default set of span fields; name other fields in selectFields. A field missing from a row was not selected, so do not read it as absent from the span. Read signoz://traces/query-builder-guide before using unfamiliar workspace fields. Defaults to the last 1 hour.",
+          "description": "Use this when the user wants individual span rows matching service, operation, error, duration, or field filters, needs to discover trace IDs, or wants one row per trace (requestType=trace), such as the slowest traces or the most expensive AI traces. It returns paginated rows, not aggregate trends/groups or a full trace hierarchy; use signoz_aggregate_traces for statistics and signoz_get_trace_details for one known trace ID. Span rows carry a default set of span fields; name other fields in selectFields. A field missing from a row was not selected, so do not read it as absent from the span. Read signoz://traces/query-builder-guide before using unfamiliar workspace fields. To search AI traces, including by per-trace cost, token, or call counts, set queryType to builder_ai_query. Defaults to the last 1 hour.",
           "inputSchema": {
             "properties": {
               "end": {
@@ -7301,7 +7301,7 @@
               },
               "limit": {
                 "default": "100",
-                "description": "Maximum number of span rows to return (default: 100, max: 10000; higher values are clamped; paginate with offset).",
+                "description": "Maximum number of rows to return (default: 100, max: 10000; higher values are clamped; paginate with offset).",
                 "type": [
                   "integer",
                   "string"
@@ -7317,7 +7317,7 @@
               },
               "offset": {
                 "default": "0",
-                "description": "Number of span rows to skip for pagination (default: 0).",
+                "description": "Number of rows to skip for pagination (default: 0).",
                 "type": [
                   "integer",
                   "string"
@@ -7327,12 +7327,34 @@
                 "description": "Operation/span name to filter by.",
                 "type": "string"
               },
+              "orderBy": {
+                "description": "Row order as '\u003cexpression\u003e \u003cdirection\u003e', e.g. 'duration_nano desc'; the direction defaults to desc. Span rows order by span fields and default to 'timestamp desc'. builder_ai_query trace rows order by a trace-level field or trace.last_activity_time, e.g. 'trace.estimated_total_cost desc', and default to latest activity first. builder_query trace rows always come back slowest first; SigNoz ignores orderBy for them.",
+                "type": "string"
+              },
+              "queryType": {
+                "default": "builder_query",
+                "description": "'builder_query' (default) searches all traces. Set 'builder_ai_query' for AI observability queries: it searches AI traces (traces with an LLM, tool, or agent span), its span rows are only those LLM, tool, and agent spans, and filter also accepts the trace-level fields trace.llm_call_count, trace.tool_call_count, trace.distinct_tool_count, trace.input_tokens, trace.output_tokens, trace.total_tokens, trace.estimated_total_cost, trace.max_llm_duration_nano.",
+                "enum": [
+                  "builder_query",
+                  "builder_ai_query"
+                ],
+                "type": "string"
+              },
+              "requestType": {
+                "default": "raw",
+                "description": "Row shape. raw (default) returns one row per span. trace returns one row per trace: span-level filters, including operation, error, minDuration, and maxDuration, keep the traces with at least one matching span, and selectFields does not apply. builder_query trace rows carry trace_id, the root span name, service.name, duration_nano, and span_count (the spans matching the filter). builder_ai_query trace rows carry the trace-level fields without the trace. prefix (such as llm_call_count), plus root_span_name, span_count, trace_duration_nano, error_count, and the input and output message JSON.",
+                "enum": [
+                  "raw",
+                  "trace"
+                ],
+                "type": "string"
+              },
               "searchContext": {
                 "description": "Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.",
                 "type": "string"
               },
               "selectFields": {
-                "description": "Extra fields to return on each row, added to the default set: timestamp, trace_id, span_id, parent_span_id, name, service.name, kind_string, duration_nano, has_error, status_code_string, status_message, response_status_code, http_method. Pass an array of names or a comma-separated string, at most 50. Names can be span columns (db_name), resource attributes (k8s.pod.name), or span attributes (http.route); a resource., attribute., or span. prefix picks the context. Each field comes back as its own row key. Discover names with signoz_get_field_keys (signal=\"traces\"). Example: [\"http.route\", \"db.statement\"].",
+                "description": "Extra fields to return on each span row, added to the default set: timestamp, trace_id, span_id, parent_span_id, name, service.name, kind_string, duration_nano, has_error, status_code_string, status_message, response_status_code, http_method. Pass an array of names or a comma-separated string, at most 50. Names can be span columns (db_name), resource attributes (k8s.pod.name), or span attributes (http.route); a resource., attribute., or span. prefix picks the context. Each field comes back as its own row key. Discover names with signoz_get_field_keys (signal=\"traces\"). Example: [\"http.route\", \"db.statement\"].",
                 "items": {
                   "type": "string"
                 },

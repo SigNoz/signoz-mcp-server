@@ -135,6 +135,107 @@ def seed_traces(service_name: str, *, span_name: str = "e2e-operation", count: i
     return trace_ids
 
 
+def _attr(key: str, value: str | float) -> dict:
+    if isinstance(value, str):
+        return {"key": key, "value": {"stringValue": value}}
+    if isinstance(value, int):
+        return {"key": key, "value": {"intValue": str(value)}}
+    return {"key": key, "value": {"doubleValue": value}}
+
+
+def seed_ai_trace(service_name: str, *, model: str = "gpt-4o-mini", llm_calls: int = 2, tool_calls: int = 12) -> str:
+    """Push one AI agent trace via OTLP/HTTP and return its trace id (hex).
+
+    The trace has an agent root span covering the whole trace, `llm_calls` LLM
+    calls on `model` with gen_ai token usage and a per-call cost, and
+    `tool_calls` calls alternating between two tools, so with the defaults
+    trace.tool_call_count > 10 AND trace.distinct_tool_count < 3 holds. Every
+    child span has a distinct duration. The last tool call is marked ERROR. Cost
+    is set on the span directly; a pricing rule in SigNoz may restamp it at ingest.
+    """
+    now = time.time_ns()
+    trace_id = uuid.uuid4().hex
+    root_id = uuid.uuid4().hex[:16]
+    start = now - 5_000_000_000
+
+    def span(
+        name: str,
+        offset_ms: int,
+        duration_ms: int,
+        attributes: list[dict],
+        *,
+        parent: str = root_id,
+        error: bool = False,
+    ) -> dict:
+        begin = start + offset_ms * 1_000_000
+        return {
+            "traceId": trace_id,
+            "spanId": uuid.uuid4().hex[:16],
+            "parentSpanId": parent,
+            "name": name,
+            "kind": 1,  # SPAN_KIND_INTERNAL
+            "startTimeUnixNano": str(begin),
+            "endTimeUnixNano": str(begin + duration_ms * 1_000_000),
+            "attributes": attributes,
+            "status": {"code": 2 if error else 1},
+        }
+
+    root_duration_ms = 400 + tool_calls * 60 + 50
+    root = span(
+        "invoke_agent e2e-agent",
+        0,
+        root_duration_ms,
+        [_attr("gen_ai.operation.name", "invoke_agent"), _attr("gen_ai.agent.name", "e2e-agent")],
+        parent="",
+    )
+    root["spanId"] = root_id
+    spans = [root]
+    for i in range(llm_calls):
+        spans.append(
+            span(
+                f"chat {model}",
+                100 + i * 100,
+                80 + i * 5,
+                [
+                    _attr("gen_ai.operation.name", "chat"),
+                    _attr("gen_ai.provider.name", "openai"),
+                    _attr("gen_ai.request.model", model),
+                    _attr("gen_ai.usage.input_tokens", 1000),
+                    _attr("gen_ai.usage.output_tokens", 200),
+                    _attr("signoz.gen_ai.usage.tokens.cost", 0.0025),
+                ],
+            )
+        )
+    for i in range(tool_calls):
+        tool = "search_docs" if i % 2 == 0 else "read_file"
+        spans.append(
+            span(
+                f"execute_tool {tool}",
+                400 + i * 60,
+                (i + 1) * 4,
+                [_attr("gen_ai.operation.name", "execute_tool"), _attr("gen_ai.tool.name", tool)],
+                error=i == tool_calls - 1,
+            )
+        )
+    payload = {
+        "resourceSpans": [
+            {
+                "resource": {
+                    "attributes": [
+                        {"key": "service.name", "value": {"stringValue": service_name}},
+                        {"key": "telemetry.sdk.language", "value": {"stringValue": "e2e"}},
+                    ]
+                },
+                "scopeSpans": [{"scope": {"name": "signoz-mcp-e2e"}, "spans": spans}],
+            }
+        ]
+    }
+    resp = requests.post(f"{OTLP_ENDPOINT}/v1/traces", json=payload, timeout=30)
+    resp.raise_for_status()
+    logger.info("seeded AI trace %s (%d spans) for service %s", trace_id, len(spans), service_name)
+    return trace_id
+
+
 def seed_metrics(
     service_name: str,
     metric_name: str,

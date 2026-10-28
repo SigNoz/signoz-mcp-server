@@ -36,8 +36,10 @@ pagination contract.
   never inspects the query to choose the type.
 - **No MCP-side validation.** SigNoz judges keys, operators, windows and values; its errors go
   through `upstreamError` (ERR-6).
-- **`orderBy` on search** for both query types; the description states each default
-  (`timestamp desc` for `builder_query`, none for `builder_ai_query`).
+- **Search picks the row shape with `requestType`**: `raw` (default, one row per span) or `trace`
+  (one row per trace). `queryType` only sets the envelope type, so both query types support
+  both shapes. `orderBy` orders span rows by span fields (default `timestamp desc`) and AI trace
+  rows by `trace.*` keys (default latest activity); SigNoz ignores it for plain trace rows.
 - **Reads only** for pricing and mappings.
 - **Naming:** `ai`, never `llm`, on MCP surfaces; upstream column names stay as SigNoz defines
   them.
@@ -53,9 +55,11 @@ pagination contract.
    AI keys endpoint lists fields under it. `signoz_get_field_values` gets neither: nothing is
    stored under `trace`, so its values are always empty, and `gen_ai.*` values already come
    from the default endpoint.
-2. **`feat(traces)`: query AI data.** `queryType` on search and aggregate, `orderBy` on search,
-   the `builder_ai_query` default limit in `ApplyBounds`, the AI guide, and the instructions
-   line. Companion agent-skills PR.
+2. **`feat(traces)`: AI trace search.** `queryType`, `requestType` and `orderBy` on
+   `signoz_search_traces`, built by `SpanSearch` (raw) and `TraceList` (trace).
+   2b. **`feat(traces)`: AI aggregates and guide.** `queryType` on aggregate, the
+   `builder_ai_query` default limit in `ApplyBounds`, the AI guide, and the instructions line.
+   Companion agent-skills PR.
 3. **`feat(ai)`: pricing and mapping read tools.** `signoz_get_ai_pricing`
    (`view: rules|unpriced_models`), `signoz_list_ai_attribute_mappings`,
    `signoz_test_ai_attribute_mapping`. Companion agent-skills PR (can share PR 2's).
@@ -115,6 +119,18 @@ pagination contract.
 - Decision: accept going further over the 15-parameter cap with `queryType`.
 - Rationale: the alternative is a separate tool pair, rejected above.
 
+### 2026-10-27 — `requestType` on `signoz_search_traces`
+
+- Decision: `requestType` (`raw` default, `trace`) picks span or trace rows, independent of
+  `queryType`; search takes a guardrail exception at 16 parameters. Out-of-enum `requestType` and
+  `queryType` values run as `raw` `builder_query` with the validation notice, like an
+  out-of-enum `queryType` on field keys.
+- Rationale: `requestType: trace` is not AI-specific (it is the Traces tab list for
+  `builder_query`), so tying it to `queryType` would couple row shape to the data source.
+- Alternatives rejected: inferring trace rows from `trace.*` keys (fails for AI questions with no
+  such key); a separate `signoz_list_traces` tool (repeats the filter, time and paging
+  parameters).
+
 ## Reference Links
 
 - [Notion: AI Observability in the MCP Server](https://app.notion.com/p/signoz/AI-Observability-in-the-MCP-Server-3f1fcc6bcd198054ab68e01f77ac8aed) ([PRD] ai-olly)
@@ -130,6 +146,10 @@ pagination contract.
   endpoint returns `gen_ai.request.model` and `gen_ai.tool.name` values, confirming values need
   no `queryType`.
   The e2e cases run in CI.
+- PR 2: checked by hand against a local SigNoz: span rows for both query types, `trace.*`
+  filters on AI span rows, `trace.*` order keys rejected on span rows and honored on AI trace
+  rows, plain trace rows slowest first with `orderBy` ignored, and an out-of-enum `requestType`
+  running as span rows with the notice.
 - Agent eval by hand: about 25 questions, including negative ones that must not set
   `builder_ai_query`, against a local SigNoz seeded with gen_ai traces, pricing rules and one
   unpriced model. Baseline before PR 2, rerun after PR 5.
@@ -140,4 +160,5 @@ This plan spans PRs 1 to 5 and stays `In Progress` until PR 5 merges; each PR up
 
 - PR 1 (`feat(fields)`): `queryType` and `fieldContext=trace` on `signoz_get_field_keys`;
   `trace` is honored only by the AI fields keys endpoint.
-- PRs 2 to 5: not started.
+- PR 2 (`feat(traces)`): `queryType`, `requestType` and `orderBy` on `signoz_search_traces`.
+- PRs 2b to 5: not started.
