@@ -100,6 +100,8 @@ variables: `--reuse`, `--teardown`, `--foundry-binary-path`, `--license-key`.
   `builder_ai_query` run through `signoz_execute_builder_query`, an alert, and a
   dashboard panel.
 - `test_org_overview.py` — org overview conservation vs `GET /api/v1/stats`.
+- `test_ai_pricing_and_mappings.py` — AI pricing envelopes for both views, a seeded
+  model listed as unpriced, and the shipped `gen_ai.llm` mapping group with its mappers.
 - `test_upstream_errors.py` — coded NOT_FOUND and UNAUTHORIZED upstream errors
   with the uniform prefix.
 - `test_logs.py` — seeded log search, explicit scoped/unscoped search grammar,

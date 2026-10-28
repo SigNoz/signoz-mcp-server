@@ -49,4 +49,8 @@ type Client interface {
 	DeleteNotificationChannel(ctx context.Context, id string) error
 	TestNotificationChannel(ctx context.Context, receiverJSON []byte) error
 	GetMetricCardinality(ctx context.Context, name string, start, end int64) (json.RawMessage, error)
+	ListAIPricingRules(ctx context.Context, offset, limit int, search string) (json.RawMessage, error)
+	ListUnpricedAIModels(ctx context.Context) (json.RawMessage, error)
+	ListAIAttributeMappingGroups(ctx context.Context) (json.RawMessage, error)
+	ListAIAttributeMappers(ctx context.Context, groupID string) (json.RawMessage, error)
 }

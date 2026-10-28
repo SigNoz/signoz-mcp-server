@@ -104,23 +104,23 @@ func Array(arr []any, offset, limit int) []any {
 	return arr[offset:end]
 }
 
-// Wrap wraps paginated data and metadata into json.
-func Wrap(data []any, total, offset, limit int) ([]byte, error) {
+// NewMetadata describes the page at offset and limit of total results.
+// NextOffset is -1 on the last page.
+func NewMetadata(total, offset, limit int) Metadata {
 	nextOffset := offset + limit
 	if nextOffset >= total {
 		nextOffset = -1
 	}
+	return Metadata{
+		Total:      total,
+		Offset:     offset,
+		Limit:      limit,
+		HasMore:    nextOffset != -1,
+		NextOffset: nextOffset,
+	}
+}
 
-	hasMore := nextOffset != -1
-
-	return json.Marshal(Response{
-		Data: data,
-		Pagination: Metadata{
-			Total:      total,
-			Offset:     offset,
-			Limit:      limit,
-			HasMore:    hasMore,
-			NextOffset: nextOffset,
-		},
-	})
+// Wrap wraps paginated data and metadata into json.
+func Wrap(data []any, total, offset, limit int) ([]byte, error) {
+	return json.Marshal(Response{Data: data, Pagination: NewMetadata(total, offset, limit)})
 }

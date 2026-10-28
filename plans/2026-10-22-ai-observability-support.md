@@ -63,8 +63,8 @@ pagination contract.
    `builder_ai_query` default limit in `ApplyBounds`, and the AI guide. Companion agent-skills
    PR.
 3. **`feat(ai)`: pricing and mapping read tools.** `signoz_get_ai_pricing`
-   (`view: rules|unpriced_models`), `signoz_list_ai_attribute_mappings`,
-   `signoz_test_ai_attribute_mapping`. Companion agent-skills PR (can share PR 2's).
+   (`view: rules|unpriced_models`) and `signoz_list_ai_attribute_mappings`. Additive, so no
+   agent-skills change is required.
 4. **`feat(ai)`: AI result content.** Notes on `builder_ai_query` results (window, cost is an
    estimate in USD, wider window when empty, trace-row columns include spans outside the window
    while filters and order use only the window, `total_tokens` includes cache tokens inside input
@@ -116,6 +116,22 @@ pagination contract.
 - Decision: no write tools.
 - Rationale: both redeploy collectors, a wrong price is stamped permanently on ingested spans,
   and there is no price test endpoint.
+
+### 2026-10-28 — Pricing and mapping read shapes
+
+- Decision: `signoz_get_ai_pricing` pages rules across SigNoz's 100-rule page cap and filters and
+  pages the unpriced-model list itself, because SigNoz returns that list whole with no search.
+  `signoz_list_ai_attribute_mappings` joins each group with its mappers; a group whose mappers
+  fail comes back with `mappers: null`, is named in `failedGroups`, and sets `incomplete`, while a
+  401 or 403 fails the whole call.
+- Rationale: one pagination contract for the agent and visible partial reads.
+- PR 3 targets `main` on its own and merged after PR 2b, so it adds the AI guide's links: the
+  cost warning to `signoz_get_ai_pricing` and the vendor-key warning to
+  `signoz_list_ai_attribute_mappings`.
+- Deferred: a tool for SigNoz's mapping test endpoint (`POST /api/v1/span_mapper_groups/test`).
+  The list answers which vendor keys are mapped; add the sandbox when agents need to try draft
+  mappings. Its generated `SpanMapperTest` type lands in a `_test.go` file that `go build` skips,
+  so that PR also needs a `make gen-client` rename.
 
 ### 2026-10-27 — Guardrail exception for `signoz_aggregate_traces`
 
@@ -198,6 +214,17 @@ pagination contract.
   copy (an agent had hand-built a request), and its resource description names cache tokens
   (an agent searched the docs first). The `signoz-generating-queries` skill loaded in 6 sessions
   and does not know the AI guide; the agent-skills companion should link it.
+- PR 3: checked by hand against a local SigNoz: the mappings list returns the shipped
+  `gen_ai.llm`, `gen_ai.tool` and `gen_ai.agent` groups with their mappers, and `llm.model_name`
+  is a source of `gen_ai.request.model`. The local instance had no pricing rules, so the rules
+  view was checked only for its envelope; the handler tests cover paging across SigNoz's
+  100-rule page and local filtering.
+- PR 3 agent check: 11 questions through headless Claude Code against a local SigNoz with no
+  pricing rules, two unpriced models, and one OpenInference-only span. Routing and answers were
+  right for all 11, including declining to add a price and keeping two negative questions off the
+  AI tools. The span gained `gen_ai.request.model` at ingest. Fixes followed: `searchText` says an
+  empty page means no match and that it matches substrings, and both tools name the AI
+  Observability tab where prices and mappings are changed.
 - Agent eval by hand: about 25 questions, including negative ones that must not set
   `builder_ai_query`, against a local SigNoz seeded with gen_ai traces, pricing rules and one
   unpriced model. Baseline before PR 2, rerun after PR 5.

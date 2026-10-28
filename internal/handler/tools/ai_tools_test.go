@@ -1,0 +1,276 @@
+package tools
+
+import (
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strings"
+	"sync"
+	"testing"
+
+	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
+	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
+)
+
+// recordedRequest is one request the fake SigNoz received.
+type recordedRequest struct {
+	Method string
+	Path   string
+	Query  string
+	Body   string
+}
+
+// newAIToolsHandler runs the real client against a fake SigNoz and records
+// every request it receives.
+func newAIToolsHandler(t *testing.T, serve func(w http.ResponseWriter, r *http.Request)) (*Handler, func() []recordedRequest) {
+	t.Helper()
+	var mu sync.Mutex
+	var requests []recordedRequest
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		requests = append(requests, recordedRequest{Method: r.Method, Path: r.URL.Path, Query: r.URL.RawQuery, Body: string(body)})
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		serve(w, r)
+	}))
+	t.Cleanup(srv.Close)
+	h := &Handler{
+		logger:         logpkg.New("error"),
+		clientOverride: signozclient.NewClient(logpkg.New("error"), srv.URL, "test-api-key", "SIGNOZ-API-KEY", nil),
+	}
+	return h, func() []recordedRequest {
+		mu.Lock()
+		defer mu.Unlock()
+		return append([]recordedRequest(nil), requests...)
+	}
+}
+
+func successJSON(t *testing.T, raw string) map[string]any {
+	t.Helper()
+	var out map[string]any
+	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		t.Fatalf("result is not JSON: %v\n%s", err, raw)
+	}
+	return out
+}
+
+const forbiddenBody = `{"status":"error","error":{"code":"forbidden","type":"forbidden","message":"only viewers and above can read this"}}`
+
+func TestGetAIPricing_RulesAssembleTheRequestedPageFromUpstreamPages(t *testing.T) {
+	const total = 120
+	h, requests := newAIToolsHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		var offset, limit int
+		_, _ = fmt.Sscan(r.URL.Query().Get("offset"), &offset)
+		_, _ = fmt.Sscan(r.URL.Query().Get("limit"), &limit)
+		items := make([]string, 0, limit)
+		for i := offset; i < min(offset+limit, total); i++ {
+			items = append(items, fmt.Sprintf(`{"id":"rule-%d","modelName":"gpt-4o","provider":"openai","pricing":{"input":2.5,"output":10}}`, i))
+		}
+		_, _ = fmt.Fprintf(w, `{"status":"success","data":{"items":[%s],"total":%d,"offset":%d,"limit":%d}}`, strings.Join(items, ","), total, offset, limit)
+	})
+
+	result, err := h.handleGetAIPricing(testCtx(), makeToolRequest("signoz_get_ai_pricing", map[string]any{"limit": "150", "searchText": "gpt"}))
+	if err != nil || result.IsError {
+		t.Fatalf("unexpected failure: err=%v result=%v", err, result.Content)
+	}
+
+	got := requests()
+	if len(got) != 2 {
+		t.Fatalf("upstream requests = %#v, want two pages", got)
+	}
+	for i, want := range []string{"limit=100&offset=0&q=gpt", "limit=50&offset=100&q=gpt"} {
+		query, _ := url.ParseQuery(got[i].Query)
+		if got[i].Path != "/api/v1/llm_pricing_rules" || query.Encode() != want {
+			t.Fatalf("request %d = %s?%s, want /api/v1/llm_pricing_rules?%s", i, got[i].Path, got[i].Query, want)
+		}
+	}
+	out := successJSON(t, textContent(t, result))
+	if out["view"] != "rules" {
+		t.Fatalf("view = %v, want rules", out["view"])
+	}
+	if data := out["data"].([]any); len(data) != total {
+		t.Fatalf("returned %d rules, want %d", len(data), total)
+	}
+	pagination := out["pagination"].(map[string]any)
+	if pagination["total"] != float64(total) || pagination["hasMore"] != false || pagination["nextOffset"] != float64(-1) {
+		t.Fatalf("pagination = %#v, want total %d and no next page", pagination, total)
+	}
+}
+
+func TestGetAIPricing_UnpricedModelsFilterAndPageLocally(t *testing.T) {
+	h, requests := newAIToolsHandler(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"status":"success","data":{"items":[
+			{"modelName":"claude-sonnet-4","provider":"anthropic","spanCount":40},
+			{"modelName":"gpt-4o-mini","provider":"openai","spanCount":12},
+			{"modelName":"claude-haiku-4","provider":"anthropic","spanCount":3}]}}`))
+	})
+
+	result, err := h.handleGetAIPricing(testCtx(), makeToolRequest("signoz_get_ai_pricing", map[string]any{"view": "unpriced_models", "searchText": "Anthropic", "limit": 1}))
+	if err != nil || result.IsError {
+		t.Fatalf("unexpected failure: err=%v result=%v", err, result.Content)
+	}
+	if got := requests(); len(got) != 1 || got[0].Path != "/api/v1/llm_pricing_rules/unmapped_models" {
+		t.Fatalf("upstream requests = %#v", got)
+	}
+	out := successJSON(t, textContent(t, result))
+	data := out["data"].([]any)
+	if len(data) != 1 || data[0].(map[string]any)["modelName"] != "claude-sonnet-4" {
+		t.Fatalf("data = %#v, want the first anthropic model only", data)
+	}
+	pagination := out["pagination"].(map[string]any)
+	if pagination["total"] != float64(2) || pagination["hasMore"] != true || pagination["nextOffset"] != float64(1) {
+		t.Fatalf("pagination = %#v, want 2 matches with a next page at 1", pagination)
+	}
+}
+
+func TestGetAIPricing_PermissionDeniedIsCoded(t *testing.T) {
+	h, _ := newAIToolsHandler(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(forbiddenBody))
+	})
+	result, err := h.handleGetAIPricing(testCtx(), makeToolRequest("signoz_get_ai_pricing", map[string]any{}))
+	if err != nil {
+		t.Fatalf("unexpected Go error: %v", err)
+	}
+	if got := resultCode(t, result); got != CodePermissionDenied {
+		t.Fatalf("code = %q, want %q", got, CodePermissionDenied)
+	}
+}
+
+func TestGetAIPricing_RejectsInvalidArgumentsBeforeCallingSigNoz(t *testing.T) {
+	for _, tc := range []struct {
+		field string
+		args  map[string]any
+	}{
+		{"view", map[string]any{"view": "prices"}},
+		{"limit", map[string]any{"limit": "abc"}},
+		{"offset", map[string]any{"offset": -1}},
+	} {
+		t.Run(tc.field, func(t *testing.T) {
+			h, requests := newAIToolsHandler(t, func(http.ResponseWriter, *http.Request) {})
+			result, _ := h.handleGetAIPricing(testCtx(), makeToolRequest("signoz_get_ai_pricing", tc.args))
+			if got := resultCode(t, result); got != CodeValidationFailed || !strings.Contains(resultText(t, result), `"`+tc.field+`"`) {
+				t.Fatalf("code = %q text = %q, want a %s validation error", got, resultText(t, result), tc.field)
+			}
+			if len(requests()) != 0 {
+				t.Fatalf("an invalid %s reached SigNoz", tc.field)
+			}
+		})
+	}
+}
+
+func TestGetAIPricing_RulesWithoutTotalAreAnUpstreamError(t *testing.T) {
+	h, _ := newAIToolsHandler(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"status":"success","data":{"items":[{"id":"rule-1"}]}}`))
+	})
+	result, _ := h.handleGetAIPricing(testCtx(), makeToolRequest("signoz_get_ai_pricing", map[string]any{}))
+	if got := resultCode(t, result); got != CodeUpstreamError {
+		t.Fatalf("code = %q, want %q: a page without a total must not look complete", got, CodeUpstreamError)
+	}
+}
+
+const mappingGroupsBody = `{"status":"success","data":{"items":[
+	{"id":"group-llm","name":"gen_ai.llm","enabled":true,"origin":"system","version":4,"condition":{"attributes":[{"value":"model","enabled":true}],"resource":[]}},
+	{"id":"group-tool","name":"gen_ai.tool","enabled":false,"origin":"system","version":2,"condition":{"attributes":[{"value":"tool.name","enabled":true}],"resource":[]}}]}}`
+
+const llmMappersBody = `{"status":"success","data":{"items":[{"id":"mapper-1","groupId":"group-llm","name":"gen_ai.request.model","fieldContext":"attribute","enabled":true,"origin":"system","config":{"sources":[{"key":"llm.model_name","context":"attribute","operation":"copy","priority":60,"enabled":true}]}}]}}`
+
+func TestListAIAttributeMappings_OneGroupFailingLeavesTheOthersAndSaysSo(t *testing.T) {
+	h, requests := newAIToolsHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/span_mapper_groups":
+			_, _ = w.Write([]byte(mappingGroupsBody))
+		case "/api/v1/span_mapper_groups/group-llm/span_mappers":
+			_, _ = w.Write([]byte(llmMappersBody))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"status":"error","error":{"code":"not_found","type":"not-found","message":"group not found"}}`))
+		}
+	})
+
+	result, err := h.handleListAIAttributeMappings(testCtx(), makeToolRequest("signoz_list_ai_attribute_mappings", map[string]any{}))
+	if err != nil || result.IsError {
+		t.Fatalf("unexpected failure: err=%v result=%v", err, result.Content)
+	}
+	if got := requests(); len(got) != 3 {
+		t.Fatalf("upstream requests = %#v, want the group list and one mapper list per group", got)
+	}
+	out := successJSON(t, textContent(t, result))
+	data := out["data"].([]any)
+	if len(data) != 2 {
+		t.Fatalf("data = %#v, want both groups", data)
+	}
+	llm := data[0].(map[string]any)
+	mappers, ok := llm["mappers"].([]any)
+	if llm["name"] != "gen_ai.llm" || llm["origin"] != "system" || !ok || len(mappers) != 1 {
+		t.Fatalf("first group = %#v, want gen_ai.llm with its fields and one mapper", llm)
+	}
+	if tool := data[1].(map[string]any); tool["mappers"] != nil {
+		t.Fatalf("failed group mappers = %#v, want null", tool["mappers"])
+	}
+	failed := out["failedGroups"].([]any)
+	if out["incomplete"] != true || len(failed) != 1 {
+		t.Fatalf("incomplete = %v failedGroups = %#v, want one failed group", out["incomplete"], failed)
+	}
+	failure := failed[0].(map[string]any)
+	if failure["groupId"] != "group-tool" || failure["code"] != CodeNotFound || failure["status"] != float64(http.StatusNotFound) {
+		t.Fatalf("failure = %#v, want group-tool NOT_FOUND", failure)
+	}
+	if out["nextAction"] == "" {
+		t.Fatal("an incomplete result must say what to do next")
+	}
+}
+
+func TestListAIAttributeMappings_UnreadableMappersAreReportedAsFailed(t *testing.T) {
+	h, _ := newAIToolsHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/span_mapper_groups":
+			_, _ = w.Write([]byte(mappingGroupsBody))
+		case "/api/v1/span_mapper_groups/group-llm/span_mappers":
+			_, _ = w.Write([]byte(llmMappersBody))
+		default:
+			_, _ = w.Write([]byte(`{"status":"success","data":{}}`))
+		}
+	})
+	result, err := h.handleListAIAttributeMappings(testCtx(), makeToolRequest("signoz_list_ai_attribute_mappings", map[string]any{}))
+	if err != nil || result.IsError {
+		t.Fatalf("unexpected failure: err=%v result=%v", err, result.Content)
+	}
+	out := successJSON(t, textContent(t, result))
+	failed, _ := out["failedGroups"].([]any)
+	if out["incomplete"] != true || len(failed) != 1 || failed[0].(map[string]any)["groupId"] != "group-tool" {
+		t.Fatalf("incomplete = %v failedGroups = %#v, want group-tool reported as failed", out["incomplete"], failed)
+	}
+}
+
+func TestListAIAttributeMappings_UnreadableGroupListIsAnUpstreamError(t *testing.T) {
+	h, _ := newAIToolsHandler(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"status":"success","data":{}}`))
+	})
+	result, _ := h.handleListAIAttributeMappings(testCtx(), makeToolRequest("signoz_list_ai_attribute_mappings", map[string]any{}))
+	if got := resultCode(t, result); got != CodeUpstreamError {
+		t.Fatalf("code = %q, want %q: an unreadable group list must not look like no groups", got, CodeUpstreamError)
+	}
+}
+
+func TestListAIAttributeMappings_PermissionDeniedOnMappersFailsTheWholeCall(t *testing.T) {
+	h, _ := newAIToolsHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/span_mapper_groups" {
+			_, _ = w.Write([]byte(mappingGroupsBody))
+			return
+		}
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(forbiddenBody))
+	})
+	result, err := h.handleListAIAttributeMappings(testCtx(), makeToolRequest("signoz_list_ai_attribute_mappings", map[string]any{}))
+	if err != nil {
+		t.Fatalf("unexpected Go error: %v", err)
+	}
+	if got := resultCode(t, result); got != CodePermissionDenied {
+		t.Fatalf("code = %q, want %q", got, CodePermissionDenied)
+	}
+}

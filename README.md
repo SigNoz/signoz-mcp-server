@@ -459,6 +459,8 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 | `signoz_aggregate_traces` | Aggregate span or per-AI-trace statistics and grouped or top-N breakdowns |
 | `signoz_search_traces` | Return span rows or one row per trace (including AI traces), or discover trace IDs |
 | `signoz_get_trace_details` | Get one known trace with all spans and hierarchy |
+| `signoz_get_ai_pricing` | List AI model prices, or models seen in the last hour with no price |
+| `signoz_list_ai_attribute_mappings` | List the mapping groups that turn vendor AI span attributes into `gen_ai.*` keys |
 | `signoz_execute_builder_query` | Query Builder v5 requests the dedicated tools cannot express |
 | `signoz_list_notification_channels` | List channel IDs, names, and display names without provider settings |
 | `signoz_get_notification_channel` | Get all provider-specific settings for one channel by ID |
@@ -948,6 +950,24 @@ For a known trace ID, return its spans, metadata, and hierarchy. Use `signoz_sea
   - `start` (optional) - Start time in unix milliseconds (defaults to 6 hours ago).
   - `end` (optional) - End time in unix milliseconds (defaults to now)
   - `includeSpans` (optional) - Include detailed span information. Boolean (or the strings `"true"`/`"false"`), default: true
+
+#### `signoz_get_ai_pricing`
+
+Return the AI model prices SigNoz uses to compute span cost, or the models that have no price. SigNoz stamps cost on each span at ingest: spans of a model no rule prices carry no cost, and a price change does not touch spans already stored. Prices are changed on the Model pricing tab of AI Observability in SigNoz.
+
+- **Parameters**:
+  - `view` (optional) - `rules` (default): pricing rules with provider, model name and match patterns, input, output, and cache prices in USD per million tokens, and `enabled`. `unpriced_models`: models seen in spans during the last hour that no rule matches, with span counts
+  - `searchText` (optional) - Case-insensitive substring of the model name or provider (`gpt-4o` also matches `gpt-4o-mini`). An empty page with `searchText` means no entry matched; omit it to see whether any entries exist
+  - `limit` (optional) - Entries per page (default: 50, max: 1000; higher values are clamped)
+  - `offset` (optional) - Entries to skip; use `pagination.nextOffset` from the previous page (default: 0)
+- **Response**: `view`, `data` (SigNoz's pricing rule or unpriced model objects as returned), and `pagination` (`total`, `offset`, `limit`, `hasMore`, `nextOffset`)
+
+#### `signoz_list_ai_attribute_mappings`
+
+List the span attribute mapping groups that map vendor AI span attributes (OpenInference, OpenLLMetry, Vercel AI SDK, and others) to `gen_ai.*` keys at ingest. A group runs on spans whose attribute keys contain one of its condition substrings, and each mapper fills one `gen_ai.*` key from the first source key present, by priority. Mappings apply only to spans ingested afterwards and are changed on the Attribute Mapping tab of AI Observability in SigNoz.
+
+- **Parameters**: none besides `searchContext`
+- **Response**: `data` (each group as SigNoz returns it, plus `mappers` with each mapper's sources), `incomplete`, and, when the mappers of some groups could not be read, `failedGroups` (`groupId`, `name`, `code`, `status`, `message`) and `nextAction`. Authentication and permission failures fail the whole call with a coded error
 
 
 
