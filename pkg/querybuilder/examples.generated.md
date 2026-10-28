@@ -4,7 +4,218 @@ Source: the request examples published by the SigNoz OpenAPI spec.
 
 ## Run a query with signoz_execute_builder_query
 
-### 1. clickhouse_sql_logs_raw — ClickHouse SQL: raw logs with resource filter
+### 1. ai_traces_raw — Raw: LLM, tool, and agent spans of one service's AI traces with many tool calls
+
+```json
+{
+  "compositeQuery": {
+    "queries": [
+      {
+        "spec": {
+          "filter": {
+            "expression": "service.name = 'ai-agent' AND trace.tool_call_count > 10"
+          },
+          "limit": 100,
+          "name": "A",
+          "order": [
+            {
+              "direction": "desc",
+              "key": {
+                "fieldContext": "span",
+                "name": "timestamp"
+              }
+            }
+          ],
+          "signal": "traces"
+        },
+        "type": "builder_ai_query"
+      }
+    ]
+  },
+  "end": 1640998800000,
+  "requestType": "raw",
+  "schemaVersion": "v1",
+  "start": 1640995200000
+}
+```
+
+### 2. ai_traces_raw_select_fields — Raw: the same spans with the span name and gen_ai model, tool, and token fields selected
+
+```json
+{
+  "compositeQuery": {
+    "queries": [
+      {
+        "spec": {
+          "filter": {
+            "expression": "service.name = 'ai-agent' AND trace.tool_call_count > 10"
+          },
+          "limit": 100,
+          "name": "A",
+          "order": [
+            {
+              "direction": "desc",
+              "key": {
+                "fieldContext": "span",
+                "name": "timestamp"
+              }
+            }
+          ],
+          "selectFields": [
+            {
+              "fieldContext": "span",
+              "name": "name"
+            },
+            {
+              "fieldContext": "attribute",
+              "name": "gen_ai.request.model"
+            },
+            {
+              "fieldContext": "attribute",
+              "name": "gen_ai.tool.name"
+            },
+            {
+              "fieldContext": "attribute",
+              "name": "gen_ai.usage.input_tokens"
+            },
+            {
+              "fieldContext": "attribute",
+              "name": "gen_ai.usage.output_tokens"
+            }
+          ],
+          "signal": "traces"
+        },
+        "type": "builder_ai_query"
+      }
+    ]
+  },
+  "end": 1640998800000,
+  "requestType": "raw",
+  "schemaVersion": "v1",
+  "start": 1640995200000
+}
+```
+
+### 3. ai_traces_scalar — Scalar: average per-trace AI cost by model
+
+```json
+{
+  "compositeQuery": {
+    "queries": [
+      {
+        "spec": {
+          "aggregations": [
+            {
+              "expression": "avg(trace.estimated_total_cost)"
+            }
+          ],
+          "groupBy": [
+            {
+              "fieldContext": "attribute",
+              "name": "gen_ai.request.model"
+            }
+          ],
+          "limit": 10,
+          "name": "A",
+          "order": [
+            {
+              "direction": "desc",
+              "key": {
+                "name": "avg(trace.estimated_total_cost)"
+              }
+            }
+          ],
+          "signal": "traces"
+        },
+        "type": "builder_ai_query"
+      }
+    ]
+  },
+  "end": 1640998800000,
+  "requestType": "scalar",
+  "schemaVersion": "v1",
+  "start": 1640995200000
+}
+```
+
+### 4. ai_traces_time_series — Time series: per-trace AI cost by model
+
+```json
+{
+  "compositeQuery": {
+    "queries": [
+      {
+        "spec": {
+          "aggregations": [
+            {
+              "expression": "sum(trace.estimated_total_cost)"
+            }
+          ],
+          "groupBy": [
+            {
+              "fieldContext": "attribute",
+              "name": "gen_ai.request.model"
+            }
+          ],
+          "limit": 10,
+          "name": "A",
+          "order": [
+            {
+              "direction": "desc",
+              "key": {
+                "name": "sum(trace.estimated_total_cost)"
+              }
+            }
+          ],
+          "signal": "traces",
+          "stepInterval": "60s"
+        },
+        "type": "builder_ai_query"
+      }
+    ]
+  },
+  "end": 1640998800000,
+  "requestType": "time_series",
+  "schemaVersion": "v1",
+  "start": 1640995200000
+}
+```
+
+### 5. ai_traces_trace — Trace list: AI traces with many tool calls, most expensive first
+
+```json
+{
+  "compositeQuery": {
+    "queries": [
+      {
+        "spec": {
+          "filter": {
+            "expression": "trace.tool_call_count > 10 AND trace.distinct_tool_count < 3"
+          },
+          "limit": 10,
+          "name": "A",
+          "order": [
+            {
+              "direction": "desc",
+              "key": {
+                "name": "trace.estimated_total_cost"
+              }
+            }
+          ],
+          "signal": "traces"
+        },
+        "type": "builder_ai_query"
+      }
+    ]
+  },
+  "end": 1640998800000,
+  "requestType": "trace",
+  "schemaVersion": "v1",
+  "start": 1640995200000
+}
+```
+
+### 6. clickhouse_sql_logs_raw — ClickHouse SQL: raw logs with resource filter
 
 ```json
 {
@@ -26,7 +237,7 @@ Source: the request examples published by the SigNoz OpenAPI spec.
 }
 ```
 
-### 2. clickhouse_sql_traces_scalar — ClickHouse SQL: scalar aggregate with resource filter
+### 7. clickhouse_sql_traces_scalar — ClickHouse SQL: scalar aggregate with resource filter
 
 ```json
 {
@@ -48,7 +259,7 @@ Source: the request examples published by the SigNoz OpenAPI spec.
 }
 ```
 
-### 3. clickhouse_sql_traces_time_series — ClickHouse SQL: traces time series with resource filter
+### 8. clickhouse_sql_traces_time_series — ClickHouse SQL: traces time series with resource filter
 
 ```json
 {
@@ -70,7 +281,7 @@ Source: the request examples published by the SigNoz OpenAPI spec.
 }
 ```
 
-### 4. formula — Formula: error rate from two trace queries
+### 9. formula — Formula: error rate from two trace queries
 
 ```json
 {
@@ -130,7 +341,7 @@ Source: the request examples published by the SigNoz OpenAPI spec.
 }
 ```
 
-### 5. logs_raw — Raw: fetch raw log records
+### 10. logs_raw — Raw: fetch raw log records
 
 ```json
 {
@@ -182,7 +393,7 @@ Source: the request examples published by the SigNoz OpenAPI spec.
 }
 ```
 
-### 6. logs_scalar — Scalar: total error log count
+### 11. logs_scalar — Scalar: total error log count
 
 ```json
 {
@@ -213,7 +424,7 @@ Source: the request examples published by the SigNoz OpenAPI spec.
 }
 ```
 
-### 7. logs_time_series — Time series: count error logs grouped by service
+### 12. logs_time_series — Time series: count error logs grouped by service
 
 ```json
 {
@@ -260,7 +471,7 @@ Source: the request examples published by the SigNoz OpenAPI spec.
 }
 ```
 
-### 8. metrics_gauge_time_series — Time series: latest gauge value averaged across series
+### 13. metrics_gauge_time_series — Time series: latest gauge value averaged across series
 
 ```json
 {
@@ -296,7 +507,7 @@ Source: the request examples published by the SigNoz OpenAPI spec.
 }
 ```
 
-### 9. metrics_histogram_time_series — Time series: p99 latency from histogram
+### 14. metrics_histogram_time_series — Time series: p99 latency from histogram
 
 ```json
 {
@@ -331,7 +542,7 @@ Source: the request examples published by the SigNoz OpenAPI spec.
 }
 ```
 
-### 10. metrics_rate_time_series — Time series: rate of cumulative counter
+### 15. metrics_rate_time_series — Time series: rate of cumulative counter
 
 ```json
 {
@@ -367,7 +578,7 @@ Source: the request examples published by the SigNoz OpenAPI spec.
 }
 ```
 
-### 11. metrics_scalar — Scalar: single reduced metric value
+### 16. metrics_scalar — Scalar: single reduced metric value
 
 ```json
 {
@@ -398,7 +609,7 @@ Source: the request examples published by the SigNoz OpenAPI spec.
 }
 ```
 
-### 12. promql — PromQL: request rate with UTF-8 metric name
+### 17. promql — PromQL: request rate with UTF-8 metric name
 
 ```json
 {
@@ -421,7 +632,7 @@ Source: the request examples published by the SigNoz OpenAPI spec.
 }
 ```
 
-### 13. traces_raw — Raw: fetch raw span records
+### 18. traces_raw — Raw: fetch raw span records
 
 ```json
 {
@@ -466,7 +677,7 @@ Source: the request examples published by the SigNoz OpenAPI spec.
 }
 ```
 
-### 14. traces_scalar — Scalar: total span count
+### 19. traces_scalar — Scalar: total span count
 
 ```json
 {
@@ -497,7 +708,7 @@ Source: the request examples published by the SigNoz OpenAPI spec.
 }
 ```
 
-### 15. traces_time_series — Time series: count spans grouped by service
+### 20. traces_time_series — Time series: count spans grouped by service
 
 ```json
 {

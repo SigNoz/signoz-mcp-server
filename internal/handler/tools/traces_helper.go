@@ -99,7 +99,12 @@ func parseAggregateTracesArgs(args map[string]any) (*AggregateRequest, error) {
 	}
 	filterExpr := buildTraceFilterExpr(filter, service, operation, errorFilter, errorPresent, minDuration, maxDuration)
 
-	return parseAggregateArgs(args, "traces", filterExpr)
+	request, err := parseAggregateArgs(args, "traces", filterExpr)
+	if err != nil {
+		return nil, err
+	}
+	request.QueryType, _ = args["queryType"].(string)
+	return request, nil
 }
 
 // buildTraceFilterExpr combines free-form filter with trace-specific shortcut

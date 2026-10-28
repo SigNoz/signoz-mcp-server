@@ -155,6 +155,7 @@ type AggregateRequest struct {
 	StartTime        int64
 	EndTime          int64
 	RequestType      string // "scalar" (default) or "time_series"
+	QueryType        string // traces only; builder_ai_query selects the AI envelope
 	StepInterval     *int64 // nil = let backend auto-select
 	Having           string
 	Functions        []querybuilder.Function

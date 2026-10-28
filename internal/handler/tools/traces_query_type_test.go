@@ -101,3 +101,38 @@ func TestSearchTraces_QueryTypeRequestTypeAndOrderByReachSigNoz(t *testing.T) {
 		})
 	}
 }
+
+// queryType picks the aggregate envelope; the default order stays the
+// aggregation descending, which SigNoz accepts for per-trace aggregations.
+func TestAggregateTraces_QueryTypeReachesSigNoz(t *testing.T) {
+	tests := []struct {
+		name     string
+		args     map[string]any
+		wantType string
+	}{
+		{"default aggregates spans", map[string]any{}, "builder_query"},
+		{"builder_ai_query", map[string]any{"queryType": "builder_ai_query"}, "builder_ai_query"},
+		{"an unknown queryType runs as builder_query", map[string]any{"queryType": "builder_llm_query"}, "builder_query"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			h, bodies := queryRangeRecorder(t, emptyQueryRangeResponse)
+			args := map[string]any{"timeRange": "1h", "aggregations": "avg(trace.estimated_total_cost)"}
+			for k, v := range tc.args {
+				args[k] = v
+			}
+			result, err := h.handleAggregateTraces(testCtx(), makeToolRequest("signoz_aggregate_traces", args))
+			require.NoError(t, err)
+			require.False(t, result.IsError, textContent(t, result))
+			require.Len(t, *bodies, 1)
+
+			requestType, envelope := sentEnvelope(t, (*bodies)[0])
+			require.Equal(t, tc.wantType, envelope["type"])
+			require.Equal(t, "scalar", requestType)
+			spec := envelope["spec"].(map[string]any)
+			require.Equal(t, "traces", spec["signal"])
+			requireJSONEqual(t, `[{"expression":"avg(trace.estimated_total_cost)"}]`, spec["aggregations"])
+			requireJSONEqual(t, `[{"key":{"name":"avg(trace.estimated_total_cost)"},"direction":"desc"}]`, spec["order"])
+		})
+	}
+}

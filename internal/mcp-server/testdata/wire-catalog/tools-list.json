@@ -174,7 +174,7 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user wants custom aggregate statistics over spans (counts, rates, latency percentiles, grouped/top-N breakdowns, or time series) rather than individual span rows or a full trace hierarchy. For the built-in operation table for one traced service, ranked by p99, use signoz_get_service_top_operations. Use signoz_search_traces for raw spans, trace-ID discovery, or one row per trace (such as the most expensive AI traces), and signoz_get_trace_details for one known trace ID. Before calling, read signoz://traces/query-builder-guide; discover unfamiliar workspace fields with signoz_get_field_keys. Defaults to the last 1 hour.",
+          "description": "Use this when the user wants custom aggregate statistics over spans (counts, rates, latency percentiles, grouped/top-N breakdowns, or time series) rather than individual span rows or a full trace hierarchy. For the built-in operation table for one traced service, ranked by p99, use signoz_get_service_top_operations. Use signoz_search_traces for raw spans, trace-ID discovery, or one row per trace (such as the most expensive AI traces), and signoz_get_trace_details for one known trace ID. Before calling, read signoz://traces/query-builder-guide; discover unfamiliar workspace fields with signoz_get_field_keys. For AI observability queries, set queryType to builder_ai_query and read signoz://ai/query-builder-guide. Defaults to the last 1 hour.",
           "inputSchema": {
             "properties": {
               "aggregations": {
@@ -287,6 +287,15 @@
               },
               "orderBy": {
                 "description": "How to order results. Format: '\u003cexpression\u003e \u003cdirection\u003e', e.g. 'count() desc' or 'avg(duration_nano) asc'. Defaults to the first aggregation expression descending.",
+                "type": "string"
+              },
+              "queryType": {
+                "default": "builder_query",
+                "description": "'builder_query' (default) aggregates spans of all traces. Set 'builder_ai_query' for AI observability queries: it aggregates spans of AI traces (traces with an LLM, tool, or agent span), and aggregations, filter, and orderBy also accept the trace-level fields trace.llm_call_count, trace.tool_call_count, trace.distinct_tool_count, trace.input_tokens, trace.output_tokens, trace.total_tokens, trace.estimated_total_cost, trace.max_llm_duration_nano, e.g. avg(trace.estimated_total_cost). One call cannot mix trace-level and span-level aggregations. To count AI traces, use count_distinct(trace_id).",
+                "enum": [
+                  "builder_query",
+                  "builder_ai_query"
+                ],
                 "type": "string"
               },
               "requestType": {
@@ -3087,7 +3096,7 @@
                     "type": "string"
                   },
                   "threshold": {
-                    "description": "Bucket bound the comparison uses, in the unit of the histogram metric. The count is an estimate, interpolated linearly between the two nearest bucket bounds.",
+                    "description": "Bucket bound the comparison uses, in the unit of the histogram metric. The count is exact when threshold equals one of the metric's le bucket bounds, and otherwise an estimate interpolated linearly between the two nearest bounds.",
                     "format": "double",
                     "type": "number"
                   }
@@ -3517,7 +3526,7 @@
                         "$ref": "#/$defs/Querybuildertypesv5OrderByKey"
                       }
                     ],
-                    "description": "The field, aggregation alias or expression to sort by, for example timestamp, service.name or count()."
+                    "description": "The sort key. For aggregation requests name is a group-by field such as service.name, an aggregation alias, or the aggregation expression: count() or p99(duration_nano) for traces and logs; for metrics the spaceAggregation(timeAggregation(metricName)) form such as sum(rate(signoz_calls_total)), p99(metricName) for histogram metrics, or __result. Raw requests sort by any field, such as timestamp."
                   }
                 },
                 "type": "object"
@@ -3590,6 +3599,10 @@
                   "query": {
                     "description": "The PromQL expression. Dotted metric and label names must use the UTF-8 quoted selector form, for example {'http.server.duration'}.",
                     "type": "string"
+                  },
+                  "skipStepAlignment": {
+                    "description": "When true, start and end are evaluated as given instead of rounded down to the step, and the result is not cached. Defaults to false.",
+                    "type": "boolean"
                   },
                   "stats": {
                     "description": "Reserved; currently has no effect.",
@@ -4965,7 +4978,7 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this only when dedicated log, trace, and metric tools cannot express the request, including multi-query requests, formulas, PromQL, and ClickHouse SQL. Use signoz_search_logs/signoz_search_traces for raw rows, signoz_aggregate_logs/signoz_aggregate_traces for grouped or top-N analysis, and signoz_query_metrics for ordinary metrics queries. Read the matching signoz://logs/query-builder-guide, signoz://traces/query-builder-guide, or signoz://metrics-aggregation-guide; formulas require the metrics guide, and PromQL requires signoz://promql/instructions. signoz://query-builder/examples holds a complete request per query type and request type. Leave limit unset on each builder_query a formula references, because SigNoz applies an input's limit before the formula runs and drops series from its result. Give every other builder_query and each builder_formula a positive limit (100 for results) and non-empty spec.order (not dashboard orderBy); the server fills in omitted ones.",
+          "description": "Use this only when dedicated log, trace, and metric tools cannot express the request, including multi-query requests, formulas, PromQL, and ClickHouse SQL. Use signoz_search_logs/signoz_search_traces for raw rows, signoz_aggregate_logs/signoz_aggregate_traces for grouped or top-N analysis, and signoz_query_metrics for ordinary metrics queries. Read the matching signoz://logs/query-builder-guide, signoz://traces/query-builder-guide, signoz://ai/query-builder-guide, or signoz://metrics-aggregation-guide; formulas require the metrics guide, and PromQL requires signoz://promql/instructions. signoz://query-builder/examples holds a complete request per query type and request type. Leave limit unset on each builder_query a formula references, because SigNoz applies an input's limit before the formula runs and drops series from its result. Give every other builder_query and each builder_formula a positive limit (100 for results) and non-empty spec.order (not dashboard orderBy); the server fills in omitted ones.",
           "inputSchema": {
             "properties": {
               "query": {
@@ -7521,7 +7534,7 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user wants individual span rows matching service, operation, error, duration, or field filters, needs to discover trace IDs, or wants one row per trace (requestType=trace), such as the slowest traces or the most expensive AI traces. It returns paginated rows, not aggregate trends/groups or a full trace hierarchy; use signoz_aggregate_traces for statistics and signoz_get_trace_details for one known trace ID. Span rows carry a default set of span fields; name other fields in selectFields. A field missing from a row was not selected, so do not read it as absent from the span. Read signoz://traces/query-builder-guide before using unfamiliar workspace fields. To search AI traces, including by per-trace cost, token, or call counts, set queryType to builder_ai_query. Defaults to the last 1 hour.",
+          "description": "Use this when the user wants individual span rows matching service, operation, error, duration, or field filters, needs to discover trace IDs, or wants one row per trace (requestType=trace), such as the slowest traces or the most expensive AI traces. It returns paginated rows, not aggregate trends/groups or a full trace hierarchy; use signoz_aggregate_traces for statistics and signoz_get_trace_details for one known trace ID. Span rows carry a default set of span fields; name other fields in selectFields. A field missing from a row was not selected, so do not read it as absent from the span. Read signoz://traces/query-builder-guide before using unfamiliar workspace fields. For AI observability queries, set queryType to builder_ai_query and read signoz://ai/query-builder-guide. Defaults to the last 1 hour.",
           "inputSchema": {
             "properties": {
               "end": {
@@ -10280,7 +10293,7 @@
                     "type": "string"
                   },
                   "threshold": {
-                    "description": "Bucket bound the comparison uses, in the unit of the histogram metric. The count is an estimate, interpolated linearly between the two nearest bucket bounds.",
+                    "description": "Bucket bound the comparison uses, in the unit of the histogram metric. The count is exact when threshold equals one of the metric's le bucket bounds, and otherwise an estimate interpolated linearly between the two nearest bounds.",
                     "format": "double",
                     "type": "number"
                   }
@@ -10710,7 +10723,7 @@
                         "$ref": "#/$defs/Querybuildertypesv5OrderByKey"
                       }
                     ],
-                    "description": "The field, aggregation alias or expression to sort by, for example timestamp, service.name or count()."
+                    "description": "The sort key. For aggregation requests name is a group-by field such as service.name, an aggregation alias, or the aggregation expression: count() or p99(duration_nano) for traces and logs; for metrics the spaceAggregation(timeAggregation(metricName)) form such as sum(rate(signoz_calls_total)), p99(metricName) for histogram metrics, or __result. Raw requests sort by any field, such as timestamp."
                   }
                 },
                 "type": "object"
@@ -10783,6 +10796,10 @@
                   "query": {
                     "description": "The PromQL expression. Dotted metric and label names must use the UTF-8 quoted selector form, for example {'http.server.duration'}.",
                     "type": "string"
+                  },
+                  "skipStepAlignment": {
+                    "description": "When true, start and end are evaluated as given instead of rounded down to the step, and the result is not cached. Defaults to false.",
+                    "type": "boolean"
                   },
                   "stats": {
                     "description": "Reserved; currently has no effect.",

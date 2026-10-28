@@ -8,6 +8,6 @@ type Querybuildertypesv5OrderBy struct {
 	// Direction The sort direction: asc or desc.
 	Direction *Querybuildertypesv5OrderDirection `json:"direction,omitempty" jsonschema:"The sort direction: asc or desc."`
 
-	// Key The field, aggregation alias or expression to sort by, for example timestamp, service.name or count().
-	Key *Querybuildertypesv5OrderByKey `json:"key,omitempty" jsonschema:"The field, aggregation alias or expression to sort by, for example timestamp, service.name or count()."`
+	// Key The sort key. For aggregation requests name is a group-by field such as service.name, an aggregation alias, or the aggregation expression: count() or p99(duration_nano) for traces and logs; for metrics the spaceAggregation(timeAggregation(metricName)) form such as sum(rate(signoz_calls_total)), p99(metricName) for histogram metrics, or __result. Raw requests sort by any field, such as timestamp.
+	Key *Querybuildertypesv5OrderByKey `json:"key,omitempty" jsonschema:"The sort key. For aggregation requests name is a group-by field such as service.name, an aggregation alias, or the aggregation expression: count() or p99(duration_nano) for traces and logs; for metrics the spaceAggregation(timeAggregation(metricName)) form such as sum(rate(signoz_calls_total)), p99(metricName) for histogram metrics, or __result. Raw requests sort by any field, such as timestamp."`
 }

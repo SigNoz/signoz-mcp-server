@@ -456,7 +456,7 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 | `signoz_delete_view` | Permanently delete a confirmed saved view by `id` |
 | `signoz_aggregate_logs` | Aggregate log statistics and grouped or top-N breakdowns |
 | `signoz_search_logs` | Return individual log records matching filters |
-| `signoz_aggregate_traces` | Aggregate span statistics and grouped or top-N breakdowns |
+| `signoz_aggregate_traces` | Aggregate span or per-AI-trace statistics and grouped or top-N breakdowns |
 | `signoz_search_traces` | Return span rows or one row per trace (including AI traces), or discover trace IDs |
 | `signoz_get_trace_details` | Get one known trace with all spans and hierarchy |
 | `signoz_execute_builder_query` | Query Builder v5 requests the dedicated tools cannot express |
@@ -498,6 +498,7 @@ Docs tools use the same authentication path as other MCP tools.
 | `signoz://dashboard/clickhouse-traces-example` | Raw ClickHouse traces widget patterns |
 | `signoz://logs/query-builder-guide` | Logs Query Builder v5 JSON or unfamiliar log fields |
 | `signoz://traces/query-builder-guide` | Traces Query Builder v5 JSON or unfamiliar trace fields |
+| `signoz://ai/query-builder-guide` | AI agent and LLM queries: when to set `queryType: builder_ai_query`, per-trace cost, token, and call-count keys, caveats, and examples |
 | `signoz://metrics-aggregation-guide` | Metric aggregations, formulas, grouping, limits, and Cost Meter queries |
 | `signoz://query-builder/examples` | `query_range` requests from the SigNoz OpenAPI spec, per query type and request type for `signoz_execute_builder_query` |
 | `signoz://notification-channel/examples` | Every notification channel kind, its `config.spec` fields, and a worked payload per kind |
@@ -916,7 +917,7 @@ Return individual paginated span rows matching service, operation, error, durati
 
 #### `signoz_aggregate_traces`
 
-Return custom aggregate statistics over spans (counts, rates, latency percentiles, grouped/top-N breakdowns, or time series) rather than individual rows or a full trace hierarchy. For one row per trace, such as the most expensive AI traces, use `signoz_search_traces` with `requestType: trace`. For one traced service's built-in operation table ranked by p99, use `signoz_get_service_top_operations`. Read `signoz://traces/query-builder-guide` before calling this tool.
+Return custom aggregate statistics over spans (counts, rates, latency percentiles, grouped/top-N breakdowns, or time series) rather than individual rows or a full trace hierarchy. For one row per trace, such as the most expensive AI traces, use `signoz_search_traces` with `requestType: trace`. For one traced service's built-in operation table ranked by p99, use `signoz_get_service_top_operations`. Read `signoz://traces/query-builder-guide` before calling this tool. For AI cost, token, or call-count statistics per trace, set `queryType: builder_ai_query` (see `signoz://ai/query-builder-guide`).
 
 - **Parameters**:
   - `aggregations` (required) - Aggregation expressions as the Query Builder writes them: `count()`, `count_distinct(name)`, `avg(duration_nano)`, `p99(duration_nano)`, `rate()`, or a conditional such as `countIf(has_error = true)`; `duration_nano` is span latency in nanoseconds. One expression or an array (e.g. `["count()", "p95(duration_nano)", "p99(duration_nano)"]`); results come back as `__result_0`, `__result_1`, ... in that order. SigNoz validates the expressions. The former `aggregation` and `aggregateOn` inputs return a coded error naming this replacement
@@ -933,6 +934,7 @@ Return custom aggregate statistics over spans (counts, rates, latency percentile
   - `start` / `end` (optional) - Start/end time in unix milliseconds. When both are provided, they override `timeRange`.
   - `requestType` (optional) - `scalar` (default; one aggregate value over the whole range) or `time_series` (one value per time bucket). Unknown values are rejected.
   - `stepInterval` (optional) - Time bucket size in seconds for `time_series` mode. Accepts a number or numeric string (backend auto-selects when omitted)
+  - `queryType` (optional) - `builder_query` (default) aggregates spans of all traces. Set `builder_ai_query` for AI observability queries: it aggregates spans of AI traces, and `aggregations`, `filter`, and `orderBy` also accept the trace-level fields listed for `signoz_search_traces`, e.g. `avg(trace.estimated_total_cost)`. One call cannot mix trace-level and span-level aggregations. Count AI traces with `count_distinct(trace_id)`. An unknown value runs as `builder_query` with an input validation notice
   - **Time-series ranking note**: the limit selects top groups over the whole requested window, not independently per bucket. Narrow the window or adjust the limit when a short-lived series could otherwise be hidden.
   - **Key-not-found errors**: a filter referencing a key absent from this workspace's traces metadata fails with recovery guidance in the error text plus a machine-readable `missingKeys` array in the structured error content
 
@@ -1065,12 +1067,13 @@ Runs a SigNoz Query Builder v5 request that the dedicated tools cannot express, 
 - **Parameters**: `query` (required) - the complete `query_range` request. The input schema describes its top-level fields (`start`, `end`, `requestType`, `compositeQuery`, `variables`, `formatOptions`, `noCache`) with the descriptions from the SigNoz OpenAPI spec; the query envelopes inside `compositeQuery.queries` are open objects the guides and `signoz://query-builder/examples` cover.
 - **Query types**: the per-envelope `compositeQuery.queries[i].type` selects the spec shape:
   - `builder_query`: signal-specific spec (logs/traces/metrics) with filter, aggregations, groupBy, etc.
+  - `builder_ai_query`: a traces builder spec run over AI traces, with the per-trace `trace.` keys. See `signoz://ai/query-builder-guide`.
   - `builder_formula`: formula expression referencing other query names (e.g. `A / B * 100`).
   - `promql`: `{name, query, disabled, step?, legend?}`. PromQL for OTel metrics requires the Prometheus 3.x UTF-8 quoted-selector form `{"metric.name.with.dots"}`; read the `signoz://promql/instructions` resource for details.
   - `clickhouse_sql`: `{name, query, disabled, legend?}`.
-- **Builder result bounds**: for predictable authored queries, explicitly supply a positive `spec.limit` and non-empty v5 `spec.order` (not dashboard/editor `orderBy`) on every `builder_formula` and on each `builder_query` no formula references. When omitted, null, or zero, standalone limits and formula-result limits default to `100`. A builder query referenced by a formula gets no inserted limit or order, because SigNoz applies base-query limits before formula evaluation and they drop groups from the result. Raw logs order by `timestamp desc, id desc`; raw traces by `timestamp desc`; metric scalar/time-series queries and formulas by `__result desc`; and log/trace scalar/time-series queries by the primary aggregation descending. Caller-supplied values are forwarded unchanged. The response appends a decisions note when defaults are inserted.
+- **Builder result bounds**: for predictable authored queries, explicitly supply a positive `spec.limit` and non-empty v5 `spec.order` (not dashboard/editor `orderBy`) on every `builder_formula` and on each `builder_query` no formula references. When omitted, null, or zero, standalone limits and formula-result limits default to `100`. A builder query referenced by a formula gets no inserted limit or order, because SigNoz applies base-query limits before formula evaluation and they drop groups from the result. Raw logs order by `timestamp desc, id desc`; raw traces by `timestamp desc`; metric scalar/time-series queries and formulas by `__result desc`; and log/trace scalar/time-series queries by the primary aggregation descending. A `builder_ai_query` gets the same default limit as a `builder_query` of its request type and no default order, because SigNoz orders AI trace rows by last activity. Caller-supplied values are forwarded unchanged. The response appends a decisions note when defaults are inserted.
 - **Validation**: apart from inserted bounds, the request reaches SigNoz verbatim and SigNoz validates it. `requestType` has no default (`raw`, `trace`, `time_series`, or `scalar`), and `start` and `end` are required Unix-millisecond timestamps.
-- **Guide routing**: read `signoz://logs/query-builder-guide` for logs, `signoz://traces/query-builder-guide` for traces, `signoz://metrics-aggregation-guide` for metrics/formulas, and `signoz://promql/instructions` for PromQL.
+- **Guide routing**: read `signoz://logs/query-builder-guide` for logs, `signoz://traces/query-builder-guide` for traces, `signoz://ai/query-builder-guide` for `builder_ai_query`, `signoz://metrics-aggregation-guide` for metrics/formulas, and `signoz://promql/instructions` for PromQL.
 - **Time-series ranking caveat**: top-N groups are ranked over the entire requested window. A short-lived spike can be omitted even when it dominates one bucket; narrow the window or adjust the limit when that matters.
 - **Backend warnings**: non-fatal warnings the backend returns (e.g. ambiguous-key resolution) are surfaced as a note alongside the raw response and WARN-logged, matching the search/aggregate/query_metrics tools (previously the body was returned verbatim and warnings were dropped).
 - **Key-not-found errors**: a filter referencing a key absent from the workspace's metadata for the queried signal fails with recovery guidance in the error text plus a machine-readable `missingKeys` array in the structured error content

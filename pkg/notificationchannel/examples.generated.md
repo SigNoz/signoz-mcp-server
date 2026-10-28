@@ -43,7 +43,7 @@ Source: the request examples published by the SigNoz OpenAPI spec.
 - `reopenTransition` string: The transition applied when an alert fires again on a resolved issue.
 - `resolveTransition` string: The transition applied to the issue when the alert resolves.
 - `sendResolved` boolean: Also notify when the alert resolves. Defaults to false.
-- `site` string (required): The Jira Cloud base URL, https://<site>.atlassian.net; only Jira Cloud is supported.
+- `site` string (required): The base URL of the Jira Cloud site, for example https://example.atlassian.net. Only Jira Cloud is supported.
 - `summary` string: Alertmanager template for the issue summary; defaults to the SigNoz Jira default.
 - `wontFixResolution` string: The resolution name that stops an issue from being reopened.
 

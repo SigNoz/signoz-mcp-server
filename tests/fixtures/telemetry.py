@@ -143,6 +143,10 @@ def _attr(key: str, value: str | float) -> dict:
     return {"key": key, "value": {"doubleValue": value}}
 
 
+# The child span seed_ai_trace adds without gen_ai attributes.
+PLAIN_AI_CHILD_SPAN = "SELECT documents"
+
+
 def seed_ai_trace(service_name: str, *, model: str = "gpt-4o-mini", llm_calls: int = 2, tool_calls: int = 12) -> str:
     """Push one AI agent trace via OTLP/HTTP and return its trace id (hex).
 
@@ -150,8 +154,10 @@ def seed_ai_trace(service_name: str, *, model: str = "gpt-4o-mini", llm_calls: i
     calls on `model` with gen_ai token usage and a per-call cost, and
     `tool_calls` calls alternating between two tools, so with the defaults
     trace.tool_call_count > 10 AND trace.distinct_tool_count < 3 holds. Every
-    child span has a distinct duration. The last tool call is marked ERROR. Cost
-    is set on the span directly; a pricing rule in SigNoz may restamp it at ingest.
+    child span has a distinct duration. The last tool call is marked ERROR. One
+    more child span, PLAIN_AI_CHILD_SPAN, has no gen_ai attributes. Cost
+    is set on the span directly, but SigNoz stamps cost at ingest and a fresh
+    SigNoz reads it back as null, so tests assert on token counts instead.
     """
     now = time.time_ns()
     trace_id = uuid.uuid4().hex
@@ -217,6 +223,7 @@ def seed_ai_trace(service_name: str, *, model: str = "gpt-4o-mini", llm_calls: i
                 error=i == tool_calls - 1,
             )
         )
+    spans.append(span(PLAIN_AI_CHILD_SPAN, 350, 30, [_attr("db.system", "postgresql")]))
     payload = {
         "resourceSpans": [
             {

@@ -11,8 +11,8 @@ type RuletypesBasicRuleThreshold struct {
 	// MatchType Which points in the window must satisfy op. Accepted as at_least_once, all_the_times, on_average, in_total or last, their aliases avg and sum, or the legacy codes as strings, '1' to '5'.
 	MatchType RuletypesMatchType `json:"matchType" jsonschema:"Which points in the window must satisfy op. Accepted as at_least_once, all_the_times, on_average, in_total or last, their aliases avg and sum, or the legacy codes as strings, '1' to '5'."`
 
-	// Name The threshold name, conventionally critical, error, warning or info. Alerts carry it as the threshold_name label.
-	Name string `json:"name" jsonschema:"The threshold name, conventionally critical, error, warning or info. Alerts carry it as the threshold_name label."`
+	// Name The threshold name, conventionally critical, error, warning or info. Alerts carry it as the threshold.name label and, lowercased, as the severity label; templates can read it as $threshold.name.
+	Name string `json:"name" jsonschema:"The threshold name, conventionally critical, error, warning or info. Alerts carry it as the threshold.name label and, lowercased, as the severity label; templates can read it as $threshold.name."`
 
 	// Op How the value is compared with target. Accepted as above, below, equal, not_equal, above_or_equal, below_or_equal or outside_bounds, their symbols, or the legacy codes as strings, '1' to '7'.
 	Op RuletypesCompareOperator `json:"op" jsonschema:"How the value is compared with target. Accepted as above, below, equal, not_equal, above_or_equal, below_or_equal or outside_bounds, their symbols, or the legacy codes as strings, '1' to '7'."`

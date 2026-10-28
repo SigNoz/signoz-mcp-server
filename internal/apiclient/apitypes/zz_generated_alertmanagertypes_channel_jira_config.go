@@ -41,8 +41,8 @@ type AlertmanagertypesChannelJiraConfig struct {
 	// SendResolved Also notify when the alert resolves. Defaults to false.
 	SendResolved *bool `json:"sendResolved,omitempty" jsonschema:"Also notify when the alert resolves. Defaults to false."`
 
-	// Site The Jira Cloud base URL, https://<site>.atlassian.net; only Jira Cloud is supported.
-	Site string `json:"site" jsonschema:"The Jira Cloud base URL, https://<site>.atlassian.net; only Jira Cloud is supported."`
+	// Site The base URL of the Jira Cloud site, for example https://example.atlassian.net. Only Jira Cloud is supported.
+	Site string `json:"site" jsonschema:"The base URL of the Jira Cloud site, for example https://example.atlassian.net. Only Jira Cloud is supported."`
 
 	// Summary Alertmanager template for the issue summary; defaults to the SigNoz Jira default.
 	Summary *string `json:"summary,omitempty" jsonschema:"Alertmanager template for the issue summary; defaults to the SigNoz Jira default."`

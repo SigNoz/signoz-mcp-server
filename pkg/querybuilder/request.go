@@ -285,6 +285,7 @@ type AggregateSpec struct {
 	StepInterval *int64
 	Having       string
 	Functions    []Function
+	QueryType    string // builder_ai_query selects the AI envelope for traces
 }
 
 func havingOf(expression string) *apitypes.Querybuildertypesv5Having {
@@ -313,13 +314,15 @@ func Aggregate(spec AggregateSpec) (Request, error) {
 		}
 	}
 	order := &[]orderBy{newOrderBy(spec.OrderExpr, spec.OrderDir)}
-	envelope, err := builderEnvelope(func(builder *apitypes.Querybuildertypesv5BuilderQuerySpec) error {
-		switch spec.Signal {
-		case "logs":
-			aggregations := make([]apitypes.Querybuildertypesv5LogAggregation, 0, len(spec.Aggregations))
-			for _, expression := range spec.Aggregations {
-				aggregations = append(aggregations, apitypes.Querybuildertypesv5LogAggregation{Expression: new(expression)})
-			}
+	var envelope apitypes.Querybuildertypesv5QueryEnvelope
+	var err error
+	switch spec.Signal {
+	case "logs":
+		aggregations := make([]apitypes.Querybuildertypesv5LogAggregation, 0, len(spec.Aggregations))
+		for _, expression := range spec.Aggregations {
+			aggregations = append(aggregations, apitypes.Querybuildertypesv5LogAggregation{Expression: new(expression)})
+		}
+		envelope, err = builderEnvelope(func(builder *apitypes.Querybuildertypesv5BuilderQuerySpec) error {
 			return builder.FromQuerybuildertypesv5QueryBuilderQueryGithubComSigNozSignozPkgTypesQuerybuildertypesQuerybuildertypesv5LogAggregation(logQuery{
 				Name:         new("A"),
 				StepInterval: step,
@@ -333,28 +336,28 @@ func Aggregate(spec AggregateSpec) (Request, error) {
 				Aggregations: &aggregations,
 				Functions:    functionsOf(spec.Functions),
 			})
-		case "traces":
-			aggregations := make([]apitypes.Querybuildertypesv5TraceAggregation, 0, len(spec.Aggregations))
-			for _, expression := range spec.Aggregations {
-				aggregations = append(aggregations, apitypes.Querybuildertypesv5TraceAggregation{Expression: new(expression)})
-			}
-			return builder.FromQuerybuildertypesv5QueryBuilderQueryGithubComSigNozSignozPkgTypesQuerybuildertypesQuerybuildertypesv5TraceAggregation(traceQuery{
-				Name:         new("A"),
-				StepInterval: step,
-				Disabled:     new(false),
-				Filter:       filterOf(spec.Filter),
-				Limit:        new(spec.Limit),
-				Offset:       new(0),
-				Order:        order,
-				Having:       havingOf(spec.Having),
-				GroupBy:      GroupByKeys(spec.GroupBy),
-				Aggregations: &aggregations,
-				Functions:    functionsOf(spec.Functions),
-			})
-		default:
-			return fmt.Errorf("aggregate requests support the logs and traces signals, not %q", spec.Signal)
+		})
+	case "traces":
+		aggregations := make([]apitypes.Querybuildertypesv5TraceAggregation, 0, len(spec.Aggregations))
+		for _, expression := range spec.Aggregations {
+			aggregations = append(aggregations, apitypes.Querybuildertypesv5TraceAggregation{Expression: new(expression)})
 		}
-	})
+		envelope, err = traceEnvelope(spec.QueryType, traceQuery{
+			Name:         new("A"),
+			StepInterval: step,
+			Disabled:     new(false),
+			Filter:       filterOf(spec.Filter),
+			Limit:        new(spec.Limit),
+			Offset:       new(0),
+			Order:        order,
+			Having:       havingOf(spec.Having),
+			GroupBy:      GroupByKeys(spec.GroupBy),
+			Aggregations: &aggregations,
+			Functions:    functionsOf(spec.Functions),
+		})
+	default:
+		err = fmt.Errorf("aggregate requests support the logs and traces signals, not %q", spec.Signal)
+	}
 	if err != nil {
 		return Request{}, err
 	}
