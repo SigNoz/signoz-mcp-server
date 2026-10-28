@@ -2,6 +2,7 @@ package tools
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/SigNoz/signoz-mcp-server/pkg/querybuilder"
@@ -43,8 +44,10 @@ func parseSearchTracesArgs(args map[string]any) (*SearchTracesRequest, error) {
 	if err != nil {
 		return nil, err
 	}
-	minDuration, _ := args["minDuration"].(string)
-	maxDuration, _ := args["maxDuration"].(string)
+	minDuration, maxDuration, err := readTraceDurations(args)
+	if err != nil {
+		return nil, err
+	}
 	filterExpr := buildTraceFilterExpr(filter, service, operation, errorFilter, errorPresent, minDuration, maxDuration)
 
 	limit, err := intArg(args, "limit", querybuilder.DefaultRawQueryLimit)
@@ -98,8 +101,10 @@ func parseAggregateTracesArgs(args map[string]any) (*AggregateRequest, error) {
 	if err != nil {
 		return nil, err
 	}
-	minDuration, _ := args["minDuration"].(string)
-	maxDuration, _ := args["maxDuration"].(string)
+	minDuration, maxDuration, err := readTraceDurations(args)
+	if err != nil {
+		return nil, err
+	}
 	filter, err := readTraceFilterExpr(args)
 	if err != nil {
 		return nil, err
@@ -112,6 +117,24 @@ func parseAggregateTracesArgs(args map[string]any) (*AggregateRequest, error) {
 	}
 	request.QueryType, _ = args["queryType"].(string)
 	return request, nil
+}
+
+// readTraceDurations reads minDuration and maxDuration as strings. A JSON
+// number is nanoseconds; dropping it would silently widen the search.
+func readTraceDurations(args map[string]any) (string, string, error) {
+	var out [2]string
+	for i, key := range []string{"minDuration", "maxDuration"} {
+		switch v := args[key].(type) {
+		case nil:
+		case string:
+			out[i] = strings.TrimSpace(v)
+		case float64:
+			out[i] = strconv.FormatFloat(v, 'f', -1, 64)
+		default:
+			return "", "", fmt.Errorf(`parameter validation failed: %q must be a duration such as "500ms" or a number of nanoseconds`, key)
+		}
+	}
+	return out[0], out[1], nil
 }
 
 // buildTraceFilterExpr combines the caller's filter with the trace shortcut
@@ -129,11 +152,13 @@ func buildTraceFilterExpr(filter, service, operation string, errorFilter, errorP
 	if errorPresent {
 		parts = append(parts, fmt.Sprintf("has_error = %t", errorFilter))
 	}
+	// SigNoz reads a quoted duration_nano operand as a duration ('500ms') or
+	// as nanoseconds ('500000000'), and rejects anything else.
 	if minDuration != "" {
-		parts = append(parts, fmt.Sprintf("duration_nano >= %s", minDuration))
+		parts = append(parts, "duration_nano >= "+querybuilder.QuoteFilterLiteral(minDuration))
 	}
 	if maxDuration != "" {
-		parts = append(parts, fmt.Sprintf("duration_nano <= %s", maxDuration))
+		parts = append(parts, "duration_nano <= "+querybuilder.QuoteFilterLiteral(maxDuration))
 	}
 	if filter == "" {
 		return strings.Join(parts, " AND ")
