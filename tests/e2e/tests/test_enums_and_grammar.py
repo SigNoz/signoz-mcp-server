@@ -8,10 +8,23 @@ from fixtures.mcpclient import MCPClient, assert_tool_ok
 from fixtures.results import first_text_block
 from fixtures.telemetry import seed_traces, wait_for
 
-# The aggregation set the tools advertise (aggregate_helper.go); count and rate
-# need no aggregateOn field.
-AGGREGATIONS = ["count", "count_distinct", "avg", "sum", "min", "max", "p50", "p75", "p90", "p95", "p99", "rate"]
-AGGREGATIONS_WITHOUT_FIELD = {"count", "rate"}
+# Aggregation expressions the tool descriptions use as examples; each must run
+# against the backend, which is the only validator of the expression grammar.
+AGGREGATIONS = [
+    "count()",
+    "count_distinct(name)",
+    "avg(duration_nano)",
+    "sum(duration_nano)",
+    "min(duration_nano)",
+    "max(duration_nano)",
+    "p50(duration_nano)",
+    "p75(duration_nano)",
+    "p90(duration_nano)",
+    "p95(duration_nano)",
+    "p99(duration_nano)",
+    "rate()",
+    "countIf(has_error = true)",
+]
 
 
 def test_signal_enum_values(mcp_client: MCPClient) -> None:
@@ -25,19 +38,17 @@ def test_signal_enum_values(mcp_client: MCPClient) -> None:
 
 
 def test_aggregation_set_matches_backend(mcp_client: MCPClient) -> None:
-    """Every advertised aggregation, and both request types on both signals, run against the backend (N15)."""
+    """Every example aggregation expression, and both request types on both signals, run against the backend (N15)."""
     cases = [("traces", aggregation, "scalar") for aggregation in AGGREGATIONS]
-    cases += [("logs", "count", "scalar"), ("logs", "count", "time_series"), ("traces", "count", "time_series")]
+    cases += [("logs", "count()", "scalar"), ("logs", "count()", "time_series"), ("traces", "count()", "time_series")]
     rejected = []
     for signal, aggregation, request_type in cases:
         args = {
             "searchContext": f"aggregate {signal} with {aggregation}",
-            "aggregation": aggregation,
+            "aggregations": [aggregation],
             "timeRange": "30m",
             "requestType": request_type,
         }
-        if aggregation not in AGGREGATIONS_WITHOUT_FIELD:
-            args["aggregateOn"] = "duration_nano"
         result = mcp_client.call_tool(f"signoz_aggregate_{signal}", args)
         if result.get("isError", False):
             rejected.append((signal, aggregation, request_type, first_text_block(result)[:200]))

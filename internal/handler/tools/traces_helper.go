@@ -23,7 +23,7 @@ type SearchTracesRequest struct {
 }
 
 // maxTraceSelectFields bounds how many extra columns one search can request.
-const maxTraceSelectFields = 50
+const maxTraceSelectFields = maxSelectFields
 
 func parseSearchTracesArgs(args map[string]any) (*SearchTracesRequest, error) {
 	filter, err := readFilterExpr(args)
@@ -60,10 +60,13 @@ func parseSearchTracesArgs(args map[string]any) (*SearchTracesRequest, error) {
 	if err != nil {
 		return nil, err
 	}
+	var orderExpr, orderDir string
+	if raw := strings.TrimSpace(stringValue(args["orderBy"])); raw != "" {
+		orderExpr, orderDir = parseOrderBy(raw)
+	}
 
 	queryType, _ := args["queryType"].(string)
 	requestType, _ := args["requestType"].(string)
-	orderExpr, orderDir := parseOrderBy(args)
 
 	return &SearchTracesRequest{
 		QueryType:        queryType,
@@ -134,37 +137,30 @@ func buildTraceFilterExpr(query, service, operation string, errorFilter, errorPr
 // the caller named. It accepts an array of names or a comma-separated string;
 // a resource., attribute., tag., or span. prefix sets the field context.
 func parseTraceSelectFields(raw any) ([]querybuilder.FieldKey, error) {
-	var names []string
-	switch v := raw.(type) {
-	case nil:
-	case string:
-		names = strings.Split(v, ",")
-	case []any:
-		for _, item := range v {
-			name, ok := item.(string)
-			if !ok {
-				return nil, fmt.Errorf(`invalid "selectFields" item %v: each item must be a field name string, e.g. ["http.route", "db.statement"]`, item)
-			}
-			names = append(names, name)
-		}
-	case []string:
-		names = v
-	default:
-		return nil, fmt.Errorf(`invalid "selectFields" value %v: pass an array of field names or a comma-separated string, e.g. "http.route, db.statement"`, raw)
+	names, err := parseFieldNameList("selectFields", raw)
+	if err != nil {
+		return nil, err
 	}
 
 	fields := append([]querybuilder.FieldKey(nil), querybuilder.TraceSearchCoreFields...)
-	seen := make(map[string]bool, len(fields)+len(names))
+	seen := make(map[string]string, len(fields)+len(names))
 	for _, field := range fields {
-		seen[field.Name] = true
+		seen[field.Name] = querybuilder.FieldContextOf(field)
 	}
 	extra := 0
 	for _, name := range names {
-		field, ok := traceSelectField(strings.TrimSpace(name))
-		if !ok || seen[field.Name] {
+		field, ok := traceSelectField(name)
+		if !ok {
 			continue
 		}
-		seen[field.Name] = true
+		context := querybuilder.FieldContextOf(field)
+		if held, ok := seen[field.Name]; ok {
+			if err := selectFieldCollision(name, field.Name, held, context); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		seen[field.Name] = context
 		fields = append(fields, field)
 		extra++
 	}

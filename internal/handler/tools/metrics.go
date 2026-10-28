@@ -3,10 +3,12 @@ package tools
 import (
 	"context"
 	"log/slog"
+	"strconv"
 
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 
 	"github.com/SigNoz/signoz-mcp-server/pkg/metricsrules"
+	"github.com/SigNoz/signoz-mcp-server/pkg/querybuilder"
 )
 
 func (h *Handler) RegisterMetricsHandlers(s *mcp.Server) {
@@ -47,7 +49,11 @@ func (h *Handler) RegisterMetricsHandlers(s *mcp.Server) {
 		mcp.WithString("requestType", mcp.DefaultString("time_series"), mcp.Enum("scalar", "time_series"), mcp.Description("Response format: \"time_series\" (default) returns one value per time bucket; \"scalar\" returns a single reduced value per series.")),
 		mcp.WithString("reduceTo", mcp.Description("For requestType=scalar only. Reduces time series to a single value: sum, count, avg, min, max, last, median. Auto-defaulted by metricType.")),
 		mcp.WithString("formula", mcp.Description("Formula expression over named queries. Example: 'A / B * 100'. The primary metric becomes query 'A'. Additional queries are defined in formulaQueries.")),
-		mcp.WithString("formulaQueries", stringOrArrayType(), mcp.Description("JSON array, or JSON-encoded array string, of additional named metric queries for formula. Each object supports {name, metricName, metricType, isMonotonic, temporality, timeAggregation, spaceAggregation, groupBy, filter}; name and metricName are required.")),
+		mcp.WithArray("formulaQueries", stringOrArrayType(), mcp.Items(formulaSubQuerySchema()), mcp.Description("Additional named metric queries the formula references, as an array of objects (or a JSON-encoded string of one). name and metricName are required; the other fields mirror the top-level parameters and are auto-fetched or defaulted the same way.")),
+		mcp.WithString("limit", mcp.DefaultString(strconv.Itoa(querybuilder.DefaultAggregateQueryLimit)), intOrStringType(), mcp.Description("Maximum number of groups (series) in the result (default: 100, max: 10000; higher values are clamped). With a formula, limit applies to the formula result; formula inputs are not limited.")),
+		mcp.WithString("orderBy", mcp.Description("Result order as '<key> <direction>'. The key is __result (the aggregated value) or a groupBy field, e.g. '__result asc' for the smallest values first or 'service.name asc'. Defaults to __result desc.")),
+		mcp.WithString("having", mcp.Description("Condition on the primary query's aggregated values, applied after grouping, e.g. \"__result > 0.5\" or \"__result < 100\". With a formula it filters query A's series before the formula runs; SigNoz ignores a having on the formula result itself. SigNoz validates it.")),
+		functionsProperty(),
 		mcp.WithString("source", mcp.Description("Optional data-source filter forwarded to the backend. Use \"meter\" to query Cost Meter data. Omit for the default SigNoz metrics store.")),
 	)
 

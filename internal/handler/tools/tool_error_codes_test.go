@@ -78,6 +78,16 @@ func TestToolHandlers_RejectInvalidArgumentsBeforeCallingSigNoz(t *testing.T) {
 		{tool: "signoz_execute_builder_query", arguments: `{}`, wantText: `"query" must be a JSON object`},
 		{tool: "signoz_get_trace_details", arguments: `{"traceId":"deadbeefdeadbeefdeadbeefdeadbeef","start":"not-a-timestamp","end":"also-bad"}`, wantText: "start"},
 		{tool: "signoz_get_trace_details", arguments: `{"traceId":"deadbeefdeadbeefdeadbeefdeadbeef","includeSpans":"perhaps"}`, wantText: "includeSpans"},
+		{tool: "signoz_aggregate_logs", arguments: `{"aggregation":"count"}`, wantText: `"aggregations"`},
+		{tool: "signoz_aggregate_logs", arguments: `{"aggregations":"p99(x)","aggregateOn":"x"}`, wantText: `"aggregations"`},
+		{tool: "signoz_aggregate_logs", arguments: `{"groupBy":"service.name"}`, wantText: `"aggregations" is required`},
+		{tool: "signoz_aggregate_logs", arguments: `{"aggregations":["count()",7]}`, wantText: `"aggregations" items`},
+		{tool: "signoz_aggregate_logs", arguments: `{"aggregations":"count()","functions":"cutOffMin"}`, wantText: `"functions"`},
+		{tool: "signoz_aggregate_logs", arguments: `{"aggregations":"count()","functions":[{"args":[]}]}`, wantText: `"functions"`},
+		{tool: "signoz_aggregate_logs", arguments: `{"aggregations":"count()","groupBy":[{"key":"service.name"}]}`, wantText: `"groupBy"`},
+		{tool: "signoz_query_metrics", arguments: `{"metricName":"x","formulaQueries":"{\"name\":\"B\"}"}`, wantText: `"formulaQueries"`},
+		{tool: "signoz_query_metrics", arguments: `{"metricName":"x","formulaQueries":[{"name":"B","metricName":"y","metricType":"sum","isMonotonic":"tru"}]}`, wantText: `"isMonotonic"`},
+		{tool: "signoz_search_logs", arguments: `{"selectFields":["attribute.body"]}`, wantText: `"attribute.body"`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.tool+" "+tt.arguments, func(t *testing.T) {

@@ -205,8 +205,8 @@ wrote these tests. When you touch one, fix it or delete it.
   [`TestIntOrStringType_DocsLimitAdvertisesUnion`](https://github.com/SigNoz/signoz-mcp-server/blob/767fdc98dbe9b7e1122912b16bed9284ce8ce97b/internal/handler/tools/params_test.go#L45-L48)
   constructs its own `mcp.NewTool("signoz_search_docs", ...)` with `intOrStringType()`
   and asserts the copy advertises the union. The registered tool could lose the union and
-  this stays green. `internal/handler/tools/param_schema_test.go` shows the correct form;
-  it pins what the registered schema actually carries.
+  this stays green. `internal/handler/tools/schema_inventory_test.go` shows the correct form;
+  it reads the registered tools and pins what their schemas actually carry.
 - **Count and config change detectors.**
   [`len(acceptedMigrationDifferences) != 13`](https://github.com/SigNoz/signoz-mcp-server/blob/767fdc98dbe9b7e1122912b16bed9284ce8ce97b/internal/mcp-server/wire_catalog_golden_test.go#L167-L170)
   pins the length of a list declared in the same file; the focused assertions that follow

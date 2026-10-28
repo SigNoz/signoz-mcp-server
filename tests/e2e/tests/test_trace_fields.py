@@ -90,7 +90,7 @@ def test_trace_deep_links_shortcut_filters_and_group_by(mcp_client: MCPClient, t
             {
                 "searchContext": "trace count by service",
                 "timeRange": "1h",
-                "aggregation": "count",
+                "aggregations": "count()",
                 "groupBy": "service.name",
                 "limit": "5",
                 "requestType": "scalar",
