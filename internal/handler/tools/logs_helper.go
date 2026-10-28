@@ -41,14 +41,17 @@ func parseAggregateLogsArgs(args map[string]any) (*AggregateRequest, error) {
 // SearchLogsRequest holds the parsed parameters for a log search query.
 type SearchLogsRequest struct {
 	FilterExpression string
-	SelectFields     []querybuilder.FieldKey
-	OrderKey         string
-	OrderDir         string
-	Limit            int
-	LimitClamped     bool
-	Offset           int
-	StartTime        int64
-	EndTime          int64
+	// SearchScopeIgnored is set when searchScope arrived without searchText;
+	// the scope only says where text matches, so the call runs without it.
+	SearchScopeIgnored bool
+	SelectFields       []querybuilder.FieldKey
+	OrderKey           string
+	OrderDir           string
+	Limit              int
+	LimitClamped       bool
+	Offset             int
+	StartTime          int64
+	EndTime            int64
 }
 
 func parseSearchLogsArgs(args map[string]any) (*SearchLogsRequest, error) {
@@ -60,7 +63,7 @@ func parseSearchLogsArgs(args map[string]any) (*SearchLogsRequest, error) {
 	severity, _ := args["severity"].(string)
 	searchText, _ := args["searchText"].(string)
 	searchScope, _ := args["searchScope"].(string)
-	if err := validateLogSearchScope(searchScope, searchText); err != nil {
+	if err := validateLogSearchScope(searchScope); err != nil {
 		return nil, err
 	}
 	filterExpr := buildLogFilterExpr(filter, service, severity, searchText, searchScope)
@@ -91,15 +94,16 @@ func parseSearchLogsArgs(args map[string]any) (*SearchLogsRequest, error) {
 	}
 
 	return &SearchLogsRequest{
-		FilterExpression: filterExpr,
-		SelectFields:     selectFields,
-		OrderKey:         orderKey,
-		OrderDir:         orderDir,
-		Limit:            limit,
-		LimitClamped:     clamped,
-		Offset:           offset,
-		StartTime:        startTime,
-		EndTime:          endTime,
+		FilterExpression:   filterExpr,
+		SearchScopeIgnored: searchScope != "" && searchText == "",
+		SelectFields:       selectFields,
+		OrderKey:           orderKey,
+		OrderDir:           orderDir,
+		Limit:              limit,
+		LimitClamped:       clamped,
+		Offset:             offset,
+		StartTime:          startTime,
+		EndTime:            endTime,
 	}, nil
 }
 
@@ -197,18 +201,18 @@ func buildLogFilterExpr(filter, service, severity, searchText, searchScope strin
 // cheaper CONTAINS predicate; all is an unscoped search() over every field.
 var logSearchScopes = []string{"body", "attribute", "resource", "all"}
 
-func validateLogSearchScope(scope, searchText string) error {
-	if scope == "" {
+// validateLogSearchScope rejects an unknown scope. A known scope without
+// searchText is not an error: it only says where text matches, so the search
+// runs without it and the result carries searchScopeIgnoredNote.
+func validateLogSearchScope(scope string) error {
+	if scope == "" || slices.Contains(logSearchScopes, scope) {
 		return nil
 	}
-	if !slices.Contains(logSearchScopes, scope) {
-		return fmt.Errorf(`parameter validation failed: "searchScope" %q is not supported; use one of: %s`, scope, strings.Join(logSearchScopes, ", "))
-	}
-	if searchText == "" {
-		return errors.New(`parameter validation failed: "searchScope" needs "searchText"; supply the text to find, or remove searchScope`)
-	}
-	return nil
+	return fmt.Errorf(`parameter validation failed: "searchScope" %q is not supported; use one of: %s`, scope, strings.Join(logSearchScopes, ", "))
 }
+
+// searchScopeIgnoredNote explains a searchScope that had no searchText to scope.
+const searchScopeIgnoredNote = "note: searchScope was ignored because searchText is empty; pass searchText to search for text in that scope."
 
 func logSearchTextPredicate(searchText, scope string) string {
 	switch scope {

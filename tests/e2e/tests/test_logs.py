@@ -237,3 +237,30 @@ def test_body_field_group_by_fails_with_a_taught_message(mcp_client: MCPClient, 
     assert "can be filtered but not selected or grouped" in message or "field not found" in message, (
         f"a body-field group-by failed with a message other than the taught ones: {message[:400]}"
     )
+
+
+def test_search_scope_without_search_text_is_ignored_with_a_note(
+    mcp_client: MCPClient, test_id: str, telemetry: None
+) -> None:
+    """searchScope with no searchText runs the search unscoped and says so, instead of failing."""
+    service = f"mcp-e2e-{test_id}"
+    seed_logs(service, f"marker-{test_id}", count=2)
+
+    def search(**arguments) -> dict:
+        return mcp_client.call_tool(
+            "signoz_search_logs",
+            {"searchContext": "seeded logs", "service": service, "timeRange": "1h", "limit": "5", **arguments},
+        )
+
+    def visible() -> bool:
+        result = search()
+        return not result.get("isError", False) and bool(query_range_rows(first_text_block(result)))
+
+    wait_for(visible, f"seeded logs for {service} visible")
+
+    scoped = assert_tool_ok(search(searchScope="attribute"))
+    assert query_range_rows(first_text_block(scoped)), "the search must still return the seeded rows"
+    assert "searchScope was ignored because searchText is empty" in note_blocks(scoped), note_blocks(scoped)
+
+    unknown = search(searchScope="everywhere")
+    assert unknown.get("isError", False), "an unknown searchScope is still rejected"
