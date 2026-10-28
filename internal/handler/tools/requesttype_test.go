@@ -8,7 +8,7 @@ import (
 func TestAggregateTools_RejectUnknownRequestTypeAsValidationFailed(t *testing.T) {
 	server := newToolServerWithoutSigNoz(t)
 	for tool, arguments := range map[string]string{
-		"signoz_aggregate_logs": `{"aggregation":"count","timeRange":"1h","requestType":"totally-bogus"}`,
+		"signoz_aggregate_logs": `{"aggregations":"count()","timeRange":"1h","requestType":"totally-bogus"}`,
 		"signoz_query_metrics":  `{"metricName":"system.cpu.time","timeRange":"1h","requestType":"totally-bogus"}`,
 	} {
 		t.Run(tool, func(t *testing.T) {
@@ -27,8 +27,8 @@ func TestAggregateTools_RejectUnknownRequestTypeAsValidationFailed(t *testing.T)
 // reject an unknown requestType at the arg layer instead of passing it through.
 func TestParseAggregateArgs_RejectsUnknownRequestType(t *testing.T) {
 	_, err := parseAggregateArgs(map[string]any{
-		"aggregation": "count",
-		"requestType": "raw",
+		"aggregations": "count()",
+		"requestType":  "raw",
 	}, "logs", "")
 	if err == nil {
 		t.Fatal("expected error for unknown requestType, got nil")
@@ -40,7 +40,7 @@ func TestParseAggregateArgs_RejectsUnknownRequestType(t *testing.T) {
 
 // TestParseAggregateArgs_DefaultsToScalar pins the per-signal default is kept.
 func TestParseAggregateArgs_DefaultsToScalar(t *testing.T) {
-	req, err := parseAggregateArgs(map[string]any{"aggregation": "count"}, "logs", "")
+	req, err := parseAggregateArgs(map[string]any{"aggregations": "count()"}, "logs", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -52,7 +52,7 @@ func TestParseAggregateArgs_DefaultsToScalar(t *testing.T) {
 // TestParseAggregateArgs_ExplicitRequestTypeReachesRequest pins that a valid
 // non-default requestType is carried into the request rather than defaulted.
 func TestParseAggregateArgs_ExplicitRequestTypeReachesRequest(t *testing.T) {
-	req, err := parseAggregateArgs(map[string]any{"aggregation": "count", "requestType": "time_series"}, "traces", "")
+	req, err := parseAggregateArgs(map[string]any{"aggregations": "count()", "requestType": "time_series"}, "traces", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

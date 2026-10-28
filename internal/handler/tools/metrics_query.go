@@ -142,14 +142,24 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 		decisions = append(decisions, fmt.Sprintf("groupBy: %s", strings.Join(gbNames, ", ")))
 	}
 
-	querySpecs = append(querySpecs, querybuilder.MetricsQuery{
+	primary := querybuilder.MetricsQuery{
 		Name: "A",
 		Aggregation: querybuilder.MetricAggregation(
 			mqr.MetricName, mqr.Temporality, resolved.TimeAggregation, resolved.SpaceAggregation, resolved.ReduceTo,
 		),
-		Filter:  mqr.Filter,
-		GroupBy: primaryGroupBy,
-	})
+		Filter:    mqr.Filter,
+		GroupBy:   primaryGroupBy,
+		Functions: mqr.Functions,
+		// having always filters the primary query: SigNoz accepts a having on
+		// a formula but ignores it (pinned spec), so it is never sent there.
+		Having: mqr.Having,
+	}
+	// limit and order shape the result the caller reads: the formula when
+	// there is one, otherwise the primary query.
+	if mqr.Formula == "" {
+		primary.Limit, primary.OrderKey, primary.OrderDir = mqr.Limit, mqr.OrderKey, mqr.OrderDir
+	}
+	querySpecs = append(querySpecs, primary)
 
 	// Formula sub-queries
 	for _, fq := range mqr.FormulaQueries {
@@ -181,14 +191,35 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 			IsFormula:  true,
 			Expression: mqr.Formula,
 			Legend:     "formula_result",
+			Limit:      mqr.Limit,
+			OrderKey:   mqr.OrderKey,
+			OrderDir:   mqr.OrderDir,
 		})
 		decisions = append(decisions, fmt.Sprintf("formula: %s", mqr.Formula))
 	}
+	resultLimit, resultOrder := querybuilder.DefaultAggregateQueryLimit, "__result desc"
+	if mqr.Limit > 0 {
+		resultLimit = mqr.Limit
+	}
+	if mqr.OrderKey != "" {
+		resultOrder = mqr.OrderKey + " " + mqr.OrderDir
+	}
 	if mqr.Formula != "" {
 		decisions = append(decisions, "formula input bounds: none; every input series reaches the formula")
-		decisions = append(decisions, fmt.Sprintf("formula result bounds: limit=%d groups, order=__result desc", querybuilder.DefaultAggregateQueryLimit))
+		decisions = append(decisions, fmt.Sprintf("formula result bounds: limit=%d groups, order=%s", resultLimit, resultOrder))
 	} else {
-		decisions = append(decisions, fmt.Sprintf("result bounds: limit=%d groups, order=__result desc", querybuilder.DefaultAggregateQueryLimit))
+		decisions = append(decisions, fmt.Sprintf("result bounds: limit=%d groups, order=%s", resultLimit, resultOrder))
+	}
+	if mqr.LimitClamped {
+		decisions = append(decisions, fmt.Sprintf("limit clamped to %d groups to bound server memory", MaxRawResultLimit))
+	}
+	if len(mqr.Functions) > 0 && mqr.RequestType == "scalar" {
+		decisions = append(decisions, "functions: not applied; SigNoz applies them to time_series results only and returns scalar results unchanged")
+	}
+	if mqr.Having != "" && mqr.Formula != "" {
+		decisions = append(decisions, fmt.Sprintf("having (on query A, before the formula; SigNoz ignores a having on the formula result): %s", mqr.Having))
+	} else if mqr.Having != "" {
+		decisions = append(decisions, fmt.Sprintf("having: %s", mqr.Having))
 	}
 	if mqr.RequestType == "time_series" {
 		decisions = append(decisions, "time-series selection: top groups are ranked across the entire time range; a short-lived spike can fall outside the selected groups")

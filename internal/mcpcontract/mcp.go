@@ -229,6 +229,36 @@ func WithStringItems(opts ...PropertyOption) PropertyOption {
 	}
 }
 
+// Items sets a property's array item schema.
+func Items(item map[string]any) PropertyOption {
+	return func(schema map[string]any) { schema["items"] = item }
+}
+
+// FromSchema copies every key of source onto the property, so a property can
+// take its shape from a Go type (see SchemaFor) and then add a description.
+func FromSchema(source map[string]any) PropertyOption {
+	return func(schema map[string]any) {
+		for key, value := range source {
+			schema[key] = value
+		}
+	}
+}
+
+// SchemaFor renders T the way WithInputSchema does, with generated unions
+// listed by their variant types, for use as a nested property or item schema.
+func SchemaFor[T any]() map[string]any {
+	schema, err := jsonschema.For[T](&jsonschema.ForOptions{
+		IgnoreInvalidTypes: true,
+		TypeSchemas:        unionTypeSchemas(reflect.TypeFor[T]()),
+	})
+	if err != nil {
+		panic(fmt.Errorf("infer schema for Go type %s: %w", reflect.TypeFor[T](), err))
+	}
+	wire := mustSchemaMap(schema, reflect.TypeFor[T]().String(), "property")
+	delete(wire, "$schema")
+	return wire
+}
+
 func WithString(name string, opts ...PropertyOption) ToolOption {
 	return withProperty(name, "string", false, opts...)
 }

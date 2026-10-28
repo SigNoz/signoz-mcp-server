@@ -26,13 +26,15 @@
           "description": "Use this when the user wants aggregate statistics over logs (counts, rates, averages, percentiles, or grouped/top-N breakdowns) rather than individual log records. Use signoz_search_logs for log rows and message inspection; use signoz_execute_builder_query only for queries this tool cannot express. Log fields are workspace-specific, so read signoz://logs/query-builder-guide and discover unfamiliar keys with signoz_get_field_keys. Defaults to the last 1 hour.",
           "inputSchema": {
             "properties": {
-              "aggregateOn": {
-                "description": "Field name to aggregate on (e.g., 'response_time', 'duration'). Required for all aggregations except count and rate.",
-                "type": "string"
-              },
-              "aggregation": {
-                "description": "Aggregation function to apply. One of: count, count_distinct, avg, sum, min, max, p50, p75, p90, p95, p99, rate",
-                "type": "string"
+              "aggregations": {
+                "description": "Aggregation expressions to compute, written as the Query Builder writes them: count(), count_distinct(user_id), avg(duration), sum(bytes), min(x), max(x), p50(x) to p99(x), rate(), or a conditional such as countIf(severity_text = 'ERROR'). One expression or an array; results come back as __result_0, __result_1, ... in that order. Example: [\"count()\", \"p99(duration)\"]. SigNoz validates the expressions.",
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "array",
+                  "string"
+                ]
               },
               "end": {
                 "description": "End time in unix milliseconds (optional). When both start and end are provided, they override timeRange.",
@@ -45,8 +47,64 @@
                 "description": "Filter expression using SigNoz search syntax (see signoz://logs/query-builder-guide). Combine conditions with AND, OR, and parentheses. Unknown keys hard-error; keys present in multiple contexts default to resource context. Disambiguate with attribute.\u003ckey\u003e or resource.\u003ckey\u003e. Log keys are workspace-specific; logs have no spec-mandated resource attributes, so even service.name is only present when the log pipeline sets it. Discover keys with signoz_get_field_keys and values with signoz_get_field_values before filtering. For message text use body CONTAINS 'term'. Only when you don't know which field holds a term, use search('term') for every field or search('term', attribute); scopes (body, attribute, resource, log) are ORed. search() is slow and may be rejected over wide time ranges. Surrounding filters keep AND/NOT semantics. Examples: \"service.name = 'payment-svc' AND severity_text = 'ERROR'\", \"body CONTAINS 'timeout' AND severity_text = 'ERROR'\". Combined with service/severity params using AND.",
                 "type": "string"
               },
+              "functions": {
+                "description": "Post-query transforms applied in order to each time_series result, as an array of {name, args} objects, or a JSON-encoded string of that array. SigNoz applies them to time_series results only and returns scalar results unchanged, so set requestType to time_series. Names are the Query Builder function names, for example cutOffMin, cutOffMax, clampMin, clampMax, absolute, runningDiff, cumulativeSum, ewma3, median5, timeShift, or fillZero; args carries the function's parameters, for example [{\"value\": 10}] for cutOffMin. SigNoz validates names and args.",
+                "items": {
+                  "properties": {
+                    "args": {
+                      "description": "The function arguments; which ones are required depends on the function, for example a threshold for the cutOff and clamp functions.",
+                      "items": {
+                        "properties": {
+                          "name": {
+                            "description": "The argument name for functions that take named arguments, such as z_score_threshold or seasonality for anomaly.",
+                            "type": [
+                              "null",
+                              "string"
+                            ]
+                          },
+                          "value": {
+                            "description": "The argument value as a number, string or boolean, for example the threshold for cutOffMin or the duration for timeShift.",
+                            "type": [
+                              "null",
+                              "number",
+                              "string"
+                            ]
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "type": [
+                        "null",
+                        "array"
+                      ]
+                    },
+                    "name": {
+                      "description": "The function to apply, such as cutOffMin, cutOffMax, clampMin, clampMax, absolute, runningDiff, log2, log10, cumulativeSum, ewma3, ewma5, ewma7, median3, median5, median7, timeShift, anomaly or fillZero.",
+                      "type": [
+                        "null",
+                        "string"
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                "type": [
+                  "array",
+                  "string"
+                ]
+              },
               "groupBy": {
-                "description": "Comma-separated list of field names to group results by (e.g., 'service.name' or 'service.name, severity_text'). Leave empty for a single aggregate value.",
+                "description": "Field names to group results by, as an array or a comma-separated string (e.g. [\"service.name\", \"severity_text\"] or 'service.name, severity_text'). Leave empty for a single aggregate value.",
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "array",
+                  "string"
+                ]
+              },
+              "having": {
+                "description": "Condition on the aggregation results, in the filter syntax, applied after grouping. Reference an aggregation by its expression, for example \"count() \u003e 100\" or \"p99(duration_nano) \u003e 500000000\". SigNoz validates it.",
                 "type": "string"
               },
               "limit": {
@@ -58,7 +116,7 @@
                 ]
               },
               "orderBy": {
-                "description": "How to order results. Format: '\u003cexpression\u003e \u003cdirection\u003e', e.g. 'count() desc' or 'avg(duration) asc'. Defaults to the aggregation expression descending.",
+                "description": "How to order results. Format: '\u003cexpression\u003e \u003cdirection\u003e', e.g. 'count() desc' or 'avg(duration) asc'. Defaults to the first aggregation expression descending.",
                 "type": "string"
               },
               "requestType": {
@@ -103,7 +161,7 @@
               }
             },
             "required": [
-              "aggregation"
+              "aggregations"
             ],
             "type": "object"
           },
@@ -119,13 +177,15 @@
           "description": "Use this when the user wants custom aggregate statistics over spans (counts, rates, latency percentiles, grouped/top-N breakdowns, or time series) rather than individual span rows or a full trace hierarchy. For the built-in operation table for one traced service, ranked by p99, use signoz_get_service_top_operations. Use signoz_search_traces for raw spans, trace-ID discovery, or one row per trace (such as the most expensive AI traces), and signoz_get_trace_details for one known trace ID. Before calling, read signoz://traces/query-builder-guide; discover unfamiliar workspace fields with signoz_get_field_keys. Defaults to the last 1 hour.",
           "inputSchema": {
             "properties": {
-              "aggregateOn": {
-                "description": "Field name to aggregate on (e.g., 'duration_nano'). Required for all aggregations except count and rate.",
-                "type": "string"
-              },
-              "aggregation": {
-                "description": "Aggregation function to apply. One of: count, count_distinct, avg, sum, min, max, p50, p75, p90, p95, p99, rate",
-                "type": "string"
+              "aggregations": {
+                "description": "Aggregation expressions to compute, written as the Query Builder writes them: count(), count_distinct(name), avg(duration_nano), sum(x), min(x), max(x), p50(duration_nano) to p99(duration_nano), rate(), or a conditional such as countIf(has_error = true). duration_nano is span latency in nanoseconds. One expression or an array; results come back as __result_0, __result_1, ... in that order. Example: [\"count()\", \"p99(duration_nano)\"]. SigNoz validates the expressions.",
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "array",
+                  "string"
+                ]
               },
               "end": {
                 "description": "End time in unix milliseconds (optional). When both start and end are provided, they override timeRange.",
@@ -145,8 +205,64 @@
                 "description": "Filter expression using SigNoz search syntax (see signoz://traces/query-builder-guide). search() is logs-only; traces use field predicates. Combine conditions with AND, OR, and parentheses for precedence. Unknown keys hard-error; keys present in multiple contexts default to resource context. Disambiguate with attribute.\u003ckey\u003e, resource.\u003ckey\u003e, or span.\u003ckey\u003e. Discover valid keys with signoz_get_field_keys, then confirm values with signoz_get_field_values, before filtering. Examples: \"service.name = 'payment-svc' AND has_error = true\", \"http_method = 'POST' AND (has_error = true OR duration_nano \u003e 1000000000)\". Combined with service/operation/error/duration params using AND.",
                 "type": "string"
               },
+              "functions": {
+                "description": "Post-query transforms applied in order to each time_series result, as an array of {name, args} objects, or a JSON-encoded string of that array. SigNoz applies them to time_series results only and returns scalar results unchanged, so set requestType to time_series. Names are the Query Builder function names, for example cutOffMin, cutOffMax, clampMin, clampMax, absolute, runningDiff, cumulativeSum, ewma3, median5, timeShift, or fillZero; args carries the function's parameters, for example [{\"value\": 10}] for cutOffMin. SigNoz validates names and args.",
+                "items": {
+                  "properties": {
+                    "args": {
+                      "description": "The function arguments; which ones are required depends on the function, for example a threshold for the cutOff and clamp functions.",
+                      "items": {
+                        "properties": {
+                          "name": {
+                            "description": "The argument name for functions that take named arguments, such as z_score_threshold or seasonality for anomaly.",
+                            "type": [
+                              "null",
+                              "string"
+                            ]
+                          },
+                          "value": {
+                            "description": "The argument value as a number, string or boolean, for example the threshold for cutOffMin or the duration for timeShift.",
+                            "type": [
+                              "null",
+                              "number",
+                              "string"
+                            ]
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "type": [
+                        "null",
+                        "array"
+                      ]
+                    },
+                    "name": {
+                      "description": "The function to apply, such as cutOffMin, cutOffMax, clampMin, clampMax, absolute, runningDiff, log2, log10, cumulativeSum, ewma3, ewma5, ewma7, median3, median5, median7, timeShift, anomaly or fillZero.",
+                      "type": [
+                        "null",
+                        "string"
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                "type": [
+                  "array",
+                  "string"
+                ]
+              },
               "groupBy": {
-                "description": "Comma-separated list of field names to group results by (e.g., 'service.name' or 'service.name, name'). Leave empty for a single aggregate value.",
+                "description": "Field names to group results by, as an array or a comma-separated string (e.g. [\"service.name\", \"name\"] or 'service.name, name'). Leave empty for a single aggregate value.",
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "array",
+                  "string"
+                ]
+              },
+              "having": {
+                "description": "Condition on the aggregation results, in the filter syntax, applied after grouping. Reference an aggregation by its expression, for example \"count() \u003e 100\" or \"p99(duration_nano) \u003e 500000000\". SigNoz validates it.",
                 "type": "string"
               },
               "limit": {
@@ -170,7 +286,7 @@
                 "type": "string"
               },
               "orderBy": {
-                "description": "How to order results. Format: '\u003cexpression\u003e \u003cdirection\u003e', e.g. 'count() desc' or 'avg(duration_nano) asc'. Defaults to the aggregation expression descending.",
+                "description": "How to order results. Format: '\u003cexpression\u003e \u003cdirection\u003e', e.g. 'count() desc' or 'avg(duration_nano) asc'. Defaults to the first aggregation expression descending.",
                 "type": "string"
               },
               "requestType": {
@@ -211,7 +327,7 @@
               }
             },
             "required": [
-              "aggregation"
+              "aggregations"
             ],
             "type": "object"
           },
@@ -7004,8 +7120,105 @@
                 "type": "string"
               },
               "formulaQueries": {
-                "description": "JSON array, or JSON-encoded array string, of additional named metric queries for formula. Each object supports {name, metricName, metricType, isMonotonic, temporality, timeAggregation, spaceAggregation, groupBy, filter}; name and metricName are required.",
+                "description": "Additional named metric queries the formula references, as an array of objects (or a JSON-encoded string of one). name and metricName are required; the other fields mirror the top-level parameters and are auto-fetched or defaulted the same way.",
                 "items": {
+                  "properties": {
+                    "filter": {
+                      "description": "Filter expression, for example \"service.name = 'checkout'\".",
+                      "type": "string"
+                    },
+                    "groupBy": {
+                      "description": "Field names to group by, as an array or a comma-separated string. Use the same groupBy as the primary query so the formula can match series.",
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "array",
+                        "string"
+                      ]
+                    },
+                    "isMonotonic": {
+                      "description": "Whether a sum metric only increases. Auto-fetched when metricType is omitted.",
+                      "type": [
+                        "boolean",
+                        "string"
+                      ]
+                    },
+                    "metricName": {
+                      "description": "Metric to query, for example http_requests_total.",
+                      "type": "string"
+                    },
+                    "metricType": {
+                      "description": "gauge, sum, histogram, or exponential_histogram. Omit to auto-fetch it with temporality and monotonicity.",
+                      "type": "string"
+                    },
+                    "name": {
+                      "description": "Query name the formula references, for example B.",
+                      "type": "string"
+                    },
+                    "spaceAggregation": {
+                      "description": "Aggregation across series: sum, avg, min, max, count, or p50 to p99 for histograms. Defaulted by metric type.",
+                      "type": "string"
+                    },
+                    "temporality": {
+                      "description": "cumulative, delta, or unspecified. Auto-fetched when metricType is omitted.",
+                      "type": "string"
+                    },
+                    "timeAggregation": {
+                      "description": "Aggregation over time buckets: latest, sum, avg, min, max, count, count_distinct, rate, or increase. Defaulted by metric type.",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "metricName"
+                  ],
+                  "type": "object"
+                },
+                "type": [
+                  "array",
+                  "string"
+                ]
+              },
+              "functions": {
+                "description": "Post-query transforms applied in order to each time_series result, as an array of {name, args} objects, or a JSON-encoded string of that array. SigNoz applies them to time_series results only and returns scalar results unchanged, so set requestType to time_series. Names are the Query Builder function names, for example cutOffMin, cutOffMax, clampMin, clampMax, absolute, runningDiff, cumulativeSum, ewma3, median5, timeShift, or fillZero; args carries the function's parameters, for example [{\"value\": 10}] for cutOffMin. SigNoz validates names and args.",
+                "items": {
+                  "properties": {
+                    "args": {
+                      "description": "The function arguments; which ones are required depends on the function, for example a threshold for the cutOff and clamp functions.",
+                      "items": {
+                        "properties": {
+                          "name": {
+                            "description": "The argument name for functions that take named arguments, such as z_score_threshold or seasonality for anomaly.",
+                            "type": [
+                              "null",
+                              "string"
+                            ]
+                          },
+                          "value": {
+                            "description": "The argument value as a number, string or boolean, for example the threshold for cutOffMin or the duration for timeShift.",
+                            "type": [
+                              "null",
+                              "number",
+                              "string"
+                            ]
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "type": [
+                        "null",
+                        "array"
+                      ]
+                    },
+                    "name": {
+                      "description": "The function to apply, such as cutOffMin, cutOffMax, clampMin, clampMax, absolute, runningDiff, log2, log10, cumulativeSum, ewma3, ewma5, ewma7, median3, median5, median7, timeShift, anomaly or fillZero.",
+                      "type": [
+                        "null",
+                        "string"
+                      ]
+                    }
+                  },
                   "type": "object"
                 },
                 "type": [
@@ -7023,10 +7236,22 @@
                   "string"
                 ]
               },
+              "having": {
+                "description": "Condition on the primary query's aggregated values, applied after grouping, e.g. \"__result \u003e 0.5\" or \"__result \u003c 100\". With a formula it filters query A's series before the formula runs; SigNoz ignores a having on the formula result itself. SigNoz validates it.",
+                "type": "string"
+              },
               "isMonotonic": {
                 "description": "Whether a type=sum metric is monotonically increasing. Auto-fetched when metricType is omitted; otherwise provide the correct value for sum metrics.",
                 "type": [
                   "boolean",
+                  "string"
+                ]
+              },
+              "limit": {
+                "default": "100",
+                "description": "Maximum number of groups (series) in the result (default: 100, max: 10000; higher values are clamped). With a formula, limit applies to the formula result; formula inputs are not limited.",
+                "type": [
+                  "integer",
                   "string"
                 ]
               },
@@ -7036,6 +7261,10 @@
               },
               "metricType": {
                 "description": "Metric type: gauge, sum, histogram, or exponential_histogram. Omit to auto-fetch it with temporality and monotonicity.",
+                "type": "string"
+              },
+              "orderBy": {
+                "description": "Result order as '\u003ckey\u003e \u003cdirection\u003e'. The key is __result (the aggregated value) or a groupBy field, e.g. '__result asc' for the smallest values first or 'service.name asc'. Defaults to __result desc.",
                 "type": "string"
               },
               "reduceTo": {
@@ -7197,7 +7426,7 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user wants individual log records or messages matching text, service, severity, or field filters. It returns paginated rows, not counts, trends, or grouped breakdowns; use signoz_aggregate_logs for those, and signoz_execute_builder_query only for queries this tool cannot express. You do not need the guide when using only searchText, service, severity, time, or pagination. Read signoz://logs/query-builder-guide before filtering on unfamiliar fields. Defaults to the last 1 hour.",
+          "description": "Use this when the user wants individual log records or messages matching text, service, severity, or field filters. It returns paginated rows, not counts, trends, or grouped breakdowns; use signoz_aggregate_logs for those, and signoz_execute_builder_query only for queries this tool cannot express. Rows carry a default set of log columns; to include other attributes, such as service.name, name them in selectFields. A field missing from a row was not selected. You do not need the guide when using only searchText, service, severity, time, or pagination. Read signoz://logs/query-builder-guide before filtering on unfamiliar fields. Defaults to the last 1 hour.",
           "inputSchema": {
             "properties": {
               "end": {
@@ -7227,6 +7456,10 @@
                   "string"
                 ]
               },
+              "orderBy": {
+                "description": "Row order as '\u003cfield\u003e \u003cdirection\u003e', e.g. 'timestamp asc' or 'severity_number desc'. Defaults to timestamp desc (newest first); when ordering by timestamp, id breaks ties in the same direction.",
+                "type": "string"
+              },
               "searchContext": {
                 "description": "Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.",
                 "type": "string"
@@ -7244,6 +7477,16 @@
               "searchText": {
                 "description": "Literal text to find, escaped automatically. searchScope chooses where it matches; the default is the log body. Combines with filter using AND.",
                 "type": "string"
+              },
+              "selectFields": {
+                "description": "Extra fields to return on each row, added to the default set: timestamp, id, body, severity_text, trace_id, span_id. Pass an array of names or a comma-separated string, at most 50. Names can be resource attributes (service.name, k8s.pod.name), log attributes (http.route), JSON body fields, or other log columns (severity_number); a resource., attribute., log., or body. prefix picks the context. Each field comes back as its own row key. Discover names with signoz_get_field_keys (signal=\"logs\"). Example: [\"service.name\", \"http.route\"].",
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "array",
+                  "string"
+                ]
               },
               "service": {
                 "description": "Optional service name to filter by (adds service.name = '\u003cvalue\u003e'). Fails with `key service.name not found` when this workspace's logs lack that attribute; discover keys with signoz_get_field_keys(signal=\"logs\", fieldContext=\"resource\") and filter on an available key instead.",

@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 	"github.com/SigNoz/signoz-mcp-server/pkg/querybuilder"
 )
 
@@ -32,19 +33,43 @@ type metricsQueryRequest struct {
 	Formula             string
 	FormulaQueries      []formulaSubQuery
 	Source              string
+	// Result shaping. Limit 0 means the server default; an empty OrderKey keeps
+	// __result desc.
+	Limit        int
+	LimitClamped bool
+	OrderKey     string
+	OrderDir     string
+	Having       string
+	Functions    []querybuilder.Function
 }
 
-// formulaSubQuery represents one sub-query within a formula request.
+// formulaSubQuery represents one sub-query within a formula request. Its
+// jsonschema tags are the advertised item schema of formulaQueries; groupBy and
+// isMonotonic also accept their string forms, which the schema adds separately.
 type formulaSubQuery struct {
-	Name             string   `json:"name"`
-	MetricName       string   `json:"metricName"`
-	MetricType       string   `json:"metricType"`
-	IsMonotonic      bool     `json:"isMonotonic"`
-	Temporality      string   `json:"temporality"`
-	TimeAggregation  string   `json:"timeAggregation"`
-	SpaceAggregation string   `json:"spaceAggregation"`
-	GroupBy          []string `json:"groupBy"`
-	Filter           string   `json:"filter"`
+	Name             string   `json:"name" jsonschema:"Query name the formula references, for example B."`
+	MetricName       string   `json:"metricName" jsonschema:"Metric to query, for example http_requests_total."`
+	MetricType       string   `json:"metricType,omitempty" jsonschema:"gauge, sum, histogram, or exponential_histogram. Omit to auto-fetch it with temporality and monotonicity."`
+	IsMonotonic      bool     `json:"isMonotonic,omitempty" jsonschema:"Whether a sum metric only increases. Auto-fetched when metricType is omitted."`
+	Temporality      string   `json:"temporality,omitempty" jsonschema:"cumulative, delta, or unspecified. Auto-fetched when metricType is omitted."`
+	TimeAggregation  string   `json:"timeAggregation,omitempty" jsonschema:"Aggregation over time buckets: latest, sum, avg, min, max, count, count_distinct, rate, or increase. Defaulted by metric type."`
+	SpaceAggregation string   `json:"spaceAggregation,omitempty" jsonschema:"Aggregation across series: sum, avg, min, max, count, or p50 to p99 for histograms. Defaulted by metric type."`
+	GroupBy          []string `json:"groupBy,omitempty" jsonschema:"Field names to group by, as an array or a comma-separated string. Use the same groupBy as the primary query so the formula can match series."`
+	Filter           string   `json:"filter,omitempty" jsonschema:"Filter expression, for example \"service.name = 'checkout'\"."`
+}
+
+// formulaSubQuerySchema is the formulaQueries item schema, derived from
+// formulaSubQuery with the string forms the parser also accepts.
+func formulaSubQuerySchema() map[string]any {
+	schema := mcp.SchemaFor[formulaSubQuery]()
+	properties, _ := schema["properties"].(map[string]any)
+	if groupBy, ok := properties["groupBy"].(map[string]any); ok {
+		groupBy["type"] = []string{"array", "string"}
+	}
+	if isMonotonic, ok := properties["isMonotonic"].(map[string]any); ok {
+		isMonotonic["type"] = []string{"boolean", "string"}
+	}
+	return schema
 }
 
 func parseMetricsQueryArgs(args map[string]any) (*metricsQueryRequest, error) {
@@ -130,24 +155,49 @@ func parseMetricsQueryArgs(args map[string]any) (*metricsQueryRequest, error) {
 		}
 	}
 
-	// formulaQueries — JSON array of sub-query objects
-	if fq, ok := args["formulaQueries"]; ok {
-		switch v := fq.(type) {
-		case []any:
-			data, err := json.Marshal(v)
+	// formulaQueries: an array of sub-query objects, or a JSON-encoded string
+	// of one. Each item's groupBy and isMonotonic accept their string forms.
+	if raw, ok := args["formulaQueries"]; ok {
+		var items []map[string]any
+		if _, err := decodeJSONArg("formulaQueries", raw, &items); err != nil {
+			return nil, fmt.Errorf(`%w; pass an array of {name, metricName, ...} objects`, err)
+		}
+		for i, item := range items {
+			if text, ok := item["groupBy"].(string); ok {
+				names, _ := parseFieldNameList("groupBy", text)
+				item["groupBy"] = names
+			}
+			if _, ok := item["isMonotonic"].(string); ok {
+				v, _, err := parseBoolArg(item, "isMonotonic")
+				if err != nil {
+					return nil, fmt.Errorf("%s formulaQueries[%d]: %w", validationErrorPrefix, i, err)
+				}
+				item["isMonotonic"] = v
+			}
+		}
+		if len(items) > 0 {
+			data, err := json.Marshal(items)
 			if err != nil {
 				return nil, fmt.Errorf("invalid formulaQueries: %w", err)
 			}
 			if err := json.Unmarshal(data, &req.FormulaQueries); err != nil {
-				return nil, fmt.Errorf("invalid formulaQueries schema: %w", err)
-			}
-		case string:
-			if v != "" {
-				if err := json.Unmarshal([]byte(v), &req.FormulaQueries); err != nil {
-					return nil, fmt.Errorf("invalid formulaQueries JSON string: %w", err)
-				}
+				return nil, fmt.Errorf(`%s "formulaQueries" has the wrong shape: %v; each item is {name, metricName, metricType, isMonotonic, temporality, timeAggregation, spaceAggregation, groupBy, filter}`, validationErrorPrefix, err)
 			}
 		}
+	}
+
+	// Result shaping: limit, orderBy, having, functions.
+	limit, err := intArg(args, "limit", 0)
+	if err != nil {
+		return nil, err
+	}
+	req.Limit, req.LimitClamped = clampLimit(limit)
+	if raw := strings.TrimSpace(stringArg(args, "orderBy")); raw != "" {
+		req.OrderKey, req.OrderDir = parseOrderBy(raw)
+	}
+	req.Having = strings.TrimSpace(stringArg(args, "having"))
+	if req.Functions, err = parseFunctionsArg(args["functions"]); err != nil {
+		return nil, err
 	}
 
 	// Defaults

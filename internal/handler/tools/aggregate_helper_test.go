@@ -67,9 +67,9 @@ func TestResolveTimestampsEmptyOrAbsentUsesDefaultRange(t *testing.T) {
 
 func TestParseAggregateArgs_LimitClamped(t *testing.T) {
 	over, err := parseAggregateArgs(map[string]any{
-		"aggregation": "count",
-		"limit":       "50000",
-		"timeRange":   "1h",
+		"aggregations": "count()",
+		"limit":        "50000",
+		"timeRange":    "1h",
 	}, "logs", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -79,9 +79,9 @@ func TestParseAggregateArgs_LimitClamped(t *testing.T) {
 	}
 
 	under, err := parseAggregateArgs(map[string]any{
-		"aggregation": "count",
-		"limit":       "25",
-		"timeRange":   "1h",
+		"aggregations": "count()",
+		"limit":        "25",
+		"timeRange":    "1h",
 	}, "logs", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -93,8 +93,8 @@ func TestParseAggregateArgs_LimitClamped(t *testing.T) {
 
 func TestParseAggregateArgs_DefaultLimit(t *testing.T) {
 	req, err := parseAggregateArgs(map[string]any{
-		"aggregation": "count",
-		"timeRange":   "1h",
+		"aggregations": "count()",
+		"timeRange":    "1h",
 	}, "logs", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -114,18 +114,18 @@ func TestParseAggregateArgs_DefaultLimit(t *testing.T) {
 func TestParseAggregateArgs_NonStringRequestTypeErrors(t *testing.T) {
 	for _, bad := range []any{true, 123, float64(1)} {
 		if _, err := parseAggregateArgs(map[string]any{
-			"aggregation": "count",
-			"timeRange":   "1h",
-			"requestType": bad,
+			"aggregations": "count()",
+			"timeRange":    "1h",
+			"requestType":  bad,
 		}, "logs", ""); err == nil {
 			t.Fatalf("parseAggregateArgs with requestType=%v (%T) = nil error, want validation error", bad, bad)
 		}
 	}
 	// A valid string requestType still parses.
 	if _, err := parseAggregateArgs(map[string]any{
-		"aggregation": "count",
-		"timeRange":   "1h",
-		"requestType": "time_series",
+		"aggregations": "count()",
+		"timeRange":    "1h",
+		"requestType":  "time_series",
 	}, "logs", ""); err != nil {
 		t.Fatalf("parseAggregateArgs with valid requestType: unexpected error: %v", err)
 	}

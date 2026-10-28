@@ -16,27 +16,11 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/pkg/timeutil"
 )
 
-var validAggregations = map[string]bool{
-	"count":          true,
-	"count_distinct": true,
-	"avg":            true,
-	"sum":            true,
-	"min":            true,
-	"max":            true,
-	"p50":            true,
-	"p75":            true,
-	"p90":            true,
-	"p95":            true,
-	"p99":            true,
-	"rate":           true,
+// legacyAggregationParamsError names the replacement for the retired
+// aggregation and aggregateOn inputs (the CMP-2 compatibility path).
+func legacyAggregationParamsError() error {
+	return fmt.Errorf(`%s "aggregation" and "aggregateOn" were replaced by "aggregations", which takes the full expressions; for example {"aggregations": ["count()", "p99(duration_nano)"]}`, validationErrorPrefix)
 }
-
-var aggregationsWithoutField = map[string]bool{
-	"count": true,
-	"rate":  true,
-}
-
-const allowedAggregations = "avg, count, count_distinct, max, min, p50, p75, p90, p95, p99, rate, sum"
 
 const conflictingFilterAliasError = "both 'filter' and 'query' were provided with different values; use only 'filter' (the 'query' alias is legacy)"
 
@@ -176,6 +160,9 @@ func parseBoolArg(args map[string]any, key string) (bool, bool, error) {
 
 // AggregateRequest keeps parameters for any aggregation query.
 type AggregateRequest struct {
+	// Aggregations are the expressions sent, in caller order; AggregationExpr is
+	// the first one, which the default order and the log lines use.
+	Aggregations     []string
 	AggregationExpr  string
 	FilterExpression string
 	GroupBy          []querybuilder.FieldKey
@@ -187,6 +174,8 @@ type AggregateRequest struct {
 	EndTime          int64
 	RequestType      string // "scalar" (default) or "time_series"
 	StepInterval     *int64 // nil = let backend auto-select
+	Having           string
+	Functions        []querybuilder.Function
 	// StepIntervalWarning is set when a stepInterval value was provided but could
 	// not be parsed as a positive integer. The handler logs it (WARN) so a
 	// silently-dropped value is detectable rather than vanishing.
@@ -196,48 +185,29 @@ type AggregateRequest struct {
 // parseAggregateArgs validates and parses  aggregate arguments.
 // this is crucial as the input is provided by llm and if there is an error it must be suggested how to correct
 func parseAggregateArgs(args map[string]any, signal string, filterExpr string) (*AggregateRequest, error) {
-	aggregation, _ := args["aggregation"].(string)
-	if aggregation == "" {
-		return nil, fmt.Errorf(
-			"%s \"aggregation\" is required. Supported values: %s. "+
-				"Tip: for simple totals use {\"aggregation\": \"count\", \"groupBy\": \"service.name\"}",
-			validationErrorPrefix, allowedAggregations)
+	aggregations, err := parseAggregationsArg(args)
+	if err != nil {
+		return nil, err
 	}
-	if !validAggregations[aggregation] {
-		return nil, fmt.Errorf(
-			"%s \"aggregation\" is invalid (%q). Supported values: %s. "+
-				"Tip: for counting use \"count\", for averages use \"avg\"",
-			validationErrorPrefix, aggregation, allowedAggregations)
+	aggregationExpr := aggregations[0]
+
+	groupByNames, err := parseFieldNameList("groupBy", args["groupBy"])
+	if err != nil {
+		return nil, fmt.Errorf("%s %w", validationErrorPrefix, err)
+	}
+	groupByFields := make([]querybuilder.FieldKey, 0, len(groupByNames))
+	for _, name := range groupByNames {
+		groupByFields = append(groupByFields, aggregateGroupByField(signal, name))
 	}
 
-	aggregateOn, _ := args["aggregateOn"].(string)
-	if !aggregationsWithoutField[aggregation] && aggregateOn == "" {
-		return nil, fmt.Errorf(
-			"%s \"aggregateOn\" is required for %q aggregation. Specify the field to aggregate, "+
-				"e.g. {\"aggregation\": \"%s\", \"aggregateOn\": \"duration\"}",
-			validationErrorPrefix, aggregation, aggregation)
+	orderExpr, orderDir := aggregationExpr, "desc"
+	if orderByStr := strings.TrimSpace(stringValue(args["orderBy"])); orderByStr != "" {
+		orderExpr, orderDir = parseOrderBy(orderByStr)
 	}
 
-	var aggregationExpr string
-	if aggregateOn != "" {
-		aggregationExpr = fmt.Sprintf("%s(%s)", aggregation, aggregateOn)
-	} else {
-		aggregationExpr = fmt.Sprintf("%s()", aggregation)
-	}
-
-	var groupByFields []querybuilder.FieldKey
-	if groupByStr, _ := args["groupBy"].(string); groupByStr != "" {
-		for _, field := range strings.Split(groupByStr, ",") {
-			field = strings.TrimSpace(field)
-			if field != "" {
-				groupByFields = append(groupByFields, aggregateGroupByField(signal, field))
-			}
-		}
-	}
-
-	orderExpr, orderDir := parseOrderBy(args)
-	if orderExpr == "" {
-		orderExpr, orderDir = aggregationExpr, "desc"
+	functions, err := parseFunctionsArg(args["functions"])
+	if err != nil {
+		return nil, err
 	}
 
 	limit, err := intArg(args, "limit", querybuilder.DefaultAggregateQueryLimit)
@@ -267,6 +237,7 @@ func parseAggregateArgs(args map[string]any, signal string, filterExpr string) (
 	stepInterval, stepIntervalWarning := parseStepInterval(args["stepInterval"])
 
 	return &AggregateRequest{
+		Aggregations:        aggregations,
 		AggregationExpr:     aggregationExpr,
 		FilterExpression:    filterExpr,
 		GroupBy:             groupByFields,
@@ -279,27 +250,68 @@ func parseAggregateArgs(args map[string]any, signal string, filterExpr string) (
 		RequestType:         requestType,
 		StepInterval:        stepInterval,
 		StepIntervalWarning: stepIntervalWarning,
+		Having:              strings.TrimSpace(stringValue(args["having"])),
+		Functions:           functions,
 	}, nil
 }
 
-// parseOrderBy splits an "orderBy" argument of the form '<expression> <direction>'.
-// It returns an empty expression when orderBy is absent; the direction defaults
-// to desc.
-func parseOrderBy(args map[string]any) (expression, direction string) {
-	raw, _ := args["orderBy"].(string)
-	orderBy := strings.TrimSpace(raw)
-	if orderBy == "" {
-		return "", ""
+// aggregateNotes returns the advisory notes an aggregate request earns before
+// the result is read: today only that functions do nothing on scalar results.
+func aggregateNotes(reqData *AggregateRequest) []string {
+	if len(reqData.Functions) > 0 && reqData.RequestType == "scalar" {
+		return []string{functionsIgnoredOnScalarNote}
 	}
-	lower := strings.ToLower(orderBy)
-	switch {
-	case strings.HasSuffix(lower, " asc"):
-		return strings.TrimSpace(orderBy[:len(orderBy)-4]), "asc"
-	case strings.HasSuffix(lower, " desc"):
-		return strings.TrimSpace(orderBy[:len(orderBy)-5]), "desc"
+	return nil
+}
+
+// parseAggregationsArg reads aggregations: one expression string, an array of
+// expression strings, or a JSON-encoded array. Expressions are forwarded
+// verbatim for SigNoz to validate. The retired aggregation and aggregateOn
+// inputs get a coded error naming their replacement.
+func parseAggregationsArg(args map[string]any) ([]string, error) {
+	if _, legacy := args["aggregation"]; legacy {
+		return nil, legacyAggregationParamsError()
+	}
+	if _, legacy := args["aggregateOn"]; legacy {
+		return nil, legacyAggregationParamsError()
+	}
+	var items []string
+	switch v := args["aggregations"].(type) {
+	case nil:
+	case string:
+		if trimmed := strings.TrimSpace(v); strings.HasPrefix(trimmed, "[") {
+			if err := json.Unmarshal([]byte(trimmed), &items); err != nil {
+				return nil, fmt.Errorf(`%s "aggregations" is not a valid JSON array of expression strings: %v`, validationErrorPrefix, err)
+			}
+		} else {
+			items = []string{v}
+		}
+	case []any:
+		for _, item := range v {
+			text, ok := item.(string)
+			if !ok {
+				return nil, fmt.Errorf(`%s "aggregations" items must be expression strings such as "count()" or "p99(duration_nano)", not %v`, validationErrorPrefix, item)
+			}
+			items = append(items, text)
+		}
+	case []string:
+		items = v
 	default:
-		return orderBy, "desc"
+		return nil, fmt.Errorf(`%s "aggregations" must be an expression string or an array of expression strings, not %v`, validationErrorPrefix, v)
 	}
+
+	expressions := make([]string, 0, len(items))
+	for _, item := range items {
+		if item = strings.TrimSpace(item); item != "" {
+			expressions = append(expressions, item)
+		}
+	}
+	if len(expressions) == 0 {
+		return nil, fmt.Errorf(
+			`%s "aggregations" is required: one or more aggregation expressions such as "count()", "count_distinct(user_id)", "avg(duration)", or "p99(duration_nano)". Tip: for simple totals use {"aggregations": ["count()"], "groupBy": "service.name"}`,
+			validationErrorPrefix)
+	}
+	return expressions, nil
 }
 
 func aggregateGroupByField(signal, name string) querybuilder.FieldKey {
@@ -835,8 +847,8 @@ func rawSearchResult(ctx context.Context, logger *slog.Logger, toolName string, 
 
 // aggregateResult is the result wrapper for aggregation tools. Aggregations
 // have no offset pagination, so the note advises narrowing the query instead.
-func aggregateResult(ctx context.Context, logger *slog.Logger, toolName string, payload []byte, limitClamped bool) *mcp.CallToolResult {
-	var notes []string
+func aggregateResult(ctx context.Context, logger *slog.Logger, toolName string, payload []byte, limitClamped bool, extraNotes ...string) *mcp.CallToolResult {
+	notes := append([]string(nil), extraNotes...)
 	if limitClamped {
 		notes = append(notes, fmt.Sprintf(
 			"note: result limited to %d groups to bound server memory; narrow the time range, filters, or groupBy cardinality for fewer, more-specific groups.",

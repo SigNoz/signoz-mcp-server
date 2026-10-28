@@ -49,7 +49,7 @@ func TestParseFilterExpressionParam_CanonicalFilterContract(t *testing.T) {
 				}
 				return req.FilterExpression, nil
 			},
-			base: map[string]any{"aggregation": "count", "timeRange": "1h"},
+			base: map[string]any{"aggregations": "count()", "timeRange": "1h"},
 		},
 		{
 			name: "aggregate_traces",
@@ -60,7 +60,7 @@ func TestParseFilterExpressionParam_CanonicalFilterContract(t *testing.T) {
 				}
 				return req.FilterExpression, nil
 			},
-			base: map[string]any{"aggregation": "count", "timeRange": "1h"},
+			base: map[string]any{"aggregations": "count()", "timeRange": "1h"},
 		},
 		{
 			name: "query_metrics",

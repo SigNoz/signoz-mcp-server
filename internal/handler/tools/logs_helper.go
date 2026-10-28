@@ -41,6 +41,9 @@ func parseAggregateLogsArgs(args map[string]any) (*AggregateRequest, error) {
 // SearchLogsRequest holds the parsed parameters for a log search query.
 type SearchLogsRequest struct {
 	FilterExpression string
+	SelectFields     []querybuilder.FieldKey
+	OrderKey         string
+	OrderDir         string
 	Limit            int
 	LimitClamped     bool
 	Offset           int
@@ -78,14 +81,76 @@ func parseSearchLogsArgs(args map[string]any) (*SearchLogsRequest, error) {
 		return nil, err
 	}
 
+	selectFields, err := parseLogSelectFields(args["selectFields"])
+	if err != nil {
+		return nil, err
+	}
+	var orderKey, orderDir string
+	if raw := strings.TrimSpace(stringValue(args["orderBy"])); raw != "" {
+		orderKey, orderDir = parseOrderBy(raw)
+	}
+
 	return &SearchLogsRequest{
 		FilterExpression: filterExpr,
+		SelectFields:     selectFields,
+		OrderKey:         orderKey,
+		OrderDir:         orderDir,
 		Limit:            limit,
 		LimitClamped:     clamped,
 		Offset:           offset,
 		StartTime:        startTime,
 		EndTime:          endTime,
 	}, nil
+}
+
+// logSelectFieldContexts maps accepted name prefixes to the Query Builder
+// field context for log rows.
+var logSelectFieldContexts = []struct{ prefix, context string }{
+	{"resource.", "resource"},
+	{"attribute.", "attribute"},
+	{"log.", "log"},
+	{"body.", "body"},
+}
+
+// parseLogSelectFields returns the core log columns plus any extra fields the
+// caller named, the same contract as signoz_search_traces. It accepts an array
+// of names or a comma-separated string; a resource., attribute., log., or
+// body. prefix sets the field context, and an unprefixed name is left for
+// SigNoz to resolve.
+func parseLogSelectFields(raw any) ([]querybuilder.FieldKey, error) {
+	names, err := parseFieldNameList("selectFields", raw)
+	if err != nil {
+		return nil, err
+	}
+	fields := append([]querybuilder.FieldKey(nil), querybuilder.LogSearchCoreFields...)
+	seen := make(map[string]string, len(fields)+len(names))
+	for _, field := range fields {
+		seen[field.Name] = querybuilder.FieldContextOf(field)
+	}
+	extra := 0
+	for _, name := range names {
+		field := querybuilder.NewFieldKey(name, "logs", "", "")
+		for _, c := range logSelectFieldContexts {
+			if bare, found := strings.CutPrefix(name, c.prefix); found && bare != "" {
+				field = querybuilder.NewFieldKey(bare, "logs", c.context, "")
+				break
+			}
+		}
+		context := querybuilder.FieldContextOf(field)
+		if held, ok := seen[field.Name]; ok {
+			if err := selectFieldCollision(name, field.Name, held, context); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		seen[field.Name] = context
+		fields = append(fields, field)
+		extra++
+	}
+	if extra > maxSelectFields {
+		return nil, fmt.Errorf(`"selectFields" names %d extra fields; request at most %d per search`, extra, maxSelectFields)
+	}
+	return fields, nil
 }
 
 // quoteLogFilterLiteral escapes a literal for a single-quoted Query Builder
