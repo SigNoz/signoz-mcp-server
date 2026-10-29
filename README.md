@@ -461,6 +461,7 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 | `signoz_get_trace_details` | Get one known trace with all spans and hierarchy |
 | `signoz_get_ai_pricing` | List AI model prices, or models seen in the last hour with no price |
 | `signoz_list_ai_attribute_mappings` | List the mapping groups that turn vendor AI span attributes into `gen_ai.*` keys |
+| `signoz_test_ai_attribute_mapping` | Run sample spans through the AI attribute mappings without saving anything |
 | `signoz_execute_builder_query` | Query Builder v5 requests the dedicated tools cannot express |
 | `signoz_list_notification_channels` | List channel IDs, names, and display names without provider settings |
 | `signoz_get_notification_channel` | Get all provider-specific settings for one channel by ID |
@@ -966,6 +967,15 @@ List the span attribute mapping groups that map vendor AI span attributes (OpenI
 
 - **Parameters**: none besides `searchContext`
 - **Response**: `data` (each group as SigNoz returns it, plus `mappers` with each mapper's sources), `incomplete`, and, when the mappers of some groups could not be read, `failedGroups` (`groupId`, `name`, `code`, `status`, `message`) and `nextAction`. Authentication and permission failures fail the whole call with a coded error
+
+#### `signoz_test_ai_attribute_mapping`
+
+Run sample spans through the mapping groups in a sandbox and return each span as SigNoz would store it. Nothing is saved and no real span changes. A span that gains `gen_ai.request.model` counts as a model call.
+
+- **Parameters**:
+  - `spans` (required) - 1 to 100 sample spans, each `{attributes, resource}` with key-value maps. Example: `[{"attributes":{"llm.model_name":"gpt-4o","llm.token_count.prompt":120,"llm.token_count.completion":45}}]`
+  - `groups` (optional) - Mapping groups to test instead of the saved ones, in the shape SigNoz accepts (`name`, `condition`, `enabled`, `mappers`). Omit to test the saved groups; an empty list tests none. A group without `mappers` uses the saved mappers of the group with the same name. SigNoz skips disabled groups, mappers, and condition keys, so set `enabled: true` on each
+- **Response**: `groupSource` (`saved` or `provided`), `testedGroups` (names of the enabled groups sent), `spans` (the mapped spans, in input order), and `collectorLogs`. A response without mapped spans is a coded upstream error
 
 
 

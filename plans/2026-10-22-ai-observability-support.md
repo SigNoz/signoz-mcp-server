@@ -128,10 +128,13 @@ pagination contract.
 - PR 3 targets `main` on its own and merged after PR 2b, so it adds the AI guide's links: the
   cost warning to `signoz_get_ai_pricing` and the vendor-key warning to
   `signoz_list_ai_attribute_mappings`.
-- Deferred: a tool for SigNoz's mapping test endpoint (`POST /api/v1/span_mapper_groups/test`).
-  The list answers which vendor keys are mapped; add the sandbox when agents need to try draft
-  mappings. Its generated `SpanMapperTest` type lands in a `_test.go` file that `go build` skips,
-  so that PR also needs a `make gen-client` rename.
+- Deferred from PR 3, then added in its own PR: `signoz_test_ai_attribute_mapping` wraps SigNoz's
+  mapping test endpoint (`POST /api/v1/span_mapper_groups/test`). It defaults to the saved groups
+  by sending each group without mappers, which SigNoz fills from the saved group of that name;
+  an empty `groups` list tests none. The endpoint simulates in memory and saves nothing, so the
+  client marks the POST replay-safe and `TestGuardrail_ReadOnlyPOSTRetries` covers it; a response
+  without mapped spans is a coded upstream error. Its generated `SpanMapperTest` type landed in a
+  `_test.go` file that `go build` skips, so `make gen-client` renames those files.
 
 ### 2026-10-27 — Guardrail exception for `signoz_aggregate_traces`
 
