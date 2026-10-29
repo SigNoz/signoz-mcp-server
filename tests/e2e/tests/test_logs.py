@@ -276,7 +276,7 @@ def test_severity_shortcut_matches_any_case(mcp_client: MCPClient, test_id: str,
             "signoz_search_logs",
             {"searchContext": "error logs", "service": service, "timeRange": "1h", **arguments},
         )
-        return [] if result.get("isError", False) else query_range_rows(first_text_block(result))
+        return query_range_rows(first_text_block(assert_tool_ok(result)))
 
     rows = wait_for(lambda: search(severity="error"), f"ERROR logs for {service} found by severity=error")
     assert len(rows) == 2, rows
