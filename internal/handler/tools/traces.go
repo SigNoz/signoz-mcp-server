@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
+	"strings"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/apiclient/apitypes"
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
@@ -124,7 +125,24 @@ func (h *Handler) handleAggregateTraces(ctx context.Context, req mcp.CallToolReq
 		return upstreamQueryError(err, "traces"), nil
 	}
 
-	return aggregateResult(ctx, h.logger, "signoz_aggregate_traces", result, reqData.LimitClamped, aggregateNotes(reqData)...), nil
+	notes := append(aggregateNotes(reqData), aiAggregateNotes(reqData)...)
+	return aggregateResult(ctx, h.logger, "signoz_aggregate_traces", result, reqData.LimitClamped, notes...), nil
+}
+
+// aiAggregateNotes explains AI trace aggregations. They stay off
+// signoz_aggregate_logs, where a cost field is the app's own, not SigNoz's.
+func aiAggregateNotes(reqData *AggregateRequest) []string {
+	var notes []string
+	if reqData.QueryType == querybuilder.QueryTypeBuilderAI {
+		notes = append(notes, aiAggregateNote)
+	}
+	for _, expression := range reqData.Aggregations {
+		if strings.Contains(expression, "trace.estimated_total_cost") || strings.Contains(expression, "signoz.gen_ai.usage.tokens.cost") {
+			notes = append(notes, aiCostAggregateNote)
+			break
+		}
+	}
+	return notes
 }
 
 func (h *Handler) handleSearchTraces(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

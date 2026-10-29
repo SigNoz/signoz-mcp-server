@@ -210,3 +210,14 @@ func TestAggregateTraces_CostAggregationsPointAtPricing(t *testing.T) {
 		})
 	}
 }
+
+func TestAggregateLogs_AppCostFieldsGetNoAIPricingNote(t *testing.T) {
+	h, _ := queryRangeRecorder(t, emptyQueryRangeResponse)
+	result, err := h.handleAggregateLogs(testCtx(), makeToolRequest("signoz_aggregate_logs",
+		map[string]any{"timeRange": "1h", "aggregations": "sum(estimated_total_cost)"}))
+	require.NoError(t, err)
+	require.False(t, result.IsError, textContent(t, result))
+	notes := allTextBlocks(result)
+	require.NotContains(t, notes, aiCostAggregateNote)
+	require.NotContains(t, notes, aiAggregateNote)
+}

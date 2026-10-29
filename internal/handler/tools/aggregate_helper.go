@@ -245,15 +245,6 @@ func aggregateNotes(reqData *AggregateRequest) []string {
 	if len(reqData.Functions) > 0 && reqData.RequestType == "scalar" {
 		notes = append(notes, functionsIgnoredOnScalarNote)
 	}
-	if reqData.QueryType == querybuilder.QueryTypeBuilderAI {
-		notes = append(notes, aiAggregateNote)
-	}
-	for _, expression := range reqData.Aggregations {
-		if strings.Contains(expression, "estimated_total_cost") || strings.Contains(expression, "gen_ai.usage.tokens.cost") {
-			notes = append(notes, aiCostAggregateNote)
-			break
-		}
-	}
 	return notes
 }
 
