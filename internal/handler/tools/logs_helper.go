@@ -185,12 +185,19 @@ func buildLogFilterExpr(filter, service, severity, searchText, searchScope strin
 		parts = append(parts, "service.name = "+querybuilder.QuoteFilterLiteral(service))
 	}
 	if severity != "" {
-		parts = append(parts, "severity_text = "+querybuilder.QuoteFilterLiteral(severity))
+		parts = append(parts, severityPredicate(severity))
 	}
 	if searchText != "" {
 		parts = append(parts, logSearchTextPredicate(searchText, searchScope))
 	}
 	return strings.Join(parts, " AND ")
+}
+
+// severityPredicate matches the severity shortcut in any case and as a prefix:
+// sources write one level as ERROR, error, or Error, and as WARN or WARNING.
+// LIKE metacharacters in the value stay literal.
+func severityPredicate(severity string) string {
+	return "severity_text ILIKE " + querybuilder.QuoteFilterLiteral(logContainsPatternEscaper.Replace(severity)+"%")
 }
 
 // logSearchScopes maps searchScope values to search() scopes. body keeps the
