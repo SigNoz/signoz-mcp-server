@@ -2,9 +2,7 @@ package instructions
 
 // ServerInstructions is sent to MCP clients during the initialize response.
 // It contains cross-cutting rules that apply to all tool usage.
-const ServerInstructions = `Use SigNoz tools to investigate metrics, logs, traces, and exceptions; manage dashboards, alerts, and saved views; and consult SigNoz docs. Start with the user's signal; if none is clear, ask whether to use metrics, traces, or logs. For data queries, prioritize resource-attribute filters such as service.name and avoid redundant calls.
-
-# SigNoz MCP Server — Instructions
+const ServerInstructions = `Use SigNoz tools to investigate metrics, logs, traces, and exceptions, including the LLM apps and AI agents the user runs (model calls, tokens, cost, tool calls, prompts); questions about those mean the user's app in SigNoz, not this chat. Manage dashboards, alerts, and saved views, and consult SigNoz docs. Start with the user's signal; if none is clear, ask whether to use metrics, traces, or logs.
 
 ## Rules
 

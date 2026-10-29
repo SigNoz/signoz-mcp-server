@@ -174,7 +174,7 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user wants custom aggregate statistics over spans (counts, rates, latency percentiles, grouped/top-N breakdowns, or time series) rather than individual span rows or a full trace hierarchy. For the built-in operation table for one traced service, ranked by p99, use signoz_get_service_top_operations. Use signoz_search_traces for raw spans, trace-ID discovery, or one row per trace (such as the most expensive AI traces), and signoz_get_trace_details for one known trace ID. Before calling, read signoz://traces/query-builder-guide; discover unfamiliar workspace fields with signoz_get_field_keys. For AI observability queries, set queryType to builder_ai_query and read signoz://ai/query-builder-guide. Defaults to the last 1 hour.",
+          "description": "Use this when the user wants custom aggregate statistics over spans (counts, rates, latency percentiles, grouped/top-N breakdowns, or time series) rather than individual span rows or a full trace hierarchy. For the built-in operation table for one traced service, ranked by p99, use signoz_get_service_top_operations. Use signoz_search_traces for raw spans, trace-ID discovery, or one row per trace (such as the most expensive AI traces), and signoz_get_trace_details for one known trace ID. Before calling, read signoz://traces/query-builder-guide; discover unfamiliar workspace fields with signoz_get_field_keys. For the user's LLM, AI agent, token, cost, model, tool-call, or prompt questions (AI observability), set queryType to builder_ai_query and read signoz://ai/query-builder-guide. Defaults to the last 1 hour.",
           "inputSchema": {
             "properties": {
               "aggregations": {
@@ -297,7 +297,7 @@
               },
               "queryType": {
                 "default": "builder_query",
-                "description": "'builder_query' (default) aggregates spans of all traces. Set 'builder_ai_query' for AI observability queries: it aggregates spans of AI traces (traces with an LLM, tool, or agent span), and aggregations, filter, and orderBy also accept the trace-level fields trace.llm_call_count, trace.tool_call_count, trace.distinct_tool_count, trace.input_tokens, trace.output_tokens, trace.total_tokens, trace.estimated_total_cost, trace.max_llm_duration_nano, e.g. avg(trace.estimated_total_cost). One call cannot mix trace-level and span-level aggregations. To count AI traces, use count_distinct(trace_id).",
+                "description": "'builder_query' (default) aggregates spans of all traces. Set 'builder_ai_query' for AI observability queries: it aggregates spans of AI traces (traces with an LLM, tool, or agent span), and aggregations, filter, and orderBy also accept the trace-level fields trace.llm_call_count, trace.tool_call_count, trace.distinct_tool_count, trace.input_tokens, trace.output_tokens, trace.total_tokens, trace.estimated_total_cost, trace.max_llm_duration_nano, e.g. avg(trace.estimated_total_cost). One call cannot mix trace-level and span-level aggregations; count() and count_distinct(trace_id) are span-level, so count AI traces with count_distinct(trace_id) in a separate call.",
                 "enum": [
                   "builder_query",
                   "builder_ai_query"
@@ -7590,7 +7590,7 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user wants individual span rows matching service, operation, error, duration, or field filters, needs to discover trace IDs, or wants one row per trace (requestType=trace), such as the slowest traces or the most expensive AI traces. It returns paginated rows, not aggregate trends/groups or a full trace hierarchy; use signoz_aggregate_traces for statistics and signoz_get_trace_details for one known trace ID. Span rows carry a default set of span fields; name other fields in selectFields. A field missing from a row was not selected, so do not read it as absent from the span. Read signoz://traces/query-builder-guide before using unfamiliar workspace fields. For AI observability queries, set queryType to builder_ai_query and read signoz://ai/query-builder-guide. Defaults to the last 1 hour.",
+          "description": "Use this when the user wants individual span rows matching service, operation, error, duration, or field filters, needs to discover trace IDs, or wants one row per trace (requestType=trace), such as the slowest traces or the most expensive AI traces. It returns paginated rows, not aggregate trends/groups or a full trace hierarchy; use signoz_aggregate_traces for statistics and signoz_get_trace_details for one known trace ID. Span rows carry a default set of span fields; name other fields in selectFields. A field missing from a row was not selected, so do not read it as absent from the span. Read signoz://traces/query-builder-guide before using unfamiliar workspace fields. For the user's LLM, AI agent, token, cost, model, tool-call, or prompt questions (AI observability), set queryType to builder_ai_query and read signoz://ai/query-builder-guide. Defaults to the last 1 hour.",
           "inputSchema": {
             "properties": {
               "end": {

@@ -93,6 +93,19 @@ def test_ai_span_rows_are_the_gen_ai_spans_of_ai_traces_newest_first(mcp_client:
     assert timestamps == sorted(timestamps, reverse=True), "span rows are not newest first"
 
 
+def test_trace_details_show_model_tokens_and_tool_per_span(mcp_client: MCPClient, seeded: Seeded) -> None:
+    """signoz_get_trace_details returns the gen_ai.* columns, so an AI trace shows each call's model and usage."""
+    result = mcp_client.call_tool(
+        "signoz_get_trace_details",
+        {"searchContext": "show this agent trace", "traceId": seeded.looping},
+    )
+    spans = query_range_rows(first_text_block(assert_tool_ok(result)))
+    llm_calls = [span for span in spans if span.get("gen_ai.request.model")]
+    assert {span["gen_ai.request.model"] for span in llm_calls} == {"gpt-4o-mini"}, spans
+    assert all(float(span["gen_ai.usage.input_tokens"]) == 1000 for span in llm_calls), llm_calls
+    assert {span.get("gen_ai.tool.name") for span in spans} >= {"search_docs", "read_file"}, spans
+
+
 def test_ai_span_rows_filter_on_per_trace_counts(mcp_client: MCPClient, seeded: Seeded) -> None:
     looping = ai_rows(mcp_client, seeded, "raw", filter="trace.tool_call_count > 10 AND trace.distinct_tool_count < 3")
     assert {r["trace_id"] for r in looping} == {seeded.looping}, looping
