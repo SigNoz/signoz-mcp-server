@@ -42,10 +42,11 @@ deployments reject it with "key ... not found" instead); discover valid keys as 
 an existing one (e.g. k8s.deployment.name) instead of retrying the same filter.
 
 Group by and select only keys signoz_get_field_keys returns. An unknown groupBy key can come
-back as one empty group. A body field (body.<path>) filters everywhere but is usually rejected
-for group by and selection: SigNoz answers "can be filtered but not selected or grouped", or
-"field not found" on workspaces that store JSON log bodies. Filter on the body field and group
-by an attribute instead.
+back as one empty group. A body field (body.<path>) filters everywhere, but group by and
+selection work only for paths signoz_get_field_keys(signal="logs", fieldContext="body") lists,
+and it lists body paths only where the workspace stores JSON log bodies. For any other body
+path SigNoz answers "can be filtered but not selected or grouped" or "field not found"; filter
+on the body field and group by an attribute instead.
 
 If a key matches BOTH the resource and attribute contexts, SigNoz defaults to the resource context (and warns). For other multi-context matches, every matching context is ORed together.
 Disambiguate explicitly in filter expressions with resource.<key> or attribute.<key> (scope.<key> also exists).
