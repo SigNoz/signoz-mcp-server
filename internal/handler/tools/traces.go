@@ -1,11 +1,13 @@
 package tools
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strconv"
+	"unicode/utf8"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/apiclient/apitypes"
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
@@ -28,7 +30,7 @@ func (h *Handler) RegisterTracesHandlers(s *mcp.Server) {
 	aggregateTracesTool := mcp.NewTool("signoz_aggregate_traces",
 		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description(searchContextParamDescription)),
-		mcp.WithDescription("Use this when the user wants custom aggregate statistics over spans (counts, rates, latency percentiles, grouped/top-N breakdowns, or time series) rather than individual span rows or a full trace hierarchy. For the built-in operation table for one traced service, ranked by p99, use signoz_get_service_top_operations. Use signoz_search_traces for raw spans, trace-ID discovery, or one row per trace (such as the most expensive AI traces), and signoz_get_trace_details for one known trace ID. Before calling, read signoz://traces/query-builder-guide; discover unfamiliar workspace fields with signoz_get_field_keys. For AI observability queries, set queryType to builder_ai_query and read signoz://ai/query-builder-guide. Defaults to the last 1 hour."),
+		mcp.WithDescription("Use this when the user wants custom aggregate statistics over spans (counts, rates, latency percentiles, grouped/top-N breakdowns, or time series) rather than individual span rows or a full trace hierarchy. For the built-in operation table for one traced service, ranked by p99, use signoz_get_service_top_operations. Use signoz_search_traces for raw spans, trace-ID discovery, or one row per trace (such as the most expensive AI traces), and signoz_get_trace_details for one known trace ID. Before calling, read signoz://traces/query-builder-guide; discover unfamiliar workspace fields with signoz_get_field_keys. For the user's LLM, AI agent, token, cost, model, tool-call, or prompt questions (AI observability), set queryType to builder_ai_query and read signoz://ai/query-builder-guide. Defaults to the last 1 hour."),
 		mcp.WithString("aggregations", mcp.Required(), stringOrStringArrayType(), mcp.Description(tracesAggregationsParamDescription)),
 		mcp.WithString("groupBy", stringOrStringArrayType(), mcp.Description(tracesGroupByParamDescription)),
 		mcp.WithString("having", mcp.Description(havingParamDescription)),
@@ -54,7 +56,7 @@ func (h *Handler) RegisterTracesHandlers(s *mcp.Server) {
 	searchTracesTool := mcp.NewTool("signoz_search_traces",
 		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description(searchContextParamDescription)),
-		mcp.WithDescription("Use this when the user wants individual span rows matching service, operation, error, duration, or field filters, needs to discover trace IDs, or wants one row per trace (requestType=trace), such as the slowest traces or the most expensive AI traces. It returns paginated rows, not aggregate trends/groups or a full trace hierarchy; use signoz_aggregate_traces for statistics and signoz_get_trace_details for one known trace ID. Span rows carry a default set of span fields; name other fields in selectFields. A field missing from a row was not selected, so do not read it as absent from the span. Read signoz://traces/query-builder-guide before using unfamiliar workspace fields. For AI observability queries, set queryType to builder_ai_query and read signoz://ai/query-builder-guide. Defaults to the last 1 hour."),
+		mcp.WithDescription("Use this when the user wants individual span rows matching service, operation, error, duration, or field filters, needs to discover trace IDs, or wants one row per trace (requestType=trace), such as the slowest traces or the most expensive AI traces. It returns paginated rows, not aggregate trends/groups or a full trace hierarchy; use signoz_aggregate_traces for statistics and signoz_get_trace_details for one known trace ID. Span rows carry a default set of span fields; name other fields in selectFields. A field missing from a row was not selected, so do not read it as absent from the span. Read signoz://traces/query-builder-guide before using unfamiliar workspace fields. For the user's LLM, AI agent, token, cost, model, tool-call, or prompt questions (AI observability), set queryType to builder_ai_query and read signoz://ai/query-builder-guide. Defaults to the last 1 hour."),
 		mcp.WithString("filter", mcp.Description(searchTracesFilterParamDescription)),
 		mcp.WithString("service", mcp.Description(searchTracesServiceParamDescription)),
 		mcp.WithString("operation", mcp.Description(searchTracesOperationParamDescription)),
@@ -179,7 +181,113 @@ func (h *Handler) handleSearchTraces(ctx context.Context, req mcp.CallToolReques
 	}
 
 	result = h.enrichSearchTracesWebURL(ctx, base, result)
-	return rawSearchResult(ctx, h.logger, "signoz_search_traces", result, reqData.Limit, reqData.Offset, reqData.LimitClamped), nil
+	notes := aiSearchNotes(reqData, result)
+	if reqData.QueryType == querybuilder.QueryTypeBuilderAI && reqData.RequestType == requestTypeTrace {
+		var shaped aiTraceRowsShape
+		result, shaped = shapeAITraceRows(result)
+		if shaped.cut > 0 {
+			notes = append(notes, fmt.Sprintf(aiMessagesCutNote, aiMessagePreviewChars, shaped.cut))
+		}
+		if shaped.unpriced > 0 {
+			notes = append(notes, fmt.Sprintf(aiUnpricedRowsNote, shaped.unpriced))
+		}
+		if shaped.rows > 0 && !shaped.costSeen {
+			h.logger.WarnContext(ctx, "AI trace rows carry no estimated_total_cost column; upstream contract may have changed",
+				slog.Int("rows", shaped.rows))
+		}
+	}
+	return rawSearchResult(ctx, h.logger, "signoz_search_traces", result, reqData.Limit, reqData.Offset, reqData.LimitClamped, notes...), nil
+}
+
+// aiMessagePreviewChars caps the input and output message JSON on AI trace
+// rows, which otherwise can run to tens of kilobytes per row.
+const aiMessagePreviewChars = 1000
+
+// aiTraceRowsShape is what shapeAITraceRows found on AI trace rows.
+type aiTraceRowsShape struct {
+	rows     int  // rows walked
+	cut      int  // rows whose input or output was cut
+	unpriced int  // rows with LLM calls but a null or 0 estimated_total_cost
+	costSeen bool // any row carried the estimated_total_cost column
+}
+
+// shapeAITraceRows cuts long input and output values on AI trace rows, marks
+// those rows truncated, and counts rows whose LLM calls have no cost. A payload
+// it cannot walk passes through unchanged.
+func shapeAITraceRows(payload []byte) ([]byte, aiTraceRowsShape) {
+	var shape aiTraceRowsShape
+	var envelope map[string]any
+	decoder := json.NewDecoder(bytes.NewReader(payload))
+	decoder.UseNumber() // keep nanosecond values exact
+	if err := decoder.Decode(&envelope); err != nil {
+		return payload, shape
+	}
+	outer, _ := envelope["data"].(map[string]any)
+	inner, _ := outer["data"].(map[string]any)
+	results, _ := inner["results"].([]any)
+	for _, result := range results {
+		resultMap, _ := result.(map[string]any)
+		rows, _ := resultMap["rows"].([]any)
+		for _, row := range rows {
+			rowMap, _ := row.(map[string]any)
+			data, _ := rowMap["data"].(map[string]any)
+			if data == nil {
+				continue
+			}
+			shape.rows++
+			truncated := false
+			for _, key := range []string{"input", "output"} {
+				if value, ok := data[key].(string); ok && utf8.RuneCountInString(value) > aiMessagePreviewChars {
+					data[key] = string([]rune(value)[:aiMessagePreviewChars])
+					truncated = true
+				}
+			}
+			if truncated {
+				data["truncated"] = true
+				shape.cut++
+			}
+			cost, hasCost := data["estimated_total_cost"]
+			if hasCost {
+				shape.costSeen = true
+			}
+			if hasCost && positive(data["llm_call_count"]) && !positive(cost) {
+				shape.unpriced++
+			}
+		}
+	}
+	if shape.cut == 0 {
+		return payload, shape
+	}
+	out, err := json.Marshal(envelope)
+	if err != nil {
+		return payload, aiTraceRowsShape{}
+	}
+	return out, shape
+}
+
+// positive reports whether a decoded JSON value is a number above zero.
+func positive(value any) bool {
+	number, ok := value.(json.Number)
+	if !ok {
+		return false
+	}
+	f, err := number.Float64()
+	return err == nil && f > 0
+}
+
+// aiSearchNotes explains builder_ai_query results; other query types get none.
+func aiSearchNotes(reqData *SearchTracesRequest, payload []byte) []string {
+	if reqData.QueryType != querybuilder.QueryTypeBuilderAI {
+		return nil
+	}
+	var notes []string
+	if reqData.RequestType == requestTypeTrace {
+		notes = append(notes, aiTraceRowsNote)
+	}
+	if rows, known := countQueryRangeRows(payload); known && rows == 0 && reqData.Offset == 0 {
+		notes = append(notes, aiNoRowsNote)
+	}
+	return notes
 }
 
 func (h *Handler) handleGetTraceDetails(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

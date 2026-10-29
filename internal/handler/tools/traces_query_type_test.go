@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -133,6 +134,116 @@ func TestAggregateTraces_QueryTypeReachesSigNoz(t *testing.T) {
 			require.Equal(t, "traces", spec["signal"])
 			requireJSONEqual(t, `[{"expression":"avg(trace.estimated_total_cost)"}]`, spec["aggregations"])
 			requireJSONEqual(t, `[{"key":{"name":"avg(trace.estimated_total_cost)"},"direction":"desc"}]`, spec["order"])
+		})
+	}
+}
+
+func TestSearchTraces_AINotesExplainAIResultsOnly(t *testing.T) {
+	const oneRow = `{"status":"success","data":{"type":"raw","data":{"results":[{"queryName":"A","rows":[{"data":{"trace_id":"t1"}}]}]}}}`
+	tests := []struct {
+		name     string
+		args     map[string]any
+		response string
+		want     []string
+		notWant  []string
+	}{
+		{"AI trace rows explain window and values", map[string]any{"queryType": "builder_ai_query", "requestType": "trace"}, oneRow,
+			[]string{aiTraceRowsNote}, []string{aiNoRowsNote}},
+		{"empty AI results suggest a wider window", map[string]any{"queryType": "builder_ai_query"}, emptyQueryRangeResponse,
+			[]string{aiNoRowsNote}, []string{aiTraceRowsNote}},
+		{"builder_query results carry no AI notes", map[string]any{"requestType": "trace"}, emptyQueryRangeResponse,
+			nil, []string{aiTraceRowsNote, aiNoRowsNote}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			h, _ := queryRangeRecorder(t, tc.response)
+			args := map[string]any{"timeRange": "1h"}
+			for k, v := range tc.args {
+				args[k] = v
+			}
+			result, err := h.handleSearchTraces(testCtx(), makeToolRequest("signoz_search_traces", args))
+			require.NoError(t, err)
+			require.False(t, result.IsError, textContent(t, result))
+			text := allTextBlocks(result)
+			for _, note := range tc.want {
+				require.Contains(t, text, note)
+			}
+			for _, note := range tc.notWant {
+				require.NotContains(t, text, note)
+			}
+		})
+	}
+}
+
+func TestAggregateTraces_AINoteOnlyForBuilderAIQuery(t *testing.T) {
+	for _, tc := range []struct {
+		queryType string
+		want      bool
+	}{{"builder_ai_query", true}, {"builder_query", false}} {
+		t.Run(tc.queryType, func(t *testing.T) {
+			h, _ := queryRangeRecorder(t, emptyQueryRangeResponse)
+			result, err := h.handleAggregateTraces(testCtx(), makeToolRequest("signoz_aggregate_traces",
+				map[string]any{"timeRange": "1h", "aggregations": "count()", "queryType": tc.queryType}))
+			require.NoError(t, err)
+			require.False(t, result.IsError, textContent(t, result))
+			require.Equal(t, tc.want, strings.Contains(allTextBlocks(result), aiAggregateNote))
+		})
+	}
+}
+
+func TestSearchTraces_AITraceRowsCutLongMessagesAndSaySo(t *testing.T) {
+	long := strings.Repeat("m", 1500)
+	response := `{"status":"success","data":{"type":"raw","data":{"results":[{"queryName":"A","rows":[` +
+		`{"data":{"trace_id":"t1","trace_duration_nano":1234567890123456789,"input":"` + long + `","output":"short"}},` +
+		`{"data":{"trace_id":"t2","input":"short","output":"short"}}]}]}}}`
+	h, _ := queryRangeRecorder(t, response)
+
+	result, err := h.handleSearchTraces(testCtx(), makeToolRequest("signoz_search_traces",
+		map[string]any{"timeRange": "1h", "queryType": "builder_ai_query", "requestType": "trace"}))
+	require.NoError(t, err)
+	require.False(t, result.IsError, textContent(t, result))
+
+	body := textContent(t, result)
+	require.Contains(t, body, `"trace_duration_nano":1234567890123456789`, "nanosecond values must stay exact")
+	require.Contains(t, body, `"input":"`+strings.Repeat("m", aiMessagePreviewChars)+`"`)
+	require.NotContains(t, body, strings.Repeat("m", aiMessagePreviewChars+1))
+	require.Equal(t, 1, strings.Count(body, `"truncated":true`), "only the cut row is marked")
+	require.Contains(t, allTextBlocks(result), "cut to 1000 characters on the AI trace rows marked truncated (1)")
+}
+
+func TestSearchTraces_AITraceRowsPointAtUnpricedModels(t *testing.T) {
+	response := `{"status":"success","data":{"type":"raw","data":{"results":[{"queryName":"A","rows":[` +
+		`{"data":{"trace_id":"t1","llm_call_count":2,"estimated_total_cost":null}},` +
+		`{"data":{"trace_id":"t2","llm_call_count":1,"estimated_total_cost":0}},` +
+		`{"data":{"trace_id":"t3","llm_call_count":1,"estimated_total_cost":0.004}},` +
+		`{"data":{"trace_id":"t4","llm_call_count":0,"estimated_total_cost":null}}]}]}}}`
+	h, _ := queryRangeRecorder(t, response)
+
+	result, err := h.handleSearchTraces(testCtx(), makeToolRequest("signoz_search_traces",
+		map[string]any{"timeRange": "1h", "queryType": "builder_ai_query", "requestType": "trace"}))
+	require.NoError(t, err)
+	require.False(t, result.IsError, textContent(t, result))
+	notes := allTextBlocks(result)
+	require.Contains(t, notes, "note: 2 AI trace rows with LLM calls have a null or 0 estimated_total_cost")
+	require.Contains(t, notes, "signoz_get_ai_pricing (view=unpriced_models)")
+}
+
+func TestAggregateTraces_CostAggregationsPointAtPricing(t *testing.T) {
+	for _, tc := range []struct {
+		aggregations string
+		want         bool
+	}{
+		{"avg(trace.estimated_total_cost)", true},
+		{"sum(signoz.gen_ai.usage.tokens.cost)", true},
+		{"sum(trace.total_tokens)", false},
+	} {
+		t.Run(tc.aggregations, func(t *testing.T) {
+			h, _ := queryRangeRecorder(t, emptyQueryRangeResponse)
+			result, err := h.handleAggregateTraces(testCtx(), makeToolRequest("signoz_aggregate_traces",
+				map[string]any{"timeRange": "1h", "aggregations": tc.aggregations, "queryType": "builder_ai_query"}))
+			require.NoError(t, err)
+			require.False(t, result.IsError, textContent(t, result))
+			require.Equal(t, tc.want, strings.Contains(allTextBlocks(result), aiCostAggregateNote))
 		})
 	}
 }

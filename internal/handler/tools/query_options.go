@@ -14,6 +14,15 @@ const (
 	// functionsIgnoredOnScalarNote tells the caller why functions had no effect.
 	functionsIgnoredOnScalarNote = "note: functions were not applied: SigNoz applies them to time_series results only and returns scalar results unchanged. Set requestType to time_series to use them."
 
+	// Notes on builder_ai_query results: what the AI values mean and why a
+	// window can hide them, which agents otherwise misreport.
+	aiTraceRowsNote     = "note: AI trace rows: filters, orderBy, and the limit use spans inside the time window, while each row's values cover the whole trace. estimated_total_cost is an estimate in USD from SigNoz's pricing rules (null for unpriced models), and total_tokens already includes cache tokens."
+	aiAggregateNote     = "note: AI aggregations count only spans inside the time window. Cost is an estimate in USD from SigNoz's pricing rules (null for unpriced models), and total tokens already include cache tokens."
+	aiMessagesCutNote   = "note: input and output were cut to %d characters on the AI trace rows marked truncated (%d); read a full message with signoz_search_traces span rows filtered on that trace_id, selecting gen_ai.input.messages or gen_ai.output.messages."
+	aiUnpricedRowsNote  = "note: %d AI trace rows with LLM calls have a null or 0 estimated_total_cost because SigNoz has no price for their model; list those models with signoz_get_ai_pricing (view=unpriced_models). Prices are set on the Model pricing tab of AI Observability and apply to spans ingested afterwards."
+	aiCostAggregateNote = "note: cost comes from SigNoz's pricing rules, so a null or 0 cost means a model has no price; list those models with signoz_get_ai_pricing (view=unpriced_models)."
+	aiNoRowsNote        = "note: no AI traces matched in this time window. Widen timeRange; if the app's spans use other model or tool keys (such as llm.model_name), find them with signoz_get_field_keys on the default queryType, check signoz_list_ai_attribute_mappings for a mapping to gen_ai.*, and if none exists, add one on the Attribute Mapping tab of AI Observability."
+
 	// maxSelectFields bounds how many columns one raw search can request.
 	maxSelectFields = 50
 )
