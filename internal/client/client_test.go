@@ -552,8 +552,9 @@ func TestGetTraceDetails_LetsSigNozNarrowAWindowThatCoversAnyTrace(t *testing.T)
 					Filter struct {
 						Expression string `json:"expression"`
 					} `json:"filter"`
-					Limit int             `json:"limit"`
-					Order json.RawMessage `json:"order"`
+					Limit        int             `json:"limit"`
+					Order        json.RawMessage `json:"order"`
+					SelectFields json.RawMessage `json:"selectFields"`
 				} `json:"spec"`
 			} `json:"queries"`
 		} `json:"compositeQuery"`
@@ -566,6 +567,7 @@ func TestGetTraceDetails_LetsSigNozNarrowAWindowThatCoversAnyTrace(t *testing.T)
 	spec := request.CompositeQuery.Queries[0].Spec
 	require.Equal(t, "trace_id = 'abc123'", spec.Filter.Expression)
 	require.Equal(t, 1000, spec.Limit)
+	require.Nil(t, spec.SelectFields, "no selectFields, so SigNoz returns each span's complete record")
 	require.JSONEq(t, `[{"key":{"name":"timestamp"},"direction":"desc"}]`, string(spec.Order))
 
 	// A quote in the ID stays inside the literal instead of adding conditions.

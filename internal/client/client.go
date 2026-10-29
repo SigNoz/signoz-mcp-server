@@ -690,10 +690,11 @@ func (s *SigNoz) GetTraceDetails(ctx context.Context, traceID string, includeSpa
 	filterExpression := "trace_id = " + querybuilder.QuoteFilterLiteral(traceID)
 	limit := 1000
 
+	// No selectFields: SigNoz returns each span's complete record, its fields
+	// plus the attributes and resource maps, events, and links.
 	queryPayload, err := querybuilder.SpanSearch(traceLookupStartMs, time.Now().UnixMilli(), querybuilder.TraceSearchOptions{
-		Filter:       filterExpression,
-		Limit:        limit,
-		SelectFields: querybuilder.TraceDetailSelectFields,
+		Filter: filterExpression,
+		Limit:  limit,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to build query payload: %w", err)

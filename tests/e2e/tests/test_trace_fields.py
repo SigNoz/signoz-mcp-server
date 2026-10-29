@@ -217,7 +217,7 @@ def test_shortcut_filters_narrow_an_or_filter(mcp_client: MCPClient, test_id: st
 
 
 def test_trace_details_finds_a_trace_by_id_alone(mcp_client: MCPClient, test_id: str, telemetry: None) -> None:
-    """Pins the contract the get_trace_details description teaches: no time window, and no spans for an unknown ID."""
+    """Pins the contract the get_trace_details description teaches: no time window, complete span records, and no spans for an unknown ID."""
     trace_id = seed_traces(f"mcp-e2e-{test_id}", count=1)[0]
 
     def spans() -> list[dict]:
@@ -230,6 +230,11 @@ def test_trace_details_finds_a_trace_by_id_alone(mcp_client: MCPClient, test_id:
 
     rows = wait_for(spans, f"trace {trace_id} found by ID")
     assert {r.get("trace_id") for r in rows} == {trace_id}, f"the trace lookup returned other traces: {rows}"
+    # Each span is its complete record: the seeding sets e2e.marker as a span
+    # attribute and service.name as a resource attribute.
+    span = rows[0]
+    assert span.get("attributes", {}).get("e2e.marker") == f"mcp-e2e-{test_id}", f"span attributes missing: {span}"
+    assert span.get("resource", {}).get("service.name") == f"mcp-e2e-{test_id}", f"span resource missing: {span}"
 
     unknown = assert_tool_ok(
         mcp_client.call_tool(
