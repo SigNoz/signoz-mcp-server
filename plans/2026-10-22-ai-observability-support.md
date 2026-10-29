@@ -68,13 +68,10 @@ pagination contract.
 4. **`feat(ai)`: AI result content and routing wording.** Ships with the routing fixes from the
    Haiku eval (see the 2026-10-29 decisions). Notes on `builder_ai_query` results (done: trace-row
    window and full-trace values, aggregation window, cost as a USD estimate, cache tokens inside
-   `total_tokens`, wider window when empty); previews cut to 1,000 characters with a truncation
-   flag (done: the MCP server cuts AI trace rows' `input` and `output`, which SigNoz returns in
-   full, marks those rows `truncated`, and adds a note); a
-   $0-cost hint pointing at unpriced models, with a WARN log when expected fields are missing
-   (done: a count of AI trace rows whose LLM calls have null or 0 cost, a note on cost
-   aggregations, and a WARN when trace rows lack `estimated_total_cost`); the empty-result note
-   also points at `signoz_list_ai_attribute_mappings` (done); `gen_ai.*` in `signoz_get_trace_details` default columns
+   `total_tokens`, wider window when empty); a $0-cost hint pointing at unpriced models (done as
+   fixed pointers: the trace-rows note and a note on cost aggregations name
+   `signoz_get_ai_pricing`); the empty-result note also points at
+   `signoz_list_ai_attribute_mappings` (done); `gen_ai.*` in `signoz_get_trace_details` default columns
    (done: operation, model, input and output tokens, cost, tool, agent; null on other spans).
 5. **`feat(traces)`: AI thread in `signoz_get_trace_details`.** Reads
    `GET /api/v1/traces/{traceID}/thread`: the trace's model, tool and agent spans in time order
@@ -111,6 +108,16 @@ pagination contract.
   pairing `count_distinct(trace_id)` with `trace.` aggregations. The count wording removed those
   errors in a re-run; the instructions sentence fixed the prompt question but not the tool-call
   ones, which stay ambiguous inside a coding agent.
+
+### 2026-10-29 — No per-tool truncation; the cost hint is a fixed pointer
+
+- Decision: AI trace rows' `input` and `output` pass through uncut, and the unpriced-cost hint is
+  a fixed pointer in the trace-rows note rather than a count from walking every row.
+- Rationale: long values come back from many tools, so cutting them belongs in one cross-tool
+  response-size change, not in each tool (raised in review of #410). Without the cut, a full
+  decode and walk of every AI trace-rows response only bought the unpriced-row count; agents in
+  the evals went to the pricing tool unprompted on empty cost, and the e2e already pins the
+  per-trace columns.
 
 ### 2026-10-29 — Notes on `builder_ai_query` results
 

@@ -191,43 +191,6 @@ func TestAggregateTraces_AINoteOnlyForBuilderAIQuery(t *testing.T) {
 	}
 }
 
-func TestSearchTraces_AITraceRowsCutLongMessagesAndSaySo(t *testing.T) {
-	long := strings.Repeat("m", 1500)
-	response := `{"status":"success","data":{"type":"raw","data":{"results":[{"queryName":"A","rows":[` +
-		`{"data":{"trace_id":"t1","trace_duration_nano":1234567890123456789,"input":"` + long + `","output":"short"}},` +
-		`{"data":{"trace_id":"t2","input":"short","output":"short"}}]}]}}}`
-	h, _ := queryRangeRecorder(t, response)
-
-	result, err := h.handleSearchTraces(testCtx(), makeToolRequest("signoz_search_traces",
-		map[string]any{"timeRange": "1h", "queryType": "builder_ai_query", "requestType": "trace"}))
-	require.NoError(t, err)
-	require.False(t, result.IsError, textContent(t, result))
-
-	body := textContent(t, result)
-	require.Contains(t, body, `"trace_duration_nano":1234567890123456789`, "nanosecond values must stay exact")
-	require.Contains(t, body, `"input":"`+strings.Repeat("m", aiMessagePreviewChars)+`"`)
-	require.NotContains(t, body, strings.Repeat("m", aiMessagePreviewChars+1))
-	require.Equal(t, 1, strings.Count(body, `"truncated":true`), "only the cut row is marked")
-	require.Contains(t, allTextBlocks(result), "cut to 1000 characters on the AI trace rows marked truncated (1)")
-}
-
-func TestSearchTraces_AITraceRowsPointAtUnpricedModels(t *testing.T) {
-	response := `{"status":"success","data":{"type":"raw","data":{"results":[{"queryName":"A","rows":[` +
-		`{"data":{"trace_id":"t1","llm_call_count":2,"estimated_total_cost":null}},` +
-		`{"data":{"trace_id":"t2","llm_call_count":1,"estimated_total_cost":0}},` +
-		`{"data":{"trace_id":"t3","llm_call_count":1,"estimated_total_cost":0.004}},` +
-		`{"data":{"trace_id":"t4","llm_call_count":0,"estimated_total_cost":null}}]}]}}}`
-	h, _ := queryRangeRecorder(t, response)
-
-	result, err := h.handleSearchTraces(testCtx(), makeToolRequest("signoz_search_traces",
-		map[string]any{"timeRange": "1h", "queryType": "builder_ai_query", "requestType": "trace"}))
-	require.NoError(t, err)
-	require.False(t, result.IsError, textContent(t, result))
-	notes := allTextBlocks(result)
-	require.Contains(t, notes, "note: 2 AI trace rows with LLM calls have a null or 0 estimated_total_cost")
-	require.Contains(t, notes, "signoz_get_ai_pricing (view=unpriced_models)")
-}
-
 func TestAggregateTraces_CostAggregationsPointAtPricing(t *testing.T) {
 	for _, tc := range []struct {
 		aggregations string

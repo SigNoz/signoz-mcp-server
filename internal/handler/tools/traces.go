@@ -1,13 +1,11 @@
 package tools
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strconv"
-	"unicode/utf8"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/apiclient/apitypes"
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
@@ -182,108 +180,7 @@ func (h *Handler) handleSearchTraces(ctx context.Context, req mcp.CallToolReques
 
 	result = h.enrichSearchTracesWebURL(ctx, base, result)
 	notes := aiSearchNotes(reqData, result)
-	if reqData.QueryType == querybuilder.QueryTypeBuilderAI && reqData.RequestType == requestTypeTrace {
-		var shaped aiTraceRowsShape
-		result, shaped = shapeAITraceRows(result)
-		if shaped.cut > 0 {
-			notes = append(notes, fmt.Sprintf(aiMessagesCutNote, aiMessagePreviewChars, shaped.cut))
-		}
-		if shaped.unpriced > 0 {
-			notes = append(notes, fmt.Sprintf(aiUnpricedRowsNote, shaped.unpriced))
-		}
-		if shaped.oddTypes > 0 {
-			h.logger.WarnContext(ctx, "AI trace row input or output is not a string, so it was not cut; upstream contract may have changed",
-				slog.Int("values", shaped.oddTypes))
-		}
-		if shaped.rows > 0 && !shaped.costSeen {
-			h.logger.WarnContext(ctx, "AI trace rows carry no estimated_total_cost column; upstream contract may have changed",
-				slog.Int("rows", shaped.rows))
-		}
-	}
 	return rawSearchResult(ctx, h.logger, "signoz_search_traces", result, reqData.Limit, reqData.Offset, reqData.LimitClamped, notes...), nil
-}
-
-// aiMessagePreviewChars caps the input and output message JSON on AI trace
-// rows, which otherwise can run to tens of kilobytes per row.
-const aiMessagePreviewChars = 1000
-
-// aiTraceRowsShape is what shapeAITraceRows found on AI trace rows.
-type aiTraceRowsShape struct {
-	rows     int  // rows walked
-	cut      int  // rows whose input or output was cut
-	unpriced int  // rows with LLM calls but a null or 0 estimated_total_cost
-	costSeen bool // any row carried the estimated_total_cost column
-	oddTypes int  // input or output values that are neither a string nor null, left uncut
-}
-
-// shapeAITraceRows cuts long input and output values on AI trace rows, marks
-// those rows truncated, and counts rows whose LLM calls have no cost. A payload
-// it cannot walk passes through unchanged.
-func shapeAITraceRows(payload []byte) ([]byte, aiTraceRowsShape) {
-	var shape aiTraceRowsShape
-	var envelope map[string]any
-	decoder := json.NewDecoder(bytes.NewReader(payload))
-	decoder.UseNumber() // keep nanosecond values exact
-	if err := decoder.Decode(&envelope); err != nil {
-		return payload, shape
-	}
-	outer, _ := envelope["data"].(map[string]any)
-	inner, _ := outer["data"].(map[string]any)
-	results, _ := inner["results"].([]any)
-	for _, result := range results {
-		resultMap, _ := result.(map[string]any)
-		rows, _ := resultMap["rows"].([]any)
-		for _, row := range rows {
-			rowMap, _ := row.(map[string]any)
-			data, _ := rowMap["data"].(map[string]any)
-			if data == nil {
-				continue
-			}
-			shape.rows++
-			truncated := false
-			for _, key := range []string{"input", "output"} {
-				switch value := data[key].(type) {
-				case nil:
-				case string:
-					if utf8.RuneCountInString(value) > aiMessagePreviewChars {
-						data[key] = string([]rune(value)[:aiMessagePreviewChars])
-						truncated = true
-					}
-				default:
-					shape.oddTypes++
-				}
-			}
-			if truncated {
-				data["truncated"] = true
-				shape.cut++
-			}
-			cost, hasCost := data["estimated_total_cost"]
-			if hasCost {
-				shape.costSeen = true
-			}
-			if hasCost && positive(data["llm_call_count"]) && !positive(cost) {
-				shape.unpriced++
-			}
-		}
-	}
-	if shape.cut == 0 {
-		return payload, shape
-	}
-	out, err := json.Marshal(envelope)
-	if err != nil {
-		return payload, aiTraceRowsShape{}
-	}
-	return out, shape
-}
-
-// positive reports whether a decoded JSON value is a number above zero.
-func positive(value any) bool {
-	number, ok := value.(json.Number)
-	if !ok {
-		return false
-	}
-	f, err := number.Float64()
-	return err == nil && f > 0
 }
 
 // aiSearchNotes explains builder_ai_query results; other query types get none.
