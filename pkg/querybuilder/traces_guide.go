@@ -13,6 +13,10 @@ INCORRECT: "filter": {"op": "AND", "items": [...]}
 Operators: =  !=  >  >=  <  <=  IN  NOT IN  LIKE  NOT LIKE  ILIKE  NOT ILIKE  CONTAINS  NOT CONTAINS  REGEXP  NOT REGEXP  BETWEEN  NOT BETWEEN  EXISTS  NOT EXISTS
 Combine:   AND  OR  (use parentheses for precedence)
 
+No other operators exist: write STARTS WITH as LIKE 'prefix%', IS NULL as NOT EXISTS, and IS NOT NULL
+as EXISTS. Every condition needs a key and an operator. Traces have no full-text search, so a bare word,
+a quoted phrase, or key:value fails; to find a known ID, filter trace_id = '<id>'.
+
 Examples:
   has_error = true
   duration_nano > 500000000
@@ -20,6 +24,14 @@ Examples:
   name LIKE '%payment%'
   has_error = true AND k8s.namespace.name = 'prod'
   (has_error = true OR duration_nano > 1000000000) AND service.name = 'checkout'
+  isRoot = true AND service.name = 'checkout'
+
+== SPAN SCOPE ==
+
+  isRoot = true         — root spans, the first span of each trace
+  isEntryPoint = true   — spans where a request enters a service, other than the trace root
+
+Both accept only "= true". To exclude root spans, filter parent_span_id != '' instead.
 
 == FIELD DISCOVERY ==
 
