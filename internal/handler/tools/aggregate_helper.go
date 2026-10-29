@@ -21,60 +21,6 @@ func legacyAggregationParamsError() error {
 	return fmt.Errorf(`%s "aggregation" and "aggregateOn" were replaced by "aggregations", which takes the full expressions; for example {"aggregations": ["count()", "p99(duration_nano)"]}`, validationErrorPrefix)
 }
 
-var traceGroupByFieldMetadata = map[string]querybuilder.FieldKey{
-	"trace_id":             querybuilder.NewFieldKey("trace_id", "traces", "span", "string"),
-	"span_id":              querybuilder.NewFieldKey("span_id", "traces", "span", "string"),
-	"parent_span_id":       querybuilder.NewFieldKey("parent_span_id", "traces", "span", "string"),
-	"name":                 querybuilder.NewFieldKey("name", "traces", "span", "string"),
-	"duration_nano":        querybuilder.NewFieldKey("duration_nano", "traces", "span", "number"),
-	"timestamp":            querybuilder.NewFieldKey("timestamp", "traces", "span", "number"),
-	"has_error":            querybuilder.NewFieldKey("has_error", "traces", "span", "bool"),
-	"status_code":          querybuilder.NewFieldKey("status_code", "traces", "span", "number"),
-	"status_code_string":   querybuilder.NewFieldKey("status_code_string", "traces", "span", "string"),
-	"http_method":          querybuilder.NewFieldKey("http_method", "traces", "span", "string"),
-	"http_url":             querybuilder.NewFieldKey("http_url", "traces", "span", "string"),
-	"kind_string":          querybuilder.NewFieldKey("kind_string", "traces", "span", "string"),
-	"kind":                 querybuilder.NewFieldKey("kind", "traces", "span", "number"),
-	"response_status_code": querybuilder.NewFieldKey("response_status_code", "traces", "span", "string"),
-	"status_message":       querybuilder.NewFieldKey("status_message", "traces", "span", "string"),
-
-	"service.name":            querybuilder.NewFieldKey("service.name", "traces", "resource", "string"),
-	"cloud.account.id":        querybuilder.NewFieldKey("cloud.account.id", "traces", "resource", "string"),
-	"cloud.platform":          querybuilder.NewFieldKey("cloud.platform", "traces", "resource", "string"),
-	"cloud.provider":          querybuilder.NewFieldKey("cloud.provider", "traces", "resource", "string"),
-	"cloud.region":            querybuilder.NewFieldKey("cloud.region", "traces", "resource", "string"),
-	"deployment.environment":  querybuilder.NewFieldKey("deployment.environment", "traces", "resource", "string"),
-	"host.name":               querybuilder.NewFieldKey("host.name", "traces", "resource", "string"),
-	"k8s.cluster.name":        querybuilder.NewFieldKey("k8s.cluster.name", "traces", "resource", "string"),
-	"k8s.namespace.name":      querybuilder.NewFieldKey("k8s.namespace.name", "traces", "resource", "string"),
-	"k8s.node.name":           querybuilder.NewFieldKey("k8s.node.name", "traces", "resource", "string"),
-	"k8s.pod.name":            querybuilder.NewFieldKey("k8s.pod.name", "traces", "resource", "string"),
-	"k8s.pod.start_time":      querybuilder.NewFieldKey("k8s.pod.start_time", "traces", "resource", "string"),
-	"k8s.pod.uid":             querybuilder.NewFieldKey("k8s.pod.uid", "traces", "resource", "string"),
-	"k8s.statefulset.name":    querybuilder.NewFieldKey("k8s.statefulset.name", "traces", "resource", "string"),
-	"service.version":         querybuilder.NewFieldKey("service.version", "traces", "resource", "string"),
-	"signoz.deployment.tier":  querybuilder.NewFieldKey("signoz.deployment.tier", "traces", "resource", "string"),
-	"signoz.workload":         querybuilder.NewFieldKey("signoz.workload", "traces", "resource", "string"),
-	"signoz.workspace.key.id": querybuilder.NewFieldKey("signoz.workspace.key.id", "traces", "resource", "string"),
-
-	"client.address":            querybuilder.NewFieldKey("client.address", "traces", "tag", "string"),
-	"http.request.method":       querybuilder.NewFieldKey("http.request.method", "traces", "tag", "string"),
-	"http.response.body.size":   querybuilder.NewFieldKey("http.response.body.size", "traces", "tag", "string"),
-	"http.response.status_code": querybuilder.NewFieldKey("http.response.status_code", "traces", "tag", "number"),
-	"http.route":                querybuilder.NewFieldKey("http.route", "traces", "tag", "string"),
-	"rpc.method":                querybuilder.NewFieldKey("rpc.method", "traces", "tag", "string"),
-	"network.peer.address":      querybuilder.NewFieldKey("network.peer.address", "traces", "tag", "string"),
-	"network.peer.port":         querybuilder.NewFieldKey("network.peer.port", "traces", "tag", "string"),
-	"network.protocol.version":  querybuilder.NewFieldKey("network.protocol.version", "traces", "tag", "string"),
-	"server.address":            querybuilder.NewFieldKey("server.address", "traces", "tag", "string"),
-	"url.path":                  querybuilder.NewFieldKey("url.path", "traces", "tag", "string"),
-	"url.scheme":                querybuilder.NewFieldKey("url.scheme", "traces", "tag", "string"),
-	"db.operation":              querybuilder.NewFieldKey("db.operation", "traces", "tag", "string"),
-	"db.statement":              querybuilder.NewFieldKey("db.statement", "traces", "tag", "string"),
-	"db.system":                 querybuilder.NewFieldKey("db.system", "traces", "tag", "string"),
-	"messaging.system":          querybuilder.NewFieldKey("messaging.system", "traces", "tag", "string"),
-}
-
 func stringValue(v any) string {
 	s, _ := v.(string)
 	return s
@@ -273,12 +219,9 @@ func parseAggregationsArg(args map[string]any) ([]string, error) {
 	return expressions, nil
 }
 
+// aggregateGroupByField sends a bare name; SigNoz resolves its context and
+// type against the workspace's field metadata.
 func aggregateGroupByField(signal, name string) querybuilder.FieldKey {
-	if signal == "traces" {
-		if field, ok := traceGroupByFieldMetadata[name]; ok {
-			return field
-		}
-	}
 	return querybuilder.NewFieldKey(name, signal, "", "")
 }
 
