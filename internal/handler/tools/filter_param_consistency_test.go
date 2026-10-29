@@ -92,13 +92,14 @@ func TestParseFilterExpressionParam_CanonicalFilterContract(t *testing.T) {
 	})
 
 	// Every supplied query form is rejected at the parser layer
-	// (TestReadLogFilterExpr); each logs and traces tool only has to route through it.
-	t.Run("logs and traces reject the retired query alias", func(t *testing.T) {
+	// (TestReadLogFilterExpr); each query tool only has to route through it.
+	t.Run("every query tool rejects the retired query alias", func(t *testing.T) {
 		for parser, want := range map[*parserCase]string{
 			&parsers[0]: logsLegacyQueryAliasError,
 			&parsers[1]: tracesLegacyQueryAliasError,
 			&parsers[2]: logsLegacyQueryAliasError,
 			&parsers[3]: tracesLegacyQueryAliasError,
+			&parsers[4]: metricsLegacyQueryAliasError,
 		} {
 			t.Run(parser.name, func(t *testing.T) {
 				_, err := parser.parse(mergeArgs(parser.base, map[string]any{"query": "service.name = 'checkout'"}))
@@ -106,57 +107,6 @@ func TestParseFilterExpressionParam_CanonicalFilterContract(t *testing.T) {
 					t.Fatalf("error = %v, want %q", err, want)
 				}
 			})
-		}
-	})
-
-	t.Run("metrics retains legacy query alias", func(t *testing.T) {
-		aliasParsers := []parserCase{parsers[4]}
-		tests := []struct {
-			name    string
-			args    map[string]any
-			want    string
-			wantErr string
-		}{
-			{
-				name: "query only",
-				args: map[string]any{"query": "service.name = 'checkout'"},
-				want: "service.name = 'checkout'",
-			},
-			{
-				name: "equal pair keeps raw filter",
-				args: map[string]any{
-					"filter": " service.name = 'checkout' ",
-					"query":  "service.name = 'checkout'",
-				},
-				want: " service.name = 'checkout' ",
-			},
-			{
-				name: "differing pair conflicts",
-				args: map[string]any{
-					"filter": "service.name = 'checkout'",
-					"query":  "service.name = 'frontend'",
-				},
-				wantErr: conflictingFilterAliasError,
-			},
-		}
-		for _, parser := range aliasParsers {
-			for _, tt := range tests {
-				t.Run(parser.name+"/"+tt.name, func(t *testing.T) {
-					got, err := parser.parse(mergeArgs(parser.base, tt.args))
-					if tt.wantErr != "" {
-						if err == nil || err.Error() != tt.wantErr {
-							t.Fatalf("error = %v, want %q", err, tt.wantErr)
-						}
-						return
-					}
-					if err != nil {
-						t.Fatalf("unexpected error: %v", err)
-					}
-					if got != tt.want {
-						t.Fatalf("filter expression = %q, want %q", got, tt.want)
-					}
-				})
-			}
 		}
 	})
 }
