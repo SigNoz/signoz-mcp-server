@@ -135,12 +135,8 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 
 	// Primary query is always "A"
 	primaryGroupBy := buildGroupByFields(mqr.GroupBy)
-	if len(primaryGroupBy) > 0 {
-		var gbNames []string
-		for _, g := range primaryGroupBy {
-			gbNames = append(gbNames, fmt.Sprintf("%s [%s]", g.Name, querybuilder.FieldContextOf(g)))
-		}
-		decisions = append(decisions, fmt.Sprintf("groupBy: %s", strings.Join(gbNames, ", ")))
+	if len(mqr.GroupBy) > 0 {
+		decisions = append(decisions, fmt.Sprintf("groupBy: %s", strings.Join(mqr.GroupBy, ", ")))
 	}
 
 	primary := querybuilder.MetricsQuery{
