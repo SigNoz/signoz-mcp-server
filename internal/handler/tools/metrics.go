@@ -65,7 +65,7 @@ func (h *Handler) RegisterMetricsHandlers(s *mcp.Server) {
 	metricsGuideResource := mcp.NewResource(
 		"signoz://metrics-aggregation-guide",
 		"Metrics Aggregation Guide",
-		mcp.WithResourceDescription("Read this before choosing aggregations for signoz_query_metrics or building metrics Query Builder JSON. It explains timeAggregation, spaceAggregation, and reduceTo by metric type; formulas and limits; how groupBy field context is inferred; top-N selection across the full window; step intervals; examples; and Cost Meter queries."),
+		mcp.WithResourceDescription("Read this before choosing aggregations for signoz_query_metrics or building metrics Query Builder JSON. It explains timeAggregation, spaceAggregation, and reduceTo by metric type; formulas and limits; groupBy and filter label names; top-N selection across the full window; step intervals; examples; and Cost Meter queries."),
 		mcp.WithMIMEType("text/markdown"),
 		mcp.WithResourceSize(int64(len(metricsrules.MetricsGuide))),
 	)

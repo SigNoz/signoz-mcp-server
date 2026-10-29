@@ -65,12 +65,14 @@ pagination contract.
 3. **`feat(ai)`: pricing and mapping read tools.** `signoz_get_ai_pricing`
    (`view: rules|unpriced_models`) and `signoz_list_ai_attribute_mappings`. Additive, so no
    agent-skills change is required.
-4. **`feat(ai)`: AI result content.** Notes on `builder_ai_query` results (window, cost is an
-   estimate in USD, wider window when empty, trace-row columns include spans outside the window
-   while filters and order use only the window, `total_tokens` includes cache tokens inside input
-   tokens); previews cut to 1,000 characters with a
-   truncation flag; a $0-cost hint naming unpriced models, with a WARN log when expected fields
-   are missing; `gen_ai.*` in `signoz_get_trace_details` default columns. Depends on PRs 2 and 3.
+4. **`feat(ai)`: AI result content and routing wording.** Ships with the routing fixes from the
+   Haiku eval (see the 2026-10-29 decisions). Notes on `builder_ai_query` results (done: trace-row
+   window and full-trace values, aggregation window, cost as a USD estimate, cache tokens inside
+   `total_tokens`, wider window when empty); a $0-cost hint pointing at unpriced models (done as
+   fixed pointers: the trace-rows note and a note on cost aggregations name
+   `signoz_get_ai_pricing`); the empty-result note also points at
+   `signoz_list_ai_attribute_mappings` (done); `gen_ai.*` in `signoz_get_trace_details` default columns
+   (done: operation, model, input and output tokens, cost, tool, agent; null on other spans).
 5. **`feat(traces)`: AI thread in `signoz_get_trace_details`.** Reads
    `GET /api/v1/traces/{traceID}/thread`: the trace's model, tool and agent spans in time order
    with decoded input and output messages, paged by cursor. Deferred: see the 2026-10-28
@@ -90,6 +92,43 @@ pagination contract.
   — per PR
 
 ## Key Decisions
+
+### 2026-10-29 — Routing wording from a Haiku eval of real questions
+
+- Decision: name the user's vocabulary (LLM, AI agent, token, cost, model, tool-call, prompt) in
+  the `signoz_search_traces` and `signoz_aggregate_traces` descriptions; say in the aggregate
+  `queryType` description and the guide that `count()` and `count_distinct(trace_id)` are
+  span-level, so AI traces are counted in a separate call; name the user's LLM apps and agents in
+  the server instructions, dropping a sentence rules 1 and 2 repeat and the heading to fit 2,048
+  bytes; add a slowest-LLM-calls example to the guide.
+- Rationale: of 36,655 questions to SigNoz's production assistant (Langfuse), about 475 were
+  about users' own LLM or agent apps, and only 7 said "AI observability". Haiku, with plugin
+  skills disabled, routed 12 of 15 adapted AI questions correctly and all 3 controls; the misses
+  were "tool calls" and "prompt" questions read as about its own session, and 6 errors came from
+  pairing `count_distinct(trace_id)` with `trace.` aggregations. The count wording removed those
+  errors in a re-run; the instructions sentence fixed the prompt question but not the tool-call
+  ones, which stay ambiguous inside a coding agent.
+
+### 2026-10-29 — No per-tool truncation; the cost hint is a fixed pointer
+
+- Decision: AI trace rows' `input` and `output` pass through uncut, and the unpriced-cost hint is
+  a fixed pointer in the trace-rows note rather than a count from walking every row.
+- Rationale: long values come back from many tools, so cutting them belongs in one cross-tool
+  response-size change, not in each tool (raised in review of #410). Without the cut, a full
+  decode and walk of every AI trace-rows response only bought the unpriced-row count; agents in
+  the evals went to the pricing tool unprompted on empty cost, and the e2e already pins the
+  per-trace columns.
+
+### 2026-10-29 — Notes on `builder_ai_query` results
+
+- Decision: `builder_ai_query` results carry short notes: trace rows say filters, orderBy, and
+  the limit use the window while values cover the whole trace; aggregations say only in-window
+  spans count; both say cost is a USD estimate (null when unpriced) and `total_tokens` includes
+  cache tokens; empty results suggest a wider window, or finding the app's own model and tool keys
+  with `signoz_get_field_keys` and mapping them to `gen_ai.*`. Plain
+  `builder_query` results get none.
+- Rationale: the guide is read in about 1 of 15 sessions, so caveats that change how a number is
+  read travel with the result.
 
 ### 2026-10-27 — Same tools with an explicit `queryType`
 
@@ -236,6 +275,9 @@ pagination contract.
   AI tools. The span gained `gen_ai.request.model` at ingest. Fixes followed: `searchText` says an
   empty page means no match and that it matches substrings, and both tools name the AI
   Observability tab where prices and mappings are changed.
+- Routing eval (2026-10-29): 18 questions adapted from real Langfuse questions, run through
+  headless `claude -p --model haiku` with plugin skills disabled: 15 of 18 correct before the
+  wording changes; the count-rule re-run had no 400s.
 - Agent eval by hand: about 25 questions, including negative ones that must not set
   `builder_ai_query`, against a local SigNoz seeded with gen_ai traces, pricing rules and one
   unpriced model. Baseline before PR 2, rerun after PR 5.

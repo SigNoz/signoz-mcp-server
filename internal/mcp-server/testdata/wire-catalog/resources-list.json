@@ -20,7 +20,7 @@
           "description": "Read this before AI observability queries: LLM cost, tokens, models, or tool calls, per call or per trace. It covers queryType builder_ai_query on signoz_search_traces and signoz_aggregate_traces, the trace-level fields and where they work, how cost and token totals are computed (including cache tokens), examples for both tools, and saving a builder_ai_query as an alert. Full requests are in signoz://query-builder/examples.",
           "mimeType": "text/markdown",
           "name": "AI Query Builder Guide",
-          "size": 8649,
+          "size": 8930,
           "uri": "signoz://ai/query-builder-guide"
         },
         {
@@ -129,10 +129,10 @@
           "uri": "signoz://logs/query-builder-guide"
         },
         {
-          "description": "Read this before choosing aggregations for signoz_query_metrics or building metrics Query Builder JSON. It explains timeAggregation, spaceAggregation, and reduceTo by metric type; formulas and limits; how groupBy field context is inferred; top-N selection across the full window; step intervals; examples; and Cost Meter queries.",
+          "description": "Read this before choosing aggregations for signoz_query_metrics or building metrics Query Builder JSON. It explains timeAggregation, spaceAggregation, and reduceTo by metric type; formulas and limits; groupBy and filter label names; top-N selection across the full window; step intervals; examples; and Cost Meter queries.",
           "mimeType": "text/markdown",
           "name": "Metrics Aggregation Guide",
-          "size": 11581,
+          "size": 11459,
           "uri": "signoz://metrics-aggregation-guide"
         },
         {
