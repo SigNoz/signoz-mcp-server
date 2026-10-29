@@ -183,6 +183,7 @@ def test_query_metrics_limit_order_having_and_typed_formula_queries(
                 "metricName": metric,
                 "groupBy": "service.name",
                 "requestType": "scalar",
+                "reduceTo": "avg",
                 "timeRange": "1h",
                 **arguments,
             },
@@ -217,7 +218,7 @@ def test_query_metrics_limit_order_having_and_typed_formula_queries(
         )
         return formula_result[0].get("data") or []
 
-    formula_queries = [{"name": "B", "metricName": metric, "groupBy": "service.name"}]
+    formula_queries = [{"name": "B", "metricName": metric, "groupBy": "service.name", "reduceTo": "avg"}]
     ratio = assert_tool_ok(query(formula="A / B", formulaQueries=formula_queries))
     assert len(formula_rows(ratio)) == 2, (
         f"the typed formulaQueries item must run and the formula must return both groups: {formula_rows(ratio)}"

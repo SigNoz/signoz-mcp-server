@@ -7225,6 +7225,10 @@
                       "description": "Query name the formula references, for example B.",
                       "type": "string"
                     },
+                    "reduceTo": {
+                      "description": "Required when requestType is scalar: how to reduce each series to one value (last, max, min, avg, sum, count, or median).",
+                      "type": "string"
+                    },
                     "spaceAggregation": {
                       "description": "Aggregation across series: sum, avg, min, max, count, or p50 to p99 for histograms. Defaulted by metric type.",
                       "type": "string"
@@ -7337,12 +7341,12 @@
                 "type": "string"
               },
               "reduceTo": {
-                "description": "For requestType=scalar only. Reduces time series to a single value: sum, count, avg, min, max, last, median. Auto-defaulted by metricType.",
+                "description": "Required when requestType is scalar: how to reduce each series to one value. Choose from the question: last for the current value, max for the peak, avg for a typical value, or sum, min, count, median. For a total count over the window, use timeAggregation increase with reduceTo sum; summing rates is not a count. Ignored for time_series.",
                 "type": "string"
               },
               "requestType": {
                 "default": "time_series",
-                "description": "Response format: \"time_series\" (default) returns one value per time bucket; \"scalar\" returns a single reduced value per series.",
+                "description": "Response format: \"time_series\" (default) returns one value per time bucket; \"scalar\" returns a single value per series, reduced with reduceTo, which scalar requires.",
                 "enum": [
                   "scalar",
                   "time_series"

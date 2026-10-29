@@ -43,31 +43,6 @@ func TestApplyDefaults_TimeSeriesAggregationByMetricType(t *testing.T) {
 	}
 }
 
-func TestApplyDefaults_ScalarReduceTo(t *testing.T) {
-	tests := []struct {
-		name       string
-		params     MetricQueryParams
-		wantReduce string
-	}{
-		{"gauge scalar", MetricQueryParams{MetricType: "gauge"}, "avg"},
-		{"counter scalar", MetricQueryParams{MetricType: "sum", IsMonotonic: true}, "sum"},
-		{"non-monotonic scalar", MetricQueryParams{MetricType: "sum", IsMonotonic: false}, "avg"},
-		{"histogram scalar", MetricQueryParams{MetricType: "histogram"}, "avg"},
-		{"explicit reduceTo", MetricQueryParams{MetricType: "gauge", ReduceTo: "max"}, "max"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			r, err := ApplyDefaults(tt.params, "scalar")
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if r.ReduceTo != tt.wantReduce {
-				t.Errorf("expected reduceTo=%q, got %q", tt.wantReduce, r.ReduceTo)
-			}
-		})
-	}
-}
-
 func TestApplyDefaults_NoDefaultToApply(t *testing.T) {
 	if _, err := ApplyDefaults(MetricQueryParams{MetricType: "unknown"}, "time_series"); err == nil {
 		t.Error("expected error for unknown metricType")

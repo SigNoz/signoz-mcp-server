@@ -469,6 +469,7 @@ func resolveFormulaSubQuery(ctx context.Context, h *Handler, client metricMetada
 		Temporality:      temporality,
 		TimeAggregation:  fq.TimeAggregation,
 		SpaceAggregation: fq.SpaceAggregation,
+		ReduceTo:         fq.ReduceTo,
 	}, requestType)
 	if err != nil {
 		return nil, fmt.Errorf("validation error for formula query %q (%s): %w", fq.Name, fq.MetricName, err)
