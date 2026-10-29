@@ -1,6 +1,7 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"log/slog"
@@ -40,5 +41,14 @@ func (s *SigNoz) ListAIAttributeMappers(ctx context.Context, groupID string) (js
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Listing AI attribute mappers", slog.String("groupId", groupID))
 	return s.callAPI(ctx, DefaultQueryTimeout, func(ctx context.Context, api *apiclient.Client) (*http.Response, error) {
 		return api.ListSpanMappers(ctx, groupID)
+	})
+}
+
+// TestAIAttributeMappings runs sample spans through mapping groups. SigNoz
+// simulates the mapping in memory and saves nothing, so the POST is replay-safe.
+func (s *SigNoz) TestAIAttributeMappings(ctx context.Context, body []byte) (json.RawMessage, error) {
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Testing AI attribute mappings", slog.Int("request.body.size_bytes", len(body)))
+	return s.callAPI(withReplaySafe(ctx, true), DefaultQueryTimeout, func(ctx context.Context, api *apiclient.Client) (*http.Response, error) {
+		return api.TestSpanMappersWithBody(ctx, jsonContentType, bytes.NewReader(body))
 	})
 }

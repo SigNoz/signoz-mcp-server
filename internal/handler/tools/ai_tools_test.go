@@ -11,6 +11,9 @@ import (
 	"sync"
 	"testing"
 
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
+
 	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 )
@@ -277,5 +280,147 @@ func TestListAIAttributeMappings_PermissionDeniedOnMappersFailsTheWholeCall(t *t
 	}
 	if got := resultCode(t, result); got != CodePermissionDenied {
 		t.Fatalf("code = %q, want %q", got, CodePermissionDenied)
+	}
+}
+
+const mappingTestResponse = `{"status":"success","data":{"spans":[{"attributes":{"llm.model_name":"gpt-4o","gen_ai.request.model":"gpt-4o"},"resource":{}}],"collectorLogs":[]}}`
+
+func TestTestAIAttributeMapping_DefaultsToTheSavedGroups(t *testing.T) {
+	h, requests := newAIToolsHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			_, _ = w.Write([]byte(mappingGroupsBody))
+			return
+		}
+		_, _ = w.Write([]byte(mappingTestResponse))
+	})
+	spans := []any{map[string]any{"attributes": map[string]any{"llm.model_name": "gpt-4o"}}}
+
+	result, err := h.handleTestAIAttributeMapping(testCtx(), makeToolRequest("signoz_test_ai_attribute_mapping", map[string]any{"spans": spans}))
+	if err != nil || result.IsError {
+		t.Fatalf("unexpected failure: err=%v result=%v", err, result.Content)
+	}
+	got := requests()
+	if len(got) != 2 || got[1].Method != http.MethodPost || got[1].Path != "/api/v1/span_mapper_groups/test" {
+		t.Fatalf("upstream requests = %#v, want the group list then the test call", got)
+	}
+	// Groups go without mappers so SigNoz loads each one's saved mappers by name.
+	wantBody := `{"spans":[{"attributes":{"llm.model_name":"gpt-4o"}}],"groups":[
+		{"name":"gen_ai.llm","enabled":true,"condition":{"attributes":[{"value":"model","enabled":true}],"resource":[]}},
+		{"name":"gen_ai.tool","enabled":false,"condition":{"attributes":[{"value":"tool.name","enabled":true}],"resource":[]}}]}`
+	assertJSONEqual(t, wantBody, got[1].Body)
+
+	out := successJSON(t, textContent(t, result))
+	if out["groupSource"] != "saved" {
+		t.Fatalf("groupSource = %v, want saved", out["groupSource"])
+	}
+	if tested := out["testedGroups"].([]any); len(tested) != 1 || tested[0] != "gen_ai.llm" {
+		t.Fatalf("testedGroups = %#v, want only the enabled group", tested)
+	}
+	mapped := out["spans"].([]any)[0].(map[string]any)["attributes"].(map[string]any)
+	if mapped["gen_ai.request.model"] != "gpt-4o" {
+		t.Fatalf("mapped span = %#v, want SigNoz's mapped attributes", mapped)
+	}
+}
+
+func TestTestAIAttributeMapping_SendsProvidedGroupsVerbatim(t *testing.T) {
+	h, requests := newAIToolsHandler(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(mappingTestResponse))
+	})
+	groups := []any{map[string]any{
+		"name":      "draft",
+		"enabled":   true,
+		"condition": map[string]any{"attributes": []any{map[string]any{"value": "model", "enabled": true}}, "resource": []any{}},
+		"mappers":   []any{},
+	}}
+	spans := []any{map[string]any{"attributes": map[string]any{"model": "gpt-4o"}}}
+
+	result, err := h.handleTestAIAttributeMapping(testCtx(), makeToolRequest("signoz_test_ai_attribute_mapping", map[string]any{"spans": spans, "groups": groups}))
+	if err != nil || result.IsError {
+		t.Fatalf("unexpected failure: err=%v result=%v", err, result.Content)
+	}
+	got := requests()
+	if len(got) != 1 {
+		t.Fatalf("upstream requests = %#v, want only the test call", got)
+	}
+	assertJSONEqual(t, `{"spans":[{"attributes":{"model":"gpt-4o"}}],"groups":[{"name":"draft","enabled":true,"condition":{"attributes":[{"value":"model","enabled":true}],"resource":[]},"mappers":[]}]}`, got[0].Body)
+	if out := successJSON(t, textContent(t, result)); out["groupSource"] != "provided" {
+		t.Fatalf("groupSource = %v, want provided", out["groupSource"])
+	}
+}
+
+func TestTestAIAttributeMapping_UpstreamRejectionKeepsSigNozGuidance(t *testing.T) {
+	h, _ := newAIToolsHandler(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"status":"error","error":{"code":"mapping_invalid_input","type":"invalid-input","message":"'spans' must contain at least one span"}}`))
+	})
+	result, err := h.handleTestAIAttributeMapping(testCtx(), makeToolRequest("signoz_test_ai_attribute_mapping", map[string]any{"spans": []any{}, "groups": []any{}}))
+	if err != nil {
+		t.Fatalf("unexpected Go error: %v", err)
+	}
+	if got := resultCode(t, result); got != CodeValidationFailed {
+		t.Fatalf("code = %q, want %q", got, CodeValidationFailed)
+	}
+	if structured := resultStructuredMap(t, result); structured["upstreamMessage"] != "'spans' must contain at least one span" {
+		t.Fatalf("structured = %#v, want SigNoz's message preserved", structured)
+	}
+}
+
+func TestTestAIAttributeMapping_ResponseWithoutOneSpanPerSampleIsAnUpstreamError(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		data string
+	}{
+		{"missing spans", `{"collectorLogs":[]}`},
+		{"empty spans", `{"spans":[],"collectorLogs":[]}`},
+		{"spans not an array", `{"spans":{"attributes":{}}}`},
+		{"fewer spans than sent", `{"spans":[{"attributes":{}}]}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h, _ := newAIToolsHandler(t, func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write([]byte(`{"status":"success","data":` + tc.data + `}`))
+			})
+			spans := []any{map[string]any{"attributes": map[string]any{"a": "1"}}, map[string]any{"attributes": map[string]any{"b": "2"}}}
+			result, err := h.handleTestAIAttributeMapping(testCtx(), makeToolRequest("signoz_test_ai_attribute_mapping",
+				map[string]any{"spans": spans, "groups": []any{}}))
+			if err != nil {
+				t.Fatalf("unexpected Go error: %v", err)
+			}
+			if got := resultCode(t, result); got != CodeUpstreamError {
+				t.Fatalf("code = %q, want %q: a test without one mapped span per sample must not look like a result", got, CodeUpstreamError)
+			}
+		})
+	}
+}
+
+func TestTestAIAttributeMapping_ForwardsLargeIntegersExactly(t *testing.T) {
+	h, requests := newAIToolsHandler(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(mappingTestResponse))
+	})
+	raw := `{"spans":[{"attributes":{"llm.model_name":"gpt-4o","request.id":9007199254740993}}],"groups":[]}`
+	handler := mcp.AdaptToolHandler(h.handleTestAIAttributeMapping)
+	result, err := handler(testCtx(), &sdkmcp.CallToolRequest{Params: &sdkmcp.CallToolParamsRaw{
+		Name: "signoz_test_ai_attribute_mapping", Arguments: json.RawMessage(raw)}})
+	if err != nil || result.IsError {
+		t.Fatalf("unexpected failure: err=%v", err)
+	}
+	got := requests()
+	if len(got) != 1 || !strings.Contains(got[0].Body, "9007199254740993") {
+		t.Fatalf("sent %#v, want the integer forwarded exactly", got)
+	}
+}
+
+func assertJSONEqual(t *testing.T, want, got string) {
+	t.Helper()
+	var wantValue, gotValue any
+	if err := json.Unmarshal([]byte(want), &wantValue); err != nil {
+		t.Fatalf("want is not JSON: %v", err)
+	}
+	if err := json.Unmarshal([]byte(got), &gotValue); err != nil {
+		t.Fatalf("got is not JSON: %v\n%s", err, got)
+	}
+	wantJSON, _ := json.Marshal(wantValue)
+	gotJSON, _ := json.Marshal(gotValue)
+	if string(wantJSON) != string(gotJSON) {
+		t.Fatalf("JSON differs\nwant %s\ngot  %s", wantJSON, gotJSON)
 	}
 }

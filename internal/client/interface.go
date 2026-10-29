@@ -54,4 +54,5 @@ type Client interface {
 	ListUnpricedAIModels(ctx context.Context) (json.RawMessage, error)
 	ListAIAttributeMappingGroups(ctx context.Context) (json.RawMessage, error)
 	ListAIAttributeMappers(ctx context.Context, groupID string) (json.RawMessage, error)
+	TestAIAttributeMappings(ctx context.Context, body []byte) (json.RawMessage, error)
 }

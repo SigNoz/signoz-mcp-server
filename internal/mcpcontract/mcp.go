@@ -64,7 +64,13 @@ type ToolHandlerFunc func(context.Context, CallToolRequest) (*CallToolResult, er
 type ResourceHandlerFunc func(context.Context, ReadResourceRequest) ([]ResourceContents, error)
 type PromptHandlerFunc func(context.Context, GetPromptRequest) (*GetPromptResult, error)
 
-type decodedToolArguments struct{ value any }
+type decodedToolArguments struct {
+	value any
+	raw   json.RawMessage
+}
+
+// toolArgumentsKey keys the cached arguments; it must stay comparable for context.WithValue.
+type toolArgumentsKey struct{}
 
 // CacheToolArguments lets the server observer and tool adapter share one JSON
 // decode. Focused handler tests that bypass the observer still decode here.
@@ -73,7 +79,15 @@ func CacheToolArguments(ctx context.Context, raw json.RawMessage) (context.Conte
 	if len(raw) > 0 {
 		_ = json.Unmarshal(raw, &decoded)
 	}
-	return context.WithValue(ctx, decodedToolArguments{}, decodedToolArguments{value: decoded}), decoded
+	return context.WithValue(ctx, toolArgumentsKey{}, decodedToolArguments{value: decoded, raw: raw}), decoded
+}
+
+// RawToolArguments returns the tool call's arguments as the client sent them,
+// for handlers that forward values verbatim: the decoded map holds numbers as
+// float64, which rounds integers above 2^53.
+func RawToolArguments(ctx context.Context) json.RawMessage {
+	cached, _ := ctx.Value(toolArgumentsKey{}).(decodedToolArguments)
+	return cached.raw
 }
 
 func AdaptToolHandler(next ToolHandlerFunc) official.ToolHandler {
@@ -84,7 +98,7 @@ func AdaptToolHandler(next ToolHandlerFunc) official.ToolHandler {
 			name = req.Params.Name
 			raw = req.Params.Arguments
 		}
-		cached, ok := ctx.Value(decodedToolArguments{}).(decodedToolArguments)
+		cached, ok := ctx.Value(toolArgumentsKey{}).(decodedToolArguments)
 		if !ok {
 			ctx, cached.value = CacheToolArguments(ctx, raw)
 		}

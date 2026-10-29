@@ -240,6 +240,9 @@ type ListRulesV3Params struct {
 	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
+// TestSpanMappersJSONRequestBody defines body for TestSpanMappers for application/json ContentType.
+type TestSpanMappersJSONRequestBody = apitypes.SpantypesPostableSpanMapperTest
+
 // CreateDashboardV2JSONRequestBody defines body for CreateDashboardV2 for application/json ContentType.
 type CreateDashboardV2JSONRequestBody = apitypes.DashboardtypesPostableDashboardV2
 
@@ -412,6 +415,24 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /api/v1/span_mapper_groups (the `ListSpanMapperGroups` operationId).
 	ListSpanMapperGroups(ctx context.Context, params *ListSpanMapperGroupsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// TestSpanMappersWithBody Test span mappers against sample spans
+	//
+	// Tests how span mappers would transform sample spans.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/v1/span_mapper_groups/test (the `TestSpanMappers` operationId).
+	TestSpanMappersWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// TestSpanMappers Test span mappers against sample spans
+	//
+	// Tests how span mappers would transform sample spans.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/v1/span_mapper_groups/test (the `TestSpanMappers` operationId).
+	TestSpanMappers(ctx context.Context, body TestSpanMappersJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListSpanMappers List span mappers for a group
 	//
@@ -920,6 +941,44 @@ func (c *Client) GetMyServiceAccount(ctx context.Context, reqEditors ...RequestE
 // Corresponds with GET /api/v1/span_mapper_groups (the `ListSpanMapperGroups` operationId).
 func (c *Client) ListSpanMapperGroups(ctx context.Context, params *ListSpanMapperGroupsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListSpanMapperGroupsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// TestSpanMappersWithBody Test span mappers against sample spans
+//
+// Tests how span mappers would transform sample spans.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/v1/span_mapper_groups/test (the `TestSpanMappers` operationId).
+func (c *Client) TestSpanMappersWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewTestSpanMappersRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// TestSpanMappers Test span mappers against sample spans
+//
+// Tests how span mappers would transform sample spans.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/v1/span_mapper_groups/test (the `TestSpanMappers` operationId).
+func (c *Client) TestSpanMappers(ctx context.Context, body TestSpanMappersJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewTestSpanMappersRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -2453,6 +2512,46 @@ func NewListSpanMapperGroupsRequest(server string, params *ListSpanMapperGroupsP
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewTestSpanMappersRequest calls the generic TestSpanMappers builder with application/json body
+func NewTestSpanMappersRequest(server string, body TestSpanMappersJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewTestSpanMappersRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewTestSpanMappersRequestWithBody constructs an http.Request for the TestSpanMappers method, with any body, and a specified content type
+func NewTestSpanMappersRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/span_mapper_groups/test")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -4304,6 +4403,24 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/v1/span_mapper_groups (the `ListSpanMapperGroups` operationId).
 	ListSpanMapperGroupsWithResponse(ctx context.Context, params *ListSpanMapperGroupsParams, reqEditors ...RequestEditorFn) (*ListSpanMapperGroupsResponse, error)
 
+	// TestSpanMappersWithBodyWithResponse Test span mappers against sample spans
+	//
+	// Tests how span mappers would transform sample spans.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/span_mapper_groups/test (the `TestSpanMappers` operationId).
+	TestSpanMappersWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*TestSpanMappersResponse, error)
+
+	// TestSpanMappersWithResponse Test span mappers against sample spans
+	//
+	// Tests how span mappers would transform sample spans.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/span_mapper_groups/test (the `TestSpanMappers` operationId).
+	TestSpanMappersWithResponse(ctx context.Context, body TestSpanMappersJSONRequestBody, reqEditors ...RequestEditorFn) (*TestSpanMappersResponse, error)
+
 	// ListSpanMappersWithResponse List span mappers for a group
 	//
 	// Returns all mappers belonging to a mapping group.
@@ -5316,6 +5433,88 @@ func (r ListSpanMapperGroupsResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ListSpanMapperGroupsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type TestSpanMappersResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *struct {
+		Data   apitypes.SpantypesGettableSpanMapperTest `json:"data"`
+		Status string                                   `json:"status"`
+	}
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *apitypes.RenderErrorResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *apitypes.RenderErrorResponse
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *apitypes.RenderErrorResponse
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *apitypes.RenderErrorResponse
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *apitypes.RenderErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r TestSpanMappersResponse) GetJSON200() *struct {
+	Data   apitypes.SpantypesGettableSpanMapperTest `json:"data"`
+	Status string                                   `json:"status"`
+} {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r TestSpanMappersResponse) GetJSON400() *apitypes.RenderErrorResponse {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r TestSpanMappersResponse) GetJSON401() *apitypes.RenderErrorResponse {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r TestSpanMappersResponse) GetJSON403() *apitypes.RenderErrorResponse {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r TestSpanMappersResponse) GetJSON404() *apitypes.RenderErrorResponse {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r TestSpanMappersResponse) GetJSON500() *apitypes.RenderErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r TestSpanMappersResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r TestSpanMappersResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r TestSpanMappersResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r TestSpanMappersResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -7955,6 +8154,36 @@ func (c *ClientWithResponses) ListSpanMapperGroupsWithResponse(ctx context.Conte
 	return ParseListSpanMapperGroupsResponse(rsp)
 }
 
+// TestSpanMappersWithBodyWithResponse Test span mappers against sample spans
+//
+// Tests how span mappers would transform sample spans.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/span_mapper_groups/test (the `TestSpanMappers` operationId).
+func (c *ClientWithResponses) TestSpanMappersWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*TestSpanMappersResponse, error) {
+	rsp, err := c.TestSpanMappersWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseTestSpanMappersResponse(rsp)
+}
+
+// TestSpanMappersWithResponse Test span mappers against sample spans
+//
+// Tests how span mappers would transform sample spans.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/span_mapper_groups/test (the `TestSpanMappers` operationId).
+func (c *ClientWithResponses) TestSpanMappersWithResponse(ctx context.Context, body TestSpanMappersJSONRequestBody, reqEditors ...RequestEditorFn) (*TestSpanMappersResponse, error) {
+	rsp, err := c.TestSpanMappers(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseTestSpanMappersResponse(rsp)
+}
+
 // ListSpanMappersWithResponse List span mappers for a group
 //
 // Returns all mappers belonging to a mapping group.
@@ -9067,6 +9296,70 @@ func ParseListSpanMapperGroupsResponse(rsp *http.Response) (*ListSpanMapperGroup
 			return nil, err
 		}
 		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest apitypes.RenderErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseTestSpanMappersResponse parses an HTTP response from a TestSpanMappersWithResponse call
+func ParseTestSpanMappersResponse(rsp *http.Response) (*TestSpanMappersResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &TestSpanMappersResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			Data   apitypes.SpantypesGettableSpanMapperTest `json:"data"`
+			Status string                                   `json:"status"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest apitypes.RenderErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest apitypes.RenderErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest apitypes.RenderErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest apitypes.RenderErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest apitypes.RenderErrorResponse
