@@ -266,18 +266,18 @@ def test_search_scope_without_search_text_is_ignored_with_a_note(
     assert unknown.get("isError", False), "an unknown searchScope is still rejected"
 
 
-def test_severity_shortcut_matches_any_case(mcp_client: MCPClient, test_id: str, telemetry: None) -> None:
-    """The severity shortcut finds ERROR logs from error, while = in a filter stays case-sensitive."""
+def test_severity_shortcut_matches_any_case_as_a_prefix(mcp_client: MCPClient, test_id: str, telemetry: None) -> None:
+    """The severity shortcut finds WARNING logs from warn, while = in a filter stays exact."""
     service = f"mcp-e2e-{test_id}"
-    seed_logs(service, f"marker-{test_id}", severity="ERROR", count=2)
+    seed_logs(service, f"marker-{test_id}", severity="WARNING", count=2)
 
     def search(**arguments: str) -> list[dict]:
         result = mcp_client.call_tool(
             "signoz_search_logs",
-            {"searchContext": "error logs", "service": service, "timeRange": "1h", **arguments},
+            {"searchContext": "warning logs", "service": service, "timeRange": "1h", **arguments},
         )
         return query_range_rows(first_text_block(assert_tool_ok(result)))
 
-    rows = wait_for(lambda: search(severity="error"), f"ERROR logs for {service} found by severity=error")
+    rows = wait_for(lambda: search(severity="warn"), f"WARNING logs for {service} found by severity=warn")
     assert len(rows) == 2, rows
-    assert not search(filter="severity_text = 'error'"), "= in a filter matched logs recorded as ERROR"
+    assert not search(filter="severity_text = 'warning'"), "= in a filter matched logs recorded as WARNING"

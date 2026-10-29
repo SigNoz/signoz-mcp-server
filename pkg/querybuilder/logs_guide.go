@@ -55,7 +55,7 @@ Use these directly by name in filter expressions:
   severity_text   string    - recorded severity, as the source wrote it; DEBUG, INFO, WARN, ERROR, and FATAL are common
                               examples, not an exhaustive enum. = is case-sensitive, so ERROR does not match error;
                               discover the values first, or use IN ('ERROR', 'error') when both spellings occur.
-                              The severity shortcut on the log tools matches any case
+                              The severity shortcut on the log tools matches any case and as a prefix
   severity_number number    - numeric severity when present
   trace_id        string    - linked trace identifier
   span_id         string    - linked span identifier

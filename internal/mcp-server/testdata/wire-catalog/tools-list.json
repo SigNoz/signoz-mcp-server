@@ -137,7 +137,7 @@
                 "type": "string"
               },
               "severity": {
-                "description": "Shortcut filter for severity_text, matched in any case (error matches ERROR, error, and Error). Common values include DEBUG, INFO, WARN, ERROR, and FATAL, but they are not an exhaustive enum. Sources spell levels differently (WARN or WARNING); discover the workspace's values with signoz_get_field_values(signal=\"logs\", name=\"severity_text\", fieldContext=\"log\").",
+                "description": "Shortcut filter for severity_text, matched in any case and as a prefix, so WARN also matches warning and Warning; pass the short form (ERR, WARN, INFO). Common values include DEBUG, INFO, WARN, ERROR, and FATAL, but they are not an exhaustive enum. Discover the workspace's values with signoz_get_field_values(signal=\"logs\", name=\"severity_text\", fieldContext=\"log\").",
                 "type": "string"
               },
               "start": {
@@ -7566,7 +7566,7 @@
                 "type": "string"
               },
               "severity": {
-                "description": "Filter on severity_text, matched in any case (error matches ERROR, error, and Error). Common values include DEBUG, INFO, WARN, ERROR, and FATAL, but they are not an exhaustive enum. Sources spell levels differently (WARN or WARNING); discover the workspace's values with signoz_get_field_values(signal=\"logs\", name=\"severity_text\", fieldContext=\"log\").",
+                "description": "Filter on severity_text, matched in any case and as a prefix, so WARN also matches warning and Warning; pass the short form (ERR, WARN, INFO). Common values include DEBUG, INFO, WARN, ERROR, and FATAL, but they are not an exhaustive enum. Discover the workspace's values with signoz_get_field_values(signal=\"logs\", name=\"severity_text\", fieldContext=\"log\").",
                 "type": "string"
               },
               "start": {
