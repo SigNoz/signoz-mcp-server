@@ -10,7 +10,7 @@ import json
 import pytest
 
 from fixtures.mcpclient import MCPClient
-from fixtures.results import first_text_block
+from fixtures.results import first_text_block, note_blocks, result_code
 from fixtures.telemetry import seed_metrics, wait_for
 
 
@@ -96,3 +96,30 @@ def test_histogram_buckets_read_with_rate_and_sum(mcp_client: MCPClient, test_id
     lowest = rates["10"]
     assert rates["100"] == pytest.approx(2 * lowest), f"bucket rates: {rates}"
     assert rates["+Inf"] == pytest.approx(3 * lowest), f"bucket rates: {rates}"
+
+
+def test_metadata_lookup_matches_the_exact_name(mcp_client: MCPClient, test_id: str, telemetry: None) -> None:
+    """A longer neighbor never lends its metadata, and a missing name gets the search instruction."""
+    prefix = f"mcp_e2e_exact_{test_id.replace('-', '_')}"
+    gauge = f"{prefix}_gauge"
+    seed_metrics(f"mcp-e2e-{test_id}", gauge, value=7.0, count=2)
+
+    def resolved() -> dict:
+        result = mcp_client.call_tool(
+            "signoz_query_metrics",
+            {"searchContext": f"query {gauge}", "metricName": gauge, "timeRange": "1h", "requestType": "scalar"},
+        )
+        return {} if result.get("isError", False) else result
+
+    found = wait_for(resolved, f"metadata for {gauge} visible")
+    assert "metricType: gauge (auto-fetched" in note_blocks(found), (
+        f"exact name did not resolve its own metadata: {note_blocks(found)}"
+    )
+
+    missing = mcp_client.call_tool(
+        "signoz_query_metrics",
+        {"searchContext": f"query {prefix}", "metricName": prefix, "timeRange": "1h"},
+    )
+    assert missing.get("isError", False), f"the prefix of {gauge} resolved as a metric: {note_blocks(missing)}"
+    assert result_code(missing) == "VALIDATION_FAILED", f"unexpected code: {missing}"
+    assert "Search for the right name with signoz_list_metrics" in first_text_block(missing), first_text_block(missing)

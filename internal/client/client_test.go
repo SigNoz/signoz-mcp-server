@@ -509,6 +509,23 @@ func TestGetAlertHistory(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestGetMetricMetadata_RequestsTheExactName(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/api/v2/metrics/metadata", r.URL.Path)
+		assert.Equal(t, "run.googleapis.com/request_latencies", r.URL.Query().Get("metricName"))
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"status":"error","error":{"code":"not_found","message":"metadata not found"}}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(logpkg.New("error"), server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+	_, err := client.GetMetricMetadata(context.Background(), "run.googleapis.com/request_latencies")
+	var statusErr *HTTPStatusError
+	require.ErrorAs(t, err, &statusErr)
+	require.Equal(t, http.StatusNotFound, statusErr.StatusCode)
+}
+
 func TestGetTraceDetails_LetsSigNozNarrowAWindowThatCoversAnyTrace(t *testing.T) {
 	var captured []byte
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

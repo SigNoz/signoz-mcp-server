@@ -3,10 +3,14 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"strings"
 
+	"github.com/SigNoz/signoz-mcp-server/internal/apiclient/apitypes"
+	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
@@ -14,7 +18,7 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/pkg/querybuilder"
 )
 
-// metricMetadata holds the parsed metadata from signoz_list_metrics response.
+// metricMetadata holds one metric's metadata from the exact-name lookup.
 //
 // TemporalityMissing / IsMonotonicMissing flag that a matched row lacked the
 // field; they drive the drift WARN and the "unknown/assumed" decision note.
@@ -67,7 +71,7 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 			mqr.MetricType = meta.MetricType
 			mqr.IsMonotonic = meta.IsMonotonic
 			mqr.Temporality = meta.Temporality
-			decisions = append(decisions, fmt.Sprintf("metricType: %s (auto-fetched via signoz_list_metrics)", mqr.MetricType))
+			decisions = append(decisions, fmt.Sprintf("metricType: %s (auto-fetched)", mqr.MetricType))
 			// Absent fields are reported as unknown/assumed, not authoritative.
 			if meta.TemporalityMissing {
 				decisions = append(decisions, fmt.Sprintf("temporality: unknown (not returned by metadata; assumed %q)", mqr.Temporality))
@@ -81,10 +85,7 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 			}
 		} else {
 			// User-correctable (wrong metric name); coded like the formula not-found path.
-			return errorWithCode(CodeValidationFailed, fmt.Sprintf(
-				"Metric %q not found via signoz_list_metrics. "+
-					"Check the metric name or provide metricType manually.",
-				mqr.MetricName)), nil
+			return errorWithCode(CodeValidationFailed, metricNotFoundMessage(mqr.MetricName, "")), nil
 		}
 	} else {
 		decisions = append(decisions, fmt.Sprintf("metricType: %s (caller-provided)", mqr.MetricType))
@@ -275,23 +276,43 @@ func buildMetricsDecisionsNote(decisions, defaultWarnings, backendWarnings []str
 	return strings.TrimRight(b.String(), "\n")
 }
 
-// fetchMetricMetadata calls ListMetrics to get type/temporality/isMonotonic for a metric.
-// source is forwarded so that Cost Meter metrics (source="meter") are looked up in the
-// correct store rather than the default metrics store.
-func (h *Handler) fetchMetricMetadata(ctx context.Context, client interface {
+// metricMetadataClient is the part of the SigNoz client the metadata lookup uses.
+type metricMetadataClient interface {
 	ListMetrics(ctx context.Context, start, end int64, limit int, searchText, source string) (json.RawMessage, error)
-}, metricName, source string) (*metricMetadata, error) {
-	// Search with exact metric name, limit 10 to find it
-	result, err := client.ListMetrics(ctx, 0, 0, 10, metricName, source)
-	if err != nil {
-		return nil, err
-	}
+	GetMetricMetadata(ctx context.Context, metricName string) (json.RawMessage, error)
+}
 
-	// The response is typically {"status":"success","data":{"metrics":[...]}}
-	// or just an array. Try both formats.
-	meta, err := parseMetricMetadataFromResponse(result, metricName)
-	if err != nil {
-		return nil, err
+// fetchMetricMetadata looks up type, temporality, and isMonotonic for exactly
+// metricName, or returns nil when SigNoz has no such metric. The metrics store
+// has an exact-name endpoint; Cost Meter metrics (source="meter") are listed
+// by substring and matched exactly here.
+func (h *Handler) fetchMetricMetadata(ctx context.Context, client metricMetadataClient, metricName, source string) (*metricMetadata, error) {
+	var meta *metricMetadata
+	if source == "" {
+		result, err := client.GetMetricMetadata(ctx, metricName)
+		var statusErr *signozclient.HTTPStatusError
+		if errors.As(err, &statusErr) && statusErr.StatusCode == http.StatusNotFound {
+			return nil, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		meta = parseExactMetricMetadata(result)
+		if meta == nil {
+			// Fail open as "not found", but never silent: a 200 without a type is drift.
+			h.logger.WarnContext(ctx, metricMetadataDriftMarker,
+				slog.String("metricName", metricName),
+				slog.String("missingField", "type"))
+			return nil, nil
+		}
+	} else {
+		result, err := client.ListMetrics(ctx, 0, 0, 10, metricName, source)
+		if err != nil {
+			return nil, err
+		}
+		if meta, err = parseMetricMetadataFromResponse(result, metricName); err != nil {
+			return nil, err
+		}
 	}
 	// Fail open, but never fail silent: a matched row missing a field signals
 	// upstream drift before we apply a possibly-wrong default, so WARN on it.
@@ -310,6 +331,29 @@ func (h *Handler) fetchMetricMetadata(ctx context.Context, client interface {
 		}
 	}
 	return meta, nil
+}
+
+// parseExactMetricMetadata decodes a GetMetricMetadata body. It returns nil
+// when the body carries no metric type.
+func parseExactMetricMetadata(data json.RawMessage) *metricMetadata {
+	var resp struct {
+		Data struct {
+			apitypes.MetricsexplorertypesMetricMetadata
+			// Shadows the generated bool so an absent field differs from false.
+			IsMonotonic *bool `json:"isMonotonic"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(data, &resp); err != nil || resp.Data.Type == "" {
+		return nil
+	}
+	metricType := normalizeMetricType(string(resp.Data.Type))
+	return &metricMetadata{
+		MetricType:         metricType,
+		IsMonotonic:        resp.Data.IsMonotonic != nil && *resp.Data.IsMonotonic,
+		Temporality:        string(resp.Data.Temporality),
+		TemporalityMissing: resp.Data.Temporality == "",
+		IsMonotonicMissing: metricType == "sum" && resp.Data.IsMonotonic == nil,
+	}
 }
 
 // metricMetadataRow mirrors one entry of a ListMetrics response. IsMonotonic and
@@ -355,13 +399,13 @@ func parseMetricMetadataFromResponse(data json.RawMessage, metricName string) (*
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(data, &wrapper); err == nil && len(wrapper.Data.Metrics) > 0 {
+		// The search is a substring match: only an exact name is this metric.
 		for _, m := range wrapper.Data.Metrics {
 			if m.MetricName == metricName {
 				return metricMetadataFromRow(m), nil
 			}
 		}
-		// If exact match not found, return the first result if search was specific
-		return metricMetadataFromRow(wrapper.Data.Metrics[0]), nil
+		return nil, nil
 	}
 
 	// Try format: [{"metricName":"...", "type":"...", ...}]
@@ -372,7 +416,7 @@ func parseMetricMetadataFromResponse(data json.RawMessage, metricName string) (*
 				return metricMetadataFromRow(m), nil
 			}
 		}
-		return metricMetadataFromRow(metrics[0]), nil
+		return nil, nil
 	}
 
 	return nil, nil
@@ -392,9 +436,7 @@ func normalizeMetricType(t string) string {
 }
 
 // resolveFormulaSubQuery applies defaults for a formula sub-query, auto-fetching metadata if needed.
-func resolveFormulaSubQuery(ctx context.Context, h *Handler, client interface {
-	ListMetrics(ctx context.Context, start, end int64, limit int, searchText, source string) (json.RawMessage, error)
-}, fq formulaSubQuery, requestType, source string, decisions *[]string) (*metricsrules.ResolvedAggregation, error) {
+func resolveFormulaSubQuery(ctx context.Context, h *Handler, client metricMetadataClient, fq formulaSubQuery, requestType, source string, decisions *[]string) (*metricsrules.ResolvedAggregation, error) {
 	metricType := fq.MetricType
 	isMonotonic := fq.IsMonotonic
 	temporality := fq.Temporality
@@ -421,7 +463,7 @@ func resolveFormulaSubQuery(ctx context.Context, h *Handler, client interface {
 				*decisions = append(*decisions, fmt.Sprintf("query %s (%s): isMonotonic unknown (not returned by metadata; assumed %t)", fq.Name, fq.MetricName, isMonotonic))
 			}
 		} else {
-			return nil, fmt.Errorf("metric %q not found for formula query %q. Check the metric name", fq.MetricName, fq.Name)
+			return nil, errors.New(metricNotFoundMessage(fq.MetricName, fq.Name))
 		}
 	}
 
@@ -444,6 +486,18 @@ func resolveFormulaSubQuery(ctx context.Context, h *Handler, client interface {
 	}
 
 	return &resolved, nil
+}
+
+// metricNotFoundMessage turns a failed exact-name lookup into a search
+// instruction; agents most often guess a plausible name the workspace lacks.
+func metricNotFoundMessage(metricName, formulaQuery string) string {
+	subject := fmt.Sprintf("Metric %q", metricName)
+	if formulaQuery != "" {
+		subject = fmt.Sprintf("Metric %q in formula query %q", metricName, formulaQuery)
+	}
+	return subject + " was not found in this workspace. Search for the right name with signoz_list_metrics, " +
+		"using part of the name as searchText (for example \"cpu\"), then retry with the exact name. " +
+		"A histogram named X is stored as X.bucket."
 }
 
 func formulaName(existing []querybuilder.MetricsQuery) string {
