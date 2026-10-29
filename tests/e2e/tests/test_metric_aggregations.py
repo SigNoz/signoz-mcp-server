@@ -7,8 +7,10 @@ with rate and sum.
 
 import json
 
+import pytest
+
 from fixtures.mcpclient import MCPClient
-from fixtures.results import aggregate_columns_and_row_count, first_text_block
+from fixtures.results import first_text_block
 from fixtures.telemetry import seed_metrics, wait_for
 
 
@@ -54,13 +56,24 @@ def test_counter_max_reads_the_running_total(mcp_client: MCPClient, test_id: str
     wait_for(total, f"counter {metric} running total of 42")
 
 
+def _bucket_rates(body: str) -> dict[str, float]:
+    """The scalar value of every row, keyed by its le label."""
+    rates = {}
+    for result in json.loads(body)["data"]["data"]["results"]:
+        names = [column["name"] for column in result.get("columns") or []]
+        for row in result.get("data") or []:
+            rates[row[names.index("le")]] = row[-1]
+    return rates
+
+
 def test_histogram_buckets_read_with_rate_and_sum(mcp_client: MCPClient, test_id: str, telemetry: None) -> None:
     name = f"mcp_e2e_hist_{test_id.replace('-', '_')}"
+    # One observation per bucket, so the cumulative le buckets hold 1, 2, and 3.
     seed_metrics(f"mcp-e2e-{test_id}", name, count=2, kind="histogram")
     # SigNoz stores the buckets as <name>.bucket, as the guide teaches.
     metric = f"{name}.bucket"
 
-    def buckets() -> list[str]:
+    def buckets() -> dict[str, float]:
         result = _scalar(
             mcp_client,
             metric,
@@ -75,8 +88,11 @@ def test_histogram_buckets_read_with_rate_and_sum(mcp_client: MCPClient, test_id
         assert not result.get("isError", False), (
             f"histogram with rate and sum was rejected: {first_text_block(result)[:400]}"
         )
-        columns, row_count = aggregate_columns_and_row_count(first_text_block(result))
-        return columns if row_count else []
+        rates = _bucket_rates(first_text_block(result))
+        return rates if len(rates) == 3 and all(rate > 0 for rate in rates.values()) else {}
 
-    columns = wait_for(buckets, f"histogram {metric} visible")
-    assert "le" in columns, f"rate and sum on histogram buckets should group by le; columns: {columns}"
+    rates = wait_for(buckets, f"histogram {metric} rates for all three buckets")
+    # Ratios hold for any window and step; +Inf is the total observation rate.
+    lowest = rates["10"]
+    assert rates["100"] == pytest.approx(2 * lowest), f"bucket rates: {rates}"
+    assert rates["+Inf"] == pytest.approx(3 * lowest), f"bucket rates: {rates}"
