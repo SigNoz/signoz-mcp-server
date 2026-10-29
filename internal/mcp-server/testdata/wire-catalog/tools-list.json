@@ -7218,7 +7218,7 @@
                       "type": "string"
                     },
                     "metricType": {
-                      "description": "gauge, sum, histogram, or exponential_histogram. Omit to auto-fetch it with temporality and monotonicity.",
+                      "description": "gauge, sum, histogram, exponential_histogram, or summary. Omit to auto-fetch it with temporality and monotonicity.",
                       "type": "string"
                     },
                     "name": {
@@ -7329,7 +7329,7 @@
                 "type": "string"
               },
               "metricType": {
-                "description": "Metric type: gauge, sum, histogram, or exponential_histogram. Omit to auto-fetch it with temporality and monotonicity.",
+                "description": "Metric type: gauge, sum, histogram, exponential_histogram, or summary. Omit to auto-fetch it with temporality and monotonicity.",
                 "type": "string"
               },
               "orderBy": {
@@ -7358,7 +7358,7 @@
                 "type": "string"
               },
               "spaceAggregation": {
-                "description": "Aggregation across series/dimensions. Auto-defaulted based on metricType. Valid: sum, avg, min, max, count, p50, p75, p90, p95, p99 (type-dependent).",
+                "description": "Aggregation across series: sum, avg, min, max, count, or p50, p75, p90, p95, p99 (histograms only). Omit for the type's default: sum, or p99 for histograms. Summary metrics have no defaults; set both aggregations.",
                 "type": "string"
               },
               "start": {
@@ -7380,7 +7380,7 @@
                 "type": "string"
               },
               "timeAggregation": {
-                "description": "Aggregation over time buckets. Auto-defaulted based on metricType. Valid: latest, sum, avg, min, max, count, count_distinct, rate, increase (type-dependent).",
+                "description": "Aggregation within each series over a time bucket: latest, sum, avg, min, max, count, count_distinct, rate, or increase. Omit for the type's default: avg for gauges and non-monotonic sums, rate for counters, none for histogram percentiles. SigNoz validates the combination.",
                 "type": "string"
               },
               "timeRange": {

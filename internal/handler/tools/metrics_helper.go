@@ -49,7 +49,7 @@ type metricsQueryRequest struct {
 type formulaSubQuery struct {
 	Name             string   `json:"name" jsonschema:"Query name the formula references, for example B."`
 	MetricName       string   `json:"metricName" jsonschema:"Metric to query, for example http_requests_total."`
-	MetricType       string   `json:"metricType,omitempty" jsonschema:"gauge, sum, histogram, or exponential_histogram. Omit to auto-fetch it with temporality and monotonicity."`
+	MetricType       string   `json:"metricType,omitempty" jsonschema:"gauge, sum, histogram, exponential_histogram, or summary. Omit to auto-fetch it with temporality and monotonicity."`
 	IsMonotonic      bool     `json:"isMonotonic,omitempty" jsonschema:"Whether a sum metric only increases. Auto-fetched when metricType is omitted."`
 	Temporality      string   `json:"temporality,omitempty" jsonschema:"cumulative, delta, or unspecified. Auto-fetched when metricType is omitted."`
 	TimeAggregation  string   `json:"timeAggregation,omitempty" jsonschema:"Aggregation over time buckets: latest, sum, avg, min, max, count, count_distinct, rate, or increase. Defaulted by metric type."`

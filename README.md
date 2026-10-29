@@ -548,11 +548,11 @@ Query a known metric for values, trends, breakdowns, or formulas. The tool appli
 
 - **Parameters**:
   - `metricName` (required) - Metric name to query
-  - `metricType` (optional) - gauge, sum, histogram, exponential_histogram (auto-fetched if absent)
+  - `metricType` (optional) - gauge, sum, histogram, exponential_histogram, summary (auto-fetched if absent)
   - `isMonotonic` (optional) - Boolean (or the strings `"true"`/`"false"`); auto-fetched if absent. An invalid value is rejected rather than silently treated as false
   - `temporality` (optional) - cumulative, delta, unspecified (auto-fetched if absent)
-  - `timeAggregation` (optional) - Aggregation over time (auto-defaulted by type)
-  - `spaceAggregation` (optional) - Aggregation across dimensions (auto-defaulted by type)
+  - `timeAggregation` (optional) - Aggregation within each series per time bucket (defaulted by type when omitted; SigNoz validates the combination)
+  - `spaceAggregation` (optional) - Aggregation across series (defaulted by type when omitted; percentiles are histogram-only). Summary metrics need both aggregations set
   - `groupBy` (optional) - Comma-separated field names or an array. Resource context is inferred for `k8s.*`, `container.*`, `host.*`, `cloud.*`, `deployment.*`, `process.*`, `service.*`, `telemetry.*`, and `os.*`; other names use attribute context
   - `filter` (optional) - Filter expression
   - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '7d'; default: '1h'; ignored when both `start` and `end` are provided)
