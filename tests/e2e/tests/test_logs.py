@@ -60,6 +60,26 @@ def test_seeded_logs_are_searchable(mcp_client: MCPClient, test_id: str, telemet
     assert "hasMore" in note_blocks(result), f"expected a completeness note with hasMore: {note_blocks(result)!r}"
 
 
+def test_body_regexp_with_doubled_backslashes_matches_the_message(
+    mcp_client: MCPClient, test_id: str, telemetry: None
+) -> None:
+    """The body REGEXP example in signoz://dashboard/query-builder-example matches as taught."""
+    marker = f"mcp-e2e-regexp-{test_id}"
+    seed_logs(f"mcp-e2e-{test_id}", f"[SnapshotGenerator id=42] {marker}")
+    # A filter literal doubles each backslash, so SigNoz receives the regex ^\[SnapshotGenerator id=\d+\].
+    expression = f"body REGEXP '^\\\\[SnapshotGenerator id=\\\\d+\\\\] {marker}$'"
+
+    def found() -> bool:
+        result = mcp_client.call_tool(
+            "signoz_search_logs",
+            {"searchContext": "find snapshot generator logs", "filter": expression, "timeRange": "1h", "limit": "10"},
+        )
+        assert not result.get("isError", False), f"body REGEXP was rejected: {text_blocks(result)[:400]}"
+        return marker in text_blocks(result)
+
+    wait_for(found, f"body REGEXP matches {marker}")
+
+
 def test_explicit_search_scopes_quoting_and_warning_round_trip(
     mcp_client: MCPClient, test_id: str, telemetry: None
 ) -> None:

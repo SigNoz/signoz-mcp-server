@@ -873,30 +873,29 @@ Regular Expression (REGEXP):
 FULL-TEXT SEARCH (LOGS ONLY)
 ================================================================================
 
-Searches log body field only.
+Traces have no full-text search. Every trace condition needs a key and an operator, for example
+name CONTAINS 'checkout'.
 
-Quoted vs Unquoted:
-  Quoted (Exact Phrase):
-    'failed to connect to database'
-  Unquoted (All Words):
-    error database connection  // Finds logs with ALL three words
+For logs, name the field instead of writing a bare word or quoted phrase:
+  body CONTAINS 'failed to connect'          // literal text in the message
+  body ILIKE '%connection refused%'          // case-insensitive pattern
+  body REGEXP '^\\[SnapshotGenerator id=\\d+\\]'  // RE2 regex on the message
+  search('timeout')                          // every searchable field, when no single field holds the term
+
+search() scans every column in its scopes and is slow over wide time ranges; see
+signoz://logs/query-builder-guide for its scopes.
 
 Escaping:
   Only escape these two:
     - Single quote: \'
     - Backslash: \\
   Examples:
-    'user\'s email'
-    'C:\\Program Files\\App'
-    'user\'s path: C:\\Users\\John'
+    body CONTAINS 'user\'s email'
+    body CONTAINS 'C:\\Program Files\\App'
   No escaping needed for: ", [, ], $, etc.
 
-Regex in Full-Text:
-  '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'  // Email
-  '^\[SnapshotGenerator id=\d+\]'  // Structured logs
-
 Combining with Fields:
-  'payment failed' AND service.name = 'payment-service' AND severity_text = 'ERROR'
+  body CONTAINS 'payment failed' AND service.name = 'payment-service' AND severity_text = 'ERROR'
 
 Performance Tips:
   1. Narrow time range
@@ -1084,7 +1083,7 @@ Common Query Patterns:
   Case-insensitive | field ILIKE '%pattern%'     | path ILIKE '%/api/%'
   In list          | field IN (val1, val2)       | region IN ('us', 'eu')
   Exists           | field EXISTS                | user_id EXISTS
-  Full-text        | 'exact phrase'              | 'connection timeout'
+  Log text         | body CONTAINS 'text'        | body CONTAINS 'connection timeout'
   Regex            | field REGEXP 'pattern'      | email REGEXP '^[a-z]+@'
   Array check      | has(field, value)           | has(body.tags, 'prod')
   Token search     | hasToken(field, "token")    | hasToken(body, "uuid123")
