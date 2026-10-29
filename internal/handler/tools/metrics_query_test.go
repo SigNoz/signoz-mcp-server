@@ -2,7 +2,17 @@ package tools
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/SigNoz/signoz-mcp-server/internal/config"
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
+	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
+	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 )
 
 // TestParseMetricMetadataFromResponse_PartialFieldDrift pins that when a
@@ -118,5 +128,62 @@ func TestParseMetricMetadataFromResponse_SubstringMatchIsNotTheMetric(t *testing
 	}
 	if meta != nil {
 		t.Fatalf("a substring match was used as the metric: %+v", meta)
+	}
+}
+
+// SigNoz always sends isMonotonic today; if a release stops sending it, the
+// result must say the value was assumed rather than report it as fetched.
+func TestQueryMetrics_ReportsIsMonotonicSigNozDidNotReturn(t *testing.T) {
+	tests := []struct {
+		name     string
+		metadata string
+		wantNote string
+	}{
+		{
+			name:     "sum without isMonotonic",
+			metadata: `{"type":"sum","temporality":"cumulative","unit":"","description":""}`,
+			wantNote: "isMonotonic: unknown (not returned by metadata; assumed false)",
+		},
+		{
+			name:     "sum with isMonotonic false",
+			metadata: `{"type":"sum","temporality":"cumulative","isMonotonic":false,"unit":"","description":""}`,
+			wantNote: "isMonotonic: false (auto-fetched)",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				switch r.URL.Path {
+				case "/api/v2/metrics/metadata":
+					_, _ = w.Write([]byte(`{"status":"success","data":` + tc.metadata + `}`))
+				case "/api/v5/query_range":
+					_, _ = w.Write([]byte(`{"status":"success","data":{"type":"scalar","data":{"results":[]}}}`))
+				default:
+					t.Errorf("unexpected API request: %s %s", r.Method, r.URL.Path)
+					w.WriteHeader(http.StatusBadRequest)
+				}
+			}))
+			t.Cleanup(backend.Close)
+			t.Setenv(config.SignozURL, strings.Replace(backend.URL, "127.0.0.1", "localhost", 1))
+			t.Setenv(config.SignozApiKey, "test-key")
+			cfg, err := config.LoadConfig()
+			require.NoError(t, err)
+			h := NewHandler(logpkg.New("error"), cfg)
+			ctx := util.SetAPIKey(util.SetSigNozURL(testCtx(), cfg.URL), cfg.APIKey)
+
+			result, err := h.handleQueryMetrics(ctx, makeToolRequest("signoz_query_metrics", map[string]any{
+				"metricName": "queue.depth.changes", "timeRange": "1h", "requestType": "scalar",
+			}))
+			require.NoError(t, err)
+			require.False(t, result.IsError, "%v", result.Content)
+			var text strings.Builder
+			for _, content := range result.Content {
+				if block, ok := mcp.AsTextContent(content); ok {
+					text.WriteString(block.Text + "\n")
+				}
+			}
+			require.Contains(t, text.String(), tc.wantNote)
+		})
 	}
 }

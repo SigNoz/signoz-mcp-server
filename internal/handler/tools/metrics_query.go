@@ -337,16 +337,22 @@ func (h *Handler) fetchMetricMetadata(ctx context.Context, client metricMetadata
 // when the body carries no metric type.
 func parseExactMetricMetadata(data json.RawMessage) *metricMetadata {
 	var resp struct {
-		Data apitypes.MetricsexplorertypesMetricMetadata `json:"data"`
+		Data struct {
+			apitypes.MetricsexplorertypesMetricMetadata
+			// Shadows the generated bool so an absent field differs from false.
+			IsMonotonic *bool `json:"isMonotonic"`
+		} `json:"data"`
 	}
 	if err := json.Unmarshal(data, &resp); err != nil || resp.Data.Type == "" {
 		return nil
 	}
+	metricType := normalizeMetricType(string(resp.Data.Type))
 	return &metricMetadata{
-		MetricType:         normalizeMetricType(string(resp.Data.Type)),
-		IsMonotonic:        resp.Data.IsMonotonic,
+		MetricType:         metricType,
+		IsMonotonic:        resp.Data.IsMonotonic != nil && *resp.Data.IsMonotonic,
 		Temporality:        string(resp.Data.Temporality),
 		TemporalityMissing: resp.Data.Temporality == "",
+		IsMonotonicMissing: metricType == "sum" && resp.Data.IsMonotonic == nil,
 	}
 }
 
