@@ -77,8 +77,7 @@ Valid reduceTo values: sum, count, avg, min, max, last, median
 
 Metric labels hold resource attributes and data-point attributes in one set, so groupBy and filter
 keys are plain label names with no context prefix: k8s.namespace.name, host.name, service_name,
-http.method. Discover them with signoz_get_field_keys (signal="metrics", metricName). The tool
-sends every groupBy key in attribute context, which reads the label.
+http.method. Discover them with signoz_get_field_keys (signal="metrics", metricName).
 
 ---
 

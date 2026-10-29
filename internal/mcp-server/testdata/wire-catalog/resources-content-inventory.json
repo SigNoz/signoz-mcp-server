@@ -241,8 +241,8 @@
         "kind": "text",
         "uri": "signoz://metrics-aggregation-guide",
         "mimeType": "text/markdown",
-        "serializedLength": 12356,
-        "sha256": "0094663d481710437cf79e2426c2aafcce2f7ebd5fb75065c570517997d1d356"
+        "serializedLength": 12277,
+        "sha256": "feaeba485c24670af0650adfa746f1bf84b4ee64575331f0b56033443b21cfb6"
       }
     ]
   },
