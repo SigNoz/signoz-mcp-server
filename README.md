@@ -977,7 +977,7 @@ Run sample spans through the mapping groups in a sandbox and return each span as
 - **Parameters**:
   - `spans` (required) - 1 to 100 sample spans, each `{attributes, resource}` with key-value maps. Example: `[{"attributes":{"llm.model_name":"gpt-4o","llm.token_count.prompt":120,"llm.token_count.completion":45}}]`
   - `groups` (optional) - Mapping groups to test instead of the saved ones, in the shape SigNoz accepts (`name`, `condition`, `enabled`, `mappers`). Omit to test the saved groups; an empty list tests none. A group without `mappers` uses the saved mappers of the group with the same name. SigNoz skips disabled groups, mappers, and condition keys, so set `enabled: true` on each
-- **Response**: `groupSource` (`saved` or `provided`), `testedGroups` (names of the enabled groups sent), `spans` (the mapped spans, in input order), and `collectorLogs`. A response without mapped spans is a coded upstream error
+- **Response**: `groupSource` (`saved` or `provided`), `testedGroups` (names of the enabled groups sent), `spans` (the mapped spans, in input order), and `collectorLogs`. `spans` and `groups` reach SigNoz exactly as sent, so large integers keep their precision; a response without one mapped span per sample is a coded upstream error
 
 
 

@@ -39,10 +39,10 @@ type mappingGroupSummary struct {
 }
 
 type aiAttributeMappingTestOutput struct {
-	GroupSource   string          `json:"groupSource"`
-	TestedGroups  []string        `json:"testedGroups"`
-	Spans         json.RawMessage `json:"spans"`
-	CollectorLogs json.RawMessage `json:"collectorLogs"`
+	GroupSource   string            `json:"groupSource"`
+	TestedGroups  []string          `json:"testedGroups"`
+	Spans         []json.RawMessage `json:"spans"`
+	CollectorLogs json.RawMessage   `json:"collectorLogs"`
 }
 
 // Where the tested groups came from.
@@ -173,7 +173,21 @@ func (h *Handler) handleTestAIAttributeMapping(ctx context.Context, req mcp.Call
 		tested = enabledGroupNames(groups)
 	}
 
-	body, err := json.Marshal(map[string]any{"spans": args["spans"], "groups": groups})
+	// Forward the client's spans and groups verbatim, so large integers reach SigNoz unrounded.
+	var raw struct {
+		Spans  json.RawMessage `json:"spans"`
+		Groups json.RawMessage `json:"groups"`
+	}
+	_ = json.Unmarshal(mcp.RawToolArguments(ctx), &raw)
+	spans := args["spans"]
+	if len(raw.Spans) > 0 {
+		spans = raw.Spans
+	}
+	if source == aiMappingGroupSourceProvided && len(raw.Groups) > 0 {
+		groups = raw.Groups
+	}
+	sent, _ := args["spans"].([]any)
+	body, err := json.Marshal(map[string]any{"spans": spans, "groups": groups})
 	if err != nil {
 		return validationErrorf("spans", "must be JSON-serializable: %v", err), nil
 	}
@@ -185,15 +199,15 @@ func (h *Handler) handleTestAIAttributeMapping(ctx context.Context, req mcp.Call
 
 	var resp struct {
 		Data *struct {
-			Spans         json.RawMessage `json:"spans"`
-			CollectorLogs json.RawMessage `json:"collectorLogs"`
+			Spans         []json.RawMessage `json:"spans"`
+			CollectorLogs json.RawMessage   `json:"collectorLogs"`
 		} `json:"data"`
 	}
-	if err := json.Unmarshal(respBody, &resp); err != nil || resp.Data == nil || len(resp.Data.Spans) == 0 || string(resp.Data.Spans) == "null" {
-		// Without the mapped spans the test answered nothing, so it must not look like a result.
+	if err := json.Unmarshal(respBody, &resp); err != nil || resp.Data == nil || resp.Data.Spans == nil || len(resp.Data.Spans) != len(sent) {
+		// Without one mapped span per sample the test answered nothing usable, so it must not look like a result.
 		h.logger.WarnContext(ctx, "Unexpected response shape from the span mapper test endpoint; upstream contract may have changed",
 			slog.String("response", logpkg.TruncBody(respBody)))
-		return upstreamResponseError("SigNoz returned the attribute mapping test without data.spans; retry, and report it if it persists"), nil
+		return upstreamResponseError("SigNoz did not return one mapped span per sample span; retry, and report it if it persists"), nil
 	}
 
 	out := aiAttributeMappingTestOutput{

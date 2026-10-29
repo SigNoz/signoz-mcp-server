@@ -11,6 +11,9 @@ import (
 	"sync"
 	"testing"
 
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
+
 	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 )
@@ -362,17 +365,47 @@ func TestTestAIAttributeMapping_UpstreamRejectionKeepsSigNozGuidance(t *testing.
 	}
 }
 
-func TestTestAIAttributeMapping_ResponseWithoutSpansIsAnUpstreamError(t *testing.T) {
-	h, _ := newAIToolsHandler(t, func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"status":"success","data":{"collectorLogs":[]}}`))
-	})
-	result, err := h.handleTestAIAttributeMapping(testCtx(), makeToolRequest("signoz_test_ai_attribute_mapping",
-		map[string]any{"spans": []any{map[string]any{"attributes": map[string]any{"model": "gpt-4o"}}}, "groups": []any{}}))
-	if err != nil {
-		t.Fatalf("unexpected Go error: %v", err)
+func TestTestAIAttributeMapping_ResponseWithoutOneSpanPerSampleIsAnUpstreamError(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		data string
+	}{
+		{"missing spans", `{"collectorLogs":[]}`},
+		{"empty spans", `{"spans":[],"collectorLogs":[]}`},
+		{"spans not an array", `{"spans":{"attributes":{}}}`},
+		{"fewer spans than sent", `{"spans":[{"attributes":{}}]}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h, _ := newAIToolsHandler(t, func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write([]byte(`{"status":"success","data":` + tc.data + `}`))
+			})
+			spans := []any{map[string]any{"attributes": map[string]any{"a": "1"}}, map[string]any{"attributes": map[string]any{"b": "2"}}}
+			result, err := h.handleTestAIAttributeMapping(testCtx(), makeToolRequest("signoz_test_ai_attribute_mapping",
+				map[string]any{"spans": spans, "groups": []any{}}))
+			if err != nil {
+				t.Fatalf("unexpected Go error: %v", err)
+			}
+			if got := resultCode(t, result); got != CodeUpstreamError {
+				t.Fatalf("code = %q, want %q: a test without one mapped span per sample must not look like a result", got, CodeUpstreamError)
+			}
+		})
 	}
-	if got := resultCode(t, result); got != CodeUpstreamError {
-		t.Fatalf("code = %q, want %q: a test without mapped spans must not look like a result", got, CodeUpstreamError)
+}
+
+func TestTestAIAttributeMapping_ForwardsLargeIntegersExactly(t *testing.T) {
+	h, requests := newAIToolsHandler(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(mappingTestResponse))
+	})
+	raw := `{"spans":[{"attributes":{"llm.model_name":"gpt-4o","request.id":9007199254740993}}],"groups":[]}`
+	handler := mcp.AdaptToolHandler(h.handleTestAIAttributeMapping)
+	result, err := handler(testCtx(), &sdkmcp.CallToolRequest{Params: &sdkmcp.CallToolParamsRaw{
+		Name: "signoz_test_ai_attribute_mapping", Arguments: json.RawMessage(raw)}})
+	if err != nil || result.IsError {
+		t.Fatalf("unexpected failure: err=%v", err)
+	}
+	got := requests()
+	if len(got) != 1 || !strings.Contains(got[0].Body, "9007199254740993") {
+		t.Fatalf("sent %#v, want the integer forwarded exactly", got)
 	}
 }
 

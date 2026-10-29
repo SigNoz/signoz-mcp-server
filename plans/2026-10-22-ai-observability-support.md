@@ -170,8 +170,9 @@ pagination contract.
   mapping test endpoint (`POST /api/v1/span_mapper_groups/test`). It defaults to the saved groups
   by sending each group without mappers, which SigNoz fills from the saved group of that name;
   an empty `groups` list tests none. The endpoint simulates in memory and saves nothing, so the
-  client marks the POST replay-safe and `TestGuardrail_ReadOnlyPOSTRetries` covers it; a response
-  without mapped spans is a coded upstream error. Its generated `SpanMapperTest` type landed in a
+  client marks the POST replay-safe and `TestGuardrail_ReadOnlyPOSTRetries` covers it; `spans` and
+  `groups` are forwarded from the raw arguments so integers above 2^53 stay exact, and a response
+  without one mapped span per sample is a coded upstream error. Its generated `SpanMapperTest` type landed in a
   `_test.go` file that `go build` skips, so `make gen-client` renames those files.
 
 ### 2026-10-27 — Guardrail exception for `signoz_aggregate_traces`
