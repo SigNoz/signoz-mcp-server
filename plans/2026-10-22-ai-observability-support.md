@@ -60,8 +60,7 @@ pagination contract.
 2. **`feat(traces)`: AI trace search.** `queryType`, `requestType` and `orderBy` on
    `signoz_search_traces`, built by `SpanSearch` (raw) and `TraceList` (trace).
    2b. **`feat(traces)`: AI aggregates and guide.** `queryType` on aggregate, the
-   `builder_ai_query` default limit in `ApplyBounds`, and the AI guide. Companion agent-skills
-   PR.
+   `builder_ai_query` default limit in `ApplyBounds`, and the AI guide.
 3. **`feat(ai)`: pricing and mapping read tools.** `signoz_get_ai_pricing`
    (`view: rules|unpriced_models`) and `signoz_list_ai_attribute_mappings`. Additive, so no
    agent-skills change is required.
@@ -263,7 +262,7 @@ pagination contract.
   was right for all 15. Two fixes followed: the guide now names which `ai_traces_*` example to
   copy (an agent had hand-built a request), and its resource description names cache tokens
   (an agent searched the docs first). The `signoz-generating-queries` skill loaded in 6 sessions
-  and does not know the AI guide; the agent-skills companion should link it.
+  and does not know the AI guide; updating the skill is separate from this plan.
 - PR 3: checked by hand against a local SigNoz: the mappings list returns the shipped
   `gen_ai.llm`, `gen_ai.tool` and `gen_ai.agent` groups with their mappers, and `llm.model_name`
   is a source of `gen_ai.request.model`. The local instance had no pricing rules, so the rules
@@ -301,10 +300,10 @@ Done. Agents can answer AI observability questions with the existing tools plus 
 
 Deferred, to be linked to issues:
 
-- The AI thread in `signoz_get_trace_details` (PR 5), until SigNoz's thread endpoint leaves alpha.
+- The AI thread in `signoz_get_trace_details` (PR 5): not done now because it is premature while
+  SigNoz's thread endpoint is alpha; revisit when it stabilizes.
 - Cutting long values across tools, one response-size policy instead of per-tool truncation.
 - Bumping `SIGNOZ_SPEC_REF` from the SigNoz/signoz#13282 branch head to its merge commit
   (`665e70b`), then to the release tag that carries it.
-- An agent-skills companion that teaches `signoz-generating-queries` the AI guide.
 - Saving AI queries: `AI_TRACES_BASED_ALERT` in the alert guide, and `ai_observability` saved
   views with an e2e test.
