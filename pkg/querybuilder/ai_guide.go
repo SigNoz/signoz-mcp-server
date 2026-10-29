@@ -37,9 +37,10 @@ and span fields are in signoz://traces/query-builder-guide.
 - builder_ai_query sees only spans with gen_ai.* keys. At ingest, SigNoz maps common vendor keys
   (OpenInference, OpenLLMetry, Vercel AI SDK, and others; for example llm.model_name to
   gen_ai.request.model), so those spans count. A span whose keys no mapping covers is not an AI span
-  to it: check the mappings with signoz_list_ai_attribute_mappings, suggest the user add a mapping
-  for those keys on the Attribute Mapping tab of AI Observability, which applies to spans ingested
-  afterwards, and query spans already stored with builder_query on their own keys.
+  to it: check the mappings with signoz_list_ai_attribute_mappings, try a sample span with
+  signoz_test_ai_attribute_mapping, suggest the user add a mapping for those keys on the Attribute
+  Mapping tab of AI Observability, which applies to spans ingested afterwards, and query spans
+  already stored with builder_query on their own keys.
 
 == CHOOSING THE LEVEL ==
 

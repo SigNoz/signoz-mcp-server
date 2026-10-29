@@ -2,9 +2,9 @@
 
 The pricing tool pages SigNoz's pricing rules and the unpriced-model list, the mappings
 tool joins each mapping group with its mappers, and the test tool runs a span through the
-saved groups. All three parse real responses here so upstream drift fails a test, not a user. Self-hosted SigNoz ships no prices, so
-the rules view is checked for its envelope, and a seeded model no rule prices gives the
-unpriced view a real entry.
+saved groups. All three parse real responses here, so upstream drift fails a test, not a
+user. Self-hosted SigNoz ships no prices, so the rules view is checked for its envelope,
+and a seeded model no rule prices gives the unpriced view a real entry.
 """
 
 import uuid

@@ -362,6 +362,20 @@ func TestTestAIAttributeMapping_UpstreamRejectionKeepsSigNozGuidance(t *testing.
 	}
 }
 
+func TestTestAIAttributeMapping_ResponseWithoutSpansIsAnUpstreamError(t *testing.T) {
+	h, _ := newAIToolsHandler(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"status":"success","data":{"collectorLogs":[]}}`))
+	})
+	result, err := h.handleTestAIAttributeMapping(testCtx(), makeToolRequest("signoz_test_ai_attribute_mapping",
+		map[string]any{"spans": []any{map[string]any{"attributes": map[string]any{"model": "gpt-4o"}}}, "groups": []any{}}))
+	if err != nil {
+		t.Fatalf("unexpected Go error: %v", err)
+	}
+	if got := resultCode(t, result); got != CodeUpstreamError {
+		t.Fatalf("code = %q, want %q: a test without mapped spans must not look like a result", got, CodeUpstreamError)
+	}
+}
+
 func assertJSONEqual(t *testing.T, want, got string) {
 	t.Helper()
 	var wantValue, gotValue any
@@ -375,19 +389,5 @@ func assertJSONEqual(t *testing.T, want, got string) {
 	gotJSON, _ := json.Marshal(gotValue)
 	if string(wantJSON) != string(gotJSON) {
 		t.Fatalf("JSON differs\nwant %s\ngot  %s", wantJSON, gotJSON)
-	}
-}
-
-func TestTestAIAttributeMapping_ResponseWithoutSpansIsAnUpstreamError(t *testing.T) {
-	h, _ := newAIToolsHandler(t, func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"status":"success","data":{"collectorLogs":[]}}`))
-	})
-	result, err := h.handleTestAIAttributeMapping(testCtx(), makeToolRequest("signoz_test_ai_attribute_mapping",
-		map[string]any{"spans": []any{map[string]any{"attributes": map[string]any{"model": "gpt-4o"}}}, "groups": []any{}}))
-	if err != nil {
-		t.Fatalf("unexpected Go error: %v", err)
-	}
-	if got := resultCode(t, result); got != CodeUpstreamError {
-		t.Fatalf("code = %q, want %q: a test without mapped spans must not look like a result", got, CodeUpstreamError)
 	}
 }

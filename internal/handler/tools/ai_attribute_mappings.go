@@ -157,8 +157,10 @@ func (h *Handler) handleTestAIAttributeMapping(ctx context.Context, req mcp.Call
 		}
 		headers := make([]map[string]any, 0, len(saved))
 		for _, raw := range saved {
-			_, summary, ok := h.decodeMappingGroup(ctx, raw)
-			if !ok {
+			// SigNoz matches a group's saved mappers by name, so the id is not needed here.
+			var summary mappingGroupSummary
+			if err := json.Unmarshal(raw, &summary); err != nil || summary.Name == "" {
+				h.logger.WarnContext(ctx, "Span mapper group without a usable name; upstream contract may have changed", slog.String("group", logpkg.TruncBody(raw)))
 				continue
 			}
 			headers = append(headers, map[string]any{"name": summary.Name, "condition": summary.Condition, "enabled": summary.Enabled})
