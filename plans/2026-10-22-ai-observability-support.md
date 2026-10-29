@@ -69,7 +69,8 @@ pagination contract.
    Haiku eval (see the 2026-10-29 decisions). Notes on `builder_ai_query` results (done: trace-row
    window and full-trace values, aggregation window, cost as a USD estimate, cache tokens inside
    `total_tokens`, wider window when empty); previews cut to 1,000 characters with a truncation
-   flag (done: AI trace rows' `input` and `output`, rows marked `truncated`, plus a note); a
+   flag (done: the MCP server cuts AI trace rows' `input` and `output`, which SigNoz returns in
+   full, marks those rows `truncated`, and adds a note); a
    $0-cost hint pointing at unpriced models, with a WARN log when expected fields are missing
    (done: a count of AI trace rows whose LLM calls have null or 0 cost, a note on cost
    aggregations, and a WARN when trace rows lack `estimated_total_cost`); the empty-result note
