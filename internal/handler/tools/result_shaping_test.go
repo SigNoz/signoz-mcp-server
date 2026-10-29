@@ -111,6 +111,28 @@ func TestQueryTools_SendResultShapingUpstream(t *testing.T) {
 		require.Equal(t, []string{"service.name", "severity_text"}, groupByNames(spec))
 	})
 
+	t.Run("groupBy sent as a JSON-encoded array string is read as that array", func(t *testing.T) {
+		_, specs := upstreamSpecs(t, "signoz_aggregate_logs", map[string]any{
+			"aggregations": "count()",
+			"groupBy":      ` ["http.route", "response_status_code"] `,
+			"timeRange":    "1h",
+		})
+		require.Equal(t, []string{"http.route", "response_status_code"}, groupByNames(specs["A"]))
+
+		_, specs = upstreamSpecs(t, "signoz_query_metrics", map[string]any{
+			"metricName": "http_requests_total",
+			"metricType": "gauge",
+			"groupBy":    `["service.name"]`,
+			"formula":    "A / B",
+			"timeRange":  "1h",
+			"formulaQueries": []any{map[string]any{
+				"name": "B", "metricName": "http_requests_total", "metricType": "gauge", "groupBy": `["service.name","host.name"]`,
+			}},
+		})
+		require.Equal(t, []string{"service.name"}, groupByNames(specs["A"]))
+		require.Equal(t, []string{"service.name", "host.name"}, groupByNames(specs["B"]))
+	})
+
 	t.Run("query_metrics bounds the formula result and reads typed formulaQueries", func(t *testing.T) {
 		text, specs := upstreamSpecs(t, "signoz_query_metrics", map[string]any{
 			"metricName":  "http_requests_total",

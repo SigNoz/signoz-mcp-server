@@ -97,13 +97,22 @@ func parseOrderBy(raw string) (key, direction string) {
 }
 
 // parseFieldNameList reads a field-name list parameter given as an array of
-// strings or a comma-separated string. Blank names are dropped.
+// strings, a JSON-encoded string of one, or a comma-separated string. Blank
+// names are dropped.
 func parseFieldNameList(param string, raw any) ([]string, error) {
 	var names []string
 	switch v := raw.(type) {
 	case nil:
 	case string:
-		names = strings.Split(v, ",")
+		// Some clients stringify arrays; splitting "[\"a\",\"b\"]" on commas
+		// would send SigNoz keys with brackets and quotes in their names.
+		if trimmed := strings.TrimSpace(v); strings.HasPrefix(trimmed, "[") {
+			if err := json.Unmarshal([]byte(trimmed), &names); err != nil {
+				return nil, fmt.Errorf(`invalid %q value: not a valid JSON array of field names (%v); pass an array of field names or a comma-separated string, e.g. "http.route, db.statement"`, param, err)
+			}
+		} else {
+			names = strings.Split(v, ",")
+		}
 	case []any:
 		for _, item := range v {
 			name, ok := item.(string)
