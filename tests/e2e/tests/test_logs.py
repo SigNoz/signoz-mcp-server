@@ -236,10 +236,31 @@ def test_missing_filter_key_returns_no_rows_with_the_taught_warning(
     )
 
 
-def test_body_field_group_by_fails_with_a_taught_message(mcp_client: MCPClient, test_id: str, telemetry: None) -> None:
-    """Grouping by a body field fails with one of the two messages the log groupBy description quotes."""
+def test_unlisted_body_field_cannot_be_grouped(mcp_client: MCPClient, test_id: str, telemetry: None) -> None:
+    """With JSON bodies ingested, field keys list no body paths, and grouping by one fails as the groupBy description says."""
     service = f"mcp-e2e-{test_id}"
-    seed_logs(service, f"marker-{test_id}", count=2)
+    seed_logs(service, f'{{"mcp_e2e_field": "{test_id}"}}', count=2)
+
+    def seeded_rows() -> list:
+        result = mcp_client.call_tool(
+            "signoz_search_logs",
+            {"searchContext": "find the seeded JSON-body logs", "service": service, "timeRange": "1h"},
+        )
+        assert_tool_ok(result)
+        return query_range_rows(first_text_block(result))
+
+    wait_for(lambda: seeded_rows() or None, "seeded JSON-body logs searchable")
+
+    listed = mcp_client.call_tool(
+        "signoz_get_field_keys",
+        {"searchContext": "which body fields can I group by", "signal": "logs", "fieldContext": "body"},
+    )
+    assert_tool_ok(listed)
+    body_keys = first_json(listed)["data"]["keys"]
+    assert not body_keys, (
+        f"field keys list body paths, so the groupBy description says they can be grouped: {body_keys}"
+    )
+
     grouped = mcp_client.call_tool(
         "signoz_aggregate_logs",
         {
@@ -251,11 +272,11 @@ def test_body_field_group_by_fails_with_a_taught_message(mcp_client: MCPClient, 
         },
     )
     assert grouped.get("isError", False), (
-        f"a body-field group-by ran, but the descriptions teach that it is rejected: {first_text_block(grouped)[:400]}"
+        f"an unlisted body field grouped, but the descriptions teach that it is rejected: {first_text_block(grouped)[:400]}"
     )
     message = first_text_block(grouped)
     assert "can be filtered but not selected or grouped" in message or "field not found" in message, (
-        f"a body-field group-by failed with a message other than the taught ones: {message[:400]}"
+        f"an unlisted body field failed with a message other than the taught ones: {message[:400]}"
     )
 
 

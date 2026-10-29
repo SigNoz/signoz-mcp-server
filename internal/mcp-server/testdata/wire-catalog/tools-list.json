@@ -94,7 +94,7 @@
                 ]
               },
               "groupBy": {
-                "description": "Field names to group results by, as an array or a comma-separated string (e.g. [\"service.name\", \"severity_text\"] or 'service.name, severity_text'). Leave empty for a single aggregate value. Group by keys signoz_get_field_keys returns: an unknown key can come back as one empty group, and a body field (body.\u003cpath\u003e) is usually rejected, with `can be filtered but not selected or grouped` or, where the workspace stores JSON log bodies, `field not found`; filter on body fields instead.",
+                "description": "Field names to group results by, as an array or a comma-separated string (e.g. [\"service.name\", \"severity_text\"] or 'service.name, severity_text'). Leave empty for a single aggregate value. Group by keys signoz_get_field_keys returns; an unknown key can come back as one empty group. A body field (body.\u003cpath\u003e) can be grouped only when signoz_get_field_keys(signal=\"logs\", fieldContext=\"body\") lists it; otherwise SigNoz rejects it with `can be filtered but not selected or grouped` or `field not found`, so filter on it instead.",
                 "items": {
                   "type": "string"
                 },
@@ -7552,7 +7552,7 @@
                 "type": "string"
               },
               "selectFields": {
-                "description": "Extra fields to return on each row, added to the default set: timestamp, id, body, severity_text, trace_id, span_id. Pass an array of names or a comma-separated string, at most 50. Names can be resource attributes (service.name, k8s.pod.name), log attributes (http.route), or other log columns (severity_number); a resource., attribute., log., or body. prefix picks the context. Each field comes back as its own row key. Body fields (body.\u003cpath\u003e) are usually rejected here, with `can be filtered but not selected or grouped` or `field not found`; filter on them instead. Discover names with signoz_get_field_keys (signal=\"logs\"). Example: [\"service.name\", \"http.route\"].",
+                "description": "Extra fields to return on each row, added to the default set: timestamp, id, body, severity_text, trace_id, span_id. Pass an array of names or a comma-separated string, at most 50. Names can be resource attributes (service.name, k8s.pod.name), log attributes (http.route), or other log columns (severity_number); a resource., attribute., log., or body. prefix picks the context. Each field comes back as its own row key. A body field (body.\u003cpath\u003e) can be selected only when signoz_get_field_keys(signal=\"logs\", fieldContext=\"body\") lists it; otherwise SigNoz rejects it with `can be filtered but not selected or grouped` or `field not found`, so filter on it instead. Discover names with signoz_get_field_keys (signal=\"logs\"). Example: [\"service.name\", \"http.route\"].",
                 "items": {
                   "type": "string"
                 },
