@@ -60,6 +60,26 @@ def test_seeded_logs_are_searchable(mcp_client: MCPClient, test_id: str, telemet
     assert "hasMore" in note_blocks(result), f"expected a completeness note with hasMore: {note_blocks(result)!r}"
 
 
+def test_body_regexp_with_doubled_backslashes_matches_the_message(
+    mcp_client: MCPClient, test_id: str, telemetry: None
+) -> None:
+    """The body REGEXP example in signoz://dashboard/query-builder-example matches as taught."""
+    marker = f"mcp-e2e-regexp-{test_id}"
+    seed_logs(f"mcp-e2e-{test_id}", f"[SnapshotGenerator id=42] {marker}")
+    # A filter literal doubles each backslash, so SigNoz receives the regex ^\[SnapshotGenerator id=\d+\].
+    expression = f"body REGEXP '^\\\\[SnapshotGenerator id=\\\\d+\\\\] {marker}$'"
+
+    def found() -> bool:
+        result = mcp_client.call_tool(
+            "signoz_search_logs",
+            {"searchContext": "find snapshot generator logs", "filter": expression, "timeRange": "1h", "limit": "10"},
+        )
+        assert not result.get("isError", False), f"body REGEXP was rejected: {text_blocks(result)[:400]}"
+        return marker in text_blocks(result)
+
+    wait_for(found, f"body REGEXP matches {marker}")
+
+
 def test_explicit_search_scopes_quoting_and_warning_round_trip(
     mcp_client: MCPClient, test_id: str, telemetry: None
 ) -> None:
@@ -264,3 +284,20 @@ def test_search_scope_without_search_text_is_ignored_with_a_note(
 
     unknown = search(searchScope="everywhere")
     assert unknown.get("isError", False), "an unknown searchScope is still rejected"
+
+
+def test_severity_shortcut_matches_any_case_as_a_prefix(mcp_client: MCPClient, test_id: str, telemetry: None) -> None:
+    """The severity shortcut finds WARNING logs from warn, while = in a filter stays exact."""
+    service = f"mcp-e2e-{test_id}"
+    seed_logs(service, f"marker-{test_id}", severity="WARNING", count=2)
+
+    def search(**arguments: str) -> list[dict]:
+        result = mcp_client.call_tool(
+            "signoz_search_logs",
+            {"searchContext": "warning logs", "service": service, "timeRange": "1h", **arguments},
+        )
+        return query_range_rows(first_text_block(assert_tool_ok(result)))
+
+    rows = wait_for(lambda: search(severity="warn"), f"WARNING logs for {service} found by severity=warn")
+    assert len(rows) == 2, rows
+    assert not search(filter="severity_text = 'warning'"), "= in a filter matched logs recorded as WARNING"

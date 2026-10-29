@@ -125,7 +125,7 @@
           "description": "Read this before writing Query Builder v5 JSON for logs or filtering on unfamiliar log fields. It explains filter syntax, field discovery, body, JSON-path, and cross-field search(), row and aggregate queries, stable pagination, limits, ordering, timestamps, and examples for rows, single values, and time series.",
           "mimeType": "text/markdown",
           "name": "Logs Query Builder Guide",
-          "size": 13838,
+          "size": 14431,
           "uri": "signoz://logs/query-builder-guide"
         },
         {
@@ -153,7 +153,7 @@
           "description": "Read this when composing a Query Builder dashboard widget. It covers signal-specific aggregations, filters, metric naming, grouped legends, functions, and examples; use the ClickHouse or PromQL resources instead for those query types.",
           "mimeType": "text/markdown",
           "name": "Query Builder Examples",
-          "size": 16562,
+          "size": 16908,
           "uri": "signoz://dashboard/query-builder-example"
         },
         {

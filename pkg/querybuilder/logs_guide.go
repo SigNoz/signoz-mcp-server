@@ -13,6 +13,10 @@ INCORRECT: "filter": {"op": "AND", "items": [...]}
 Operators: =  !=  >  >=  <  <=  IN  NOT IN  LIKE  NOT LIKE  ILIKE  NOT ILIKE  CONTAINS  NOT CONTAINS  REGEXP  NOT REGEXP  BETWEEN  NOT BETWEEN  EXISTS  NOT EXISTS
 Combine:   AND  OR  (use parentheses for precedence)
 
+No other operators exist: write STARTS WITH as LIKE 'prefix%', IS NULL as NOT EXISTS, and IS NOT NULL
+as EXISTS. A condition is key, operator, value; key:value is not filter syntax. A bare word or quoted
+phrase with no key is a full-text search, as with search() below.
+
 Examples:
   severity_text = 'ERROR'
   body CONTAINS 'timeout'
@@ -52,7 +56,10 @@ Use these directly by name in filter expressions:
 
   timestamp       datetime  - log timestamp (stored as Unix NANOSECONDS; see TIMESTAMP FORMAT)
   body            string    - rendered log body
-  severity_text   string    - recorded severity; DEBUG, INFO, WARN, ERROR, and FATAL are common examples, not an exhaustive enum
+  severity_text   string    - recorded severity, as the source wrote it; DEBUG, INFO, WARN, ERROR, and FATAL are common
+                              examples, not an exhaustive enum. = is case-sensitive, so ERROR does not match error;
+                              discover the values first, or use IN ('ERROR', 'error') when both spellings occur.
+                              The severity shortcut on the log tools matches any case and as a prefix
   severity_number number    - numeric severity when present
   trace_id        string    - linked trace identifier
   span_id         string    - linked span identifier
