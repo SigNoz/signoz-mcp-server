@@ -556,4 +556,12 @@ var TraceDetailSelectFields = []FieldKey{
 	NewFieldKey("db.operation", "traces", "tag", "string"),
 	NewFieldKey("db.statement", "traces", "tag", "string"),
 	NewFieldKey("db.system", "traces", "tag", "string"),
+	// AI spans: the model, tool, or agent a call used and its usage; null on other spans
+	NewFieldKey("gen_ai.operation.name", "traces", "tag", "string"),
+	NewFieldKey("gen_ai.request.model", "traces", "tag", "string"),
+	NewFieldKey("gen_ai.usage.input_tokens", "traces", "tag", "number"),
+	NewFieldKey("gen_ai.usage.output_tokens", "traces", "tag", "number"),
+	NewFieldKey("signoz.gen_ai.usage.tokens.cost", "traces", "tag", "number"),
+	NewFieldKey("gen_ai.tool.name", "traces", "tag", "string"),
+	NewFieldKey("gen_ai.agent.name", "traces", "tag", "string"),
 }

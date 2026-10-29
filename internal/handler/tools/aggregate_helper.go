@@ -241,10 +241,11 @@ func parseAggregateArgs(args map[string]any, signal string, filterExpr string) (
 // aggregateNotes returns the advisory notes an aggregate request earns before
 // the result is read: today only that functions do nothing on scalar results.
 func aggregateNotes(reqData *AggregateRequest) []string {
+	var notes []string
 	if len(reqData.Functions) > 0 && reqData.RequestType == "scalar" {
-		return []string{functionsIgnoredOnScalarNote}
+		notes = append(notes, functionsIgnoredOnScalarNote)
 	}
-	return nil
+	return notes
 }
 
 // parseAggregationsArg reads aggregations: one expression string, an array of

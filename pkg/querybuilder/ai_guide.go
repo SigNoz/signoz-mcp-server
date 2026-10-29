@@ -77,7 +77,8 @@ Where they work:
   - one call is all trace-level (trace.) or all span-level aggregations, never both;
     avg(trace.estimated_total_cost) with p99(duration_nano) is rejected, so make two calls;
   - no sumIf-style conditions on trace. keys; put the condition in filter.
-  count() counts spans; count_distinct(trace_id) counts AI traces.
+  count() counts spans and count_distinct(trace_id) counts AI traces; both are span-level, so
+  never put them in the same call as a trace. key.
 - Filters: with span rows and trace rows (signoz_search_traces) and with aggregations. Combine them
   with span-level conditions using a top-level AND; SigNoz rejects OR or NOT across the two levels.
   A span-level condition keeps the traces that have at least one matching span inside the time
@@ -120,6 +121,10 @@ AI spend by model, per call (signoz_aggregate_traces, default queryType):
 Failing tool calls (signoz_search_traces, default queryType):
   {"filter": "gen_ai.tool.name EXISTS AND has_error = true", "selectFields": ["gen_ai.tool.name"],
    "timeRange": "6h"}
+
+Slowest LLM calls (signoz_search_traces, default queryType):
+  {"filter": "gen_ai.request.model EXISTS", "orderBy": "duration_nano desc",
+   "selectFields": ["gen_ai.request.model"], "timeRange": "1h"}
 
 For a full query_range request (signoz_execute_builder_query, a script, an alert, or a dashboard),
 read signoz://query-builder/examples and copy the matching ai_traces_* example instead of writing one:
