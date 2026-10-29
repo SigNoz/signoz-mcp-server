@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -21,8 +20,6 @@ import (
 func legacyAggregationParamsError() error {
 	return fmt.Errorf(`%s "aggregation" and "aggregateOn" were replaced by "aggregations", which takes the full expressions; for example {"aggregations": ["count()", "p99(duration_nano)"]}`, validationErrorPrefix)
 }
-
-const conflictingFilterAliasError = "both 'filter' and 'query' were provided with different values; use only 'filter' (the 'query' alias is legacy)"
 
 var traceGroupByFieldMetadata = map[string]querybuilder.FieldKey{
 	"trace_id":             querybuilder.NewFieldKey("trace_id", "traces", "span", "string"),
@@ -76,28 +73,6 @@ var traceGroupByFieldMetadata = map[string]querybuilder.FieldKey{
 	"db.statement":              querybuilder.NewFieldKey("db.statement", "traces", "tag", "string"),
 	"db.system":                 querybuilder.NewFieldKey("db.system", "traces", "tag", "string"),
 	"messaging.system":          querybuilder.NewFieldKey("messaging.system", "traces", "tag", "string"),
-}
-
-// readFilterExpr returns the QB filter expression, accepting the canonical
-// "filter" key and the legacy "query" alias. TrimSpace is used only to decide
-// presence/equality; the returned expression preserves the caller's original
-// text. Never log filter expressions here because they can contain user data.
-func readFilterExpr(args map[string]any) (string, error) {
-	filterRaw := stringValue(args["filter"])
-	queryRaw := stringValue(args["query"])
-	filterTrimmed := strings.TrimSpace(filterRaw)
-	queryTrimmed := strings.TrimSpace(queryRaw)
-
-	if filterTrimmed != "" && queryTrimmed != "" && filterTrimmed != queryTrimmed {
-		return "", errors.New(conflictingFilterAliasError)
-	}
-	if filterTrimmed != "" {
-		return filterRaw, nil
-	}
-	if queryTrimmed != "" {
-		return queryRaw, nil
-	}
-	return "", nil
 }
 
 func stringValue(v any) string {
@@ -241,10 +216,11 @@ func parseAggregateArgs(args map[string]any, signal string, filterExpr string) (
 // aggregateNotes returns the advisory notes an aggregate request earns before
 // the result is read: today only that functions do nothing on scalar results.
 func aggregateNotes(reqData *AggregateRequest) []string {
+	var notes []string
 	if len(reqData.Functions) > 0 && reqData.RequestType == "scalar" {
-		return []string{functionsIgnoredOnScalarNote}
+		notes = append(notes, functionsIgnoredOnScalarNote)
 	}
-	return nil
+	return notes
 }
 
 // parseAggregationsArg reads aggregations: one expression string, an array of

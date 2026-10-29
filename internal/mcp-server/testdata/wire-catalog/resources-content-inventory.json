@@ -7,8 +7,8 @@
         "kind": "text",
         "uri": "signoz://ai/query-builder-guide",
         "mimeType": "text/markdown",
-        "serializedLength": 8955,
-        "sha256": "545e15505d53673837bb773652400d434379e7a1bd2d68a336e4e55ac3720b94"
+        "serializedLength": 9257,
+        "sha256": "2f0011822f9a93654cf080bc5c949bdfee35f6f161dc47ada9e7fcd44d963b4c"
       }
     ]
   },
@@ -241,8 +241,8 @@
         "kind": "text",
         "uri": "signoz://metrics-aggregation-guide",
         "mimeType": "text/markdown",
-        "serializedLength": 11960,
-        "sha256": "11c5ebec6f8ad07febdfa9ed46e7f28e6d0c462ef943ad5b36fd9b27c8b4a3df"
+        "serializedLength": 12637,
+        "sha256": "b654403332ff75f79e4dc31afff6a891c4405f12d1a5386a7be249ce65765e80"
       }
     ]
   },

@@ -548,20 +548,20 @@ Query a known metric for values, trends, breakdowns, or formulas. The tool appli
 
 - **Parameters**:
   - `metricName` (required) - Metric name to query
-  - `metricType` (optional) - gauge, sum, histogram, exponential_histogram (auto-fetched if absent)
+  - `metricType` (optional) - gauge, sum, histogram, exponential_histogram, summary (auto-fetched if absent)
   - `isMonotonic` (optional) - Boolean (or the strings `"true"`/`"false"`); auto-fetched if absent. An invalid value is rejected rather than silently treated as false
   - `temporality` (optional) - cumulative, delta, unspecified (auto-fetched if absent)
-  - `timeAggregation` (optional) - Aggregation over time (auto-defaulted by type)
-  - `spaceAggregation` (optional) - Aggregation across dimensions (auto-defaulted by type)
-  - `groupBy` (optional) - Comma-separated field names or an array. Resource context is inferred for `k8s.*`, `container.*`, `host.*`, `cloud.*`, `deployment.*`, `process.*`, `service.*`, `telemetry.*`, and `os.*`; other names use attribute context
-  - `filter` (optional) - Filter expression
+  - `timeAggregation` (optional) - Aggregation within each series per time bucket (defaulted by type when omitted; SigNoz validates the combination)
+  - `spaceAggregation` (optional) - Aggregation across series (defaulted by type when omitted; percentiles are histogram-only). Summary metrics need both aggregations set
+  - `groupBy` (optional) - Label names to group by, as an array or a comma-separated string. Metric labels hold resource and data-point attributes in one set, so names need no context prefix. An array item that is not a string is rejected with a coded error
+  - `filter` (optional) - Filter expression. The former `query` alias is rejected with a coded error that names `filter`
   - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '7d'; default: '1h'; ignored when both `start` and `end` are provided)
   - `start`/`end` (optional) - Unix ms timestamps. When both are provided, they override `timeRange`.
   - `stepInterval` (optional) - Step in seconds (auto-calculated if omitted)
   - `requestType` (optional) - Response format. Enum: `time_series` (default), `scalar`. Unknown values are rejected.
-  - `reduceTo` (optional) - For scalar: sum, count, avg, min, max, last, median
+  - `reduceTo` (required when `requestType` is `scalar`) - How to reduce each series to one value: `last`, `max`, `min`, `avg`, `sum`, `count`, `median`. It has no default; SigNoz rejects a scalar request without it. For a total count use `timeAggregation: increase` with `reduceTo: sum`
   - `formula` (optional) - Expression over named queries (e.g., "A / B * 100")
-  - `formulaQueries` (optional) - Array of additional named metric queries for `formula`, or a JSON-encoded string of that array. The item schema is typed: `name` and `metricName` are required; `metricType`, `isMonotonic`, `temporality`, `timeAggregation`, `spaceAggregation`, `groupBy` (array or comma-separated string), and `filter` mirror the top-level parameters and are auto-fetched or defaulted the same way.
+  - `formulaQueries` (optional) - Array of additional named metric queries for `formula`, or a JSON-encoded string of that array. The item schema is typed: `name` and `metricName` are required; `metricType`, `isMonotonic`, `temporality`, `timeAggregation`, `spaceAggregation`, `reduceTo`, `groupBy` (array or comma-separated string), and `filter` mirror the top-level parameters and are auto-fetched or defaulted the same way.
   - `limit` (optional) - Maximum number of groups (series) in the result (default: 100, max: 10000; higher values are clamped). With a formula, limit applies to the formula result; formula inputs are not limited
   - `orderBy` (optional) - Result order as `<key> <direction>`, where the key is `__result` or a `groupBy` field (e.g. `__result asc`; default: `__result desc`)
   - `having` (optional) - Condition on the primary query's aggregated values, applied after grouping (e.g. `__result > 0.5`). With a formula it filters query A's series before the formula runs; SigNoz ignores a `having` on the formula result itself, so the tool never sends one there. SigNoz validates it
@@ -914,6 +914,7 @@ Return individual paginated span rows matching service, operation, error, durati
   - `queryType` (optional) - `builder_query` (default) searches all traces. Set `builder_ai_query` for AI observability queries: it searches AI traces (traces with an LLM, tool, or agent span), its span rows are only those spans, and `filter` also accepts the trace-level fields `trace.llm_call_count`, `trace.tool_call_count`, `trace.distinct_tool_count`, `trace.input_tokens`, `trace.output_tokens`, `trace.total_tokens`, `trace.estimated_total_cost`, and `trace.max_llm_duration_nano`, e.g. `trace.tool_call_count > 10`. An unknown value runs as `builder_query` with an input validation notice
   - `requestType` (optional) - `raw` (default; one row per span) or `trace` (one row per trace). Span-level filters, including `operation`, `error`, `minDuration`, and `maxDuration`, keep the traces with at least one matching span, and `selectFields` does not apply to trace rows. `builder_query` trace rows carry `trace_id`, the root span `name`, `service.name`, `duration_nano`, and `span_count` (the spans matching the filter). `builder_ai_query` trace rows carry the trace-level fields without the `trace.` prefix (such as `llm_call_count`), plus `root_span_name`, `span_count`, `trace_duration_nano`, `error_count`, and the input and output message JSON. An unknown value runs as `raw` with an input validation notice
   - **Completeness note**: the response appends a note reporting `hasMore` (inferred from `returnedRows == limit`) and the `nextOffset` to fetch, so a truncated page is never mistaken for the full result set
+  - **AI notes**: with `queryType: builder_ai_query`, trace rows add a note that filters, `orderBy`, and the limit use the time window while values cover the whole trace, that cost is a USD estimate (null for unpriced models, listed by `signoz_get_ai_pricing` with `view=unpriced_models`), and that `total_tokens` includes cache tokens; an empty result adds a note suggesting a wider window, or finding the app's own model and tool keys with `signoz_get_field_keys`, checking `signoz_list_ai_attribute_mappings`, and mapping them to `gen_ai.*` on the Attribute Mapping tab
   - **Output note**: raw result row keys follow canonical Query Builder field names (for example `trace_id`, `span_id`, `duration_nano`, `has_error`). Legacy caller-provided filters such as `hasError` still pass through to the backend alias layer, but new response parsers should read the canonical snake_case keys.
   - **Key-not-found errors**: a filter referencing a key absent from this workspace's traces metadata fails with recovery guidance in the error text plus a machine-readable `missingKeys` array in the structured error content
 
@@ -937,13 +938,14 @@ Return custom aggregate statistics over spans (counts, rates, latency percentile
   - `start` / `end` (optional) - Start/end time in unix milliseconds. When both are provided, they override `timeRange`.
   - `requestType` (optional) - `scalar` (default; one aggregate value over the whole range) or `time_series` (one value per time bucket). Unknown values are rejected.
   - `stepInterval` (optional) - Time bucket size in seconds for `time_series` mode. Accepts a number or numeric string (backend auto-selects when omitted)
-  - `queryType` (optional) - `builder_query` (default) aggregates spans of all traces. Set `builder_ai_query` for AI observability queries: it aggregates spans of AI traces, and `aggregations`, `filter`, and `orderBy` also accept the trace-level fields listed for `signoz_search_traces`, e.g. `avg(trace.estimated_total_cost)`. One call cannot mix trace-level and span-level aggregations. Count AI traces with `count_distinct(trace_id)`. An unknown value runs as `builder_query` with an input validation notice
+  - `queryType` (optional) - `builder_query` (default) aggregates spans of all traces. Set `builder_ai_query` for AI observability queries: it aggregates spans of AI traces, and `aggregations`, `filter`, and `orderBy` also accept the trace-level fields listed for `signoz_search_traces`, e.g. `avg(trace.estimated_total_cost)`. One call cannot mix trace-level and span-level aggregations; `count()` and `count_distinct(trace_id)` are span-level, so count AI traces with `count_distinct(trace_id)` in a separate call. An unknown value runs as `builder_query` with an input validation notice
   - **Time-series ranking note**: the limit selects top groups over the whole requested window, not independently per bucket. Narrow the window or adjust the limit when a short-lived series could otherwise be hidden.
+  - **AI note**: with `queryType: builder_ai_query`, the response adds a note that only spans inside the time window count, that cost is a USD estimate, and that total tokens include cache tokens. Aggregations over a cost key add a note that null or 0 cost means an unpriced model, pointing at `signoz_get_ai_pricing`
   - **Key-not-found errors**: a filter referencing a key absent from this workspace's traces metadata fails with recovery guidance in the error text plus a machine-readable `missingKeys` array in the structured error content
 
 #### `signoz_get_trace_details`
 
-For a known trace ID, return its spans, metadata, and hierarchy. Use `signoz_search_traces` first when the ID is unknown. SigNoz locates the trace by its ID alone, so the tool takes no time window; an ID SigNoz does not know returns no spans.
+For a known trace ID, return its spans, metadata, and hierarchy. Use `signoz_search_traces` first when the ID is unknown. SigNoz locates the trace by its ID alone, so the tool takes no time window; an ID SigNoz does not know returns no spans. Each span includes the AI fields `gen_ai.operation.name`, `gen_ai.request.model`, `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`, `signoz.gen_ai.usage.tokens.cost`, `gen_ai.tool.name`, and `gen_ai.agent.name`, which are null on spans without them.
 
 - **Parameters**:
   - `traceId` (required) - Known trace ID, usually discovered with `signoz_search_traces`

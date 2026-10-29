@@ -29,6 +29,7 @@ func TestAdvertisedSchemasAdmitEveryArgumentFormHandlersRead(t *testing.T) {
 		{name: "case insensitive boolean string", tool: "signoz_list_alerts", arguments: `{"active":"TRUE"}`},
 		{name: "docs query alias", tool: "signoz_search_docs", arguments: `{"query":"cpu"}`},
 		{name: "retired logs query alias reaches its coded error", tool: "signoz_search_logs", arguments: `{"query":"service.name = 'api'"}`},
+		{name: "retired metrics query alias reaches its coded error", tool: "signoz_query_metrics", arguments: `{"metricName":"cpu","query":"service.name = 'api'"}`},
 		{name: "numeric timestamps", tool: "signoz_search_logs", arguments: `{"start":1711130400000,"end":1711130460000}`},
 		{name: "string timestamps", tool: "signoz_search_logs", arguments: `{"start":"1711130400000","end":"1711130460000"}`},
 		{name: "groupBy string", tool: "signoz_query_metrics", arguments: `{"metricName":"cpu","groupBy":"service.name,k8s.pod.name"}`},

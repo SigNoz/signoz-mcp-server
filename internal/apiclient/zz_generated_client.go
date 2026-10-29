@@ -166,6 +166,12 @@ type GetMetricAttributesParams struct {
 	End *int `form:"end,omitempty" json:"end,omitempty"`
 }
 
+// GetMetricMetadataParams defines parameters for GetMetricMetadata.
+type GetMetricMetadataParams struct {
+	// MetricName The name of the metric. May contain slashes (e.g. cloud-provider metrics like run.googleapis.com/request_latencies).
+	MetricName string `form:"metricName" json:"metricName"`
+}
+
 // ListNotificationChannelsParams defines parameters for ListNotificationChannels.
 type ListNotificationChannelsParams struct {
 	// Query Case-insensitive match on the display name; at most 1024 characters.
@@ -516,6 +522,13 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /api/v2/metrics/attributes (the `GetMetricAttributes` operationId).
 	GetMetricAttributes(ctx context.Context, params *GetMetricAttributesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetMetricMetadata Get metric metadata
+	//
+	// This endpoint returns metadata information like metric description, unit, type, temporality, monotonicity for a specified metric
+	//
+	// Corresponds with GET /api/v2/metrics/metadata (the `GetMetricMetadata` operationId).
+	GetMetricMetadata(ctx context.Context, params *GetMetricMetadataParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetMetricsTreemapWithBody Get metrics treemap
 	//
@@ -1157,6 +1170,23 @@ func (c *Client) GetMetricAlerts(ctx context.Context, params *GetMetricAlertsPar
 // Corresponds with GET /api/v2/metrics/attributes (the `GetMetricAttributes` operationId).
 func (c *Client) GetMetricAttributes(ctx context.Context, params *GetMetricAttributesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetMetricAttributesRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetMetricMetadata Get metric metadata
+//
+// # This endpoint returns metadata information like metric description, unit, type, temporality, monotonicity for a specified metric
+//
+// Corresponds with GET /api/v2/metrics/metadata (the `GetMetricMetadata` operationId).
+func (c *Client) GetMetricMetadata(ctx context.Context, params *GetMetricMetadataParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetMetricMetadataRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -3018,6 +3048,56 @@ func NewGetMetricAttributesRequest(server string, params *GetMetricAttributesPar
 	return req, nil
 }
 
+// NewGetMetricMetadataRequest constructs an http.Request for the GetMetricMetadata method
+func NewGetMetricMetadataRequest(server string, params *GetMetricMetadataParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v2/metrics/metadata")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "metricName", params.MetricName, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetMetricsTreemapRequest calls the generic GetMetricsTreemap builder with application/json body
 func NewGetMetricsTreemapRequest(server string, body GetMetricsTreemapJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -4349,6 +4429,15 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /api/v2/metrics/attributes (the `GetMetricAttributes` operationId).
 	GetMetricAttributesWithResponse(ctx context.Context, params *GetMetricAttributesParams, reqEditors ...RequestEditorFn) (*GetMetricAttributesResponse, error)
+
+	// GetMetricMetadataWithResponse Get metric metadata
+	//
+	// This endpoint returns metadata information like metric description, unit, type, temporality, monotonicity for a specified metric
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v2/metrics/metadata (the `GetMetricMetadata` operationId).
+	GetMetricMetadataWithResponse(ctx context.Context, params *GetMetricMetadataParams, reqEditors ...RequestEditorFn) (*GetMetricMetadataResponse, error)
 
 	// GetMetricsTreemapWithBodyWithResponse Get metrics treemap
 	//
@@ -6081,6 +6170,88 @@ func (r GetMetricAttributesResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetMetricAttributesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetMetricMetadataResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *struct {
+		Data   apitypes.MetricsexplorertypesMetricMetadata `json:"data"`
+		Status string                                      `json:"status"`
+	}
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *apitypes.RenderErrorResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *apitypes.RenderErrorResponse
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *apitypes.RenderErrorResponse
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *apitypes.RenderErrorResponse
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *apitypes.RenderErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetMetricMetadataResponse) GetJSON200() *struct {
+	Data   apitypes.MetricsexplorertypesMetricMetadata `json:"data"`
+	Status string                                      `json:"status"`
+} {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetMetricMetadataResponse) GetJSON400() *apitypes.RenderErrorResponse {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetMetricMetadataResponse) GetJSON401() *apitypes.RenderErrorResponse {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r GetMetricMetadataResponse) GetJSON403() *apitypes.RenderErrorResponse {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetMetricMetadataResponse) GetJSON404() *apitypes.RenderErrorResponse {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetMetricMetadataResponse) GetJSON500() *apitypes.RenderErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetMetricMetadataResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetMetricMetadataResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetMetricMetadataResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetMetricMetadataResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -7994,6 +8165,21 @@ func (c *ClientWithResponses) GetMetricAttributesWithResponse(ctx context.Contex
 	return ParseGetMetricAttributesResponse(rsp)
 }
 
+// GetMetricMetadataWithResponse Get metric metadata
+//
+// # This endpoint returns metadata information like metric description, unit, type, temporality, monotonicity for a specified metric
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v2/metrics/metadata (the `GetMetricMetadata` operationId).
+func (c *ClientWithResponses) GetMetricMetadataWithResponse(ctx context.Context, params *GetMetricMetadataParams, reqEditors ...RequestEditorFn) (*GetMetricMetadataResponse, error) {
+	rsp, err := c.GetMetricMetadata(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetMetricMetadataResponse(rsp)
+}
+
 // GetMetricsTreemapWithBodyWithResponse Get metrics treemap
 //
 // This endpoint returns a treemap visualization showing the proportional distribution of metrics by sample count or time series count.
@@ -9510,6 +9696,70 @@ func ParseGetMetricAttributesResponse(rsp *http.Response) (*GetMetricAttributesR
 		var dest struct {
 			Data   apitypes.MetricsexplorertypesMetricAttributesResponse `json:"data"`
 			Status string                                                `json:"status"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest apitypes.RenderErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest apitypes.RenderErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest apitypes.RenderErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest apitypes.RenderErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest apitypes.RenderErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetMetricMetadataResponse parses an HTTP response from a GetMetricMetadataWithResponse call
+func ParseGetMetricMetadataResponse(rsp *http.Response) (*GetMetricMetadataResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetMetricMetadataResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			Data   apitypes.MetricsexplorertypesMetricMetadata `json:"data"`
+			Status string                                      `json:"status"`
 		}
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err

@@ -8,71 +8,81 @@ const MetricsGuide = `# Metrics Aggregation Guide
 
 If the exact metric name is known, call **signoz_query_metrics** directly. When ` + "`metricType`" + ` is
 omitted, the tool looks up the metric and auto-fetches:
-- **type**: gauge, sum, histogram, exponential_histogram
+- **type**: gauge, sum, histogram, exponential_histogram, summary
 - **temporality**: cumulative, delta, unspecified
 - **isMonotonic**: true/false (only relevant for type=sum)
 
-These fields determine which aggregations are valid and which defaults are applied. Use
+These fields pick the default aggregations for any you leave empty. Use
 **signoz_list_metrics** first only when discovering a metric name, inspecting catalog metadata, or
 supplying metadata manually.
 
 ---
 
-## Aggregation Rules
+## Aggregation Defaults
 
-### Time Aggregation (within a single time series, across time buckets)
+The tool fills only the aggregations you leave empty. SigNoz validates the combination you send.
 
-| Metric Type | Valid timeAggregation | Default |
-|---|---|---|
-| gauge | latest, sum, avg, min, max, count, count_distinct | **avg** |
-| sum (isMonotonic=true, i.e. counter) | rate, increase | **rate** |
-| sum (isMonotonic=false) | avg, sum, min, max, count, count_distinct | **avg** |
-| histogram | _(empty — automatic)_ | — |
-| exponential_histogram | _(empty — automatic)_ | — |
+### Time Aggregation (within each series, per time bucket)
 
-### Space Aggregation (across multiple time series / label dimensions)
+Values: latest, sum, avg, min, max, count, count_distinct, rate, increase.
 
-| Metric Type | Valid spaceAggregation | Default |
-|---|---|---|
-| gauge | sum, avg, min, max, count | **sum** |
-| sum (monotonic counter) | sum, avg, min, max, count | **sum** |
-| sum (non-monotonic) | sum, avg, min, max, count | **sum** |
-| histogram | p50, p75, p90, p95, p99 | **p99** |
-| exponential_histogram | p50, p75, p90, p95, p99 | **p99** |
-
-### ReduceTo (only for requestType=scalar — collapses time dimension to a single value)
-
-| Metric Type | Default reduceTo |
+| Metric Type | Default |
 |---|---|
-| gauge | avg |
-| sum (monotonic) | sum |
-| sum (non-monotonic) | avg |
-| histogram | avg |
+| gauge | **avg** |
+| sum (isMonotonic=true, i.e. counter) | **rate** |
+| sum (isMonotonic=false) | **avg** |
+| histogram, exponential_histogram | _(empty)_ for percentiles |
+| summary | no default; set it |
 
-Valid reduceTo values: sum, count, avg, min, max, last, median
+### Space Aggregation (across series / label dimensions)
+
+Values: sum, avg, min, max, count, and p50, p75, p90, p95, p99 for histograms.
+
+| Metric Type | Default |
+|---|---|
+| gauge, sum | **sum** |
+| histogram, exponential_histogram | **p99** |
+| summary | no default; set it |
+
+### ReduceTo (requestType=scalar only, and required there)
+
+reduceTo collapses each series to one value: last, max, min, avg, sum, count, median. There is no
+default, because the metric type cannot say what the question asks:
+
+| Question | reduceTo |
+|---|---|
+| Current value | last |
+| Peak | max |
+| Typical value | avg |
+| Total count over the window | sum, with timeAggregation increase on a counter |
+
+Summing a rate series is not a total count, and averaging per-bucket percentiles is not a
+whole-window percentile. Each formula input query in a scalar request needs its own reduceTo.
+
+### What SigNoz rejects
+
+- A percentile spaceAggregation (p50 to p99) on anything but a histogram.
+- A scalar request whose metric queries lack reduceTo.
+- An exponential histogram that is not delta temporality.
 
 ---
 
-## Common Pitfalls
+## Choosing Aggregations
 
-1. **rate/increase on a gauge** → Invalid. Rate measures change over time, but gauges represent instantaneous values. Use avg, latest, or sum instead.
-2. **timeAggregation on histogram** → Ignored. Histogram time aggregation is handled automatically by the backend. Only set spaceAggregation (p50-p99).
-3. **sum/avg/min/max spaceAggregation on histogram** → Invalid. Histograms must use percentile aggregations (p50, p75, p90, p95, p99).
-4. **Providing only metricType for a counter** → This bypasses metadata auto-fetch and can leave temporality or monotonicity unspecified. Either omit metricType so all metadata is fetched, or pass the matching values from signoz_list_metrics.
-5. **Setting temporality by hand** → Omit it. The backend resolves cumulative, delta or unspecified from the metric's metadata; a pinned value that does not match the exporter returns no data. Set it only to override the stored metadata.
+1. **Counters**: rate gives per-second throughput and increase gives the count added per bucket. max or latest on a cumulative counter reads its running total, not activity in the window.
+2. **Gauges**: avg, max, or latest. rate and increase run but measure how the value changed, which is rarely what a gauge question asks.
+3. **Histograms**: SigNoz stores a histogram named X as X.bucket (type histogram) plus the counters X.count and X.sum; query X.bucket, not X. Leave timeAggregation empty and pick a percentile for latency. To read the buckets instead, use timeAggregation rate with spaceAggregation sum: the result is grouped by le, and the le="+Inf" series is the total observation rate.
+4. **Summaries**: query the .quantile series with both aggregations set, for example avg and max, grouped by quantile; the .count and .sum series are counters.
+5. **Providing only metricType for a counter** → This bypasses metadata auto-fetch and can leave temporality or monotonicity unspecified. Either omit metricType so all metadata is fetched, or pass the matching values from signoz_list_metrics.
+6. **Setting temporality by hand** → Omit it. The backend resolves cumulative, delta or unspecified from the metric's metadata; a pinned value that does not match the exporter returns no data. Set it only to override the stored metadata.
 
 ---
 
-## groupBy Field Context
+## groupBy and Filter Keys
 
-When specifying groupBy fields, the fieldContext is auto-detected:
-
-**Resource attributes** (fieldContext="resource"):
-Prefixes: k8s., container., host., cloud., deployment., process., service., telemetry., os.
-Examples: k8s.namespace.name, host.name, container.id, service.name, os.type
-
-**Metric attributes** (fieldContext="attribute"):
-Everything else. Examples: service_name, http.method, status_code
+Metric labels hold resource attributes and data-point attributes in one set, so groupBy and filter
+keys are plain label names with no context prefix: k8s.namespace.name, host.name, service_name,
+http.method. Discover them with signoz_get_field_keys (signal="metrics", metricName).
 
 ---
 
@@ -83,7 +93,7 @@ You can combine multiple metric queries using formulas:
 - Define multiple queries with names like "A", "B", "C"
 - Reference them in a formula expression: "A / B * 100"
 - Both queries in a formula should ideally use the same groupBy fields for compatible label sets
-- Different metrics can have different types; each gets independent aggregation validation
+- Different metrics can have different types; each gets its own aggregation defaults
 
 ### Formula Functions
 Supported: exp, log, ln, sqrt, sin, cos, tan, abs, ceil, floor
