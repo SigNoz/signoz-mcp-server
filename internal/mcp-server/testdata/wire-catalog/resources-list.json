@@ -20,7 +20,7 @@
           "description": "Read this before AI observability queries: LLM cost, tokens, models, or tool calls, per call or per trace. It covers queryType builder_ai_query on signoz_search_traces and signoz_aggregate_traces, the trace-level fields and where they work, how cost and token totals are computed (including cache tokens), examples for both tools, and saving a builder_ai_query as an alert. Full requests are in signoz://query-builder/examples.",
           "mimeType": "text/markdown",
           "name": "AI Query Builder Guide",
-          "size": 8930,
+          "size": 8989,
           "uri": "signoz://ai/query-builder-guide"
         },
         {

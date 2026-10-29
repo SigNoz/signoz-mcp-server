@@ -1,10 +1,10 @@
 """AI pricing and attribute mapping reads against real SigNoz.
 
-The pricing tool pages SigNoz's pricing rules and the unpriced-model list, and the
-mappings tool joins each mapping group with its mappers. Both parse real responses here
-so upstream drift fails a test, not a user. Self-hosted SigNoz ships no prices, so
-the rules view is checked for its envelope, and a seeded model no rule prices gives the
-unpriced view a real entry.
+The pricing tool pages SigNoz's pricing rules and the unpriced-model list, the mappings
+tool joins each mapping group with its mappers, and the test tool runs a span through the
+saved groups. All three parse real responses here, so upstream drift fails a test, not a
+user. Self-hosted SigNoz ships no prices, so the rules view is checked for its envelope,
+and a seeded model no rule prices gives the unpriced view a real entry.
 """
 
 import uuid
@@ -69,3 +69,27 @@ def test_ai_attribute_mappings_include_the_shipped_llm_group(mcp_client: MCPClie
     assert model is not None, f"gen_ai.request.model mapper missing: {sorted(targets)}"
     source_keys = {source["key"] for source in model["config"]["sources"]}
     assert "llm.model_name" in source_keys, source_keys
+
+
+def test_ai_attribute_mapping_test_maps_an_openinference_span(mcp_client: MCPClient) -> None:
+    """With the saved groups, an OpenInference model span gains gen_ai.request.model."""
+    span = {
+        "attributes": {
+            "llm.model_name": "gpt-4o",
+            "llm.token_count.prompt": 120,
+            "llm.token_count.completion": 45,
+        },
+        "resource": {"service.name": "mcp-e2e-chat"},
+    }
+    result = assert_tool_ok(
+        mcp_client.call_tool(
+            "signoz_test_ai_attribute_mapping",
+            {"searchContext": "will SigNoz see this OpenInference span as a model call", "spans": [span]},
+        )
+    )
+    payload = first_block_json(result)
+    assert payload["groupSource"] == "saved", payload
+    assert "gen_ai.llm" in payload["testedGroups"], payload
+    assert len(payload["spans"]) == 1, payload
+    attributes = payload["spans"][0]["attributes"]
+    assert attributes.get("gen_ai.request.model") == "gpt-4o", attributes

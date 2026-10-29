@@ -55,3 +55,4 @@ data_sources:
   llm_unmapped_models: {read: {path: /api/v1/llm_pricing_rules/unmapped_models, method: GET}}
   span_mapper_groups: {read: {path: /api/v1/span_mapper_groups, method: GET}}
   span_mappers: {read: {path: "/api/v1/span_mapper_groups/{groupId}/span_mappers", method: GET}}
+  span_mapper_test: {read: {path: /api/v1/span_mapper_groups/test, method: POST}}

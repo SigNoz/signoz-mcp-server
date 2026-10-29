@@ -160,12 +160,15 @@ $(SKAFF):
 gen: gen-client gen-spec
 	@echo "✅ Generated the client, schemas, and examples from SigNoz $(SIGNOZ_SPEC_REF). Commit them with skaff.yml and the version pins."
 
+# skaff names a type file after the type, so a type ending in "Test" (SpanMapperTest) lands in a
+# *_test.go file that go build skips; the loop renames those files.
 gen-client: $(SKAFF)
 	@echo ">> Generating the SigNoz API client from SigNoz $(SIGNOZ_SPEC_REF)"
 	@tmp=$$(mktemp -d) && trap 'rm -rf "$$tmp"' EXIT && \
 	curl -sSfL $(SIGNOZ_SPEC_URL) -o "$$tmp/openapi.yml" && \
 	rm -rf $(APITYPES_DIR) $(APICLIENT_DIR)/zz_generated_client.go && \
 	$(SKAFF) apitypes --openapi "$$tmp/openapi.yml" --config skaff.yml --output $(APITYPES_DIR) --package apitypes && \
+	for f in $(APITYPES_DIR)/*_test.go; do if [ -e "$$f" ]; then mv "$$f" "$${f%_test.go}_test_type.go" || exit 1; fi; done && \
 	$(SKAFF) client --openapi "$$tmp/openapi.yml" --config skaff.yml \
 		--output $(APICLIENT_DIR)/zz_generated_client.go --package apiclient \
 		--apitypes-import github.com/SigNoz/signoz-mcp-server/$(APITYPES_DIR)

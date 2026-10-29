@@ -1,8 +1,8 @@
 # Plan: AI Observability Support
 
-Status: In Progress
+Status: Done
 Issue: https://github.com/SigNoz/nerve-pod/issues/289
-PR:
+PR: #381, #390, #404, #407, #410, #411
 
 ## Context
 
@@ -60,8 +60,7 @@ pagination contract.
 2. **`feat(traces)`: AI trace search.** `queryType`, `requestType` and `orderBy` on
    `signoz_search_traces`, built by `SpanSearch` (raw) and `TraceList` (trace).
    2b. **`feat(traces)`: AI aggregates and guide.** `queryType` on aggregate, the
-   `builder_ai_query` default limit in `ApplyBounds`, and the AI guide. Companion agent-skills
-   PR.
+   `builder_ai_query` default limit in `ApplyBounds`, and the AI guide.
 3. **`feat(ai)`: pricing and mapping read tools.** `signoz_get_ai_pricing`
    (`view: rules|unpriced_models`) and `signoz_list_ai_attribute_mappings`. Additive, so no
    agent-skills change is required.
@@ -167,10 +166,14 @@ pagination contract.
 - PR 3 targets `main` on its own and merged after PR 2b, so it adds the AI guide's links: the
   cost warning to `signoz_get_ai_pricing` and the vendor-key warning to
   `signoz_list_ai_attribute_mappings`.
-- Deferred: a tool for SigNoz's mapping test endpoint (`POST /api/v1/span_mapper_groups/test`).
-  The list answers which vendor keys are mapped; add the sandbox when agents need to try draft
-  mappings. Its generated `SpanMapperTest` type lands in a `_test.go` file that `go build` skips,
-  so that PR also needs a `make gen-client` rename.
+- Deferred from PR 3, then added in its own PR: `signoz_test_ai_attribute_mapping` wraps SigNoz's
+  mapping test endpoint (`POST /api/v1/span_mapper_groups/test`). It defaults to the saved groups
+  by sending each group without mappers, which SigNoz fills from the saved group of that name;
+  an empty `groups` list tests none. The endpoint simulates in memory and saves nothing, so the
+  client marks the POST replay-safe and `TestGuardrail_ReadOnlyPOSTRetries` covers it; `spans` and
+  `groups` are forwarded from the raw arguments so integers above 2^53 stay exact, and a response
+  without one mapped span per sample is a coded upstream error. Its generated `SpanMapperTest` type landed in a
+  `_test.go` file that `go build` skips, so `make gen-client` renames those files.
 
 ### 2026-10-27 — Guardrail exception for `signoz_aggregate_traces`
 
@@ -260,7 +263,7 @@ pagination contract.
   was right for all 15. Two fixes followed: the guide now names which `ai_traces_*` example to
   copy (an agent had hand-built a request), and its resource description names cache tokens
   (an agent searched the docs first). The `signoz-generating-queries` skill loaded in 6 sessions
-  and does not know the AI guide; the agent-skills companion should link it.
+  and does not know the AI guide; updating the skill is separate from this plan.
 - PR 3: checked by hand against a local SigNoz: the mappings list returns the shipped
   `gen_ai.llm`, `gen_ai.tool` and `gen_ai.agent` groups with their mappers, and `llm.model_name`
   is a source of `gen_ai.request.model`. The local instance had no pricing rules, so the rules
@@ -272,6 +275,10 @@ pagination contract.
   AI tools. The span gained `gen_ai.request.model` at ingest. Fixes followed: `searchText` says an
   empty page means no match and that it matches substrings, and both tools name the AI
   Observability tab where prices and mappings are changed.
+- #411: checked by hand against a local SigNoz through a server build: with the saved groups an
+  OpenInference span gains `gen_ai.request.model` and both token keys; `groups=[]` returns the
+  span unmapped; `spans=[]` returns SigNoz's coded validation error; and a provided draft group
+  maps `myframework.model` to `gen_ai.request.model`.
 - Routing eval (2026-10-29): 18 questions adapted from real Langfuse questions, run through
   headless `claude -p --model haiku` with plugin skills disabled: 15 of 18 correct before the
   wording changes; the count-rule re-run had no 400s.
@@ -281,11 +288,23 @@ pagination contract.
 
 ## Outcome
 
-This plan spans PRs 1 to 5 and stays `In Progress` until PR 5 merges; each PR updates its line.
+Done. Agents can answer AI observability questions with the existing tools plus three AI tools:
 
-- PR 1 (`feat(fields)`): `queryType` and `fieldContext=trace` on `signoz_get_field_keys`;
-  `trace` is honored only by the AI fields keys endpoint.
-- PR 2 (`feat(traces)`): `queryType`, `requestType` and `orderBy` on `signoz_search_traces`.
-- PR 2b (`feat(traces)`): `queryType` on `signoz_aggregate_traces`, the AI guide, and the
+- #381 (`feat(fields)`): `queryType` and `fieldContext=trace` on `signoz_get_field_keys`.
+- #390 (`feat(traces)`): `queryType`, `requestType` and `orderBy` on `signoz_search_traces`.
+- #404 (`feat(traces)`): `queryType` on `signoz_aggregate_traces`, the AI guide, and the
   `builder_ai_query` default limit in `signoz_execute_builder_query`.
-- PRs 3 to 5: not started.
+- #407 (`feat`): `signoz_get_ai_pricing` and `signoz_list_ai_attribute_mappings`.
+- #410 (`feat(ai)`): routing wording from the Haiku eval, notes on `builder_ai_query` results,
+  pricing pointers, and `gen_ai.*` columns in `signoz_get_trace_details`.
+- #411 (`feat(ai)`): `signoz_test_ai_attribute_mapping`.
+
+Deferred, to be linked to issues:
+
+- The AI thread in `signoz_get_trace_details` (PR 5): not done now because it is premature while
+  SigNoz's thread endpoint is alpha; revisit when it stabilizes.
+- Cutting long values across tools, one response-size policy instead of per-tool truncation.
+- Bumping `SIGNOZ_SPEC_REF` from the SigNoz/signoz#13282 branch head to its merge commit
+  (`665e70b`), then to the release tag that carries it.
+- Saving AI queries: `AI_TRACES_BASED_ALERT` in the alert guide, and `ai_observability` saved
+  views with an e2e test.

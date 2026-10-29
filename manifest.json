@@ -182,6 +182,10 @@
       "description": "List the mapping groups that turn vendor AI span attributes into gen_ai.* keys at ingest, with each group's condition, mappers, and source keys"
     },
     {
+      "name": "signoz_test_ai_attribute_mapping",
+      "description": "Run sample spans through the AI attribute mappings without saving anything, to check whether SigNoz treats them as model, tool, or agent calls"
+    },
+    {
       "name": "signoz_execute_builder_query",
       "description": "Run raw Query Builder v5 requests for formulas, PromQL, or ClickHouse SQL beyond the dedicated signal tools"
     },

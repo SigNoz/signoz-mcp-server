@@ -6497,7 +6497,7 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user asks why AI spans show no model, tokens, or cost, or which vendor attributes SigNoz maps to gen_ai.* keys. At ingest, a mapping group runs on spans whose attribute keys contain one of its condition substrings, and each mapper fills one gen_ai.* key from the first source key present, by priority. Mappings apply only to spans ingested afterwards and are changed on the Attribute Mapping tab of AI Observability in SigNoz. For spans with a model but no cost, use signoz_get_ai_pricing. If incomplete is true, failedGroups names the groups whose mappers could not be read.",
+          "description": "Use this when the user asks why AI spans show no model, tokens, or cost, or which vendor attributes SigNoz maps to gen_ai.* keys. At ingest, a mapping group runs on spans whose attribute keys contain one of its condition substrings, and each mapper fills one gen_ai.* key from the first source key present, by priority. Mappings apply only to spans ingested afterwards and are changed on the Attribute Mapping tab of AI Observability in SigNoz. To see how a sample span maps, use signoz_test_ai_attribute_mapping; for spans with a model but no cost, use signoz_get_ai_pricing. If incomplete is true, failedGroups names the groups whose mappers could not be read.",
           "inputSchema": {
             "properties": {
               "searchContext": {
@@ -7706,6 +7706,220 @@
             "type": "object"
           },
           "name": "signoz_search_traces"
+        },
+        {
+          "annotations": {
+            "destructiveHint": false,
+            "idempotentHint": true,
+            "openWorldHint": true,
+            "readOnlyHint": true
+          },
+          "description": "Use this when the user wants to know whether SigNoz will treat a framework's spans as model, tool, or agent calls, or wants to try a mapping before adding it. It runs sample spans through the mapping groups (the saved ones by default) and returns each span as SigNoz would store it; nothing is saved. A span that gains gen_ai.request.model counts as a model call. To read the saved mappings, use signoz_list_ai_attribute_mappings.",
+          "inputSchema": {
+            "properties": {
+              "groups": {
+                "description": "Mapping groups to test instead of the saved ones, such as a draft before adding it on the Attribute Mapping tab. Omit to test the saved groups; an empty list tests none. A group without mappers uses the saved mappers of the group with the same name. SigNoz skips disabled groups, mappers, and condition keys, so set enabled to true on each.",
+                "items": {
+                  "properties": {
+                    "condition": {
+                      "properties": {
+                        "attributes": {
+                          "items": {
+                            "properties": {
+                              "enabled": {
+                                "type": "boolean"
+                              },
+                              "origin": {
+                                "type": [
+                                  "null",
+                                  "string"
+                                ]
+                              },
+                              "value": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "enabled",
+                              "value"
+                            ],
+                            "type": "object"
+                          },
+                          "type": [
+                            "null",
+                            "array"
+                          ]
+                        },
+                        "resource": {
+                          "items": {
+                            "properties": {
+                              "enabled": {
+                                "type": "boolean"
+                              },
+                              "origin": {
+                                "type": [
+                                  "null",
+                                  "string"
+                                ]
+                              },
+                              "value": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "enabled",
+                              "value"
+                            ],
+                            "type": "object"
+                          },
+                          "type": [
+                            "null",
+                            "array"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "attributes",
+                        "resource"
+                      ],
+                      "type": [
+                        "null",
+                        "object"
+                      ]
+                    },
+                    "enabled": {
+                      "type": [
+                        "null",
+                        "boolean"
+                      ]
+                    },
+                    "mappers": {
+                      "items": {
+                        "properties": {
+                          "config": {
+                            "properties": {
+                              "sources": {
+                                "items": {
+                                  "properties": {
+                                    "context": {
+                                      "type": "string"
+                                    },
+                                    "enabled": {
+                                      "type": "boolean"
+                                    },
+                                    "key": {
+                                      "type": "string"
+                                    },
+                                    "operation": {
+                                      "type": "string"
+                                    },
+                                    "origin": {
+                                      "type": [
+                                        "null",
+                                        "string"
+                                      ]
+                                    },
+                                    "priority": {
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "context",
+                                    "enabled",
+                                    "key",
+                                    "operation",
+                                    "priority"
+                                  ],
+                                  "type": "object"
+                                },
+                                "type": [
+                                  "null",
+                                  "array"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "sources"
+                            ],
+                            "type": "object"
+                          },
+                          "enabled": {
+                            "type": [
+                              "null",
+                              "boolean"
+                            ]
+                          },
+                          "fieldContext": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "config",
+                          "fieldContext",
+                          "name"
+                        ],
+                        "type": "object"
+                      },
+                      "type": [
+                        "null",
+                        "array"
+                      ]
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "condition",
+                    "name"
+                  ],
+                  "type": "object"
+                },
+                "type": [
+                  "null",
+                  "array"
+                ]
+              },
+              "searchContext": {
+                "description": "Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.",
+                "type": "string"
+              },
+              "spans": {
+                "description": "1 to 100 sample spans. Each span has attributes and resource maps of key to value; copy them from a real span or from what the framework emits. Example: [{\"attributes\":{\"llm.model_name\":\"gpt-4o\",\"llm.token_count.prompt\":120,\"llm.token_count.completion\":45},\"resource\":{\"service.name\":\"chat-api\"}}].",
+                "items": {
+                  "properties": {
+                    "attributes": {
+                      "additionalProperties": {},
+                      "type": [
+                        "null",
+                        "object"
+                      ]
+                    },
+                    "resource": {
+                      "additionalProperties": {},
+                      "type": [
+                        "null",
+                        "object"
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                "type": [
+                  "null",
+                  "array"
+                ]
+              }
+            },
+            "required": [
+              "spans"
+            ],
+            "type": "object"
+          },
+          "name": "signoz_test_ai_attribute_mapping"
         },
         {
           "annotations": {

@@ -746,30 +746,46 @@ func TestGuardrail_MutatingPOSTNotRetriedAfterAmbiguousTransportFailure(t *testi
 	assert.JSONEq(t, `{"title":"created-once"}`, string(requestBody))
 }
 
+// Each audited read-only POST: the query itself, and the attribute mapping
+// test, which simulates the mapping in memory and saves nothing.
 func TestGuardrail_ReadOnlyPOSTRetries(t *testing.T) {
-	var attempts atomic.Int32
-	var requestBodies [][]byte
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requestBody, err := io.ReadAll(r.Body)
-		require.NoError(t, err)
-		requestBodies = append(requestBodies, requestBody)
-		if attempts.Add(1) == 1 {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"data":{"result":[]}}`))
-	}))
-	defer server.Close()
+	for _, tc := range []struct {
+		name string
+		call func(*SigNoz, []byte) (json.RawMessage, error)
+	}{
+		{"query builder", func(c *SigNoz, body []byte) (json.RawMessage, error) {
+			return c.QueryBuilderV5(context.Background(), body)
+		}},
+		{"AI attribute mapping test", func(c *SigNoz, body []byte) (json.RawMessage, error) {
+			return c.TestAIAttributeMappings(context.Background(), body)
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var attempts atomic.Int32
+			var requestBodies [][]byte
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requestBody, err := io.ReadAll(r.Body)
+				require.NoError(t, err)
+				requestBodies = append(requestBodies, requestBody)
+				if attempts.Add(1) == 1 {
+					w.WriteHeader(http.StatusServiceUnavailable)
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"data":{"result":[]}}`))
+			}))
+			defer server.Close()
 
-	client := NewClient(logpkg.New("error"), server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
-	result, err := client.QueryBuilderV5(context.Background(), []byte(`{"schemaVersion":"v1"}`))
-	require.NoError(t, err)
-	assert.JSONEq(t, `{"data":{"result":[]}}`, string(result))
-	assert.Equal(t, int32(2), attempts.Load())
-	require.Len(t, requestBodies, 2)
-	for _, requestBody := range requestBodies {
-		assert.JSONEq(t, `{"schemaVersion":"v1"}`, string(requestBody))
+			client := NewClient(logpkg.New("error"), server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+			result, err := tc.call(client, []byte(`{"schemaVersion":"v1"}`))
+			require.NoError(t, err)
+			assert.JSONEq(t, `{"data":{"result":[]}}`, string(result))
+			assert.Equal(t, int32(2), attempts.Load())
+			require.Len(t, requestBodies, 2)
+			for _, requestBody := range requestBodies {
+				assert.JSONEq(t, `{"schemaVersion":"v1"}`, string(requestBody))
+			}
+		})
 	}
 }
 
