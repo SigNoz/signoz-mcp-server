@@ -7185,7 +7185,7 @@
                 "type": "string"
               },
               "formula": {
-                "description": "Formula expression over named queries. Example: 'A / B * 100'. The primary metric becomes query 'A'. Additional queries are defined in formulaQueries.",
+                "description": "Formula expression over named queries. Example: 'A / B * 100'. The primary metric becomes query 'A'. Additional queries are defined in formulaQueries. The result carries each input query's series next to the formula's, because SigNoz returns every query that is not disabled; to get only the formula, use signoz_execute_builder_query with disabled: true on each input.",
                 "type": "string"
               },
               "formulaQueries": {

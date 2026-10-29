@@ -94,6 +94,9 @@ You can combine multiple metric queries using formulas:
 - Reference them in a formula expression: "A / B * 100"
 - Both queries in a formula should ideally use the same groupBy fields for compatible label sets
 - Different metrics can have different types; each gets its own aggregation defaults
+- SigNoz returns every query that is not disabled, so the result carries the input queries' series
+  next to the formula's. To return only the formula, set "disabled": true on each input query in a
+  signoz_execute_builder_query payload; SigNoz still evaluates the formula from disabled inputs.
 
 ### Formula Functions
 Supported: exp, log, ln, sqrt, sin, cos, tan, abs, ceil, floor
