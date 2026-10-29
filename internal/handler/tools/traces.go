@@ -191,6 +191,10 @@ func (h *Handler) handleSearchTraces(ctx context.Context, req mcp.CallToolReques
 		if shaped.unpriced > 0 {
 			notes = append(notes, fmt.Sprintf(aiUnpricedRowsNote, shaped.unpriced))
 		}
+		if shaped.oddTypes > 0 {
+			h.logger.WarnContext(ctx, "AI trace row input or output is not a string, so it was not cut; upstream contract may have changed",
+				slog.Int("values", shaped.oddTypes))
+		}
 		if shaped.rows > 0 && !shaped.costSeen {
 			h.logger.WarnContext(ctx, "AI trace rows carry no estimated_total_cost column; upstream contract may have changed",
 				slog.Int("rows", shaped.rows))
@@ -209,6 +213,7 @@ type aiTraceRowsShape struct {
 	cut      int  // rows whose input or output was cut
 	unpriced int  // rows with LLM calls but a null or 0 estimated_total_cost
 	costSeen bool // any row carried the estimated_total_cost column
+	oddTypes int  // input or output values that are neither a string nor null, left uncut
 }
 
 // shapeAITraceRows cuts long input and output values on AI trace rows, marks
@@ -237,9 +242,15 @@ func shapeAITraceRows(payload []byte) ([]byte, aiTraceRowsShape) {
 			shape.rows++
 			truncated := false
 			for _, key := range []string{"input", "output"} {
-				if value, ok := data[key].(string); ok && utf8.RuneCountInString(value) > aiMessagePreviewChars {
-					data[key] = string([]rune(value)[:aiMessagePreviewChars])
-					truncated = true
+				switch value := data[key].(type) {
+				case nil:
+				case string:
+					if utf8.RuneCountInString(value) > aiMessagePreviewChars {
+						data[key] = string([]rune(value)[:aiMessagePreviewChars])
+						truncated = true
+					}
+				default:
+					shape.oddTypes++
 				}
 			}
 			if truncated {
