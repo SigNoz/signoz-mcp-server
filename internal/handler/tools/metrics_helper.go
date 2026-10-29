@@ -114,24 +114,11 @@ func parseMetricsQueryArgs(args map[string]any) (*metricsQueryRequest, error) {
 		req.IsMonotonic = v
 	}
 
-	// groupBy — accept []string, []any, or comma-separated string
-	switch v := args["groupBy"].(type) {
-	case []any:
-		for _, item := range v {
-			if s, ok := item.(string); ok && s != "" {
-				req.GroupBy = append(req.GroupBy, strings.TrimSpace(s))
-			}
-		}
-	case string:
-		if v != "" {
-			for _, field := range strings.Split(v, ",") {
-				field = strings.TrimSpace(field)
-				if field != "" {
-					req.GroupBy = append(req.GroupBy, field)
-				}
-			}
-		}
+	groupBy, err := parseFieldNameList("groupBy", args["groupBy"])
+	if err != nil {
+		return nil, fmt.Errorf("%s %w", validationErrorPrefix, err)
 	}
+	req.GroupBy = groupBy
 
 	// start / end
 	if s, ok := args["start"]; ok {
@@ -211,28 +198,16 @@ func parseMetricsQueryArgs(args map[string]any) (*metricsQueryRequest, error) {
 	return req, nil
 }
 
-// buildGroupByFields converts field name strings to field keys with auto-detected fieldContext.
+// buildGroupByFields sends every metrics groupBy key in attribute context.
+// SigNoz keeps resource and point attributes in one labels set for metrics,
+// so any label context reads the same value; a key with no context would
+// read an intrinsic column such as type or temporality instead of the label.
 func buildGroupByFields(names []string) []querybuilder.FieldKey {
 	fields := make([]querybuilder.FieldKey, 0, len(names))
 	for _, name := range names {
-		fields = append(fields, querybuilder.NewFieldKey(name, "metrics", detectFieldContext(name), ""))
+		fields = append(fields, querybuilder.NewFieldKey(name, "metrics", "attribute", ""))
 	}
 	return fields
-}
-
-// resourcePrefixes are attribute name prefixes that indicate a resource attribute.
-var resourcePrefixes = []string{
-	"k8s.", "container.", "host.", "cloud.", "deployment.", "process.",
-	"service.", "telemetry.", "os.",
-}
-
-func detectFieldContext(name string) string {
-	for _, prefix := range resourcePrefixes {
-		if strings.HasPrefix(name, prefix) {
-			return "resource"
-		}
-	}
-	return "attribute"
 }
 
 // extractStepInterval parses meta.stepIntervals from the backend response JSON
