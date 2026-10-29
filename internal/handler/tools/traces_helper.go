@@ -18,16 +18,19 @@ func readTraceFilterExpr(args map[string]any) (string, error) {
 // SearchTracesRequest holds the parsed parameters for a trace search query.
 type SearchTracesRequest struct {
 	FilterExpression string
-	SelectFields     []querybuilder.FieldKey
-	Limit            int
-	LimitClamped     bool
-	Offset           int
-	StartTime        int64
-	EndTime          int64
-	QueryType        string // envelope type, forwarded as given; "" means builder_query
-	RequestType      string // "trace" lists one row per trace; anything else lists spans
-	OrderExpr        string // "" keeps the query type's default order
-	OrderDir         string
+	// AllFields leaves SelectFields empty so each row is its complete record.
+	AllFields           bool
+	SelectFieldsIgnored bool
+	SelectFields        []querybuilder.FieldKey
+	Limit               int
+	LimitClamped        bool
+	Offset              int
+	StartTime           int64
+	EndTime             int64
+	QueryType           string // envelope type, forwarded as given; "" means builder_query
+	RequestType         string // "trace" lists one row per trace; anything else lists spans
+	OrderExpr           string // "" keeps the query type's default order
+	OrderDir            string
 }
 
 // maxTraceSelectFields bounds how many extra columns one search can request.
@@ -70,6 +73,13 @@ func parseSearchTracesArgs(args map[string]any) (*SearchTracesRequest, error) {
 	if err != nil {
 		return nil, err
 	}
+	allFields, selectFieldsIgnored, err := readAllFields(args)
+	if err != nil {
+		return nil, err
+	}
+	if allFields {
+		selectFields = nil
+	}
 	var orderExpr, orderDir string
 	if raw := strings.TrimSpace(stringValue(args["orderBy"])); raw != "" {
 		orderExpr, orderDir = parseOrderBy(raw)
@@ -79,17 +89,19 @@ func parseSearchTracesArgs(args map[string]any) (*SearchTracesRequest, error) {
 	requestType, _ := args["requestType"].(string)
 
 	return &SearchTracesRequest{
-		QueryType:        queryType,
-		RequestType:      requestType,
-		OrderExpr:        orderExpr,
-		OrderDir:         orderDir,
-		FilterExpression: filterExpr,
-		SelectFields:     selectFields,
-		Limit:            limit,
-		LimitClamped:     clamped,
-		Offset:           offset,
-		StartTime:        startTime,
-		EndTime:          endTime,
+		QueryType:           queryType,
+		RequestType:         requestType,
+		OrderExpr:           orderExpr,
+		OrderDir:            orderDir,
+		FilterExpression:    filterExpr,
+		AllFields:           allFields,
+		SelectFieldsIgnored: selectFieldsIgnored,
+		SelectFields:        selectFields,
+		Limit:               limit,
+		LimitClamped:        clamped,
+		Offset:              offset,
+		StartTime:           startTime,
+		EndTime:             endTime,
 	}, nil
 }
 

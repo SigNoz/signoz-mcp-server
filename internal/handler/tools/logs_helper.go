@@ -49,14 +49,17 @@ type SearchLogsRequest struct {
 	// SearchScopeIgnored is set when searchScope arrived without searchText;
 	// the scope only says where text matches, so the call runs without it.
 	SearchScopeIgnored bool
-	SelectFields       []querybuilder.FieldKey
-	OrderKey           string
-	OrderDir           string
-	Limit              int
-	LimitClamped       bool
-	Offset             int
-	StartTime          int64
-	EndTime            int64
+	// AllFields leaves SelectFields empty so each row is its complete record.
+	AllFields           bool
+	SelectFieldsIgnored bool
+	SelectFields        []querybuilder.FieldKey
+	OrderKey            string
+	OrderDir            string
+	Limit               int
+	LimitClamped        bool
+	Offset              int
+	StartTime           int64
+	EndTime             int64
 }
 
 func parseSearchLogsArgs(args map[string]any) (*SearchLogsRequest, error) {
@@ -93,22 +96,31 @@ func parseSearchLogsArgs(args map[string]any) (*SearchLogsRequest, error) {
 	if err != nil {
 		return nil, err
 	}
+	allFields, selectFieldsIgnored, err := readAllFields(args)
+	if err != nil {
+		return nil, err
+	}
+	if allFields {
+		selectFields = nil
+	}
 	var orderKey, orderDir string
 	if raw := strings.TrimSpace(stringValue(args["orderBy"])); raw != "" {
 		orderKey, orderDir = parseOrderBy(raw)
 	}
 
 	return &SearchLogsRequest{
-		FilterExpression:   filterExpr,
-		SearchScopeIgnored: searchScope != "" && searchText == "",
-		SelectFields:       selectFields,
-		OrderKey:           orderKey,
-		OrderDir:           orderDir,
-		Limit:              limit,
-		LimitClamped:       clamped,
-		Offset:             offset,
-		StartTime:          startTime,
-		EndTime:            endTime,
+		FilterExpression:    filterExpr,
+		SearchScopeIgnored:  searchScope != "" && searchText == "",
+		AllFields:           allFields,
+		SelectFieldsIgnored: selectFieldsIgnored,
+		SelectFields:        selectFields,
+		OrderKey:            orderKey,
+		OrderDir:            orderDir,
+		Limit:               limit,
+		LimitClamped:        clamped,
+		Offset:              offset,
+		StartTime:           startTime,
+		EndTime:             endTime,
 	}, nil
 }
 

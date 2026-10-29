@@ -135,3 +135,18 @@ func selectFieldCollision(item, name, heldContext, context string) error {
 	}
 	return fmt.Errorf(`%s invalid "selectFields" item %q: rows already carry the %s field %q, and a row holds one value per field name; select only one of them`, validationErrorPrefix, item, heldContext, name)
 }
+
+// selectFieldsIgnoredNote explains selectFields sent alongside allFields.
+const selectFieldsIgnoredNote = "note: selectFields was ignored because allFields returns every field of each row."
+
+// readAllFields reads the search tools' allFields switch. With it set the
+// search sends no selectFields, which SigNoz answers with each row's complete
+// record; selectFieldsIgnored reports caller-named fields that add nothing.
+func readAllFields(args map[string]any) (allFields, selectFieldsIgnored bool, err error) {
+	v, present, err := parseBoolArg(args, "allFields")
+	if err != nil || !present || !v {
+		return false, false, err
+	}
+	names, _ := parseFieldNameList("selectFields", args["selectFields"])
+	return true, len(names) > 0, nil
+}

@@ -55,7 +55,7 @@ func (h *Handler) RegisterTracesHandlers(s *mcp.Server) {
 	searchTracesTool := mcp.NewTool("signoz_search_traces",
 		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description(searchContextParamDescription)),
-		mcp.WithDescription("Use this when the user wants individual span rows matching service, operation, error, duration, or field filters, needs to discover trace IDs, or wants one row per trace (requestType=trace), such as the slowest traces or the most expensive AI traces. It returns paginated rows, not aggregate trends/groups or a full trace hierarchy; use signoz_aggregate_traces for statistics and signoz_get_trace_details for one known trace ID. Span rows carry a default set of span fields; name other fields in selectFields. A field missing from a row was not selected, so do not read it as absent from the span. Read signoz://traces/query-builder-guide before using unfamiliar workspace fields. For the user's LLM, AI agent, token, cost, model, tool-call, or prompt questions (AI observability), set queryType to builder_ai_query and read signoz://ai/query-builder-guide. Defaults to the last 1 hour."),
+		mcp.WithDescription("Use this when the user wants individual span rows matching service, operation, error, duration, or field filters, needs to discover trace IDs, or wants one row per trace (requestType=trace), such as the slowest traces or the most expensive AI traces. It returns paginated rows, not aggregate trends/groups or a full trace hierarchy; use signoz_aggregate_traces for statistics and signoz_get_trace_details for one known trace ID. Span rows carry a default set of span fields; name other fields in selectFields, or set allFields for each span's complete record. A field missing from a row was not selected, so do not read it as absent from the span. Read signoz://traces/query-builder-guide before using unfamiliar workspace fields. For the user's LLM, AI agent, token, cost, model, tool-call, or prompt questions (AI observability), set queryType to builder_ai_query and read signoz://ai/query-builder-guide. Defaults to the last 1 hour."),
 		mcp.WithString("filter", mcp.Description(searchTracesFilterParamDescription)),
 		mcp.WithString("service", mcp.Description(searchTracesServiceParamDescription)),
 		mcp.WithString("operation", mcp.Description(searchTracesOperationParamDescription)),
@@ -71,6 +71,7 @@ func (h *Handler) RegisterTracesHandlers(s *mcp.Server) {
 		mcp.WithString("orderBy", mcp.Description(searchTracesOrderByParamDescription)),
 		mcp.WithString("queryType", mcp.DefaultString(querybuilder.QueryTypeBuilder), mcp.Enum(querybuilder.QueryTypeBuilder, querybuilder.QueryTypeBuilderAI), mcp.Description(searchTracesQueryTypeParamDescription)),
 		mcp.WithString("requestType", mcp.DefaultString(requestTypeRaw), mcp.Enum(requestTypeRaw, requestTypeTrace), mcp.Description(searchTracesRequestTypeParamDescription)),
+		mcp.WithBoolean("allFields", boolOrStringType(), mcp.Description(searchTracesAllFieldsParamDescription)),
 	)
 
 	h.addTool(s, searchTracesTool, h.handleSearchTraces)
@@ -198,6 +199,9 @@ func (h *Handler) handleSearchTraces(ctx context.Context, req mcp.CallToolReques
 
 	result = h.enrichSearchTracesWebURL(ctx, base, result)
 	notes := aiSearchNotes(reqData, result)
+	if reqData.SelectFieldsIgnored {
+		notes = append(notes, selectFieldsIgnoredNote)
+	}
 	return rawSearchResult(ctx, h.logger, "signoz_search_traces", result, reqData.Limit, reqData.Offset, reqData.LimitClamped, notes...), nil
 }
 
