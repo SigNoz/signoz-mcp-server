@@ -62,13 +62,14 @@ def test_service_top_operations_lists_the_seeded_operation(
     service = f"mcp-e2e-{test_id}"
     seed_traces(service, count=2)
 
+    # Top operations come from a table SigNoz fills after the spans are queryable.
     def visible() -> bool:
         result = mcp_client.call_tool(
-            "signoz_list_services", {"searchContext": "services", "timeRange": "1h", "limit": "1000"}
+            "signoz_get_service_top_operations", {"searchContext": "top operations", "service": service}
         )
-        return not result.get("isError", False) and service in first_text_block(result)
+        return not result.get("isError", False) and "e2e-operation" in first_text_block(result)
 
-    wait_for(visible, f"service {service} visible")
+    wait_for(visible, f"operation of {service} visible")
 
     # A matching tag filter is not pinned: on the pinned release it returns no operations (SigNoz/nerve-pod#440).
     for tags in (None, "[]"):

@@ -160,3 +160,39 @@ def test_alert_history_envelope(mcp_client: MCPClient, test_id: str) -> None:
             )
     finally:
         delete_rule(mcp_client, rule_id)
+
+
+def test_list_alert_rules_filters_in_signoz(mcp_client: MCPClient, test_id: str) -> None:
+    """filter, states, sort, and order reach the rules list endpoint and narrow the page there."""
+    prefix = f"mcp-e2e-{test_id}"
+    latency = threshold_rule(f"{prefix} High Response Time")
+    latency["labels"] = {"severity": "critical", "cluster": f"{prefix}-a"}
+    disk = threshold_rule(f"{prefix} Disk Usage")
+    disk["labels"] = {"severity": "warning", "cluster": f"{prefix}-b"}
+    disk["disabled"] = True
+    rule_ids: list[str] = []
+    try:
+        rule_ids.append(create_rule(mcp_client, latency))
+        rule_ids.append(create_rule(mcp_client, disk))
+
+        def listed(**args: object) -> list[str]:
+            result = assert_tool_ok(
+                mcp_client.call_tool("signoz_list_alert_rules", {"searchContext": "find alert rules", **args})
+            )
+            return [rule["alert"] for rule in first_block_json(result)["data"]]
+
+        ours = f"name CONTAINS '{prefix}'"
+        assert listed(filter=f"name CONTAINS '{prefix} High'") == [latency["alert"]]
+        assert listed(filter=f"cluster = '{prefix}-b'") == [disk["alert"]]
+        assert listed(filter=f"{ours} AND severity IN ('critical', 'error')") == [latency["alert"]]
+        assert listed(filter=ours, states=["disabled"]) == [disk["alert"]]
+        assert listed(filter=ours, sort="name", order="asc") == [disk["alert"], latency["alert"]]
+        assert listed(filter=ours, sort="name", order="desc") == [latency["alert"], disk["alert"]]
+    finally:
+        failures = []
+        for rule_id in rule_ids:
+            try:
+                delete_rule(mcp_client, rule_id)
+            except AssertionError as exc:
+                failures.append(f"{rule_id}: {exc}")
+        assert not failures, f"rules left behind: {failures}"

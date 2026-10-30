@@ -19,7 +19,7 @@ type Client interface {
 	GetMetricMetadata(ctx context.Context, metricName string) (json.RawMessage, error)
 	GetTopMetrics(ctx context.Context, start, end int64, limit int) (json.RawMessage, error)
 	ListAlerts(ctx context.Context, params types.ListAlertsParams) (json.RawMessage, error)
-	ListAlertRules(ctx context.Context, limit, offset int) (json.RawMessage, error)
+	ListAlertRules(ctx context.Context, params *apiclient.ListRulesV3Params) (json.RawMessage, error)
 	GetAlertByRuleID(ctx context.Context, ruleID string) (json.RawMessage, error)
 	GetAlertHistory(ctx context.Context, ruleID string, params *apiclient.GetRuleHistoryTimelineParams) (json.RawMessage, error)
 	ListDashboards(ctx context.Context, limit, offset int, filter, sort, order string) (json.RawMessage, error)
