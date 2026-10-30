@@ -7,6 +7,21 @@ import (
 	"time"
 )
 
+// Defines values for RuletypesRuleSchemaVersion.
+const (
+	RuletypesRuleSchemaVersionV2alpha1 RuletypesRuleSchemaVersion = "v2alpha1"
+)
+
+// Valid indicates whether the value is a known member of the RuletypesRuleSchemaVersion enum.
+func (e RuletypesRuleSchemaVersion) Valid() bool {
+	switch e {
+	case RuletypesRuleSchemaVersionV2alpha1:
+		return true
+	default:
+		return false
+	}
+}
+
 // RuletypesRule defines model for RuletypesRule.
 type RuletypesRule struct {
 	// Alert The display name of the alert rule.
@@ -32,8 +47,8 @@ type RuletypesRule struct {
 	// EvalWindow The lookback window as a Go duration such as 5m. Only read when schemaVersion is v1, defaulting to 5m; v2alpha1 rules set it in evaluation.spec instead.
 	EvalWindow *string `json:"evalWindow,omitempty" jsonschema:"The lookback window as a Go duration such as 5m. Only read when schemaVersion is v1, defaulting to 5m; v2alpha1 rules set it in evaluation.spec instead."`
 
-	// Evaluation The evaluation window, as a kind and spec. Required when schemaVersion is v2alpha1; derived from evalWindow and frequency for v1.
-	Evaluation *RuletypesEvaluationEnvelope `json:"evaluation,omitempty" jsonschema:"The evaluation window, as a kind and spec. Required when schemaVersion is v2alpha1; derived from evalWindow and frequency for v1."`
+	// Evaluation The evaluation window, as a kind and spec.
+	Evaluation RuletypesEvaluationEnvelope `json:"evaluation" jsonschema:"The evaluation window, as a kind and spec."`
 
 	// Frequency How often the rule is evaluated, as a Go duration such as 1m. Only read when schemaVersion is v1, defaulting to 1m; v2alpha1 rules set it in evaluation.spec instead.
 	Frequency *string `json:"frequency,omitempty" jsonschema:"How often the rule is evaluated, as a Go duration such as 1m. Only read when schemaVersion is v1, defaulting to 1m; v2alpha1 rules set it in evaluation.spec instead."`
@@ -44,19 +59,20 @@ type RuletypesRule struct {
 	// Labels Labels attached to every alert the rule fires. Keys match [a-zA-Z_.][a-zA-Z0-9_.]*; values may use Go templates such as {{$labels.service_name}}. severity is the conventional routing label.
 	Labels *map[string]string `json:"labels,omitempty" jsonschema:"Labels attached to every alert the rule fires. Keys match [a-zA-Z_.][a-zA-Z0-9_.]*; values may use Go templates such as {{$labels.service_name}}. severity is the conventional routing label."`
 
-	// NotificationSettings Grouping, re-notification and routing behaviour. Required when schemaVersion is v2alpha1; derived from the v1 fields otherwise.
-	NotificationSettings *RuletypesNotificationSettings `json:"notificationSettings,omitempty" jsonschema:"Grouping, re-notification and routing behaviour. Required when schemaVersion is v2alpha1; derived from the v1 fields otherwise."`
+	// NotificationSettings Grouping, re-notification and routing behaviour.
+	NotificationSettings RuletypesNotificationSettings `json:"notificationSettings" jsonschema:"Grouping, re-notification and routing behaviour."`
 
 	// PreferredChannels The displayName of each notification channel to notify, for schemaVersion v1 rules. Ignored for v2alpha1, where each threshold carries its own channels.
 	PreferredChannels *[]string `json:"preferredChannels,omitempty" jsonschema:"The displayName of each notification channel to notify, for schemaVersion v1 rules. Ignored for v2alpha1, where each threshold carries its own channels."`
 
-	// RuleType The evaluation strategy: threshold_rule compares against thresholds, promql_rule evaluates a PromQL expression, anomaly_rule scores deviation from seasonal history. Defaults to threshold_rule for builder queries and is forced to promql_rule for promql queries.
-	RuleType RuletypesRuleType `json:"ruleType" jsonschema:"The evaluation strategy: threshold_rule compares against thresholds, promql_rule evaluates a PromQL expression, anomaly_rule scores deviation from seasonal history. Defaults to threshold_rule for builder queries and is forced to promql_rule for promql queries."`
+	// RuleType The evaluation strategy: threshold_rule compares against thresholds, promql_rule evaluates a PromQL expression, anomaly_rule scores deviation from seasonal history. Defaults to threshold_rule for builder and clickhouse_sql queries and is forced to promql_rule for promql queries.
+	RuleType RuletypesRuleType `json:"ruleType" jsonschema:"The evaluation strategy: threshold_rule compares against thresholds, promql_rule evaluates a PromQL expression, anomaly_rule scores deviation from seasonal history. Defaults to threshold_rule for builder and clickhouse_sql queries and is forced to promql_rule for promql queries."`
 
-	// SchemaVersion The rule payload schema: v1 (the default when omitted) uses the flat condition fields, v2alpha1 uses condition.thresholds, evaluation and notificationSettings.
-	SchemaVersion *string `json:"schemaVersion,omitempty" jsonschema:"The rule payload schema: v1 (the default when omitted) uses the flat condition fields, v2alpha1 uses condition.thresholds, evaluation and notificationSettings."`
+	// SchemaVersion The rule payload schema.
+	SchemaVersion RuletypesRuleSchemaVersion `json:"schemaVersion" jsonschema:"The rule payload schema."`
 
 	// Source The URL of the page the rule was created from. Informational; it is not used for evaluation.
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	Source *string `json:"source,omitempty" jsonschema:"The URL of the page the rule was created from. Informational; it is not used for evaluation."`
 
 	// State The current evaluation state: inactive, pending, recovering, firing, nodata or disabled.
@@ -64,6 +80,10 @@ type RuletypesRule struct {
 	UpdatedAt *time.Time          `json:"updatedAt,omitempty"`
 	UpdatedBy *string             `json:"updatedBy,omitempty"`
 
-	// Version The query payload version. Only v5 is accepted and it is filled in when omitted.
-	Version *string `json:"version,omitempty" jsonschema:"The query payload version. Only v5 is accepted and it is filled in when omitted."`
+	// Version The query payload version. Nothing reads it.
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
+	Version *string `json:"version,omitempty" jsonschema:"The query payload version. Nothing reads it."`
 }
+
+// RuletypesRuleSchemaVersion The rule payload schema.
+type RuletypesRuleSchemaVersion string

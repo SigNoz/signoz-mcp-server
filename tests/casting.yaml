@@ -10,12 +10,12 @@ spec:
     kind: sqlite
   signoz:
     spec:
-      # Pinned to the v0.147.0 release artifacts (upstream source commit
-      # 9fc6fbb9fab66f4fb9dd23931d802d8da46093e8). Foundry defaults both
+      # Pinned to the v0.148.1 release artifacts (upstream source commit
+      # 4aab7f48c9813b36999fea87a0068028bfdc9a15). Foundry defaults both
       # images to latest, so the digests below are required to prevent drift.
       # The collector is versioned separately; see the ingester pin below.
-      image: signoz/signoz@sha256:f60a66839f466a4433c8e807ccaaae8c91d70be06ca1c95dba5389648796c51b
-      version: v0.147.0
+      image: signoz/signoz@sha256:a7d1a968a1f7f65c518106150ac05424ca8e91c52d7076077dfce034980e9c34
+      version: v0.148.1
       # Provision a root admin user on first boot so the e2e tests can log in
       # without the interactive /api/v1/register flow. These must match
       # ROOT_EMAIL / ROOT_PASSWORD in fixtures/signoz.py.
@@ -33,8 +33,8 @@ spec:
         SIGNOZ_STATSREPORTER_ENABLED: "false"
   ingester:
     spec:
-      # Collector v0.144.15 is the release published alongside SigNoz
-      # v0.147.0. SigNoz pushes an OpAMP config with the signozspanmapper and
+      # Collector v0.144.15 is the latest release and runs with SigNoz
+      # v0.148.1. SigNoz pushes an OpAMP config with the signozspanmapper and
       # signozllmpricing processors; older collectors reject it and never open
       # the OTLP ports.
       image: signoz/signoz-otel-collector@sha256:3996e0ffc58bc86d433062a45ef7ff960a4768da0619944f651a17254d634daf

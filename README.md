@@ -434,7 +434,7 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 | `signoz_list_alert_rules` | List configured alert-rule summaries, including inactive/OK and disabled rules |
 | `signoz_get_alert` | Get one alert rule's full definition by `id` |
 | `signoz_get_alert_history` | Get one rule's firing or state-transition history |
-| `signoz_create_alert` | Create a v2 direct/policy-routed alert or a direct-routed v1 anomaly alert |
+| `signoz_create_alert` | Create a v2alpha1 threshold, PromQL, or anomaly alert with direct or policy routing |
 | `signoz_update_alert` | Fully replace an existing alert rule by `id` |
 | `signoz_delete_alert` | Permanently delete a confirmed alert rule by UUIDv7 `id` |
 | `signoz_list_dashboards` | List tenant-dashboard summaries and discover UUIDs |
@@ -991,10 +991,8 @@ Run sample spans through the mapping groups in a sandbox and return each span as
 Create a new alert rule in SigNoz via `POST /api/v2/rules`.
 
 - **Parameters**: JSON payload matching the SigNoz alert rule schema.
-- **Schema varies by `ruleType`**:
-  - `threshold_rule` / `promql_rule` → **v2alpha1** (structured `condition.thresholds`, `evaluation`, `notificationSettings`).
-  - `anomaly_rule` → **v1**, metrics only: top-level `evalWindow`/`frequency`, condition anomaly fields, and direct top-level `preferredChannels`. Omit `thresholds`, `evaluation`, `notificationSettings`, and `schemaVersion`; policy routing is unsupported.
-- **Notification routing**: For direct routing, reuse a fully paginated `signoz_list_notification_channels` result only from the same still-current prepared operation; otherwise call it, refreshing only if state may have changed. V2 needs an exact returned displayName on every tier: SigNoz rejects a tier with no channels or a channel name that does not exist, and top-level `preferredChannels` plays no part in v2 routing. V1 anomaly uses direct top-level `preferredChannels`. If none fits, ask the user or offer `signoz_create_notification_channel` with user-provided config; never create automatically. Confirmed v2 policy routing may omit tier channels.
+- **Schema**: every `ruleType` (`threshold_rule`, `promql_rule`, `anomaly_rule`) uses **v2alpha1**: structured `condition.thresholds`, `evaluation`, `notificationSettings`, and `schemaVersion: "v2alpha1"` set explicitly, since SigNoz reads an omitted value as the retired v1 schema. `anomaly_rule` is metrics only, adds `condition.algorithm` and `condition.seasonality`, and compares each tier's signed target with the anomaly score (`below` with target `-2` fires on a drop of more than 2 standard deviations; `outside_bounds` with target `2` fires on a move of more than 2 either way).
+- **Notification routing**: For direct routing, reuse a fully paginated `signoz_list_notification_channels` result only from the same still-current prepared operation; otherwise call it, refreshing only if state may have changed. V2 needs an exact returned displayName on every tier: SigNoz rejects a tier with no channels or a channel name that does not exist, and top-level `preferredChannels` plays no part in routing. If none fits, ask the user or offer `signoz_create_notification_channel` with user-provided config; never create automatically. Confirmed v2 policy routing may omit tier channels.
 - **Tip**: Reuse alert resources only when already read for the same prepared operation; otherwise read `signoz://alert/instructions` and `signoz://alert/examples`. For PromQL, read `signoz://promql/instructions` when needed.
 
 #### `signoz_update_alert`

@@ -15,9 +15,9 @@ var Examples = examplesPreamble + generatedExamples + examplesAddendum
 
 const examplesPreamble = `# SigNoz Alert Rule Examples
 
-Threshold and PromQL rules use schemaVersion v2alpha1; the anomaly example uses the v1 shape. Adapt each example to the target workspace: discover filter and groupBy keys with signoz_get_field_keys instead of copying attribute names.
+Every example uses schemaVersion v2alpha1. Adapt each example to the target workspace: discover filter and groupBy keys with signoz_get_field_keys instead of copying attribute names.
 
-**Before using any example:** channel displayName values are illustrative. Reuse a fully paginated signoz_list_notification_channels result only from the same still-current prepared operation; otherwise call it and replace every direct-routing value with an exact returned displayName. If none fits, ask the user or offer signoz_create_notification_channel with settings the user provides; never create automatically. Channel creation defaults test to false. Confirmed v2 policy routing may remove tier channels and set notificationSettings.usePolicy=true. Anomaly examples require direct top-level preferredChannels and cannot use policy routing.
+**Before using any example:** channel displayName values are illustrative. Reuse a fully paginated signoz_list_notification_channels result only from the same still-current prepared operation; otherwise call it and replace every direct-routing value with an exact returned displayName. If none fits, ask the user or offer signoz_create_notification_channel with settings the user provides; never create automatically. Channel creation defaults test to false. Confirmed v2 policy routing may remove tier channels and set notificationSettings.usePolicy=true.
 
 `
 
@@ -71,6 +71,6 @@ Not in the SigNoz OpenAPI spec yet. Fires when today's total log ingestion excee
 ## Key Notes
 1. Metrics signal uses the object aggregation shape ({metricName, timeAggregation, spaceAggregation}); logs and traces use the expression shape ({expression: "count()"}).
 2. selectedQueryName references the query or formula that determines the alert.
-3. Direct routing uses exact displayName values from a same-operation, still-current signoz_list_notification_channels result, or calls the fully paginated tool when absent or stale. V2 needs a displayName on every tier; confirmed policy routing may omit them. V1 anomaly routing uses exact displayName values in top-level preferredChannels.
-4. For threshold_rule and promql_rule, set schemaVersion="v2alpha1" and include evaluation and notificationSettings; SigNoz requires both and treats an omitted schemaVersion as v1. For anomaly_rule, supply evalWindow, frequency, and the condition fields op, matchType, target, algorithm, and seasonality. That schema has no thresholds, evaluation, notificationSettings, or policy routing.
+3. Direct routing uses exact displayName values from a same-operation, still-current signoz_list_notification_channels result, or calls the fully paginated tool when absent or stale. V2 needs a displayName on every tier; confirmed policy routing may omit them.
+4. Set schemaVersion="v2alpha1" and include evaluation and notificationSettings for every rule type; SigNoz requires both and treats an omitted schemaVersion as the retired v1 schema. An anomaly_rule also sets condition.algorithm and condition.seasonality, and its tier targets are signed anomaly scores (below -2, not below 2).
 `

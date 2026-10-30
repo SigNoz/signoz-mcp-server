@@ -24,17 +24,17 @@
           "uri": "signoz://ai/query-builder-guide"
         },
         {
-          "description": "Read this after signoz://alert/instructions only when examples are still needed. Resolve illustrative direct/anomaly names with signoz_list_notification_channels; if none fits, offer signoz_create_notification_channel. Confirmed v2 policy routing may omit direct channels; anomaly cannot use policy routing.",
+          "description": "Read this after signoz://alert/instructions only when examples are still needed. Resolve illustrative direct/anomaly names with signoz_list_notification_channels; if none fits, offer signoz_create_notification_channel. Confirmed v2 policy routing may omit direct channels.",
           "mimeType": "text/markdown",
           "name": "Alert Rule Examples",
-          "size": 33221,
+          "size": 33311,
           "uri": "signoz://alert/examples"
         },
         {
-          "description": "Read this before creating or updating an alert unless its current content was already read for the same prepared operation. It explains the query envelopes, threshold tiers, and evaluation specs the input schema does not describe, the v1 anomaly shape, and when to reuse or call signoz_list_notification_channels. Read signoz://alert/examples only when examples are still needed.",
+          "description": "Read this before creating or updating an alert unless its current content was already read for the same prepared operation. It explains the query envelopes, threshold tiers, and evaluation specs the input schema does not describe, anomaly scoring, and when to reuse or call signoz_list_notification_channels. Read signoz://alert/examples only when examples are still needed.",
           "mimeType": "text/markdown",
           "name": "Alert Rule Instructions",
-          "size": 21271,
+          "size": 21472,
           "uri": "signoz://alert/instructions"
         },
         {
