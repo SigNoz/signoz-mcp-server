@@ -788,7 +788,7 @@ whitespace-only queries remain validation errors.
 Fetch one known official SigNoz docs page's full Markdown or a requested heading. Use `signoz_search_docs` to discover a page first; accepted inputs are `https://signoz.io/docs/...` URLs or `/docs/...` paths.
 
 - **Parameters**:
-  - `url` (required) - Docs page URL or path
+  - `url` (required) - Docs page URL or path. A `signoz://` resource URI is rejected with a hint to read it with `resources/read` instead
   - `heading` (optional) - Heading anchor ID or heading text
   - `searchContext` - User's original question
 
@@ -833,7 +833,7 @@ Return aggregate statistics over logs (counts, rates, averages, percentiles, or 
   - `filter` (optional) - Filter expression using SigNoz search syntax. Pass the expression text, not `{"expression": ...}`, which is rejected with a coded error. Combine conditions with AND, OR, and parentheses. An unknown key may not fail: SigNoz can match guessed attribute and body spellings and return a `key ... not found in metadata` warning with no rows, so read that warning as an absent key. Ambiguous keys default to resource context. Log keys are workspace-specific; even `service.name` is only present when the log pipeline sets it. See `signoz://logs/query-builder-guide` There is no `key:value`, `STARTS WITH`, or `IS NULL`; use `LIKE 'prefix%'` and `EXISTS` / `NOT EXISTS`.
   - `service` (optional) - Shortcut filter for service name (adds `service.name = '<value>'`; when the workspace's logs lack that attribute, the call usually returns no rows with a `key service.name not found in metadata` warning instead of failing)
   - `severity` (optional) - `severity_text`, matched in any case and as a prefix, so `WARN` also matches `warning` and `Warning`; pass the short form (`ERR`, `WARN`, `INFO`). DEBUG, INFO, WARN, ERROR, and FATAL are common examples, not an exhaustive enum. Discover values with `signoz_get_field_values(signal="logs", name="severity_text", fieldContext="log")`
-  - `orderBy` (optional) - Order expression and direction (e.g., 'count() desc'; default: the first aggregation expression descending)
+  - `orderBy` (optional) - Order expression and direction. The expression must be one of the call's aggregations, written exactly as in `aggregations`, or a `groupBy` key (e.g. `'count_distinct(trace_id) desc'` when aggregating `count_distinct(trace_id)`); default: the first aggregation, descending
   - `limit` (optional) - Maximum number of groups to return (default: 100, max: 10000; higher values are clamped to bound server memory)
   - `functions` (optional) - Post-query transforms applied to each `time_series` result, as an array of `{name, args}` objects (or a JSON-encoded string). SigNoz returns `scalar` results unchanged, and the response notes it. Names such as `cutOffMin`, `clampMax`, `absolute`, `runningDiff`, `ewma3`, `timeShift`, and `fillZero`; SigNoz validates names and args
   - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '24h', '7d'; default: '1h'; ignored when both `start` and `end` are provided)
@@ -937,7 +937,7 @@ Return custom aggregate statistics over spans (counts, rates, latency percentile
   - `operation` (optional) - Shortcut filter for span/operation name
   - `error` (optional) - Shortcut filter for error spans. Boolean (or the strings `"true"`/`"false"`). An invalid value is rejected rather than silently dropped
   - `minDuration` / `maxDuration` (optional) - Min/max span duration as a duration such as `'500ms'` or `'2s'` (units `ns`, `us`, `ms`, `s`, `m`, `h`). A bare number, string or JSON, is nanoseconds. SigNoz rejects any other value
-  - `orderBy` (optional) - Order expression and direction (e.g., 'avg(duration_nano) desc'; default: the first aggregation expression descending)
+  - `orderBy` (optional) - Order expression and direction. The expression must be one of the call's aggregations, written exactly as in `aggregations`, or a `groupBy` key (e.g. `'p99(duration_nano) desc'` when aggregating `p99(duration_nano)`); default: the first aggregation, descending
   - `limit` (optional) - Maximum number of groups to return (default: 100, max: 10000; higher values are clamped to bound server memory)
   - `functions` (optional) - Post-query transforms applied to each `time_series` result, as an array of `{name, args}` objects (or a JSON-encoded string). SigNoz returns `scalar` results unchanged, and the response notes it. Names such as `cutOffMin`, `clampMax`, `absolute`, `runningDiff`, `ewma3`, `timeShift`, and `fillZero`; SigNoz validates names and args
   - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '24h', '7d'; default: '1h'; ignored when both `start` and `end` are provided)

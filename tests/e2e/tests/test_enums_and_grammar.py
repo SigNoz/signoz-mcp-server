@@ -96,3 +96,27 @@ def test_promql_matcher_error_names_regexp(mcp_client: MCPClient) -> None:
     assert result_code(result) == "VALIDATION_FAILED"
     assert "but got '~'" in body, f"SigNoz's parse error changed: {body[:300]}"
     assert "Query Builder filters use REGEXP and NOT REGEXP instead" in body
+
+
+def test_order_keys_the_guides_teach(mcp_client: MCPClient, test_id: str) -> None:
+    """An aggregation written as in aggregations, a groupBy key, and an aggregation index all order results."""
+    service = f"mcp-e2e-{test_id}"
+    seed_traces(service, count=2)
+
+    def ordered(order_by: str) -> dict:
+        return mcp_client.call_tool(
+            "signoz_aggregate_traces",
+            {
+                "searchContext": f"p99 latency of {service} by operation",
+                "aggregations": "p99(duration_nano)",
+                "groupBy": "name",
+                "service": service,
+                "orderBy": order_by,
+                "timeRange": "1h",
+            },
+        )
+
+    wait_for(lambda: "e2e-operation" in first_text_block(ordered("p99(duration_nano) desc")), f"{service} aggregated")
+    for order_by in ("p99(duration_nano) desc", "name asc", "0 desc"):
+        body = first_text_block(assert_tool_ok(ordered(order_by)))
+        assert "e2e-operation" in body, f"orderBy {order_by!r} returned no groups: {body[:300]}"
