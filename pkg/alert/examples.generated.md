@@ -222,9 +222,9 @@ Counts matching log records (ERROR severity + body contains) over a rolling wind
 }
 ```
 
-### 3. metric_anomaly — Metric anomaly rule (v1 only)
+### 3. metric_anomaly — Metric anomaly rule
 
-Anomaly rules are not yet supported under schemaVersion v2alpha1, so this example uses the v1 shape. Wraps a builder query in the `anomaly` function with daily seasonality SigNoz compares each point against the forecast for that time of day. Fires when the anomaly score stays below the threshold for the entire window; `requireMinPoints` guards against noisy intervals.
+Wraps a builder query in the `anomaly` function with daily seasonality, so SigNoz compares each point against the forecast for that time of day. The threshold is compared against the signed anomaly score, so `below` with a target of -2 fires when an abrupt drop holds for the entire window; `requireMinPoints` guards against noisy intervals.
 
 ```json
 {
@@ -279,24 +279,47 @@ Anomaly rules are not yet supported under schemaVersion v2alpha1, so this exampl
       ],
       "queryType": "builder"
     },
-    "matchType": "all_the_times",
-    "op": "below",
     "requireMinPoints": true,
     "requiredNumPoints": 3,
     "seasonality": "daily",
     "selectedQueryName": "A",
-    "target": 2
+    "thresholds": {
+      "kind": "basic",
+      "spec": [
+        {
+          "channels": [
+            "slack-ingestion"
+          ],
+          "matchType": "all_the_times",
+          "name": "warning",
+          "op": "below",
+          "target": -2
+        }
+      ]
+    }
   },
   "description": "Detect an abrupt drop in span ingestion using a z-score anomaly function",
-  "evalWindow": "24h",
-  "frequency": "3h",
+  "evaluation": {
+    "kind": "rolling",
+    "spec": {
+      "evalWindow": "24h",
+      "frequency": "3h"
+    }
+  },
   "labels": {
     "severity": "warning"
   },
-  "preferredChannels": [
-    "slack-ingestion"
-  ],
+  "notificationSettings": {
+    "renotify": {
+      "alertStates": [
+        "firing"
+      ],
+      "enabled": true,
+      "interval": "4h"
+    }
+  },
   "ruleType": "anomaly_rule",
+  "schemaVersion": "v2alpha1",
   "version": "v5"
 }
 ```

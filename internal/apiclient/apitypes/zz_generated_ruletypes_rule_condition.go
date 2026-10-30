@@ -32,8 +32,8 @@ type RuletypesRuleCondition struct {
 	// Seasonality anomaly_rule only: the seasonal period the history is compared against, hourly, daily or weekly.
 	Seasonality *RuletypesSeasonality `json:"seasonality,omitempty" jsonschema:"anomaly_rule only: the seasonal period the history is compared against, hourly, daily or weekly."`
 
-	// SelectedQueryName The name of the query whose result is evaluated, such as A or F1. Must match a query in compositeQuery. When omitted, F1 is used if present, otherwise the enabled query with the highest name.
-	SelectedQueryName *string `json:"selectedQueryName,omitempty" jsonschema:"The name of the query whose result is evaluated, such as A or F1. Must match a query in compositeQuery. When omitted, F1 is used if present, otherwise the enabled query with the highest name."`
+	// SelectedQueryName The name of the query whose result is evaluated, such as A or F1. Must match a query in compositeQuery.
+	SelectedQueryName string `json:"selectedQueryName" jsonschema:"The name of the query whose result is evaluated, such as A or F1. Must match a query in compositeQuery."`
 
 	// Target schemaVersion v1 only: the value compared against, in targetUnit. Required for v1; v2alpha1 sets target on each threshold.
 	Target *float64 `json:"target,omitempty" jsonschema:"schemaVersion v1 only: the value compared against, in targetUnit. Required for v1; v2alpha1 sets target on each threshold."`
@@ -41,6 +41,6 @@ type RuletypesRuleCondition struct {
 	// TargetUnit schemaVersion v1 only: the unit of target, such as percent or ms. Converted to compositeQuery.unit before comparison when the two differ.
 	TargetUnit *string `json:"targetUnit,omitempty" jsonschema:"schemaVersion v1 only: the unit of target, such as percent or ms. Converted to compositeQuery.unit before comparison when the two differ."`
 
-	// Thresholds The thresholds to evaluate, as a kind and spec. Required when schemaVersion is v2alpha1; derived from op, target and matchType for v1.
-	Thresholds *RuletypesRuleThresholdData `json:"thresholds,omitempty" jsonschema:"The thresholds to evaluate, as a kind and spec. Required when schemaVersion is v2alpha1; derived from op, target and matchType for v1."`
+	// Thresholds The thresholds to evaluate, as a kind and spec.
+	Thresholds RuletypesRuleThresholdData `json:"thresholds" jsonschema:"The thresholds to evaluate, as a kind and spec."`
 }
