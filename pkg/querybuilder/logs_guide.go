@@ -13,8 +13,8 @@ INCORRECT: "filter": {"op": "AND", "items": [...]}
 Operators: =  !=  >  >=  <  <=  IN  NOT IN  LIKE  NOT LIKE  ILIKE  NOT ILIKE  CONTAINS  NOT CONTAINS  REGEXP  NOT REGEXP  BETWEEN  NOT BETWEEN  EXISTS  NOT EXISTS
 Combine:   AND  OR  (use parentheses for precedence)
 
-No other operators exist: write STARTS WITH as LIKE 'prefix%', IS NULL as NOT EXISTS, and IS NOT NULL
-as EXISTS. A condition is key, operator, value; key:value is not filter syntax. A bare word or quoted
+No other operators exist: write STARTS WITH as LIKE 'prefix%', IS NULL as NOT EXISTS, IS NOT NULL
+as EXISTS, and PromQL's =~ and !~ as REGEXP and NOT REGEXP. A condition is key, operator, value; key:value is not filter syntax. A bare word or quoted
 phrase with no key is a full-text search, as with search() below.
 
 Examples:

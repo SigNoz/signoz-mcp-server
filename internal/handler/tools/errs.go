@@ -380,20 +380,33 @@ func missingKeyGuidance(keys []string, signal string) string {
 func upstreamQueryError(err error, signal string) *mcp.CallToolResult {
 	res := upstreamError(err)
 	keys := missingFilterKeys(err)
-	if len(keys) == 0 {
+	var guidance string
+	switch {
+	case len(keys) > 0:
+		guidance = missingKeyGuidance(keys, signal)
+	case strings.Contains(err.Error(), promQLMatcherParseError):
+		guidance = promQLMatcherGuidance
+	default:
 		return res
 	}
 	if len(res.Content) == 1 {
 		if tc, ok := res.Content[0].(*mcp.TextContent); ok {
-			tc.Text += "\n\n" + missingKeyGuidance(keys, signal)
+			tc.Text += "\n\n" + guidance
 			res.Content[0] = tc
 		}
 	}
-	if structured, ok := res.StructuredContent.(map[string]any); ok {
+	if structured, ok := res.StructuredContent.(map[string]any); ok && len(keys) > 0 {
 		structured["missingKeys"] = keys
 	}
 	return res
 }
+
+// SigNoz's filter parser stops at the "~" of a PromQL =~ or !~ matcher; its error
+// lists the expected tokens but never names the Query Builder regex operator.
+const (
+	promQLMatcherParseError = "but got '~'"
+	promQLMatcherGuidance   = "`=~` and `!~` are PromQL matchers. Query Builder filters use REGEXP and NOT REGEXP instead, for example `k8s.pod.name REGEXP 'checkout-.*'`."
+)
 
 // logQueryFailure is the QB v5 tools' variant of logUpstreamFailure: a 400 whose
 // filter references keys absent from the workspace's metadata is an expected agent

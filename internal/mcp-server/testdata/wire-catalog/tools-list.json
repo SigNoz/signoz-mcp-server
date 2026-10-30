@@ -7257,7 +7257,7 @@
                 ]
               },
               "filter": {
-                "description": "Filter expression, passed as the expression text, not {\"expression\": ...}. Example: \"k8s.cluster.name = 'prod' AND service.name = 'frontend'\".",
+                "description": "Filter expression, passed as the expression text, not {\"expression\": ...}. Example: \"k8s.cluster.name = 'prod' AND service.name = 'frontend'\". Regex matches use REGEXP, not PromQL's =~.",
                 "type": "string"
               },
               "formula": {

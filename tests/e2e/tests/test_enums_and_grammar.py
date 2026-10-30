@@ -5,7 +5,7 @@ both request types against the backend, and the top-operations tag filter.
 """
 
 from fixtures.mcpclient import MCPClient, assert_tool_ok
-from fixtures.results import first_text_block
+from fixtures.results import first_text_block, result_code
 from fixtures.telemetry import seed_traces, wait_for
 
 # Aggregation expressions the tool descriptions use as examples; each must run
@@ -78,3 +78,21 @@ def test_service_top_operations_lists_the_seeded_operation(
             args["tags"] = tags
         body = first_text_block(assert_tool_ok(mcp_client.call_tool("signoz_get_service_top_operations", args)))
         assert "e2e-operation" in body, f"tags={tags!r}: seeded operation missing: {body[:300]}"
+
+
+def test_promql_matcher_error_names_regexp(mcp_client: MCPClient) -> None:
+    """SigNoz rejects a PromQL =~ matcher without naming REGEXP; the tool error adds the replacement."""
+    result = mcp_client.call_tool(
+        "signoz_aggregate_logs",
+        {
+            "searchContext": "count logs for checkout pods",
+            "aggregations": "count()",
+            "filter": "k8s.pod.name =~ 'checkout-.*'",
+            "timeRange": "15m",
+        },
+    )
+    body = first_text_block(result)
+    assert result.get("isError", False), f"a =~ filter should fail in SigNoz, got: {body[:300]}"
+    assert result_code(result) == "VALIDATION_FAILED"
+    assert "but got '~'" in body, f"SigNoz's parse error changed: {body[:300]}"
+    assert "Query Builder filters use REGEXP and NOT REGEXP instead" in body

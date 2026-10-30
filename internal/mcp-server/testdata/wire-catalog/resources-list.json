@@ -125,14 +125,14 @@
           "description": "Read this before writing Query Builder v5 JSON for logs or filtering on unfamiliar log fields. It explains filter syntax, field discovery, body, JSON-path, and cross-field search(), row and aggregate queries, stable pagination, limits, ordering, timestamps, and examples for rows, single values, and time series.",
           "mimeType": "text/markdown",
           "name": "Logs Query Builder Guide",
-          "size": 14547,
+          "size": 14592,
           "uri": "signoz://logs/query-builder-guide"
         },
         {
           "description": "Read this before choosing aggregations for signoz_query_metrics or building metrics Query Builder JSON. It explains timeAggregation, spaceAggregation, and reduceTo by metric type; formulas and limits; groupBy and filter label names; top-N selection across the full window; step intervals; examples; and Cost Meter queries.",
           "mimeType": "text/markdown",
           "name": "Metrics Aggregation Guide",
-          "size": 11814,
+          "size": 12073,
           "uri": "signoz://metrics-aggregation-guide"
         },
         {
@@ -187,7 +187,7 @@
           "description": "Read this before writing Query Builder v5 JSON for traces or filtering on unfamiliar trace fields. It explains filter syntax, field discovery, built-in span fields, row and aggregate queries, limits, ordering, timestamps, and examples for rows, single values, and time series.",
           "mimeType": "text/markdown",
           "name": "Traces Query Builder Guide",
-          "size": 10674,
+          "size": 10719,
           "uri": "signoz://traces/query-builder-guide"
         }
       ],
