@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"runtime/debug"
+	"slices"
 	"sort"
 	"strings"
 	"sync/atomic"
@@ -25,8 +26,11 @@ const (
 	// successful result whose arguments mismatched the advertised schema.
 	inputValidationNoticePrefix = "Input validation notice:"
 	maxValidationMetadataLength = 96
-	validationLogInterval       = time.Minute
-	inputValidationNoticeAdvice = " The call still ran best-effort: mismatched values may have been ignored or replaced with defaults. Adjust the flagged parameter(s) and re-call if the results look off."
+
+	undeclaredArgumentPath       = "<undeclared>"
+	undeclaredArgumentConstraint = "undeclared_argument"
+	validationLogInterval        = time.Minute
+	inputValidationNoticeAdvice  = " The call still ran best-effort: mismatched values may have been ignored or replaced with defaults. Adjust the flagged parameter(s) and re-call if the results look off."
 )
 
 type validationLogState struct {
@@ -234,6 +238,9 @@ func (h *Handler) validationDecorator(toolName string, input, output *compiledTo
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		var notice string
 		if input != nil {
+			if undeclared := undeclaredArguments(input, req.Params.Arguments); len(undeclared) > 0 {
+				h.recordUndeclaredArguments(ctx, req, toolName, undeclared)
+			}
 			if err := validateArguments(input.validator, req); err != nil {
 				mismatch := diagnoseValidationMismatch(input, req.Params.Arguments, true)
 				h.recordValidationMismatch(ctx, req, toolName, "input", mismatch.path, mismatch.constraint)
@@ -425,6 +432,46 @@ func (h *Handler) recordValidationMismatch(ctx context.Context, req mcp.CallTool
 			attribute.String("validation.direction", direction),
 			attribute.String("validation.path", path),
 			attribute.String("validation.constraint", constraint),
+		}
+		attrs = otelpkg.AppendClientSource(ctx, attrs)
+		h.meters.ToolValidationMismatches.Add(ctx, 1, metric.WithAttributes(attrs...))
+	}
+}
+
+// undeclaredArguments lists the top-level argument keys the tool's input
+// schema does not declare. Input schemas are opened, so the validator never
+// flags them and handlers silently ignore any they don't read.
+func undeclaredArguments(schema *compiledToolSchema, arguments any) []string {
+	object, ok := arguments.(map[string]any)
+	if !ok {
+		return nil
+	}
+	var undeclared []string
+	for name := range object {
+		if _, declared := slices.BinarySearch(schema.properties, name); !declared {
+			undeclared = append(undeclared, name)
+		}
+	}
+	sort.Strings(undeclared)
+	return undeclared
+}
+
+// recordUndeclaredArguments sizes how often clients send arguments a tool
+// ignores before anything rejects them. The key names are client-chosen, so
+// they go only into the log, never into metric dimensions or limiter keys.
+func (h *Handler) recordUndeclaredArguments(ctx context.Context, req mcp.CallToolRequest, toolName string, names []string) {
+	if h.logger.Enabled(ctx, slog.LevelWarn) && h.shouldLogValidationRequest(toolName, "input", undeclaredArgumentPath, undeclaredArgumentConstraint) {
+		h.logger.WarnContext(ctx, "tool called with arguments its input schema does not declare (repeats rate-limited; see mcp.tool.validation.mismatches)",
+			slog.String("gen_ai.tool.name", toolName),
+			slog.String("validation.undeclared_arguments", boundedMetadata(strings.Join(names, ","))),
+			slog.String("mcp.request", logpkg.RedactedTruncAny(req)))
+	}
+	if h.meters != nil {
+		attrs := []attribute.KeyValue{
+			attribute.String("gen_ai.tool.name", toolName),
+			attribute.String("validation.direction", "input"),
+			attribute.String("validation.path", undeclaredArgumentPath),
+			attribute.String("validation.constraint", undeclaredArgumentConstraint),
 		}
 		attrs = otelpkg.AppendClientSource(ctx, attrs)
 		h.meters.ToolValidationMismatches.Add(ctx, 1, metric.WithAttributes(attrs...))
