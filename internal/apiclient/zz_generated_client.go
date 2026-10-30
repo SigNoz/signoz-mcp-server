@@ -523,6 +523,13 @@ type ClientInterface interface {
 	// Corresponds with PUT /api/v2/dashboards/{id} (the `UpdateDashboardV2` operationId).
 	UpdateDashboardV2(ctx context.Context, id string, body UpdateDashboardV2JSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetFeatures Get features
+	//
+	// This endpoint returns the supported features and their details.
+	//
+	// Corresponds with GET /api/v2/features (the `GetFeatures` operationId).
+	GetFeatures(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListMetrics List metric names
 	//
 	// This endpoint returns a list of distinct metric names within the specified time range.
@@ -1178,6 +1185,23 @@ func (c *Client) UpdateDashboardV2WithBody(ctx context.Context, id string, conte
 // Corresponds with PUT /api/v2/dashboards/{id} (the `UpdateDashboardV2` operationId).
 func (c *Client) UpdateDashboardV2(ctx context.Context, id string, body UpdateDashboardV2JSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewUpdateDashboardV2Request(c.Server, id, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetFeatures Get features
+//
+// This endpoint returns the supported features and their details.
+//
+// Corresponds with GET /api/v2/features (the `GetFeatures` operationId).
+func (c *Client) GetFeatures(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetFeaturesRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -2921,6 +2945,33 @@ func NewUpdateDashboardV2RequestWithBody(server string, id string, contentType s
 	return req, nil
 }
 
+// NewGetFeaturesRequest constructs an http.Request for the GetFeatures method
+func NewGetFeaturesRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v2/features")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListMetricsRequest constructs an http.Request for the ListMetrics method
 func NewListMetricsRequest(server string, params *ListMetricsParams) (*http.Request, error) {
 	var err error
@@ -4519,6 +4570,15 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with PUT /api/v2/dashboards/{id} (the `UpdateDashboardV2` operationId).
 	UpdateDashboardV2WithResponse(ctx context.Context, id string, body UpdateDashboardV2JSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateDashboardV2Response, error)
+
+	// GetFeaturesWithResponse Get features
+	//
+	// This endpoint returns the supported features and their details.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v2/features (the `GetFeatures` operationId).
+	GetFeaturesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetFeaturesResponse, error)
 
 	// ListMetricsWithResponse List metric names
 	//
@@ -6130,6 +6190,74 @@ func (r UpdateDashboardV2Response) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r UpdateDashboardV2Response) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetFeaturesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *struct {
+		Data   []apitypes.FeaturetypesGettableFeature `json:"data"`
+		Status string                                 `json:"status"`
+	}
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *apitypes.RenderErrorResponse
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *apitypes.RenderErrorResponse
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *apitypes.RenderErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetFeaturesResponse) GetJSON200() *struct {
+	Data   []apitypes.FeaturetypesGettableFeature `json:"data"`
+	Status string                                 `json:"status"`
+} {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetFeaturesResponse) GetJSON401() *apitypes.RenderErrorResponse {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r GetFeaturesResponse) GetJSON403() *apitypes.RenderErrorResponse {
+	return r.JSON403
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetFeaturesResponse) GetJSON500() *apitypes.RenderErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetFeaturesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetFeaturesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetFeaturesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetFeaturesResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -8349,6 +8477,21 @@ func (c *ClientWithResponses) UpdateDashboardV2WithResponse(ctx context.Context,
 	return ParseUpdateDashboardV2Response(rsp)
 }
 
+// GetFeaturesWithResponse Get features
+//
+// This endpoint returns the supported features and their details.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v2/features (the `GetFeatures` operationId).
+func (c *ClientWithResponses) GetFeaturesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetFeaturesResponse, error) {
+	rsp, err := c.GetFeatures(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetFeaturesResponse(rsp)
+}
+
 // ListMetricsWithResponse List metric names
 //
 // This endpoint returns a list of distinct metric names within the specified time range.
@@ -9837,6 +9980,56 @@ func ParseUpdateDashboardV2Response(rsp *http.Response) (*UpdateDashboardV2Respo
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest apitypes.RenderErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetFeaturesResponse parses an HTTP response from a GetFeaturesWithResponse call
+func ParseGetFeaturesResponse(rsp *http.Response) (*GetFeaturesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetFeaturesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			Data   []apitypes.FeaturetypesGettableFeature `json:"data"`
+			Status string                                 `json:"status"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest apitypes.RenderErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest apitypes.RenderErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest apitypes.RenderErrorResponse

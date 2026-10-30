@@ -14,6 +14,7 @@ type Client interface {
 	GetExternalURL(ctx context.Context) (string, error)
 	GetAnalyticsIdentity(ctx context.Context) (*AnalyticsIdentity, error)
 	GetOrgOverview(ctx context.Context) (json.RawMessage, error)
+	GetFeatures(ctx context.Context) (json.RawMessage, error)
 	ListMetrics(ctx context.Context, start, end int64, limit int, searchText, source string) (json.RawMessage, error)
 	GetMetricMetadata(ctx context.Context, metricName string) (json.RawMessage, error)
 	GetTopMetrics(ctx context.Context, start, end int64, limit int) (json.RawMessage, error)

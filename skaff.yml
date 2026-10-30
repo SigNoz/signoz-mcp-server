@@ -33,6 +33,7 @@ data_sources:
   service_account_me: {read: {path: /api/v1/service_accounts/me, method: GET}}
   user_me: {read: {path: /api/v2/users/me, method: GET}}
   stats: {read: {path: /api/v1/stats, method: GET}}
+  features: {read: {path: /api/v2/features, method: GET}}
   alerts: {read: {path: /api/v1/alerts, method: GET}}
   rules: {read: {path: /api/v3/rules, method: GET}}
   rule_history_timeline: {read: {path: "/api/v2/rules/{id}/history/timeline", method: GET}}

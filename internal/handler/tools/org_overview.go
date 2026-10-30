@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/SigNoz/signoz-mcp-server/internal/apiclient/apitypes"
 	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
@@ -37,6 +38,7 @@ type orgOverviewData struct {
 	Authorization     orgAuthorizationOverview     `json:"authorization"`
 	License           orgLicenseOverview           `json:"license"`
 	Configuration     orgConfigurationOverview     `json:"configuration"`
+	FeatureFlags      orgFeatureFlagsOverview      `json:"featureFlags" jsonschema:"Feature flags as SigNoz resolves them for this org. Some change how data is stored or queried, such as use_json_body for JSON log bodies."`
 	Metadata          orgOverviewMetadata          `json:"metadata"`
 }
 
@@ -183,6 +185,19 @@ type orgConfigurationOverview struct {
 	CacheProvider     *string `json:"cacheProvider,omitempty"`
 }
 
+type orgFeatureFlagsOverview struct {
+	Available bool             `json:"available" jsonschema:"Whether SigNoz reported the feature flags. False means unknown, not that every flag is off; metadata.incompleteGroups says why."`
+	Flags     []orgFeatureFlag `json:"flags" jsonschema:"Every flag SigNoz reported, sorted by name."`
+}
+
+type orgFeatureFlag struct {
+	Name          string `json:"name"`
+	Kind          string `json:"kind,omitempty" jsonschema:"Value type, such as boolean."`
+	Stage         string `json:"stage,omitempty" jsonschema:"Rollout stage, such as experimental or stable."`
+	Description   string `json:"description,omitempty"`
+	ResolvedValue any    `json:"resolvedValue" jsonschema:"The value in effect for this org."`
+}
+
 type orgOverviewMetadata struct {
 	ReportedStatCount       int                          `json:"reportedStatCount" jsonschema:"Number of authoritative fields preserved in sourceStats."`
 	ProjectedStatCount      int                          `json:"projectedStatCount" jsonschema:"Number of sourceStats fields also represented in the typed convenience groups."`
@@ -206,7 +221,7 @@ func (h *Handler) RegisterOrgOverviewHandlers(s *mcp.Server) {
 	tool := mcp.NewTool("signoz_get_org_overview",
 		mcp.WithOutputSchema[orgOverviewOutput](),
 		withReadOnlyToolAnnotations(),
-		mcp.WithDescription("Get the current status and overall posture of the SigNoz deployment in one call. Returns typed telemetry, infrastructure, dashboard, alert, integration, access, license, and configuration summaries plus sourceStats with every reported stats field. Use dedicated list and query tools for exact inventories or time-windowed data. Missing fields are unreported, not zero; metadata.incompleteGroups provides recovery guidance for partial projections."),
+		mcp.WithDescription("Get the current status and overall posture of the SigNoz deployment in one call. Returns typed telemetry, infrastructure, dashboard, alert, integration, access, license, and configuration summaries, the org's feature flags, plus sourceStats with every reported stats field. Use dedicated list and query tools for exact inventories or time-windowed data. Missing fields are unreported, not zero; metadata.incompleteGroups provides recovery guidance for partial projections."),
 		mcp.WithString("searchContext", mcp.Description(searchContextParamDescription)),
 	)
 
@@ -245,6 +260,14 @@ func (h *Handler) handleGetOrgOverview(ctx context.Context, _ mcp.CallToolReques
 			"Unexpected response shape from deployment stats endpoint",
 			logpkg.ErrAttr(err))
 		return upstreamError(fmt.Errorf("deployment stats response could not be interpreted: %w", err)), nil
+	}
+	features, err := client.GetFeatures(ctx)
+	if err != nil && isGlobalUpstreamFailure(ctx, err) {
+		h.logUpstreamFailure(ctx, "Failed to get feature flags", err)
+		return upstreamError(err), nil
+	}
+	if err := applyOrgFeatureFlags(&overview, features, err); err != nil {
+		h.logger.WarnContext(ctx, "Feature flags missing from the deployment overview", logpkg.ErrAttr(err))
 	}
 	if len(driftFields) > 0 {
 		sort.Strings(driftFields)
@@ -633,6 +656,51 @@ func buildOrgOverview(payload []byte) (orgOverviewOutput, []string, error) {
 	return overview, driftFields, nil
 }
 
+// applyOrgFeatureFlags fills the featureFlags group. A failed or unreadable
+// features call leaves the rest of the overview intact and is reported as an
+// incomplete group, so a missing flag never reads as off.
+func applyOrgFeatureFlags(overview *orgOverviewOutput, payload []byte, fetchErr error) error {
+	group := &overview.Data.FeatureFlags
+	group.Flags = []orgFeatureFlag{}
+	err := fetchErr
+	if err == nil {
+		var envelope struct {
+			Data *[]apitypes.FeaturetypesGettableFeature `json:"data"`
+		}
+		if err = json.Unmarshal(payload, &envelope); err == nil && envelope.Data == nil {
+			err = fmt.Errorf("features response has no data array")
+		}
+		if err == nil {
+			for _, feature := range *envelope.Data {
+				group.Flags = append(group.Flags, orgFeatureFlag{
+					Name:          deref(feature.Name),
+					Kind:          deref(feature.Kind),
+					Stage:         deref(feature.Stage),
+					Description:   deref(feature.Description),
+					ResolvedValue: feature.ResolvedValue,
+				})
+			}
+			sort.Slice(group.Flags, func(i, j int) bool { return group.Flags[i].Name < group.Flags[j].Name })
+			group.Available = true
+			return nil
+		}
+	}
+	metadata := &overview.Data.Metadata
+	reason, nextAction, nextTools := orgOverviewRecovery("featureFlags")
+	metadata.IncompleteGroups = append(metadata.IncompleteGroups, orgOverviewIncompleteGroup{
+		Group:      "featureFlags",
+		Fields:     []string{"featureFlags.flags"},
+		Reason:     reason,
+		NextAction: nextAction,
+		NextTools:  nextTools,
+	})
+	sort.Slice(metadata.IncompleteGroups, func(i, j int) bool {
+		return metadata.IncompleteGroups[i].Group < metadata.IncompleteGroups[j].Group
+	})
+	metadata.ProjectionPartial = true
+	return err
+}
+
 func buildOrgOverviewIncompleteGroups(fieldsByGroup map[string]map[string]struct{}) []orgOverviewIncompleteGroup {
 	groups := make([]string, 0, len(fieldsByGroup))
 	for group := range fieldsByGroup {
@@ -721,6 +789,10 @@ func orgOverviewRecovery(group string) (string, string, []string) {
 	case "license":
 		return "One or more license stats were invalid for the typed projection.",
 			"Inspect license information in SigNoz; the original reported value remains available in sourceStats.",
+			nil
+	case "featureFlags":
+		return "SigNoz did not report the feature flags, or reported them in an unreadable shape.",
+			"Treat every flag as unknown, not off, and check the feature in SigNoz settings before relying on it.",
 			nil
 	case "configuration":
 		return "One or more deployment-configuration stats were not reported or were invalid.",
