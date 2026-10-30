@@ -536,7 +536,7 @@ Get the current status and overall posture of the SigNoz deployment before drill
 Discover metric names and catalog metadata such as type, temporality, unit, and monotonicity. Use `signoz_query_metrics` for values or trends. This list has a limit but no offset pagination.
 
 - **Parameters**:
-  - `searchText` (optional) - Filter metrics by name substring (e.g., 'cpu', 'memory')
+  - `searchText` (optional) - Filter metrics by name substring. Names separate words with dots or underscores (`system.cpu.time`, `http_server_duration`), so search one word, such as `cpu` or `memory`
   - `limit` (optional) - Maximum number of metrics to return (default: 50)
   - `timeRange` (optional) - Relative range: 30m, 1h, 6h, 24h, 7d (default: 1h; ignored when both `start` and `end` are provided)
   - `start`/`end` (optional) - Unix ms timestamps. When both are provided, they override `timeRange`.
@@ -611,9 +611,13 @@ Lists currently firing/silenced/inhibited alert *instances* from Alertmanager, *
 
 #### `signoz_list_alert_rules`
 
-Lists configured alert-rule summaries from `GET /api/v2/rules`, including inactive/OK and disabled rules. Use `signoz_get_alert` for one full definition; use `signoz_list_alerts` for current Alertmanager instances.
+Lists configured alert-rule summaries from `GET /api/v3/rules`, including inactive/OK and disabled rules. SigNoz applies `filter` and `states` before paging, so finding rules by name, label, severity, or state doesn't need a walk through every page. Use `signoz_get_alert` for one full definition; use `signoz_list_alerts` for current Alertmanager instances.
 
 - **Parameters**:
+  - `filter` (optional) - Filter expression, at most 1024 characters. Keys: `name` (the rule title), `severity`, `alert_type`, `rule_type`, `created_by`, `updated_by`, and `created_at` or `updated_at` with RFC 3339 times. Any other key is a rule label, matched case-sensitively (`cluster = 'prod'`); `labels.<key>` matches only the label. A bare word matches the name, description, or labels, ignoring case. Example: `name CONTAINS 'High Response Time' AND severity IN ('critical', 'error')`
+  - `states` (optional) - Only rules in these states: `firing`, `pending`, `recovering`, `inactive`, `nodata`, or `disabled`, as an array or a comma-separated string
+  - `sort` (optional) - Field to sort by: `updated_at` (default), `created_at`, `name`, `state`, or `severity`
+  - `order` (optional) - `asc` or `desc` (default)
   - `limit` (optional) - Maximum number of rules to return per page (default: 50, max: 1000; higher values are clamped)
   - `offset` (optional) - Number of rules to skip for pagination (default: 0)
 
@@ -700,7 +704,7 @@ Applies an RFC 6902 JSON Patch to a dashboard: a partial update without re-sendi
 
 #### `signoz_list_services`
 
-Lists paginated APM services with trace activity in a time range. Absence means no trace activity in that window, not that the same `service.name` never appears in logs; use `signoz_get_field_values` with `signal="logs"` for log values.
+Lists APM services with trace activity in a time range, sorted by service name and paginated. Absence means no trace activity in that window, not that the same `service.name` never appears in logs; use `signoz_get_field_values` with `signal="logs"` for log values.
 
 - **Parameters**:
   - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '7d'; defaults to last 6 hours; ignored when both `start` and `end` are provided)

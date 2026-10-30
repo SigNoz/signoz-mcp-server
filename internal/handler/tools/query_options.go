@@ -100,6 +100,13 @@ func parseOrderBy(raw string) (key, direction string) {
 // strings, a JSON-encoded string of one, or a comma-separated string. Blank
 // names are dropped.
 func parseFieldNameList(param string, raw any) ([]string, error) {
+	return parseStringList(param, raw, "field name", "http.route", "db.statement")
+}
+
+// parseStringList reads a list parameter of item strings in any of the forms
+// parseFieldNameList accepts; the two examples appear in its error messages.
+func parseStringList(param string, raw any, item, example1, example2 string) ([]string, error) {
+	commaForm := fmt.Sprintf(`pass an array of %ss or a comma-separated string, e.g. "%s, %s"`, item, example1, example2)
 	var names []string
 	switch v := raw.(type) {
 	case nil:
@@ -110,23 +117,23 @@ func parseFieldNameList(param string, raw any) ([]string, error) {
 		if trimmed := strings.TrimSpace(v); strings.HasPrefix(trimmed, "[") {
 			var items []any
 			if err := json.Unmarshal([]byte(trimmed), &items); err != nil {
-				return nil, fmt.Errorf(`invalid %q value: not a valid JSON array of field names (%v); pass an array of field names or a comma-separated string, e.g. "http.route, db.statement"`, param, err)
+				return nil, fmt.Errorf(`invalid %q value: not a valid JSON array of %ss (%v); %s`, param, item, err, commaForm)
 			}
-			return parseFieldNameList(param, items)
+			return parseStringList(param, items, item, example1, example2)
 		}
 		names = strings.Split(v, ",")
 	case []any:
-		for _, item := range v {
-			name, ok := item.(string)
+		for _, entry := range v {
+			name, ok := entry.(string)
 			if !ok {
-				return nil, fmt.Errorf(`invalid %q item %v: each item must be a field name string, e.g. ["http.route", "db.statement"]`, param, item)
+				return nil, fmt.Errorf(`invalid %q item %v: each item must be a %s string, e.g. ["%s", "%s"]`, param, entry, item, example1, example2)
 			}
 			names = append(names, name)
 		}
 	case []string:
 		names = v
 	default:
-		return nil, fmt.Errorf(`invalid %q value %v: pass an array of field names or a comma-separated string, e.g. "http.route, db.statement"`, param, raw)
+		return nil, fmt.Errorf(`invalid %q value %v: %s`, param, raw, commaForm)
 	}
 	cleaned := make([]string, 0, len(names))
 	for _, name := range names {

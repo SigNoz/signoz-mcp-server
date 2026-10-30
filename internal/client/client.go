@@ -489,9 +489,8 @@ func (s *SigNoz) ListAlerts(ctx context.Context, params types.ListAlertsParams) 
 // ListAlertRules returns one server-side page of rule summaries from
 // GET /api/v3/rules. SigNoz clamps limit to its own maximum, so the handler
 // walks pages until it has the window it was asked for.
-func (s *SigNoz) ListAlertRules(ctx context.Context, limit, offset int) (json.RawMessage, error) {
-	params := &apiclient.ListRulesV3Params{Limit: optInt(limit), Offset: optInt(offset)}
-	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching alert rules from SigNoz", slog.Int("limit", limit), slog.Int("offset", offset))
+func (s *SigNoz) ListAlertRules(ctx context.Context, params *apiclient.ListRulesV3Params) (json.RawMessage, error) {
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching alert rules from SigNoz")
 	return s.callAPI(ctx, DefaultQueryTimeout, func(ctx context.Context, api *apiclient.Client) (*http.Response, error) {
 		return api.ListRulesV3(ctx, params)
 	})
@@ -538,7 +537,7 @@ func (s *SigNoz) ListServices(ctx context.Context, start, end string) (json.RawM
 
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching services from SigNoz",
 		slog.String("start", start), slog.String("end", end))
-	return s.doReplaySafePost(ctx, s.baseURL+"/api/v1/services", bodyBytes, DefaultQueryTimeout)
+	return s.doReplaySafePost(ctx, s.baseURL+"/api/v2/services", bodyBytes, DefaultQueryTimeout)
 }
 
 func (s *SigNoz) GetServiceTopOperations(ctx context.Context, start, end, service string, tags json.RawMessage) (json.RawMessage, error) {
