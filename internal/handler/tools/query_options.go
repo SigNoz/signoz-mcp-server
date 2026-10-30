@@ -106,13 +106,15 @@ func parseFieldNameList(param string, raw any) ([]string, error) {
 	case string:
 		// Some clients stringify arrays; splitting "[\"a\",\"b\"]" on commas
 		// would send SigNoz keys with brackets and quotes in their names.
+		// Decoding into []any keeps a null item visible to the array checks.
 		if trimmed := strings.TrimSpace(v); strings.HasPrefix(trimmed, "[") {
-			if err := json.Unmarshal([]byte(trimmed), &names); err != nil {
+			var items []any
+			if err := json.Unmarshal([]byte(trimmed), &items); err != nil {
 				return nil, fmt.Errorf(`invalid %q value: not a valid JSON array of field names (%v); pass an array of field names or a comma-separated string, e.g. "http.route, db.statement"`, param, err)
 			}
-		} else {
-			names = strings.Split(v, ",")
+			return parseFieldNameList(param, items)
 		}
+		names = strings.Split(v, ",")
 	case []any:
 		for _, item := range v {
 			name, ok := item.(string)
