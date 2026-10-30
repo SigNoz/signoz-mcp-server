@@ -6898,7 +6898,7 @@
                 "type": "string"
               },
               "searchText": {
-                "description": "Filter metrics by name substring (optional). Example: 'cpu', 'memory', 'http_requests'.",
+                "description": "Filter metrics by name substring (optional). Names separate words with dots or underscores (system.cpu.time, http_server_duration), so search one word, such as 'cpu' or 'memory'.",
                 "type": "string"
               },
               "source": {
