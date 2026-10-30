@@ -3,7 +3,12 @@ package tools
 import (
 	"bytes"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+
+	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
+	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 )
 
 func TestBuildOrgOverview_MissingCountsStayUnknown(t *testing.T) {
@@ -329,4 +334,69 @@ func incompleteGroup(groups []orgOverviewIncompleteGroup, name string) *orgOverv
 		}
 	}
 	return nil
+}
+
+// A failed features call keeps the stats and marks the flags unknown, except a
+// 401 or 403, which fails the whole call so the client can fix its access.
+func TestGetOrgOverview_FeatureFlagsFailure(t *testing.T) {
+	tests := []struct {
+		name        string
+		status      int
+		body        string
+		wantCode    string
+		wantUnknown bool
+	}{
+		{name: "features call fails", status: http.StatusInternalServerError, body: `{"status":"error","error":{"code":"internal","message":"boom"}}`, wantUnknown: true},
+		{name: "features response has no data array", status: http.StatusOK, body: `{"status":"success"}`, wantUnknown: true},
+		{name: "permission denied fails the overview", status: http.StatusForbidden, body: `{"status":"error","error":{"code":"forbidden","message":"no access"}}`, wantCode: CodePermissionDenied},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				switch r.URL.Path {
+				case "/api/v1/stats":
+					_, _ = w.Write(completeOrgOverviewPayload(nil))
+				case "/api/v2/features":
+					w.WriteHeader(tt.status)
+					_, _ = w.Write([]byte(tt.body))
+				default:
+					t.Errorf("unexpected request %s", r.URL.Path)
+				}
+			}))
+			t.Cleanup(upstream.Close)
+			h := newTestHandler(signozclient.NewClient(logpkg.New("error"), upstream.URL, "test-api-key", "SIGNOZ-API-KEY", nil))
+			server := newMCPTestServer()
+			h.RegisterOrgOverviewHandlers(server)
+
+			result := callRegisteredTool(t, server, "signoz_get_org_overview", `{}`)
+			if tt.wantCode != "" {
+				if got := resultCode(t, result); got != tt.wantCode {
+					t.Fatalf("code = %q, want %q", got, tt.wantCode)
+				}
+				return
+			}
+			if result.IsError {
+				t.Fatalf("overview failed: %s", allTextBlocks(result))
+			}
+			var overview orgOverviewOutput
+			if err := json.Unmarshal([]byte(allTextBlocks(result)), &overview); err != nil {
+				t.Fatalf("decode overview: %v", err)
+			}
+			if count := overview.Data.Dashboards.Count; count == nil || *count != 9007199254740993 {
+				t.Fatalf("dashboards.count = %v, want the reported stats value", count)
+			}
+			flags := overview.Data.FeatureFlags
+			if flags.Available || len(flags.Flags) != 0 {
+				t.Fatalf("featureFlags = %+v, want unavailable with no flags", flags)
+			}
+			group := incompleteGroup(overview.Data.Metadata.IncompleteGroups, "featureFlags")
+			if group == nil || !overview.Data.Metadata.ProjectionPartial {
+				t.Fatalf("metadata = %+v, want a featureFlags incomplete group", overview.Data.Metadata)
+			}
+			if group.NextAction != "Treat every flag as unknown, not off, and check the feature in SigNoz settings before relying on it." {
+				t.Fatalf("nextAction = %q", group.NextAction)
+			}
+		})
+	}
 }
