@@ -56,7 +56,7 @@ func TestProductionHTTPUpstreamErrorGuidanceWire(t *testing.T) {
 	for index, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.Method != http.MethodPost || r.URL.Path != "/api/v1/services" || r.Header.Get("SIGNOZ-API-KEY") != "wire-test-key" {
+				if r.Method != http.MethodPost || r.URL.Path != "/api/v2/services" || r.Header.Get("SIGNOZ-API-KEY") != "wire-test-key" {
 					http.Error(w, "unexpected services request", http.StatusInternalServerError)
 					return
 				}

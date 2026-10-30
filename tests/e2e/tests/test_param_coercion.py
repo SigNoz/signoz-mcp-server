@@ -25,6 +25,15 @@ def test_services_ns_and_ms_windows(mcp_client: MCPClient, test_id: str, telemet
 
     wait_for(visible, f"service {service} visible")
 
+    # Top operations come from a table SigNoz fills after the spans are queryable.
+    def operation_visible() -> bool:
+        result = mcp_client.call_tool(
+            "signoz_get_service_top_operations", {"searchContext": "top operations", "service": service}
+        )
+        return not result.get("isError", False) and "e2e-operation" in first_text_block(result)
+
+    wait_for(operation_visible, f"operation of {service} visible")
+
     end_ms = int(time.time() * 1000)
     start_ms = end_ms - 6 * 3_600_000
     windows = {
