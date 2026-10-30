@@ -289,7 +289,7 @@ Required fields:
   | 2.5 | Sensitive | Catch moderate deviations |
   | 2.0 | Very sensitive | Catch small deviations; higher risk of false positives |
 
-- **Scoring**: anomaly_score = (actual_value − predicted_value) / stddev(current_season), so it is negative when the value falls below the forecast. Each tier compares this signed score with its op and target: op="above", target=3 fires on a rise of more than 3 standard deviations; op="below", target=-3 fires on a drop of more than 3.
+- **Scoring**: anomaly_score = (actual_value − predicted_value) / stddev(current_season), so it is negative when the value falls below the forecast. Each tier compares this signed score with its op and target: op="above", target=3 fires on a rise of more than 3 standard deviations; op="below", target=-3 fires on a drop of more than 3; op="outside_bounds", target=3 compares the absolute score and fires on either.
 - **evalWindow** selects the period being evaluated (e.g. 5m); seasonality controls separate historical lookbacks. Check data coverage across those lookbacks before choosing an anomaly rule. Increasing evalWindow does not supply missing history.
 
 See signoz://alert/examples → "metric_anomaly" for a complete payload.
