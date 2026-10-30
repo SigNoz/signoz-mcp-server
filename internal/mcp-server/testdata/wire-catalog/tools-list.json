@@ -6517,9 +6517,13 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user wants configured alert-rule summaries, including inactive/OK and disabled rules. It returns rule IDs, names, types, state, severity, labels, and timestamps; use signoz_get_alert with an ID for the full definition. Do not use it for current firing/silenced/inhibited instances: use signoz_list_alerts. Paginate with limit and offset.",
+          "description": "Use this when the user wants configured alert-rule summaries, including inactive/OK and disabled rules. It returns rule IDs, names, types, state, severity, labels, and timestamps; use signoz_get_alert with an ID for the full definition. Do not use it for current firing/silenced/inhibited instances: use signoz_list_alerts. To find rules by name, label, severity, or state, narrow with filter and states instead of paging through every rule; paginate with limit and offset.",
           "inputSchema": {
             "properties": {
+              "filter": {
+                "description": "Filter expression SigNoz applies before paging, at most 1024 characters. Keys: name (the rule title), severity, alert_type, rule_type, created_by, updated_by, and created_at or updated_at with RFC 3339 times (created_at \u003e= '2026-01-02T15:04:05Z'). Any other key is a rule label, matched case-sensitively (cluster = 'prod'); labels.\u003ckey\u003e matches only the label. A bare word matches the name, description, or labels, ignoring case. Example: \"name CONTAINS 'High Response Time' AND severity IN ('critical', 'error')\".",
+                "type": "string"
+              },
               "limit": {
                 "default": "50",
                 "description": "Maximum number of alert rules to return per page. Default: 50, max: 1000 (higher values are clamped).",
@@ -6536,9 +6540,31 @@
                   "string"
                 ]
               },
+              "order": {
+                "description": "Sort direction. Default: desc.",
+                "enum": [
+                  "asc",
+                  "desc"
+                ],
+                "type": "string"
+              },
               "searchContext": {
                 "description": "Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.",
                 "type": "string"
+              },
+              "sort": {
+                "description": "Field to sort by: updated_at (default), created_at, name, state, or severity.",
+                "type": "string"
+              },
+              "states": {
+                "description": "Only rules in these states: firing, pending, recovering, inactive, nodata, or disabled. Omit for every state.",
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "array",
+                  "string"
+                ]
               }
             },
             "required": [],
