@@ -616,7 +616,7 @@ Lists configured alert-rule summaries from `GET /api/v3/rules`, including inacti
 - **Parameters**:
   - `filter` (optional) - Filter expression, at most 1024 characters. Keys: `name` (the rule title), `severity`, `alert_type`, `rule_type`, `created_by`, `updated_by`, and `created_at` or `updated_at` with RFC 3339 times. Any other key is a rule label, matched case-sensitively (`cluster = 'prod'`); `labels.<key>` matches only the label. A bare word matches the name, description, or labels, ignoring case. Example: `name CONTAINS 'High Response Time' AND severity IN ('critical', 'error')`
   - `states` (optional) - Only rules in these states: `firing`, `pending`, `recovering`, `inactive`, `nodata`, or `disabled`, as an array or a comma-separated string
-  - `sort` (optional) - `updated_at` (default), `created_at`, `name`, `state`, or `severity`
+  - `sort` (optional) - Field to sort by: `updated_at` (default), `created_at`, `name`, `state`, or `severity`
   - `order` (optional) - `asc` or `desc` (default)
   - `limit` (optional) - Maximum number of rules to return per page (default: 50, max: 1000; higher values are clamped)
   - `offset` (optional) - Number of rules to skip for pagination (default: 0)

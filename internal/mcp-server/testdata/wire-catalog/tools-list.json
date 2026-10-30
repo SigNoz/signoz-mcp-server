@@ -6553,14 +6553,7 @@
                 "type": "string"
               },
               "sort": {
-                "description": "Field to sort by. Default: updated_at.",
-                "enum": [
-                  "updated_at",
-                  "created_at",
-                  "name",
-                  "state",
-                  "severity"
-                ],
+                "description": "Field to sort by: updated_at (default), created_at, name, state, or severity.",
                 "type": "string"
               },
               "states": {

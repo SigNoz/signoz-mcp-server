@@ -170,8 +170,10 @@ def test_list_alert_rules_filters_in_signoz(mcp_client: MCPClient, test_id: str)
     disk = threshold_rule(f"{prefix} Disk Usage")
     disk["labels"] = {"severity": "warning", "cluster": f"{prefix}-b"}
     disk["disabled"] = True
-    rule_ids = [create_rule(mcp_client, latency), create_rule(mcp_client, disk)]
+    rule_ids: list[str] = []
     try:
+        rule_ids.append(create_rule(mcp_client, latency))
+        rule_ids.append(create_rule(mcp_client, disk))
 
         def listed(**args: object) -> list[str]:
             result = assert_tool_ok(
@@ -187,5 +189,10 @@ def test_list_alert_rules_filters_in_signoz(mcp_client: MCPClient, test_id: str)
         assert listed(filter=ours, sort="name", order="asc") == [disk["alert"], latency["alert"]]
         assert listed(filter=ours, sort="name", order="desc") == [latency["alert"], disk["alert"]]
     finally:
+        failures = []
         for rule_id in rule_ids:
-            delete_rule(mcp_client, rule_id)
+            try:
+                delete_rule(mcp_client, rule_id)
+            except AssertionError as exc:
+                failures.append(f"{rule_id}: {exc}")
+        assert not failures, f"rules left behind: {failures}"
