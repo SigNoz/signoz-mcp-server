@@ -3,6 +3,7 @@ package tools
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"strings"
 	"testing"
@@ -107,6 +108,25 @@ func TestParseFilterExpressionParam_CanonicalFilterContract(t *testing.T) {
 					t.Fatalf("error = %v, want %q", err, want)
 				}
 			})
+		}
+	})
+
+	// Sent as text, the wire object is a full-text search on logs that matches nothing;
+	// sent as an object, it used to be dropped and the query ran unfiltered.
+	t.Run("every query tool rejects the filter wire object", func(t *testing.T) {
+		const want = `Parameter validation failed: "filter" takes the expression text as a string, such as "service.name = 'api'", not {"expression": ...}`
+		for _, filter := range []any{
+			` {"expression": "http.route CONTAINS 'invit'"} `,
+			map[string]any{"expression": "http.route CONTAINS 'invit'"},
+		} {
+			for _, parser := range parsers {
+				t.Run(fmt.Sprintf("%s %T", parser.name, filter), func(t *testing.T) {
+					_, err := parser.parse(mergeArgs(parser.base, map[string]any{"filter": filter}))
+					if err == nil || err.Error() != want {
+						t.Fatalf("error = %v, want %q", err, want)
+					}
+				})
+			}
 		}
 	})
 }

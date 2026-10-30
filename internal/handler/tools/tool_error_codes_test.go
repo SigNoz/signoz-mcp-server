@@ -91,6 +91,7 @@ func TestToolHandlers_RejectInvalidArgumentsBeforeCallingSigNoz(t *testing.T) {
 		{tool: "signoz_aggregate_traces", arguments: `{"aggregations":"count()","groupBy":"[\"http.route\","}`, wantText: `"groupBy" value: not a valid JSON array`},
 		{tool: "signoz_aggregate_traces", arguments: `{"aggregations":"count()","groupBy":"[\"http.route\", null]"}`, wantText: `"groupBy" item`},
 		{tool: "signoz_query_metrics", arguments: `{"metricName":"x","formulaQueries":[{"name":"B","metricName":"y","groupBy":"[\"host.name\""}]}`, wantText: `formulaQueries[0]`},
+		{tool: "signoz_search_logs", arguments: `{"filter":"{\"expression\":\"service.name = 'api'\"}"}`, wantText: `not {"expression": ...}`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.tool+" "+tt.arguments, func(t *testing.T) {
