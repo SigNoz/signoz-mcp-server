@@ -85,7 +85,7 @@ const aiTraceKeys = "trace.llm_call_count, trace.tool_call_count, trace.distinct
 
 // signoz_list_metrics and signoz_query_metrics.
 const (
-	listMetricsSearchTextParamDescription = "Filter metrics by name substring (optional). Example: 'cpu', 'memory', 'http_requests'."
+	listMetricsSearchTextParamDescription = "Filter metrics by name substring (optional). Names separate words with dots or underscores (system.cpu.time, http_server_duration), so search one word, such as 'cpu' or 'memory'."
 	listMetricsLimitParamDescription      = "Maximum number of metrics to return (optional). Default: 50."
 	listMetricsSourceParamDescription     = "Optional data-source filter. Use \"meter\" to list Cost Meter metrics, the usage/billing metrics SigNoz meters on (currently telemetry ingestion volume). Omit for the default SigNoz metrics store."
 	metricNameParamDescription            = "Name of the metric to query. Example: 'container.cpu.utilization', 'http_requests_total'."
