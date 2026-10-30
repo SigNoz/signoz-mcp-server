@@ -154,7 +154,10 @@ func parseMetricsQueryArgs(args map[string]any) (*metricsQueryRequest, error) {
 		}
 		for i, item := range items {
 			if text, ok := item["groupBy"].(string); ok {
-				names, _ := parseFieldNameList("groupBy", text)
+				names, err := parseFieldNameList("groupBy", text)
+				if err != nil {
+					return nil, fmt.Errorf("%s formulaQueries[%d]: %w", validationErrorPrefix, i, err)
+				}
 				item["groupBy"] = names
 			}
 			if _, ok := item["isMonotonic"].(string); ok {
