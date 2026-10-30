@@ -44,7 +44,7 @@
                 ]
               },
               "filter": {
-                "description": "Filter expression using SigNoz search syntax (see signoz://logs/query-builder-guide). Combine conditions with AND, OR, and parentheses. An unknown key may not fail: no rows plus a `key ... not found in metadata` warning means the key is absent. Keys in several contexts default to resource; disambiguate with attribute.\u003ckey\u003e or resource.\u003ckey\u003e. Log keys are workspace-specific; even service.name exists only when the log pipeline sets it. Discover keys with signoz_get_field_keys and values with signoz_get_field_values before filtering. For message text use body CONTAINS 'term'. Only when you don't know which field holds a term, use search('term') for every field or search('term', attribute); scopes (body, attribute, resource, log) are ORed. search() is slow and may be rejected over wide time ranges. There is no key:value, STARTS WITH, or IS NULL; use LIKE 'prefix%', and EXISTS or NOT EXISTS. Example: \"service.name = 'payment-svc' AND severity_text = 'ERROR'\". Combined with service/severity params using AND.",
+                "description": "Filter expression text in SigNoz search syntax, not {\"expression\": ...} (see signoz://logs/query-builder-guide). Combine conditions with AND, OR, and parentheses. An unknown key may not fail: no rows plus a `key ... not found in metadata` warning means the key is absent. Ambiguous keys default to resource; prefix attribute.\u003ckey\u003e or resource.\u003ckey\u003e to choose. Log keys are workspace-specific; even service.name exists only when the log pipeline sets it. Discover keys and values with signoz_get_field_keys and signoz_get_field_values first. For message text use body CONTAINS 'term'. Only when you don't know which field holds a term, use search('term') for every field or search('term', attribute); scopes (body, attribute, resource, log) are ORed. search() is slow and may be rejected over wide time ranges. There is no key:value, STARTS WITH, or IS NULL; use LIKE 'prefix%', and EXISTS or NOT EXISTS. Example: \"service.name = 'payment-svc' AND severity_text = 'ERROR'\". Combined with service/severity params using AND.",
                 "type": "string"
               },
               "functions": {
@@ -202,7 +202,7 @@
                 ]
               },
               "filter": {
-                "description": "Filter expression using SigNoz search syntax (see signoz://traces/query-builder-guide). search() is logs-only; traces use field predicates. Combine conditions with AND, OR, and parentheses for precedence. An unknown key may not fail: SigNoz can match a guessed attribute and return a `key ... not found in metadata` warning with no rows, so read that warning as an absent key. Keys present in multiple contexts default to resource context; disambiguate with attribute.\u003ckey\u003e, resource.\u003ckey\u003e, or span.\u003ckey\u003e. Every condition needs a key and an operator: there is no full-text search, key:value, STARTS WITH, or IS NULL; use LIKE 'prefix%' and EXISTS or NOT EXISTS. Discover valid keys with signoz_get_field_keys, then confirm values with signoz_get_field_values, before filtering. Examples: \"service.name = 'payment-svc' AND has_error = true\", \"http_method = 'POST' AND (has_error = true OR duration_nano \u003e 1000000000)\". Combined with service/operation/error/duration params using AND.",
+                "description": "Filter expression text in SigNoz search syntax, not {\"expression\": ...} (see signoz://traces/query-builder-guide). search() is logs-only; traces use field predicates. Combine conditions with AND, OR, and parentheses for precedence. An unknown key may not fail: SigNoz can match a guessed attribute and return a `key ... not found in metadata` warning with no rows, so read that warning as an absent key. Keys present in multiple contexts default to resource context; disambiguate with attribute.\u003ckey\u003e, resource.\u003ckey\u003e, or span.\u003ckey\u003e. Every condition needs a key and an operator: there is no full-text search, key:value, STARTS WITH, or IS NULL; use LIKE 'prefix%' and EXISTS or NOT EXISTS. Discover valid keys with signoz_get_field_keys, then confirm values with signoz_get_field_values, before filtering. Examples: \"service.name = 'payment-svc' AND has_error = true\", \"http_method = 'POST' AND (has_error = true OR duration_nano \u003e 1000000000)\". Combined with service/operation/error/duration params using AND.",
                 "type": "string"
               },
               "functions": {
@@ -6898,7 +6898,7 @@
                 "type": "string"
               },
               "searchText": {
-                "description": "Filter metrics by name substring (optional). Example: 'cpu', 'memory', 'http_requests'.",
+                "description": "Filter metrics by name substring (optional). Names separate words with dots or underscores (system.cpu.time, http_server_duration), so search one word, such as 'cpu' or 'memory'.",
                 "type": "string"
               },
               "source": {
@@ -7181,7 +7181,7 @@
                 ]
               },
               "filter": {
-                "description": "Filter expression. Example: \"k8s.cluster.name = 'prod' AND service.name = 'frontend'\".",
+                "description": "Filter expression, passed as the expression text, not {\"expression\": ...}. Example: \"k8s.cluster.name = 'prod' AND service.name = 'frontend'\".",
                 "type": "string"
               },
               "formula": {
@@ -7510,7 +7510,7 @@
                 ]
               },
               "filter": {
-                "description": "Filter expression using SigNoz search syntax (see signoz://logs/query-builder-guide). Combine conditions with AND, OR, and parentheses. An unknown key may not fail: no rows plus a `key ... not found in metadata` warning means the key is absent. Keys in several contexts default to resource; disambiguate with attribute.\u003ckey\u003e or resource.\u003ckey\u003e. Log keys are workspace-specific; even service.name exists only when the log pipeline sets it. Discover keys with signoz_get_field_keys and values with signoz_get_field_values before filtering. For message text use body CONTAINS 'term'. Only when you don't know which field holds a term, use search('term') for every field or search('term', attribute); scopes (body, attribute, resource, log) are ORed. search() is slow and may be rejected over wide time ranges. There is no key:value, STARTS WITH, or IS NULL; use LIKE 'prefix%', and EXISTS or NOT EXISTS. Example: \"service.name = 'payment-svc' AND severity_text = 'ERROR'\".",
+                "description": "Filter expression text in SigNoz search syntax, not {\"expression\": ...} (see signoz://logs/query-builder-guide). Combine conditions with AND, OR, and parentheses. An unknown key may not fail: no rows plus a `key ... not found in metadata` warning means the key is absent. Ambiguous keys default to resource; prefix attribute.\u003ckey\u003e or resource.\u003ckey\u003e to choose. Log keys are workspace-specific; even service.name exists only when the log pipeline sets it. Discover keys and values with signoz_get_field_keys and signoz_get_field_values first. For message text use body CONTAINS 'term'. Only when you don't know which field holds a term, use search('term') for every field or search('term', attribute); scopes (body, attribute, resource, log) are ORed. search() is slow and may be rejected over wide time ranges. There is no key:value, STARTS WITH, or IS NULL; use LIKE 'prefix%', and EXISTS or NOT EXISTS. Example: \"service.name = 'payment-svc' AND severity_text = 'ERROR'\".",
                 "type": "string"
               },
               "limit": {
@@ -7612,7 +7612,7 @@
                 ]
               },
               "filter": {
-                "description": "Filter expression using SigNoz search syntax (see signoz://traces/query-builder-guide). search() is logs-only; traces use field predicates. Combine conditions with AND, OR, and parentheses for precedence. An unknown key may not fail: SigNoz can match a guessed attribute and return a `key ... not found in metadata` warning with no rows, so read that warning as an absent key. Keys present in multiple contexts default to resource context; disambiguate with attribute.\u003ckey\u003e, resource.\u003ckey\u003e, or span.\u003ckey\u003e. Every condition needs a key and an operator: there is no full-text search, key:value, STARTS WITH, or IS NULL; use LIKE 'prefix%' and EXISTS or NOT EXISTS. Discover valid keys with signoz_get_field_keys, then confirm values with signoz_get_field_values, before filtering. Examples: \"service.name = 'payment-svc' AND has_error = true\", \"http_method = 'POST' AND (has_error = true OR duration_nano \u003e 1000000000)\". Combined with shortcut params using AND.",
+                "description": "Filter expression text in SigNoz search syntax, not {\"expression\": ...} (see signoz://traces/query-builder-guide). search() is logs-only; traces use field predicates. Combine conditions with AND, OR, and parentheses for precedence. An unknown key may not fail: SigNoz can match a guessed attribute and return a `key ... not found in metadata` warning with no rows, so read that warning as an absent key. Keys present in multiple contexts default to resource context; disambiguate with attribute.\u003ckey\u003e, resource.\u003ckey\u003e, or span.\u003ckey\u003e. Every condition needs a key and an operator: there is no full-text search, key:value, STARTS WITH, or IS NULL; use LIKE 'prefix%' and EXISTS or NOT EXISTS. Discover valid keys with signoz_get_field_keys, then confirm values with signoz_get_field_values, before filtering. Examples: \"service.name = 'payment-svc' AND has_error = true\", \"http_method = 'POST' AND (has_error = true OR duration_nano \u003e 1000000000)\". Combined with shortcut params using AND.",
                 "type": "string"
               },
               "limit": {
