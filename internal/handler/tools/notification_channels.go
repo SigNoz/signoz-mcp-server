@@ -223,7 +223,8 @@ func (h *Handler) handleUpdateNotificationChannel(ctx context.Context, req mcp.C
 	if err != nil {
 		return clientError(err), nil
 	}
-	if err := upstream.UpdateNotificationChannel(ctx, args.ID, body); err != nil {
+	channel, err := upstream.UpdateNotificationChannel(ctx, args.ID, body)
+	if err != nil {
 		h.logNotificationChannelFailure(ctx, "Failed to update notification channel", err, slog.String("id", args.ID), slog.String("kind", notificationConfigKind(args.Config)))
 		var committed *client.CommittedNotificationChannelError
 		if errors.As(err, &committed) {
@@ -237,20 +238,10 @@ func (h *Handler) handleUpdateNotificationChannel(ctx context.Context, req mcp.C
 	result := map[string]any{
 		"id":                args.ID,
 		"mutationCommitted": true,
+		"channel":           json.RawMessage(channel),
 		"testNotification":  skippedNotificationTestResult(),
 	}
 	notes := []string{}
-	channel, readErr := upstream.GetNotificationChannel(ctx, args.ID)
-	if readErr != nil {
-		if isNotificationAuthError(readErr) {
-			testResult := unattemptedNotificationTestResult(args.Test, "test was not attempted because post-write verification could not complete")
-			return committedNotificationAuthResult(readErr, args.ID, testResult), nil
-		}
-		h.logger.WarnContext(ctx, "Notification channel update read-back failed", slog.String("id", args.ID))
-		notes = append(notes, "note: the update was committed, but SigNoz did not return the read-back state. Fetch the channel again before another update.")
-	} else {
-		result["channel"] = json.RawMessage(channel)
-	}
 	if args.Test {
 		testResult, note, authResult := h.testCommittedNotificationChannel(ctx, upstream, args.Config, args.ID)
 		if authResult != nil {

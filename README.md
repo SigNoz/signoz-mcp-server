@@ -1078,6 +1078,7 @@ Preserve every untouched setting and credential without echoing secrets. A
 fetched config is writable as-is; to unset an optional field, omit it, because
 SigNoz rejects an empty string for template-backed fields such as titles and
 messages.
+The result's `channel` is the stored channel SigNoz returns from the update.
 `test` defaults to `false`; an explicit `true` sends a test after the update.
 A test failure does not undo the update. Do not replay an ambiguous write or
 an opt-in test automatically.
