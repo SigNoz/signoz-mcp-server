@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -23,11 +24,35 @@ func readFilterRejectingQueryAlias(args map[string]any, aliasError string) (stri
 	if _, exists := args["query"]; exists {
 		return "", errors.New(aliasError)
 	}
-	filter := stringValue(args["filter"])
-	if strings.TrimSpace(filter) == "" {
+	raw, exists := args["filter"]
+	if !exists || raw == nil {
 		return "", nil
 	}
+	filter, ok := raw.(string)
+	if !ok {
+		return "", errFilterExpressionObject()
+	}
+	trimmed := strings.TrimSpace(filter)
+	if trimmed == "" {
+		return "", nil
+	}
+	// The Query Builder wire object sent as text would reach SigNoz as a
+	// full-text search on logs and silently match nothing.
+	if strings.HasPrefix(trimmed, "{") {
+		var wire map[string]any
+		if json.Unmarshal([]byte(trimmed), &wire) == nil {
+			if _, wrapped := wire["expression"]; wrapped {
+				return "", errFilterExpressionObject()
+			}
+		}
+	}
 	return filter, nil
+}
+
+const filterExpressionObjectHint = `"filter" takes the expression text as a string, such as "service.name = 'api'", not {"expression": ...}`
+
+func errFilterExpressionObject() error {
+	return fmt.Errorf("%s %s", validationErrorPrefix, filterExpressionObjectHint)
 }
 
 // parseAggregateLogsArgs validates and parses arguments for the aggregate_logs tool.
