@@ -1,6 +1,8 @@
 package docs
 
 import (
+	"strings"
+
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 	"github.com/SigNoz/signoz-mcp-server/pkg/toolerrors"
 )
@@ -27,7 +29,11 @@ func ToolError(code, message string, extra map[string]any) *mcp.CallToolResult {
 }
 
 func OutOfScopeURLError(url string) *mcp.CallToolResult {
-	return ToolError(CodeOutOfScopeURL, "URL is outside https://signoz.io/docs/ scope: "+url, nil)
+	message := "URL is outside https://signoz.io/docs/ scope: " + url
+	if strings.HasPrefix(url, "signoz://") {
+		message += ". signoz:// URIs are MCP resources: read them with resources/read, not signoz_fetch_doc. To find a docs page, call signoz_search_docs and pass one of its URLs here."
+	}
+	return ToolError(CodeOutOfScopeURL, message, nil)
 }
 
 func DocNotFoundError(url string) *mcp.CallToolResult {

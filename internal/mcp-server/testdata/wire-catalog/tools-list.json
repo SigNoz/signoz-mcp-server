@@ -116,7 +116,7 @@
                 ]
               },
               "orderBy": {
-                "description": "How to order results. Format: '\u003cexpression\u003e \u003cdirection\u003e', e.g. 'count() desc' or 'avg(duration) asc'. Defaults to the first aggregation expression descending.",
+                "description": "How to order results, as '\u003cexpression\u003e \u003cdirection\u003e'. The expression must be one of this call's aggregations written exactly as in aggregations, or a groupBy key, e.g. 'count_distinct(trace_id) desc' when aggregations is 'count_distinct(trace_id)', or 'service.name asc'. Omit it to sort by the first aggregation, descending.",
                 "type": "string"
               },
               "requestType": {
@@ -292,7 +292,7 @@
                 "type": "string"
               },
               "orderBy": {
-                "description": "How to order results. Format: '\u003cexpression\u003e \u003cdirection\u003e', e.g. 'count() desc' or 'avg(duration_nano) asc'. Defaults to the first aggregation expression descending.",
+                "description": "How to order results, as '\u003cexpression\u003e \u003cdirection\u003e'. The expression must be one of this call's aggregations written exactly as in aggregations, or a groupBy key, e.g. 'p99(duration_nano) desc' when aggregations is 'p99(duration_nano)', or 'name asc'. Omit it to sort by the first aggregation, descending.",
                 "type": "string"
               },
               "queryType": {
