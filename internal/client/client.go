@@ -489,9 +489,8 @@ func (s *SigNoz) ListAlerts(ctx context.Context, params types.ListAlertsParams) 
 // ListAlertRules returns one server-side page of rule summaries from
 // GET /api/v3/rules. SigNoz clamps limit to its own maximum, so the handler
 // walks pages until it has the window it was asked for.
-func (s *SigNoz) ListAlertRules(ctx context.Context, limit, offset int) (json.RawMessage, error) {
-	params := &apiclient.ListRulesV3Params{Limit: optInt(limit), Offset: optInt(offset)}
-	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching alert rules from SigNoz", slog.Int("limit", limit), slog.Int("offset", offset))
+func (s *SigNoz) ListAlertRules(ctx context.Context, params *apiclient.ListRulesV3Params) (json.RawMessage, error) {
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching alert rules from SigNoz")
 	return s.callAPI(ctx, DefaultQueryTimeout, func(ctx context.Context, api *apiclient.Client) (*http.Response, error) {
 		return api.ListRulesV3(ctx, params)
 	})

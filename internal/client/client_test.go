@@ -60,7 +60,14 @@ func TestListAlertRules(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
 		assert.Equal(t, "/api/v3/rules", r.URL.Path)
-		assert.Equal(t, "limit=200&offset=400", r.URL.RawQuery)
+		assert.Equal(t, url.Values{
+			"query":  {"name CONTAINS 'High CPU'"},
+			"states": {"firing", "disabled"},
+			"sort":   {"name"},
+			"order":  {"asc"},
+			"limit":  {"200"},
+			"offset": {"400"},
+		}, r.URL.Query())
 
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"success","data":{"rules":[{"id":"rule-1","alert":"High CPU","state":"inactive"}],"total":401}}`))
@@ -70,7 +77,12 @@ func TestListAlertRules(t *testing.T) {
 	logger := logpkg.New("debug")
 	client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
-	result, err := client.ListAlertRules(context.Background(), 200, 400)
+	limit, offset, query := 200, 400, "name CONTAINS 'High CPU'"
+	states := []string{"firing", "disabled"}
+	sort, order := apitypes.RuletypesListSortName, apitypes.RuletypesListOrderAsc
+	result, err := client.ListAlertRules(context.Background(), &apiclient.ListRulesV3Params{
+		Query: &query, States: &states, Sort: &sort, Order: &order, Limit: &limit, Offset: &offset,
+	})
 	require.NoError(t, err)
 	assert.Contains(t, string(result), `"id":"rule-1"`)
 }

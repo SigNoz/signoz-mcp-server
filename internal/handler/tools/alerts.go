@@ -54,7 +54,11 @@ func (h *Handler) RegisterAlertsHandlers(s *mcp.Server) {
 		mcp.WithOutputSchema[alertRuleListOutput](),
 		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description(searchContextParamDescription)),
-		mcp.WithDescription("Use this when the user wants configured alert-rule summaries, including inactive/OK and disabled rules. It returns rule IDs, names, types, state, severity, labels, and timestamps; use signoz_get_alert with an ID for the full definition. Do not use it for current firing/silenced/inhibited instances: use signoz_list_alerts. Paginate with limit and offset."),
+		mcp.WithDescription("Use this when the user wants configured alert-rule summaries, including inactive/OK and disabled rules. It returns rule IDs, names, types, state, severity, labels, and timestamps; use signoz_get_alert with an ID for the full definition. Do not use it for current firing/silenced/inhibited instances: use signoz_list_alerts. To find rules by name, label, severity, or state, narrow with filter and states instead of paging through every rule; paginate with limit and offset."),
+		mcp.WithString("filter", mcp.Description(`Filter expression SigNoz applies before paging, at most 1024 characters. Keys: name (the rule title), severity, alert_type, rule_type, created_by, updated_by, and created_at or updated_at with RFC 3339 times (created_at >= '2026-01-02T15:04:05Z'). Any other key is a rule label, matched case-sensitively (cluster = 'prod'); labels.<key> matches only the label. A bare word matches the name, description, or labels, ignoring case. Example: "name CONTAINS 'High Response Time' AND severity IN ('critical', 'error')".`)),
+		mcp.WithArray("states", stringOrStringArrayType(), mcp.Description("Only rules in these states: firing, pending, recovering, inactive, nodata, or disabled. Omit for every state.")),
+		mcp.WithString("sort", mcp.Enum("updated_at", "created_at", "name", "state", "severity"), mcp.Description("Field to sort by. Default: updated_at.")),
+		mcp.WithString("order", mcp.Enum("asc", "desc"), mcp.Description("Sort direction. Default: desc.")),
 		mcp.WithString("limit", mcp.DefaultString("50"), intOrStringType(), mcp.Description("Maximum number of alert rules to return per page. Default: 50, max: 1000 (higher values are clamped).")),
 		mcp.WithString("offset", mcp.DefaultString("0"), intOrStringType(), mcp.Description("Number of results to skip for pagination. Default: 0.")),
 	)
@@ -231,6 +235,25 @@ const alertRulesUpstreamPageSize = 200
 func (h *Handler) handleListAlertRules(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	h.logger.DebugContext(ctx, "Tool called: signoz_list_alert_rules")
 	limit, offset, limitClamped := paginate.ParseParamsClamped(req.Params.Arguments)
+	args := req.GetArguments()
+	states, err := parseStringList("states", args["states"], "state", "firing", "nodata")
+	if err != nil {
+		return errorWithCode(CodeValidationFailed, validationErrorPrefix+" "+err.Error()), nil
+	}
+	// SigNoz validates the filter, states, sort, and order.
+	params := apiclient.ListRulesV3Params{}
+	if filter := strings.TrimSpace(stringValue(args["filter"])); filter != "" {
+		params.Query = &filter
+	}
+	if len(states) > 0 {
+		params.States = &states
+	}
+	if sort := stringValue(args["sort"]); sort != "" {
+		params.Sort = (*apitypes.RuletypesListSort)(&sort)
+	}
+	if order := stringValue(args["order"]); order != "" {
+		params.Order = (*apitypes.RuletypesListOrder)(&order)
+	}
 
 	client, base, clientErr := h.getResourceClient(ctx)
 	if clientErr != nil {
@@ -242,7 +265,9 @@ func (h *Handler) handleListAlertRules(ctx context.Context, req mcp.CallToolRequ
 	total := 0
 	for pageOffset := offset; pageOffset < offset+limit; {
 		pageLimit := min(alertRulesUpstreamPageSize, offset+limit-pageOffset)
-		rules, err := client.ListAlertRules(ctx, pageLimit, pageOffset)
+		page := params
+		page.Limit, page.Offset = &pageLimit, &pageOffset
+		rules, err := client.ListAlertRules(ctx, &page)
 		if err != nil {
 			h.logUpstreamFailure(ctx, "Failed to list alert rules", err)
 			return upstreamError(err), nil
