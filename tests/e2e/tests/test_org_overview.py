@@ -77,3 +77,12 @@ def test_org_overview(mcp_client: MCPClient, signoz: SigNoz) -> None:
     assert data["users"]["count"] >= 1
     assert isinstance(data["signals"]["logs"]["available"], bool)
     assert data["configuration"]["sqlStoreProvider"] == "sqlite"
+
+    # Feature flags mirror GET /api/v2/features: same names, each with SigNoz's resolved value.
+    features_resp = signoz.api("GET", "/api/v2/features")
+    assert features_resp.status_code == 200, f"/api/v2/features: {features_resp.status_code} {features_resp.text[:200]}"
+    upstream_flags = {flag["name"]: flag["resolvedValue"] for flag in features_resp.json()["data"]}
+    flags = data["featureFlags"]
+    assert flags["available"] is True
+    assert {flag["name"]: flag["resolvedValue"] for flag in flags["flags"]} == upstream_flags
+    assert "use_json_body" in upstream_flags

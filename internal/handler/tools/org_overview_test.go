@@ -170,6 +170,7 @@ func TestOrgOverviewRecoveryNeverRecommendsRecursiveOverviewCall(t *testing.T) {
 		"authorization.roles",
 		"license",
 		"configuration",
+		"featureFlags",
 	}
 	for _, group := range groups {
 		t.Run(group, func(t *testing.T) {
