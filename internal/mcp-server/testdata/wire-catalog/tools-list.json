@@ -465,7 +465,7 @@
             "openWorldHint": true,
             "readOnlyHint": false
           },
-          "description": "Use this when the user wants a new SigNoz alert rule; use signoz_update_alert to change an existing rule. Supports v2alpha1 threshold/PromQL alerts and metric-only v1 anomaly alerts. Read signoz://alert/instructions and signoz://alert/examples before composing any payload, unless already read in the same prepared operation; for PromQL also read signoz://promql/instructions. For direct routing, reuse a fully paginated signoz_list_notification_channels result only from the same still-current prepared operation; otherwise call it, refreshing only if state may have changed. Use exact returned immutable routing displayName values, not machine name. If none fits, ask the user or offer signoz_create_notification_channel with settings the user provides; never guess or create automatically. SigNoz rejects a threshold tier with no channels or an unknown channel name; confirmed v2 policy routing may omit tier channels. v1 anomaly rules route with top-level preferredChannels; v2 rules do not use it.",
+          "description": "Use this when the user wants a new SigNoz alert rule; use signoz_update_alert to change an existing rule. Supports v2alpha1 threshold, PromQL, and metric anomaly alerts. Read signoz://alert/instructions and signoz://alert/examples before composing any payload, unless already read in the same prepared operation; for PromQL also read signoz://promql/instructions. For direct routing, reuse a fully paginated signoz_list_notification_channels result only from the same still-current prepared operation; otherwise call it, refreshing only if state may have changed. Use exact returned immutable routing displayName values, not machine name. If none fits, ask the user or offer signoz_create_notification_channel with settings the user provides; never guess or create automatically. SigNoz rejects a threshold tier with no channels or an unknown channel name; confirmed v2 policy routing may omit tier channels. Top-level preferredChannels plays no part in routing.",
           "inputSchema": {
             "properties": {
               "alert": {
@@ -582,11 +582,8 @@
                     ]
                   },
                   "selectedQueryName": {
-                    "description": "The name of the query whose result is evaluated, such as A or F1. Must match a query in compositeQuery. When omitted, F1 is used if present, otherwise the enabled query with the highest name.",
-                    "type": [
-                      "null",
-                      "string"
-                    ]
+                    "description": "The name of the query whose result is evaluated, such as A or F1. Must match a query in compositeQuery.",
+                    "type": "string"
                   },
                   "target": {
                     "description": "schemaVersion v1 only: the value compared against, in targetUnit. Required for v1; v2alpha1 sets target on each threshold.",
@@ -603,15 +600,14 @@
                     ]
                   },
                   "thresholds": {
-                    "description": "The thresholds to evaluate, as a kind and spec. Required when schemaVersion is v2alpha1; derived from op, target and matchType for v1.",
-                    "type": [
-                      "null",
-                      "object"
-                    ]
+                    "description": "The thresholds to evaluate, as a kind and spec.",
+                    "type": "object"
                   }
                 },
                 "required": [
-                  "compositeQuery"
+                  "compositeQuery",
+                  "selectedQueryName",
+                  "thresholds"
                 ],
                 "type": "object"
               },
@@ -637,11 +633,8 @@
                 ]
               },
               "evaluation": {
-                "description": "The evaluation window, as a kind and spec. Required when schemaVersion is v2alpha1; derived from evalWindow and frequency for v1.",
-                "type": [
-                  "null",
-                  "object"
-                ]
+                "description": "The evaluation window, as a kind and spec.",
+                "type": "object"
               },
               "frequency": {
                 "description": "How often the rule is evaluated, as a Go duration such as 1m. Only read when schemaVersion is v1, defaulting to 1m; v2alpha1 rules set it in evaluation.spec instead.",
@@ -661,7 +654,7 @@
                 ]
               },
               "notificationSettings": {
-                "description": "Grouping, re-notification and routing behaviour. Required when schemaVersion is v2alpha1; derived from the v1 fields otherwise.",
+                "description": "Grouping, re-notification and routing behaviour.",
                 "properties": {
                   "groupBy": {
                     "description": "Label names whose values group alerts into one notification, such as service.name.",
@@ -721,10 +714,7 @@
                     ]
                   }
                 },
-                "type": [
-                  "null",
-                  "object"
-                ]
+                "type": "object"
               },
               "preferredChannels": {
                 "description": "The displayName of each notification channel to notify, for schemaVersion v1 rules. Ignored for v2alpha1, where each threshold carries its own channels.",
@@ -737,15 +727,12 @@
                 ]
               },
               "ruleType": {
-                "description": "The evaluation strategy: threshold_rule compares against thresholds, promql_rule evaluates a PromQL expression, anomaly_rule scores deviation from seasonal history. Defaults to threshold_rule for builder queries and is forced to promql_rule for promql queries.",
+                "description": "The evaluation strategy: threshold_rule compares against thresholds, promql_rule evaluates a PromQL expression, anomaly_rule scores deviation from seasonal history. Defaults to threshold_rule for builder and clickhouse_sql queries and is forced to promql_rule for promql queries.",
                 "type": "string"
               },
               "schemaVersion": {
-                "description": "The rule payload schema: v1 (the default when omitted) uses the flat condition fields, v2alpha1 uses condition.thresholds, evaluation and notificationSettings.",
-                "type": [
-                  "null",
-                  "string"
-                ]
+                "description": "The rule payload schema.",
+                "type": "string"
               },
               "searchContext": {
                 "description": "Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.",
@@ -759,7 +746,7 @@
                 ]
               },
               "version": {
-                "description": "The query payload version. Only v5 is accepted and it is filled in when omitted.",
+                "description": "The query payload version. Nothing reads it.",
                 "type": [
                   "null",
                   "string"
@@ -770,7 +757,10 @@
               "alert",
               "alertType",
               "condition",
-              "ruleType"
+              "evaluation",
+              "notificationSettings",
+              "ruleType",
+              "schemaVersion"
             ],
             "type": "object"
           },
@@ -8004,7 +7994,7 @@
             "openWorldHint": true,
             "readOnlyHint": false
           },
-          "description": "Use this when the user wants to change an existing SigNoz alert rule; use signoz_create_alert for a new rule. This is a full replacement: call signoz_get_alert unless its complete result is available from the same still-current prepared operation, then preserve every unchanged field. Likewise reuse signoz://alert/instructions, signoz://alert/examples, and a fully paginated signoz_list_notification_channels result only from that operation; otherwise read/call them, refreshing only if state may have changed. Use exact returned immutable routing displayName values, not machine name. If no direct channel fits, ask the user or offer signoz_create_notification_channel with settings the user provides; never create automatically. SigNoz rejects a threshold tier with no channels or an unknown channel name; confirmed v2 policy routing may omit tier channels. v1 anomaly rules route with top-level preferredChannels; v2 rules do not use it.",
+          "description": "Use this when the user wants to change an existing SigNoz alert rule; use signoz_create_alert for a new rule. This is a full replacement: call signoz_get_alert unless its complete result is available from the same still-current prepared operation, then preserve every unchanged field. Likewise reuse signoz://alert/instructions, signoz://alert/examples, and a fully paginated signoz_list_notification_channels result only from that operation; otherwise read/call them, refreshing only if state may have changed. Use exact returned immutable routing displayName values, not machine name. If no direct channel fits, ask the user or offer signoz_create_notification_channel with settings the user provides; never create automatically. SigNoz rejects a threshold tier with no channels or an unknown channel name; confirmed v2 policy routing may omit tier channels. Top-level preferredChannels plays no part in routing.",
           "inputSchema": {
             "properties": {
               "alert": {
@@ -8121,11 +8111,8 @@
                     ]
                   },
                   "selectedQueryName": {
-                    "description": "The name of the query whose result is evaluated, such as A or F1. Must match a query in compositeQuery. When omitted, F1 is used if present, otherwise the enabled query with the highest name.",
-                    "type": [
-                      "null",
-                      "string"
-                    ]
+                    "description": "The name of the query whose result is evaluated, such as A or F1. Must match a query in compositeQuery.",
+                    "type": "string"
                   },
                   "target": {
                     "description": "schemaVersion v1 only: the value compared against, in targetUnit. Required for v1; v2alpha1 sets target on each threshold.",
@@ -8142,15 +8129,14 @@
                     ]
                   },
                   "thresholds": {
-                    "description": "The thresholds to evaluate, as a kind and spec. Required when schemaVersion is v2alpha1; derived from op, target and matchType for v1.",
-                    "type": [
-                      "null",
-                      "object"
-                    ]
+                    "description": "The thresholds to evaluate, as a kind and spec.",
+                    "type": "object"
                   }
                 },
                 "required": [
-                  "compositeQuery"
+                  "compositeQuery",
+                  "selectedQueryName",
+                  "thresholds"
                 ],
                 "type": "object"
               },
@@ -8176,11 +8162,8 @@
                 ]
               },
               "evaluation": {
-                "description": "The evaluation window, as a kind and spec. Required when schemaVersion is v2alpha1; derived from evalWindow and frequency for v1.",
-                "type": [
-                  "null",
-                  "object"
-                ]
+                "description": "The evaluation window, as a kind and spec.",
+                "type": "object"
               },
               "frequency": {
                 "description": "How often the rule is evaluated, as a Go duration such as 1m. Only read when schemaVersion is v1, defaulting to 1m; v2alpha1 rules set it in evaluation.spec instead.",
@@ -8204,7 +8187,7 @@
                 ]
               },
               "notificationSettings": {
-                "description": "Grouping, re-notification and routing behaviour. Required when schemaVersion is v2alpha1; derived from the v1 fields otherwise.",
+                "description": "Grouping, re-notification and routing behaviour.",
                 "properties": {
                   "groupBy": {
                     "description": "Label names whose values group alerts into one notification, such as service.name.",
@@ -8264,10 +8247,7 @@
                     ]
                   }
                 },
-                "type": [
-                  "null",
-                  "object"
-                ]
+                "type": "object"
               },
               "preferredChannels": {
                 "description": "The displayName of each notification channel to notify, for schemaVersion v1 rules. Ignored for v2alpha1, where each threshold carries its own channels.",
@@ -8284,15 +8264,12 @@
                 "type": "string"
               },
               "ruleType": {
-                "description": "The evaluation strategy: threshold_rule compares against thresholds, promql_rule evaluates a PromQL expression, anomaly_rule scores deviation from seasonal history. Defaults to threshold_rule for builder queries and is forced to promql_rule for promql queries.",
+                "description": "The evaluation strategy: threshold_rule compares against thresholds, promql_rule evaluates a PromQL expression, anomaly_rule scores deviation from seasonal history. Defaults to threshold_rule for builder and clickhouse_sql queries and is forced to promql_rule for promql queries.",
                 "type": "string"
               },
               "schemaVersion": {
-                "description": "The rule payload schema: v1 (the default when omitted) uses the flat condition fields, v2alpha1 uses condition.thresholds, evaluation and notificationSettings.",
-                "type": [
-                  "null",
-                  "string"
-                ]
+                "description": "The rule payload schema.",
+                "type": "string"
               },
               "searchContext": {
                 "description": "Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.",
@@ -8306,7 +8283,7 @@
                 ]
               },
               "version": {
-                "description": "The query payload version. Only v5 is accepted and it is filled in when omitted.",
+                "description": "The query payload version. Nothing reads it.",
                 "type": [
                   "null",
                   "string"
@@ -8317,7 +8294,10 @@
               "alert",
               "alertType",
               "condition",
-              "ruleType"
+              "evaluation",
+              "notificationSettings",
+              "ruleType",
+              "schemaVersion"
             ],
             "type": "object"
           },

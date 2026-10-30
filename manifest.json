@@ -75,7 +75,7 @@
     },
     {
       "name": "signoz_create_alert",
-      "description": "Create a v2 threshold/PromQL or v1 anomaly alert; direct routing resolves exact displayName values with signoz_list_notification_channels, while confirmed v2 policy routing may omit channels"
+      "description": "Create a v2alpha1 threshold, PromQL, or anomaly alert; direct routing resolves exact displayName values with signoz_list_notification_channels, while confirmed v2 policy routing may omit channels"
     },
     {
       "name": "signoz_update_alert",
@@ -214,13 +214,13 @@
     {
       "uri": "signoz://alert/examples",
       "name": "Alert Rule Examples",
-      "description": "Read this after signoz://alert/instructions only when examples are still needed. Resolve illustrative direct/anomaly names with signoz_list_notification_channels; if none fits, offer signoz_create_notification_channel. Confirmed v2 policy routing may omit direct channels; anomaly cannot use policy routing.",
+      "description": "Read this after signoz://alert/instructions only when examples are still needed. Resolve illustrative direct/anomaly names with signoz_list_notification_channels; if none fits, offer signoz_create_notification_channel. Confirmed v2 policy routing may omit direct channels.",
       "mimeType": "text/markdown"
     },
     {
       "uri": "signoz://alert/instructions",
       "name": "Alert Rule Instructions",
-      "description": "Read this before creating or updating an alert unless its current content was already read for the same prepared operation. It explains the query envelopes, threshold tiers, and evaluation specs the input schema does not describe, the v1 anomaly shape, and when to reuse or call signoz_list_notification_channels. Read signoz://alert/examples only when examples are still needed.",
+      "description": "Read this before creating or updating an alert unless its current content was already read for the same prepared operation. It explains the query envelopes, threshold tiers, and evaluation specs the input schema does not describe, anomaly scoring, and when to reuse or call signoz_list_notification_channels. Read signoz://alert/examples only when examples are still needed.",
       "mimeType": "text/markdown"
     },
     {
