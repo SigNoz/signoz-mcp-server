@@ -234,7 +234,7 @@ A general evaluation kind, independent of signal/source. Use it for any period-t
 }
 ` + "```" + `
 
-Set groupBy on high-cardinality queries to reduce noise. usePolicy=false (the default) requires existing channels on every threshold tier; usePolicy=true routes by the organization's notification policies, so tier channels may be omitted. Anomaly rules omit notificationSettings.
+Set groupBy on high-cardinality queries to reduce noise. usePolicy=false (the default) requires existing channels on every threshold tier; usePolicy=true routes by the organization's notification policies, so tier channels may be omitted.
 
 ## Labels & Routing
 
@@ -299,7 +299,7 @@ The payload is forwarded to SigNoz exactly as composed, and SigNoz fills in very
 - schemaVersion: always "v2alpha1"; SigNoz treats an omitted schemaVersion as the retired v1 schema and then requires the v1 condition fields.
 - evaluation and notificationSettings: SigNoz rejects a v2alpha1 rule missing either block.
 - panelType: set "graph"; SigNoz stores an empty value when omitted.
-- selectedQueryName: set it whenever more than one query exists.
+- selectedQueryName: set it on every rule to the query or formula the rule alerts on, even when there is only one query.
 - labels.severity and annotations: SigNoz adds no defaults; include them so routing tiers and notification text work.
 - Omit server-populated fields (createdAt, updatedAt, createdBy, updatedBy) and the injected webUrl, also when composing an update from a signoz_get_alert result.
 
