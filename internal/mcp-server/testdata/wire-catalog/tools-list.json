@@ -6924,7 +6924,7 @@
                 "type": "string"
               },
               "searchText": {
-                "description": "Filter metrics by name substring (optional). Example: 'cpu', 'memory', 'http_requests'.",
+                "description": "Filter metrics by name substring (optional). Names separate words with dots or underscores (system.cpu.time, http_server_duration), so search one word, such as 'cpu' or 'memory'.",
                 "type": "string"
               },
               "source": {
@@ -7019,7 +7019,7 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user wants APM services with trace activity and their call or latency summaries in a time window. It returns paginated traced-service records; absence means no trace activity in that window, not that a matching service.name never appears in logs. For log values use signoz_get_field_values with signal=\"logs\" and name=\"service.name\"; for one service's operations use signoz_get_service_top_operations. Follow pagination.nextOffset until hasMore=false before concluding a traced service is absent.",
+          "description": "Use this when the user wants APM services with trace activity and their call or latency summaries in a time window. It returns traced-service records sorted by name and paginated; absence means no trace activity in that window, not that a matching service.name never appears in logs. For log values use signoz_get_field_values with signal=\"logs\" and name=\"service.name\"; for one service's operations use signoz_get_service_top_operations. Follow pagination.nextOffset until hasMore=false before concluding a traced service is absent.",
           "inputSchema": {
             "properties": {
               "end": {

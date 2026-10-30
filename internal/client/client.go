@@ -537,7 +537,7 @@ func (s *SigNoz) ListServices(ctx context.Context, start, end string) (json.RawM
 
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching services from SigNoz",
 		slog.String("start", start), slog.String("end", end))
-	return s.doReplaySafePost(ctx, s.baseURL+"/api/v1/services", bodyBytes, DefaultQueryTimeout)
+	return s.doReplaySafePost(ctx, s.baseURL+"/api/v2/services", bodyBytes, DefaultQueryTimeout)
 }
 
 func (s *SigNoz) GetServiceTopOperations(ctx context.Context, start, end, service string, tags json.RawMessage) (json.RawMessage, error) {

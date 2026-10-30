@@ -536,7 +536,7 @@ Get the current status and overall posture of the SigNoz deployment before drill
 Discover metric names and catalog metadata such as type, temporality, unit, and monotonicity. Use `signoz_query_metrics` for values or trends. This list has a limit but no offset pagination.
 
 - **Parameters**:
-  - `searchText` (optional) - Filter metrics by name substring (e.g., 'cpu', 'memory')
+  - `searchText` (optional) - Filter metrics by name substring. Names separate words with dots or underscores (`system.cpu.time`, `http_server_duration`), so search one word, such as `cpu` or `memory`
   - `limit` (optional) - Maximum number of metrics to return (default: 50)
   - `timeRange` (optional) - Relative range: 30m, 1h, 6h, 24h, 7d (default: 1h; ignored when both `start` and `end` are provided)
   - `start`/`end` (optional) - Unix ms timestamps. When both are provided, they override `timeRange`.
@@ -704,7 +704,7 @@ Applies an RFC 6902 JSON Patch to a dashboard: a partial update without re-sendi
 
 #### `signoz_list_services`
 
-Lists paginated APM services with trace activity in a time range. Absence means no trace activity in that window, not that the same `service.name` never appears in logs; use `signoz_get_field_values` with `signal="logs"` for log values.
+Lists APM services with trace activity in a time range, sorted by service name and paginated. Absence means no trace activity in that window, not that the same `service.name` never appears in logs; use `signoz_get_field_values` with `signal="logs"` for log values.
 
 - **Parameters**:
   - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '7d'; defaults to last 6 hours; ignored when both `start` and `end` are provided)

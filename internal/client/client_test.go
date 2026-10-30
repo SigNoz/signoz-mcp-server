@@ -466,7 +466,7 @@ func TestHTTPStatusError_RecognizedBodyUsesParsedSafeText(t *testing.T) {
 func TestListServices(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
-		assert.Equal(t, "/api/v1/services", r.URL.Path)
+		assert.Equal(t, "/api/v2/services", r.URL.Path)
 
 		var requestBody map[string]string
 		err := json.NewDecoder(r.Body).Decode(&requestBody)
