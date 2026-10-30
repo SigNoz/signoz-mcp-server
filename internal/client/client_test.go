@@ -934,8 +934,9 @@ func TestUpdateNotificationChannel_UsesV2FullReplacement(t *testing.T) {
 	defer srv.Close()
 	client := NewClient(logpkg.New("debug"), srv.URL, "k", "SIGNOZ-API-KEY", nil)
 
-	err := client.UpdateNotificationChannel(context.Background(), "550e8400-e29b-41d4-a716-446655440000", []byte(`{"config":{"kind":"webhook","spec":{"url":"https://example.test/hook"}}}`))
+	channel, err := client.UpdateNotificationChannel(context.Background(), "550e8400-e29b-41d4-a716-446655440000", []byte(`{"config":{"kind":"webhook","spec":{"url":"https://example.test/hook"}}}`))
 	require.NoError(t, err)
+	assert.JSONEq(t, `{"name":"channel","displayName":"Channel","config":{"kind":"webhook","spec":{"url":"https://example.test/hook","username":"","password":"","bearerToken":""}},"id":"550e8400-e29b-41d4-a716-446655440000","createdAt":"2026-09-18T00:00:00Z","updatedAt":"2026-09-18T00:00:00Z"}`, string(channel))
 	assert.Equal(t, "/api/v2/notification_channels/550e8400-e29b-41d4-a716-446655440000", gotPath)
 	assert.Equal(t, http.MethodPut, gotMethod)
 }

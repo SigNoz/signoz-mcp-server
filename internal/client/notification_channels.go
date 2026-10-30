@@ -112,8 +112,8 @@ func (s *SigNoz) getNotificationChannelV2(ctx context.Context, id string) (json.
 }
 
 // validateNotificationChannelData checks only what this server consumes from a
-// channel response: an object carrying the id that the tool result, the
-// post-write read-back, and the test flow rely on. The provider config is
+// channel response: an object carrying the id that the tool result and the
+// test flow rely on. The provider config is
 // SigNoz's contract and passes through verbatim.
 func validateNotificationChannelData(data []byte) error {
 	var wire notificationChannelResponse

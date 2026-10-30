@@ -765,18 +765,15 @@ func (s *SigNoz) CreateNotificationChannel(ctx context.Context, receiverJSON []b
 	return json.Marshal(channel)
 }
 
-func (s *SigNoz) UpdateNotificationChannel(ctx context.Context, id string, receiverJSON []byte) error {
+func (s *SigNoz) UpdateNotificationChannel(ctx context.Context, id string, receiverJSON []byte) (json.RawMessage, error) {
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Updating notification channel", slog.String("id", id))
 	response, requestErr := s.notificationChannelWrite(ctx, func(ctx context.Context, api *apiclient.Client) (*http.Response, error) {
 		return api.UpdateNotificationChannelWithBody(ctx, id, jsonContentType, bytes.NewReader(receiverJSON))
 	})
 	if requestErr != nil {
-		return requestErr
+		return nil, requestErr
 	}
-	if _, err := s.decodeNotificationChannelResponse("update", response, id); err != nil {
-		return err
-	}
-	return nil
+	return s.decodeNotificationChannelResponse("update", response, id)
 }
 
 func (s *SigNoz) DeleteNotificationChannel(ctx context.Context, id string) error {
