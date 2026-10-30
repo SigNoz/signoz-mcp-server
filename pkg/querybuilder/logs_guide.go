@@ -176,7 +176,7 @@ Every builder_query must include a positive limit and explicit order.
   time_series: limit 100 groups; order by the primary aggregation desc unless the task needs another order
 
 In scalar and time_series queries, order[].key.name must be one of the query's aggregation expressions
-written exactly as in aggregations (count(), p99(duration_nano)), an aggregation index (0 for the
+written exactly as in aggregations (count(), count_distinct(trace_id)), an aggregation index (0 for the
 first), or a groupBy key. The query name (A), __result, and timestamp are not order keys there.
 
 For time_series queries with groupBy, the limit selects top groups using the ordering across the ENTIRE
