@@ -13,8 +13,8 @@ INCORRECT: "filter": {"op": "AND", "items": [...]}
 Operators: =  !=  >  >=  <  <=  IN  NOT IN  LIKE  NOT LIKE  ILIKE  NOT ILIKE  CONTAINS  NOT CONTAINS  REGEXP  NOT REGEXP  BETWEEN  NOT BETWEEN  EXISTS  NOT EXISTS
 Combine:   AND  OR  (use parentheses for precedence)
 
-No other operators exist: write STARTS WITH as LIKE 'prefix%', IS NULL as NOT EXISTS, and IS NOT NULL
-as EXISTS. Every condition needs a key and an operator. Traces have no full-text search, so a bare word,
+No other operators exist: write STARTS WITH as LIKE 'prefix%', IS NULL as NOT EXISTS, IS NOT NULL
+as EXISTS, and PromQL's =~ and !~ as REGEXP and NOT REGEXP. Every condition needs a key and an operator. Traces have no full-text search, so a bare word,
 a quoted phrase, or key:value fails; to find a known ID, filter trace_id = '<id>'.
 
 Examples:

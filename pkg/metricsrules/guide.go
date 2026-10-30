@@ -84,6 +84,10 @@ Metric labels hold resource attributes and data-point attributes in one set, so 
 keys are plain label names with no context prefix: k8s.namespace.name, host.name, service_name,
 http.method. Discover them with signoz_get_field_keys (signal="metrics", metricName).
 
+Filters use the Query Builder operators (=, !=, IN, NOT IN, LIKE, ILIKE, CONTAINS, REGEXP, NOT REGEXP,
+EXISTS, NOT EXISTS, and numeric comparisons), not PromQL matchers: write =~ as REGEXP and !~ as
+NOT REGEXP, for example k8s.pod.name REGEXP 'checkout-.*'.
+
 ---
 
 ## Formula Queries
