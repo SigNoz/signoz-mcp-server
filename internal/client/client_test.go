@@ -11,12 +11,15 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/SigNoz/signoz-mcp-server/internal/apiclient"
+	"github.com/SigNoz/signoz-mcp-server/internal/apiclient/apitypes"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -56,18 +59,30 @@ func TestGetAlertByRuleID(t *testing.T) {
 func TestListAlertRules(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
-		assert.Equal(t, "/api/v2/rules", r.URL.Path)
-		assert.Equal(t, "", r.URL.RawQuery)
+		assert.Equal(t, "/api/v3/rules", r.URL.Path)
+		assert.Equal(t, url.Values{
+			"query":  {"name CONTAINS 'High CPU'"},
+			"states": {"firing", "disabled"},
+			"sort":   {"name"},
+			"order":  {"asc"},
+			"limit":  {"200"},
+			"offset": {"400"},
+		}, r.URL.Query())
 
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status":"success","data":[{"id":"rule-1","alert":"High CPU","state":"inactive"}]}`))
+		_, _ = w.Write([]byte(`{"status":"success","data":{"rules":[{"id":"rule-1","alert":"High CPU","state":"inactive"}],"total":401}}`))
 	}))
 	defer server.Close()
 
 	logger := logpkg.New("debug")
 	client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
-	result, err := client.ListAlertRules(context.Background())
+	limit, offset, query := 200, 400, "name CONTAINS 'High CPU'"
+	states := []string{"firing", "disabled"}
+	sort, order := apitypes.RuletypesListSortName, apitypes.RuletypesListOrderAsc
+	result, err := client.ListAlertRules(context.Background(), &apiclient.ListRulesV3Params{
+		Query: &query, States: &states, Sort: &sort, Order: &order, Limit: &limit, Offset: &offset,
+	})
 	require.NoError(t, err)
 	assert.Contains(t, string(result), `"id":"rule-1"`)
 }
@@ -451,7 +466,7 @@ func TestHTTPStatusError_RecognizedBodyUsesParsedSafeText(t *testing.T) {
 func TestListServices(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
-		assert.Equal(t, "/api/v1/services", r.URL.Path)
+		assert.Equal(t, "/api/v2/services", r.URL.Path)
 
 		var requestBody map[string]string
 		err := json.NewDecoder(r.Body).Decode(&requestBody)
@@ -494,54 +509,81 @@ func TestGetAlertHistory(t *testing.T) {
 	logger := logpkg.New("debug")
 	client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
-	_, err := client.GetAlertHistory(context.Background(), "ruleid-abc", types.AlertHistoryRequest{
+	_, err := client.GetAlertHistory(context.Background(), "ruleid-abc", &apiclient.GetRuleHistoryTimelineParams{
 		Start:            1640995200000,
 		End:              1641081600000,
-		State:            "firing",
-		FilterExpression: "severity = 'warning'",
-		Limit:            20,
-		Order:            "desc",
-		Cursor:           "eyJvZmZzZXQiOjIwLCJsaW1pdCI6MjB9",
+		State:            ptr(apitypes.RuletypesAlertState("firing")),
+		FilterExpression: ptr("severity = 'warning'"),
+		Limit:            ptr(int64(20)),
+		Order:            ptr(apitypes.Querybuildertypesv5OrderDirection("desc")),
+		Cursor:           ptr("eyJvZmZzZXQiOjIwLCJsaW1pdCI6MjB9"),
 	})
 	require.NoError(t, err)
 }
 
-func TestGetTraceDetails_UsesCanonicalTraceIDFilter(t *testing.T) {
+func TestGetMetricMetadata_RequestsTheExactName(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/api/v2/metrics/metadata", r.URL.Path)
+		assert.Equal(t, "run.googleapis.com/request_latencies", r.URL.Query().Get("metricName"))
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"status":"error","error":{"code":"not_found","message":"metadata not found"}}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(logpkg.New("error"), server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+	_, err := client.GetMetricMetadata(context.Background(), "run.googleapis.com/request_latencies")
+	var statusErr *HTTPStatusError
+	require.ErrorAs(t, err, &statusErr)
+	require.Equal(t, http.StatusNotFound, statusErr.StatusCode)
+}
+
+func TestGetTraceDetails_LetsSigNozNarrowAWindowThatCoversAnyTrace(t *testing.T) {
 	var captured []byte
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
 		assert.Equal(t, "/api/v5/query_range", r.URL.Path)
 		body, err := io.ReadAll(r.Body)
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		captured = body
-
-		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"success","data":{"result":[]}}`))
 	}))
 	defer server.Close()
 
-	logger := logpkg.New("debug")
-	client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+	client := NewClient(logpkg.New("error"), server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
-	_, err := client.GetTraceDetails(context.Background(), "abc123", true, 1711123200000, 1711130400000)
+	before := time.Now().UnixMilli()
+	_, err := client.GetTraceDetails(context.Background(), "abc123", true)
 	require.NoError(t, err)
-
-	payload := string(captured)
-	require.Contains(t, payload, `"expression":"trace_id = 'abc123'"`)
-	require.Contains(t, payload, `"limit":1000`)
-	require.NotContains(t, payload, `"expression":"traceID = 'abc123'"`)
 	var request struct {
+		Start          int64 `json:"start"`
+		End            int64 `json:"end"`
 		CompositeQuery struct {
 			Queries []struct {
 				Spec struct {
+					Filter struct {
+						Expression string `json:"expression"`
+					} `json:"filter"`
+					Limit int             `json:"limit"`
 					Order json.RawMessage `json:"order"`
 				} `json:"spec"`
 			} `json:"queries"`
 		} `json:"compositeQuery"`
 	}
 	require.NoError(t, json.Unmarshal(captured, &request))
+	require.Less(t, request.Start, time.Date(2002, 1, 1, 0, 0, 0, 0, time.UTC).UnixMilli(), "the window reaches back past any stored trace")
+	require.Len(t, strconv.FormatInt(request.Start, 10), 13, "SigNoz reads only a 13-digit start as milliseconds")
+	require.GreaterOrEqual(t, request.End, before, "the window reaches the present")
 	require.Len(t, request.CompositeQuery.Queries, 1)
-	require.JSONEq(t, `[{"key":{"name":"timestamp"},"direction":"desc"}]`, string(request.CompositeQuery.Queries[0].Spec.Order))
+	spec := request.CompositeQuery.Queries[0].Spec
+	require.Equal(t, "trace_id = 'abc123'", spec.Filter.Expression)
+	require.Equal(t, 1000, spec.Limit)
+	require.JSONEq(t, `[{"key":{"name":"timestamp"},"direction":"desc"}]`, string(spec.Order))
+
+	// A quote in the ID stays inside the literal instead of adding conditions.
+	_, err = client.GetTraceDetails(context.Background(), "x' OR trace_id != 'y", true)
+	require.NoError(t, err)
+	require.Contains(t, string(captured), `"expression":"trace_id = 'x\\' OR trace_id != \\'y'"`)
 }
 
 func TestGetFieldKeys(t *testing.T) {
@@ -716,30 +758,46 @@ func TestGuardrail_MutatingPOSTNotRetriedAfterAmbiguousTransportFailure(t *testi
 	assert.JSONEq(t, `{"title":"created-once"}`, string(requestBody))
 }
 
+// Each audited read-only POST: the query itself, and the attribute mapping
+// test, which simulates the mapping in memory and saves nothing.
 func TestGuardrail_ReadOnlyPOSTRetries(t *testing.T) {
-	var attempts atomic.Int32
-	var requestBodies [][]byte
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requestBody, err := io.ReadAll(r.Body)
-		require.NoError(t, err)
-		requestBodies = append(requestBodies, requestBody)
-		if attempts.Add(1) == 1 {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"data":{"result":[]}}`))
-	}))
-	defer server.Close()
+	for _, tc := range []struct {
+		name string
+		call func(*SigNoz, []byte) (json.RawMessage, error)
+	}{
+		{"query builder", func(c *SigNoz, body []byte) (json.RawMessage, error) {
+			return c.QueryBuilderV5(context.Background(), body)
+		}},
+		{"AI attribute mapping test", func(c *SigNoz, body []byte) (json.RawMessage, error) {
+			return c.TestAIAttributeMappings(context.Background(), body)
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var attempts atomic.Int32
+			var requestBodies [][]byte
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requestBody, err := io.ReadAll(r.Body)
+				require.NoError(t, err)
+				requestBodies = append(requestBodies, requestBody)
+				if attempts.Add(1) == 1 {
+					w.WriteHeader(http.StatusServiceUnavailable)
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"data":{"result":[]}}`))
+			}))
+			defer server.Close()
 
-	client := NewClient(logpkg.New("error"), server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
-	result, err := client.QueryBuilderV5(context.Background(), []byte(`{"schemaVersion":"v1"}`))
-	require.NoError(t, err)
-	assert.JSONEq(t, `{"data":{"result":[]}}`, string(result))
-	assert.Equal(t, int32(2), attempts.Load())
-	require.Len(t, requestBodies, 2)
-	for _, requestBody := range requestBodies {
-		assert.JSONEq(t, `{"schemaVersion":"v1"}`, string(requestBody))
+			client := NewClient(logpkg.New("error"), server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+			result, err := tc.call(client, []byte(`{"schemaVersion":"v1"}`))
+			require.NoError(t, err)
+			assert.JSONEq(t, `{"data":{"result":[]}}`, string(result))
+			assert.Equal(t, int32(2), attempts.Load())
+			require.Len(t, requestBodies, 2)
+			for _, requestBody := range requestBodies {
+				assert.JSONEq(t, `{"schemaVersion":"v1"}`, string(requestBody))
+			}
+		})
 	}
 }
 

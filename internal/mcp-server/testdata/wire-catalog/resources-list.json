@@ -17,17 +17,24 @@
       "cacheScope": "public",
       "resources": [
         {
-          "description": "Read this after signoz://alert/instructions only when examples are still needed. Resolve illustrative direct/anomaly names with signoz_list_notification_channels; if none fits, offer signoz_create_notification_channel. Confirmed v2 policy routing may omit direct channels; anomaly cannot use policy routing.",
+          "description": "Read this before AI observability queries: LLM cost, tokens, models, or tool calls, per call or per trace. It covers queryType builder_ai_query on signoz_search_traces and signoz_aggregate_traces, the trace-level fields and where they work, how cost and token totals are computed (including cache tokens), examples for both tools, and saving a builder_ai_query as an alert. Full requests are in signoz://query-builder/examples.",
+          "mimeType": "text/markdown",
+          "name": "AI Query Builder Guide",
+          "size": 8989,
+          "uri": "signoz://ai/query-builder-guide"
+        },
+        {
+          "description": "Read this after signoz://alert/instructions only when examples are still needed. Resolve illustrative direct/anomaly names with signoz_list_notification_channels; if none fits, offer signoz_create_notification_channel. Confirmed v2 policy routing may omit direct channels.",
           "mimeType": "text/markdown",
           "name": "Alert Rule Examples",
-          "size": 26860,
+          "size": 33311,
           "uri": "signoz://alert/examples"
         },
         {
-          "description": "Read this before creating or updating an alert unless its current content was already read for the same prepared operation. It explains fields, rule types, queries, thresholds, evaluation, and when to reuse or call signoz_list_notification_channels. Read signoz://alert/examples only when examples are still needed.",
+          "description": "Read this before creating or updating an alert unless its current content was already read for the same prepared operation. It explains the query envelopes, threshold tiers, and evaluation specs the input schema does not describe, anomaly scoring, and when to reuse or call signoz_list_notification_channels. Read signoz://alert/examples only when examples are still needed.",
           "mimeType": "text/markdown",
           "name": "Alert Rule Instructions",
-          "size": 23773,
+          "size": 21472,
           "uri": "signoz://alert/instructions"
         },
         {
@@ -80,10 +87,10 @@
           "uri": "signoz://dashboard/instructions"
         },
         {
-          "description": "Read this when assembling a complete dashboard (panels + layout) with signoz_create_dashboard, or for a worked metrics Query Builder panel. It provides whole server-verified v6 create payloads: a timeseries grouped by an attribute, the same with a dynamic variable used as a filter, a number/value panel, and a multi-panel dashboard. For single-panel shapes see signoz://dashboard/widgets-examples; for layout and variable rules see signoz://dashboard/instructions.",
+          "description": "Read this when assembling a complete dashboard (panels + layout) with signoz_create_dashboard, replacing one with signoz_update_dashboard, or patching one. It provides the v6 payloads the SigNoz OpenAPI spec publishes: a service overview with a variable, a time series panel and a number panel; a logs table with a text panel; a full replacement; and two JSON Patch arrays. For single-panel shapes see signoz://dashboard/widgets-examples; for layout and variable rules see signoz://dashboard/instructions.",
           "mimeType": "text/markdown",
           "name": "Dashboard Examples",
-          "size": 16833,
+          "size": 14103,
           "uri": "signoz://dashboard/examples"
         },
         {
@@ -104,29 +111,36 @@
           "description": "Read this when choosing or building dashboard widgets. It explains when to use each panel type, required layout and legend fields, and which detailed guide to read for each query type. Also read signoz://dashboard/instructions.",
           "mimeType": "text/markdown",
           "name": "Dashboard Widget Instructions",
-          "size": 13890,
+          "size": 14276,
           "uri": "signoz://dashboard/widgets-instructions"
         },
         {
           "description": "Read this after the dashboard and widget instructions when building panels. It provides one worked, server-verified v6 panel payload per panel type (timeseries, area, list, pie, table, value/number) to copy structurally. Verify field names in the target SigNoz workspace.",
           "mimeType": "text/markdown",
           "name": "Dashboard Widgets Examples",
-          "size": 31180,
+          "size": 30659,
           "uri": "signoz://dashboard/widgets-examples"
         },
         {
           "description": "Read this before writing Query Builder v5 JSON for logs or filtering on unfamiliar log fields. It explains filter syntax, field discovery, body, JSON-path, and cross-field search(), row and aggregate queries, stable pagination, limits, ordering, timestamps, and examples for rows, single values, and time series.",
           "mimeType": "text/markdown",
           "name": "Logs Query Builder Guide",
-          "size": 13147,
+          "size": 14896,
           "uri": "signoz://logs/query-builder-guide"
         },
         {
-          "description": "Read this before choosing aggregations for signoz_query_metrics or building metrics Query Builder JSON. It explains timeAggregation, spaceAggregation, and reduceTo by metric type; formulas and limits; how groupBy field context is inferred; top-N selection across the full window; step intervals; examples; and Cost Meter queries.",
+          "description": "Read this before choosing aggregations for signoz_query_metrics or building metrics Query Builder JSON. It explains timeAggregation, spaceAggregation, and reduceTo by metric type; formulas and limits; groupBy and filter label names; top-N selection across the full window; step intervals; examples; and Cost Meter queries.",
           "mimeType": "text/markdown",
           "name": "Metrics Aggregation Guide",
-          "size": 11409,
+          "size": 12073,
           "uri": "signoz://metrics-aggregation-guide"
+        },
+        {
+          "description": "Read this before composing config for signoz_create_notification_channel or signoz_update_notification_channel unless already read in the same prepared operation. It lists every provider kind SigNoz accepts, each kind's config.spec fields with the required ones marked, and a worked create payload per kind plus two replacement configs.",
+          "mimeType": "text/markdown",
+          "name": "Notification Channel Reference and Examples",
+          "size": 15402,
+          "uri": "signoz://notification-channel/examples"
         },
         {
           "description": "Read this when composing a PromQL dashboard widget or promql_rule alert. It explains SigNoz's Prometheus 3.x quoted-selector form for dotted OTel metric names, resource labels, examples, and query checks; do not use it for Query Builder or ClickHouse SQL.",
@@ -139,21 +153,28 @@
           "description": "Read this when composing a Query Builder dashboard widget. It covers signal-specific aggregations, filters, metric naming, grouped legends, functions, and examples; use the ClickHouse or PromQL resources instead for those query types.",
           "mimeType": "text/markdown",
           "name": "Query Builder Examples",
-          "size": 16562,
+          "size": 16908,
           "uri": "signoz://dashboard/query-builder-example"
+        },
+        {
+          "description": "Read this when composing the query argument of signoz_execute_builder_query and a complete request shape is still needed after the signal's guide. It provides one query_range request from the SigNoz OpenAPI spec per query type (builder, formula, PromQL, ClickHouse SQL) and request type (raw, scalar, time_series) across logs, traces, and metrics.",
+          "mimeType": "text/markdown",
+          "name": "Query Builder Request Examples",
+          "size": 17892,
+          "uri": "signoz://query-builder/examples"
         },
         {
           "description": "Read this after signoz://view/instructions when composing a saved view. It provides complete typed spec payloads for traces, logs, metrics, and Cost Meter sources.",
           "mimeType": "text/markdown",
           "name": "Saved View Examples",
-          "size": 5533,
+          "size": 6742,
           "uri": "signoz://view/examples"
         },
         {
           "description": "Read this before creating or updating a saved view. It explains view fields, source, the typed spec (schemaVersion v2), Cost Meter views, and how to read a view before replacing it. It does not describe dashboards.",
           "mimeType": "text/markdown",
           "name": "Saved View Instructions",
-          "size": 7008,
+          "size": 5605,
           "uri": "signoz://view/instructions"
         },
         {
@@ -166,7 +187,7 @@
           "description": "Read this before writing Query Builder v5 JSON for traces or filtering on unfamiliar trace fields. It explains filter syntax, field discovery, built-in span fields, row and aggregate queries, limits, ordering, timestamps, and examples for rows, single values, and time series.",
           "mimeType": "text/markdown",
           "name": "Traces Query Builder Guide",
-          "size": 9915,
+          "size": 11017,
           "uri": "signoz://traces/query-builder-guide"
         }
       ],

@@ -7,10 +7,10 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
+	"github.com/SigNoz/signoz-mcp-server/internal/apiclient"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -121,20 +121,17 @@ func (s *SigNoz) CheckMetricUsage(ctx context.Context, names []string) (map[stri
 }
 
 func (s *SigNoz) fetchMetricUsage(ctx context.Context, name string) (MetricUsage, error) {
-	params := url.Values{}
-	params.Set("metricName", name)
-	query := params.Encode()
-
 	usage := MetricUsage{
 		Dashboards: []string{},
 		Alerts:     []string{},
 	}
 	var errs []string
 
-	dashURL := fmt.Sprintf("%s/api/v3/metrics/dashboards?%s", s.baseURL, query)
 	s.logger.DebugContext(ctx, "Fetching metric dashboard refs", slog.String("metric", name))
 
-	dashBody, err := s.doRequest(ctx, http.MethodGet, dashURL, nil, DefaultQueryTimeout)
+	dashBody, err := s.callAPI(ctx, DefaultQueryTimeout, func(ctx context.Context, api *apiclient.Client) (*http.Response, error) {
+		return api.GetMetricDashboardsV2(ctx, &apiclient.GetMetricDashboardsV2Params{MetricName: name})
+	})
 	if err != nil {
 		if isMetricUsageAuthzError(err) {
 			return usage, err
@@ -161,10 +158,11 @@ func (s *SigNoz) fetchMetricUsage(ctx context.Context, name string) (MetricUsage
 		}
 	}
 
-	alertURL := fmt.Sprintf("%s/api/v2/metrics/alerts?%s", s.baseURL, query)
 	s.logger.DebugContext(ctx, "Fetching metric alert refs", slog.String("metric", name))
 
-	alertBody, err := s.doRequest(ctx, http.MethodGet, alertURL, nil, DefaultQueryTimeout)
+	alertBody, err := s.callAPI(ctx, DefaultQueryTimeout, func(ctx context.Context, api *apiclient.Client) (*http.Response, error) {
+		return api.GetMetricAlerts(ctx, &apiclient.GetMetricAlertsParams{MetricName: name})
+	})
 	if err != nil {
 		if isMetricUsageAuthzError(err) {
 			return usage, err

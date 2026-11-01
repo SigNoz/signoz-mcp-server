@@ -54,11 +54,11 @@ Query count per panel [CRITICAL]:
 
 Dry-run a panel query [CRITICAL]:
 - Before saving a query panel, validate its one query with signoz_execute_builder_query. A saved query spec is already a Query Builder v5 execution spec, so translate only the envelope and keep the spec unchanged.
-- Envelope per query plugin: signoz/BuilderQuery -> builder_query, signoz/Formula -> builder_formula, signoz/TraceOperator -> builder_trace_operator, signoz/PromQLQuery -> promql, signoz/ClickHouseSQL -> clickhouse_sql. Each becomes {"type": <envelope>, "spec": <saved spec>}.
+- Envelope per query plugin: signoz/BuilderQuery -> builder_query, signoz/AIBuilderQuery -> builder_ai_query, signoz/Formula -> builder_formula, signoz/TraceOperator -> builder_trace_operator, signoz/PromQLQuery -> promql, signoz/ClickHouseSQL -> clickhouse_sql. Each becomes {"type": <envelope>, "spec": <saved spec>}.
 - signoz/CompositeQuery: its entries become sibling envelopes in compositeQuery.queries, in order, keeping disabled inputs and every formula.
 - PromQL and ClickHouse specs hold name and query. PromQL also accepts disabled, step, stats, and legend; ClickHouse accepts disabled and legend. Example: {"type": "promql", "spec": {"name": "A", "query": "sum(rate({\"http.server.request.duration.count\"}[5m]))"}}.
 - Tool arguments: {"query": {"schemaVersion": "v1", "start": <ms>, "end": <ms>, "requestType": <panel query kind>, "compositeQuery": {"queries": [...]}}}. start and end are absolute Unix milliseconds over a short recent window (usually the last 30 to 60 minutes), not the panel's display range. Omitting them fails with "missing start or end timestamp".
-- requestType is always the panel query's kind, set explicitly (ClickHouse has no default): time_series for timeseries, area, bar, and histogram panels; scalar for table, pie, and value panels; raw for list panels; trace only for an existing trace panel (author trace lists as signoz/ListPanel with raw). Never use aggregate, table, or timeseries.
+- requestType is always the panel query's kind, set explicitly (ClickHouse has no default): time_series for timeseries, area, bar, and histogram panels; scalar for table, pie, and value panels; raw for list panels; heatmap for heatmap panels; trace only for an existing trace panel (author trace lists as signoz/ListPanel with raw). Never use aggregate, table, or timeseries.
 - A dry-run validates execution for its window only. A PromQL range selector looks back from each evaluation point, so a long selector such as [12h] stays costly even over a short window.
 - The executor does not expand dashboard variables. In the dry-run copy only, replace each $variable with one representative discovered value; keep $variable in the saved panel.
 - Keep limit and order identical in the saved panel and the dry-run.
@@ -88,6 +88,7 @@ Panel/widgets types in dashboards [CRITICAL]:
 7. Timeseries: time-indexed metrics.
 8. Value (the "Number" panel): single aggregated metric.
 9. Text: static Markdown notes, runbooks, links, and section context. Use plugin kind signoz/TextPanel with mode "markdown", text, presentation, headerOptions, and queries: [].
+10. Heatmap: how a value distribution shifts over time, such as latency buckets per interval. Use plugin kind signoz/HeatmapPanel with a query of kind heatmap whose builder spec carries bucketOptions; heatmap panels reject signoz/AIBuilderQuery. The create schema lists the panel's axes, colors, and yScale fields.
 
 Layout (concepts):
 - Panels sit on a column-based grid: each panel has a position (where it starts) and a size (how wide and tall it is).

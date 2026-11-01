@@ -416,7 +416,7 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 
 > **Tool metadata:** every tool accepts `searchContext`. Copy the user's entire original request verbatim, including preflight or confirmation context; it is used for MCP observability and is not forwarded to SigNoz APIs.
 
-> **Input validation:** calls are never rejected for schema mismatches. Arguments are validated against each tool's advertised schema; a mismatched call still runs best-effort, and the successful result carries a deterministic appended `Input validation notice:` naming the affected top-level parameter when it can be derived safely from the advertised schema. Complex root-only mismatches use a generic fallback. Mismatches are also counted in the `mcp.tool.validation.mismatches` metric.
+> **Input validation:** calls are never rejected for schema mismatches. Arguments are validated against each tool's advertised schema; a mismatched call still runs best-effort, and the successful result carries a deterministic appended `Input validation notice:` naming the affected top-level parameter when it can be derived safely from the advertised schema. Complex root-only mismatches use a generic fallback. Mismatches are also counted in the `mcp.tool.validation.mismatches` metric. Arguments a tool's schema does not declare add no notice and are handled as before: most tools ignore them, and a few reject them with a coded error, such as the retired log `query` alias or an unknown notification-channel field. They are also logged at WARN with their names and counted in the same metric under path `<undeclared>` and constraint `undeclared_argument`.
 
 > **Upstream errors:** upstream SigNoz 401 and 403 tool failures carry a stable structured `code` (`UNAUTHORIZED` or `PERMISSION_DENIED`) and numeric `status`. Recognized SigNoz error envelopes may also include bounded `upstreamURL`, `upstreamSuggestions`, `upstreamDetails` (`[{message, suggestions}]`), and `upstreamRetry` (`{delay}` in nanoseconds); the same recovery guidance appears in agent-readable text. Unrecognized bodies use the local status-derived coded fallback instead of raw passthrough, and authorization failures still name the failed tool and immediate recovery action. This error-only addition does not change tool names, schemas or descriptions, success payloads, resources or templates, or prompts.
 
@@ -428,13 +428,13 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 | `signoz_get_top_metrics` | Return top 100 metrics ranked by ingested sample volume with pre-computed percentages for cost and volume analysis |
 | `signoz_check_metric_usage` | Given a list of metric names (up to 50 per call), return which dashboards and alerts reference each one |
 | `signoz_check_metric_cardinality` | Return label/attribute keys for a single metric with cardinality counts and sample values, sorted highest-cardinality first |
-| `signoz_get_field_keys` | Discover available field keys for metrics, traces, or logs |
+| `signoz_get_field_keys` | Discover available field keys for metrics, traces, or logs, including AI trace fields |
 | `signoz_get_field_values` | Get possible values for a field key |
 | `signoz_list_alerts` | List firing/silenced/inhibited Alertmanager alert *instances* (not rule definitions) |
 | `signoz_list_alert_rules` | List configured alert-rule summaries, including inactive/OK and disabled rules |
 | `signoz_get_alert` | Get one alert rule's full definition by `id` |
 | `signoz_get_alert_history` | Get one rule's firing or state-transition history |
-| `signoz_create_alert` | Create a v2 direct/policy-routed alert or a direct-routed v1 anomaly alert |
+| `signoz_create_alert` | Create a v2alpha1 threshold, PromQL, or anomaly alert with direct or policy routing |
 | `signoz_update_alert` | Fully replace an existing alert rule by `id` |
 | `signoz_delete_alert` | Permanently delete a confirmed alert rule by UUIDv7 `id` |
 | `signoz_list_dashboards` | List tenant-dashboard summaries and discover UUIDs |
@@ -456,9 +456,12 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 | `signoz_delete_view` | Permanently delete a confirmed saved view by `id` |
 | `signoz_aggregate_logs` | Aggregate log statistics and grouped or top-N breakdowns |
 | `signoz_search_logs` | Return individual log records matching filters |
-| `signoz_aggregate_traces` | Aggregate span statistics and grouped or top-N breakdowns |
-| `signoz_search_traces` | Return individual span rows or discover trace IDs |
+| `signoz_aggregate_traces` | Aggregate span or per-AI-trace statistics and grouped or top-N breakdowns |
+| `signoz_search_traces` | Return span rows or one row per trace (including AI traces), or discover trace IDs |
 | `signoz_get_trace_details` | Get one known trace with all spans and hierarchy |
+| `signoz_get_ai_pricing` | List AI model prices, or models seen in the last hour with no price |
+| `signoz_list_ai_attribute_mappings` | List the mapping groups that turn vendor AI span attributes into `gen_ai.*` keys |
+| `signoz_test_ai_attribute_mapping` | Run sample spans through the AI attribute mappings without saving anything |
 | `signoz_execute_builder_query` | Query Builder v5 requests the dedicated tools cannot express |
 | `signoz_list_notification_channels` | List channel IDs, names, and display names without provider settings |
 | `signoz_get_notification_channel` | Get all provider-specific settings for one channel by ID |
@@ -481,13 +484,13 @@ Docs tools use the same authentication path as other MCP tools.
 | Resource | Read when you need |
 |---|---|
 | `signoz://alert/instructions` | Alert schemas, fields, thresholds, evaluation, and notification workflow |
-| `signoz://alert/examples` | Alert payload examples for v2 direct/policy routing and v1 direct anomaly routing |
+| `signoz://alert/examples` | Alert payloads from the SigNoz OpenAPI spec (threshold, formula, PromQL, anomaly, tiered routing, notification settings) plus a Cost Meter budget example |
 | `signoz://dashboard/instructions` | Dashboard fields, variables, chaining, and layout |
 | `signoz://dashboard/widgets-instructions` | Panel choices and query-specific guides |
 | `signoz://dashboard/widgets-examples` | Panel examples and validation patterns |
 | `signoz://dashboard/list-filter-guide` | `signoz_list_dashboards` filter DSL: grammar, per-key operators, and examples |
 | `signoz://dashboard/patch-instructions` | `signoz_patch_dashboard` JSON Patch recipes and exact paths (add/edit/move/remove a panel, query, variable) |
-| `signoz://dashboard/examples` | Complete server-verified dashboard payloads (metrics timeseries, dynamic-variable filter, number panel, multi-panel) |
+| `signoz://dashboard/examples` | Dashboard payloads from the SigNoz OpenAPI spec: create bodies, a full replacement, and JSON Patch arrays |
 | `signoz://dashboard/query-builder-example` | Dashboard Query Builder aggregations, filters, legends, and functions |
 | `signoz://promql/instructions` | PromQL widgets or alerts, especially dotted OTel metric names |
 | `signoz://dashboard/clickhouse-schema-for-logs` | Bundled logs schema snapshot for dashboard SQL |
@@ -498,9 +501,12 @@ Docs tools use the same authentication path as other MCP tools.
 | `signoz://dashboard/clickhouse-traces-example` | Raw ClickHouse traces widget patterns |
 | `signoz://logs/query-builder-guide` | Logs Query Builder v5 JSON or unfamiliar log fields |
 | `signoz://traces/query-builder-guide` | Traces Query Builder v5 JSON or unfamiliar trace fields |
+| `signoz://ai/query-builder-guide` | AI agent and LLM queries: when to set `queryType: builder_ai_query`, per-trace cost, token, and call-count keys, caveats, and examples |
 | `signoz://metrics-aggregation-guide` | Metric aggregations, formulas, grouping, limits, and Cost Meter queries |
+| `signoz://query-builder/examples` | `query_range` requests from the SigNoz OpenAPI spec, per query type and request type for `signoz_execute_builder_query` |
+| `signoz://notification-channel/examples` | Every notification channel kind, its `config.spec` fields, and a worked payload per kind |
 | `signoz://view/instructions` | Saved view fields, the v2 typed spec, and read-before-replace workflow |
-| `signoz://view/examples` | Saved-view typed-spec payloads for traces, logs, metrics, and Cost Meter |
+| `signoz://view/examples` | Saved-view payloads from the SigNoz OpenAPI spec for logs, traces, metrics, and Cost Meter, plus a replacement body |
 | `signoz://docs/sitemap` | Indexed official-doc catalog and page URLs |
 
 ### Resource Template Migration
@@ -523,6 +529,7 @@ Get the current status and overall posture of the SigNoz deployment before drill
 - **Authoritative source**: `sourceStats` preserves every successfully decoded entry from the upstream `data` object under its original dotted key. Use the grouped fields for convenient interpretation and `sourceStats` when exact backend coverage or a newly introduced field matters. Counts are deployment aggregates; use `signoz_list_dashboards`, `signoz_list_alert_rules`, `signoz_list_notification_channels`, or `signoz_list_views` for exact inventories; `signoz_list_metrics` for metric names; `signoz_list_alerts` for current alert instances; and `signoz_search_logs`, `signoz_search_traces`, or `signoz_query_metrics` for time-windowed or per-service data.
 - **Missing fields**: a key absent from `sourceStats` was not reported by the upstream collector and must not be interpreted as zero. The endpoint can return a partial HTTP 200 when an individual collector fails. In typed projections, a missing group total produces `available: false`; a reported zero produces `available: true`. Expected missing or invalid projection fields set `metadata.projectionPartial` and add an `incompleteGroups` entry with affected output paths, reason, next action, and exact fallback tools where available. An invalid projection value is still retained unchanged in `sourceStats` and named in `invalidProjectionFields`.
 - **Cloud-integration completeness**: `cloudIntegrations.sourceAvailability` reports whether both current AWS/Azure provider counts were reported. Each provider has its own `dataAvailable`; an absent provider count is never converted to zero. If neither provider is reported, source availability is `unavailable` without setting overall `metadata.projectionPartial`; this can mean cloud integrations are unsupported/edition-gated **or** both provider queries failed, so do not interpret it as “no cloud integrations configured.” If exactly one is reported, source availability is `partial` and the missing provider receives non-recursive recovery guidance. `connectedAccounts` means a non-removed account with an account ID and at least one agent report, not a recent check-in or proof that an integration service is enabled.
+- **Feature flags**: `featureFlags.flags` lists every flag from `GET /api/v2/features` with its `name`, `kind`, `stage`, `description`, and the `resolvedValue` in effect for this org, sorted by name. Some flags change how data is stored or queried, such as `use_json_body` for JSON log bodies. If SigNoz does not report them, `featureFlags.available` is `false` and `metadata.incompleteGroups` has a `featureFlags` entry; treat every flag as unknown, not off.
 - **Projection metadata**: `reportedStatCount` is the number of authoritative entries in `sourceStats`; `projectedStatCount` counts entries also represented in typed groups; and `unprojectedStatCount` counts entries available only in `sourceStats`, including future fields. `projectionPartial`, `incompleteGroups`, and `invalidProjectionFields` describe only typed-projection gaps; they do not indicate data was removed from `sourceStats` or claim endpoint-wide completeness.
 
 #### `signoz_list_metrics`
@@ -530,7 +537,7 @@ Get the current status and overall posture of the SigNoz deployment before drill
 Discover metric names and catalog metadata such as type, temporality, unit, and monotonicity. Use `signoz_query_metrics` for values or trends. This list has a limit but no offset pagination.
 
 - **Parameters**:
-  - `searchText` (optional) - Filter metrics by name substring (e.g., 'cpu', 'memory')
+  - `searchText` (optional) - Filter metrics by name substring. Names separate words with dots or underscores (`system.cpu.time`, `http_server_duration`), so search one word, such as `cpu` or `memory`
   - `limit` (optional) - Maximum number of metrics to return (default: 50)
   - `timeRange` (optional) - Relative range: 30m, 1h, 6h, 24h, 7d (default: 1h; ignored when both `start` and `end` are provided)
   - `start`/`end` (optional) - Unix ms timestamps. When both are provided, they override `timeRange`.
@@ -543,22 +550,26 @@ Query a known metric for values, trends, breakdowns, or formulas. The tool appli
 
 - **Parameters**:
   - `metricName` (required) - Metric name to query
-  - `metricType` (optional) - gauge, sum, histogram, exponential_histogram (auto-fetched if absent)
+  - `metricType` (optional) - gauge, sum, histogram, exponential_histogram, summary (auto-fetched if absent)
   - `isMonotonic` (optional) - Boolean (or the strings `"true"`/`"false"`); auto-fetched if absent. An invalid value is rejected rather than silently treated as false
   - `temporality` (optional) - cumulative, delta, unspecified (auto-fetched if absent)
-  - `timeAggregation` (optional) - Aggregation over time (auto-defaulted by type)
-  - `spaceAggregation` (optional) - Aggregation across dimensions (auto-defaulted by type)
-  - `groupBy` (optional) - Comma-separated field names or an array. Resource context is inferred for `k8s.*`, `container.*`, `host.*`, `cloud.*`, `deployment.*`, `process.*`, `service.*`, `telemetry.*`, and `os.*`; other names use attribute context
-  - `filter` (optional) - Filter expression
+  - `timeAggregation` (optional) - Aggregation within each series per time bucket (defaulted by type when omitted; SigNoz validates the combination)
+  - `spaceAggregation` (optional) - Aggregation across series (defaulted by type when omitted; percentiles are histogram-only). Summary metrics need both aggregations set
+  - `groupBy` (optional) - Label names to group by, as an array or a comma-separated string. Metric labels hold resource and data-point attributes in one set, so names need no context prefix. An array item that is not a string is rejected with a coded error
+  - `filter` (optional) - Filter expression. Pass the expression text, not `{"expression": ...}`, which is rejected with a coded error. Regex matches use `REGEXP`, not PromQL's `=~`; a `=~` or `!~` that SigNoz rejects comes back with that hint. The former `query` alias is rejected with a coded error that names `filter`
   - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '7d'; default: '1h'; ignored when both `start` and `end` are provided)
   - `start`/`end` (optional) - Unix ms timestamps. When both are provided, they override `timeRange`.
   - `stepInterval` (optional) - Step in seconds (auto-calculated if omitted)
   - `requestType` (optional) - Response format. Enum: `time_series` (default), `scalar`. Unknown values are rejected.
-  - `reduceTo` (optional) - For scalar: sum, count, avg, min, max, last, median
+  - `reduceTo` (required when `requestType` is `scalar`) - How to reduce each series to one value: `last`, `max`, `min`, `avg`, `sum`, `count`, `median`. It has no default; SigNoz rejects a scalar request without it. For a total count use `timeAggregation: increase` with `reduceTo: sum`
   - `formula` (optional) - Expression over named queries (e.g., "A / B * 100")
-  - `formulaQueries` (optional) - Array or JSON-encoded array string of additional named metric queries for formula. Each object supports `name`, `metricName`, `metricType`, `isMonotonic`, `temporality`, `timeAggregation`, `spaceAggregation`, `groupBy`, and `filter`; `name` and `metricName` are required.
+  - `formulaQueries` (optional) - Array of additional named metric queries for `formula`, or a JSON-encoded string of that array. The item schema is typed: `name` and `metricName` are required; `metricType`, `isMonotonic`, `temporality`, `timeAggregation`, `spaceAggregation`, `reduceTo`, `groupBy` (array or comma-separated string), and `filter` mirror the top-level parameters and are auto-fetched or defaulted the same way.
+  - `limit` (optional) - Maximum number of groups (series) in the result (default: 100, max: 10000; higher values are clamped). With a formula, limit applies to the formula result; formula inputs are not limited
+  - `orderBy` (optional) - Result order as `<key> <direction>`, where the key is `__result` or a `groupBy` field (e.g. `__result asc`; default: `__result desc`)
+  - `having` (optional) - Condition on the primary query's aggregated values, applied after grouping (e.g. `__result > 0.5`). With a formula it filters query A's series before the formula runs; SigNoz ignores a `having` on the formula result itself, so the tool never sends one there. SigNoz validates it
+  - `functions` (optional) - Post-query transforms applied to each `time_series` result, as an array of `{name, args}` objects (or a JSON-encoded string). SigNoz returns `scalar` results unchanged, and the decisions note says so. Names such as `cutOffMin`, `clampMax`, `absolute`, `runningDiff`, `ewma3`, `timeShift`, and `fillZero`; SigNoz validates names and args
   - `source` (optional) - Data-source filter. Use `"meter"` to query Cost Meter data; omit for the default metrics store
-  - **Result bounds**: standalone generated metric queries and formula results use `limit: 100` with `__result desc`. Every query feeding a formula uses `limit: 10000`, because component limits are applied before formula evaluation and independent top-100 inputs can discard a high-ratio group. The response decisions note reports both bounds. Narrow the filters/grouping when formula-input cardinality can exceed 10000.
+  - **Result bounds**: standalone generated metric queries and formula results use `limit: 100` with `__result desc` unless `limit` or `orderBy` says otherwise. Queries feeding a formula get no limit, because SigNoz applies input limits before formula evaluation and would drop groups from the result. The response decisions note reports the effective bounds.
   - **Key-not-found errors**: a filter referencing a key absent from this workspace's metrics metadata fails with recovery guidance in the error text plus a machine-readable `missingKeys` array in the structured error content
 
 #### `signoz_get_top_metrics`
@@ -601,9 +612,13 @@ Lists currently firing/silenced/inhibited alert *instances* from Alertmanager, *
 
 #### `signoz_list_alert_rules`
 
-Lists configured alert-rule summaries from `GET /api/v2/rules`, including inactive/OK and disabled rules. Use `signoz_get_alert` for one full definition; use `signoz_list_alerts` for current Alertmanager instances.
+Lists configured alert-rule summaries from `GET /api/v3/rules`, including inactive/OK and disabled rules. SigNoz applies `filter` and `states` before paging, so finding rules by name, label, severity, or state doesn't need a walk through every page. Use `signoz_get_alert` for one full definition; use `signoz_list_alerts` for current Alertmanager instances.
 
 - **Parameters**:
+  - `filter` (optional) - Filter expression, at most 1024 characters. Keys: `name` (the rule title), `severity`, `alert_type`, `rule_type`, `created_by`, `updated_by`, and `created_at` or `updated_at` with RFC 3339 times. Any other key is a rule label, matched case-sensitively (`cluster = 'prod'`); `labels.<key>` matches only the label. A bare word matches the name, description, or labels, ignoring case. Example: `name CONTAINS 'High Response Time' AND severity IN ('critical', 'error')`
+  - `states` (optional) - Only rules in these states: `firing`, `pending`, `recovering`, `inactive`, `nodata`, or `disabled`, as an array or a comma-separated string
+  - `sort` (optional) - Field to sort by: `updated_at` (default), `created_at`, `name`, `state`, or `severity`
+  - `order` (optional) - `asc` or `desc` (default)
   - `limit` (optional) - Maximum number of rules to return per page (default: 50, max: 1000; higher values are clamped)
   - `offset` (optional) - Number of rules to skip for pagination (default: 0)
 
@@ -690,7 +705,7 @@ Applies an RFC 6902 JSON Patch to a dashboard: a partial update without re-sendi
 
 #### `signoz_list_services`
 
-Lists paginated APM services with trace activity in a time range. Absence means no trace activity in that window, not that the same `service.name` never appears in logs; use `signoz_get_field_values` with `signal="logs"` for log values.
+Lists APM services with trace activity in a time range, sorted by service name and paginated. Absence means no trace activity in that window, not that the same `service.name` never appears in logs; use `signoz_get_field_values` with `signal="logs"` for log values.
 
 - **Parameters**:
   - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '7d'; defaults to last 6 hours; ignored when both `start` and `end` are provided)
@@ -773,7 +788,7 @@ whitespace-only queries remain validation errors.
 Fetch one known official SigNoz docs page's full Markdown or a requested heading. Use `signoz_search_docs` to discover a page first; accepted inputs are `https://signoz.io/docs/...` URLs or `/docs/...` paths.
 
 - **Parameters**:
-  - `url` (required) - Docs page URL or path
+  - `url` (required) - Docs page URL or path. A `signoz://` resource URI is rejected with a hint to read it with `resources/read` instead
   - `heading` (optional) - Heading anchor ID or heading text
   - `searchContext` - User's original question
 
@@ -796,6 +811,7 @@ Fully replace an existing saved Explorer view. Fetch it with `signoz_get_view`, 
 - **Parameters**:
   - `id` (required) - UUID of the view to replace
   - `view` (required) - Full `source`/`spec` pair (required); drop `name` and server-populated fields
+- **Migration**: the retired flat shape (`source` and `spec` beside `id`) returns a coded `VALIDATION_FAILED` error naming the `view` wrapper; pass `{"id": "<uuid>", "view": {"source": ..., "spec": ...}}`.
 - **Resource rule**: Read `signoz://view/instructions` and `signoz://view/examples` when changing `source` or `spec`. Skip them for a pass-through of the fetched body. Call `signoz_get_view` first; partial bodies wipe unspecified fields.
 
 #### `signoz_delete_view`
@@ -811,14 +827,15 @@ Permanently delete a confirmed saved Explorer view by UUID. Use `signoz_list_vie
 Return aggregate statistics over logs (counts, rates, averages, percentiles, or grouped/top-N breakdowns) rather than individual records. Use `signoz_search_logs` for log rows and message inspection.
 
 - **Parameters**:
-  - `aggregation` (required) - Aggregation function: count, count_distinct, avg, sum, min, max, p50, p75, p90, p95, p99, rate
-  - `aggregateOn` (optional) - Field to aggregate on (required for all except count and rate)
-  - `groupBy` (optional) - Comma-separated fields to group by (e.g., 'service.name, severity_text')
-  - `filter` (optional) - Filter expression using SigNoz search syntax. Combine conditions with AND, OR, and parentheses. Unknown keys hard-error; ambiguous keys default to resource context. Log keys are workspace-specific; even `service.name` is only present when the log pipeline sets it. See `signoz://logs/query-builder-guide`
-  - `service` (optional) - Shortcut filter for service name (adds `service.name = '<value>'`; fails with `key service.name not found` when the workspace's logs lack that attribute)
-  - `severity` (optional) - Exact `severity_text`; DEBUG, INFO, WARN, ERROR, and FATAL are common examples, not an exhaustive enum. Discover values with `signoz_get_field_values(signal="logs", name="severity_text", fieldContext="log")`
-  - `orderBy` (optional) - Order expression and direction (e.g., 'count() desc')
+  - `aggregations` (required) - Aggregation expressions as the Query Builder writes them: `count()`, `count_distinct(user_id)`, `avg(duration)`, `p99(duration)`, `rate()`, or a conditional such as `countIf(severity_text = 'ERROR')`. One expression or an array (e.g. `["count()", "p95(duration)", "p99(duration)"]`); results come back as `__result_0`, `__result_1`, ... in that order. SigNoz validates the expressions. The former `aggregation` and `aggregateOn` inputs return a coded error naming this replacement
+  - `groupBy` (optional) - Fields to group by, as an array or a comma-separated string (e.g. `["service.name", "severity_text"]`). An array of objects is rejected with a coded error naming both forms. Group by keys `signoz_get_field_keys` returns; an unknown key can come back as one empty group. A body field (`body.<path>`) can be grouped only when `signoz_get_field_keys` (`signal="logs"`, `fieldContext="body"`) lists it, which happens only on workspaces that store JSON log bodies; otherwise SigNoz rejects it with `can be filtered but not selected or grouped` or `field not found`, so filter on it instead
+  - `having` (optional) - Condition on the aggregation results, applied after grouping (e.g. `count() > 100`). SigNoz validates it
+  - `filter` (optional) - Filter expression using SigNoz search syntax. Pass the expression text, not `{"expression": ...}`, which is rejected with a coded error. Combine conditions with AND, OR, and parentheses. An unknown key may not fail: SigNoz can match guessed attribute and body spellings and return a `key ... not found in metadata` warning with no rows, so read that warning as an absent key. Ambiguous keys default to resource context. Log keys are workspace-specific; even `service.name` is only present when the log pipeline sets it. See `signoz://logs/query-builder-guide` There is no `key:value`, `STARTS WITH`, or `IS NULL`; use `LIKE 'prefix%'` and `EXISTS` / `NOT EXISTS`.
+  - `service` (optional) - Shortcut filter for service name (adds `service.name = '<value>'`; when the workspace's logs lack that attribute, the call usually returns no rows with a `key service.name not found in metadata` warning instead of failing)
+  - `severity` (optional) - `severity_text`, matched in any case and as a prefix, so `WARN` also matches `warning` and `Warning`; pass the short form (`ERR`, `WARN`, `INFO`). DEBUG, INFO, WARN, ERROR, and FATAL are common examples, not an exhaustive enum. Discover values with `signoz_get_field_values(signal="logs", name="severity_text", fieldContext="log")`
+  - `orderBy` (optional) - Order expression and direction. The expression must be one of the call's aggregations, written exactly as in `aggregations`, or a `groupBy` key (e.g. `'count_distinct(trace_id) desc'` when aggregating `count_distinct(trace_id)`); default: the first aggregation, descending
   - `limit` (optional) - Maximum number of groups to return (default: 100, max: 10000; higher values are clamped to bound server memory)
+  - `functions` (optional) - Post-query transforms applied to each `time_series` result, as an array of `{name, args}` objects (or a JSON-encoded string). SigNoz returns `scalar` results unchanged, and the response notes it. Names such as `cutOffMin`, `clampMax`, `absolute`, `runningDiff`, `ewma3`, `timeShift`, and `fillZero`; SigNoz validates names and args
   - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '24h', '7d'; default: '1h'; ignored when both `start` and `end` are provided)
   - `start` / `end` (optional) - Start/end time in unix milliseconds. When both are provided, they override `timeRange`.
   - `requestType` (optional) - `scalar` (default; one aggregate value over the whole range) or `time_series` (one value per time bucket). Unknown values are rejected.
@@ -833,16 +850,19 @@ Return individual paginated log records matching text, service, severity, or fie
 Calls using only `searchText`, `service`, `severity`, time, or pagination parameters need no guide read. Read `signoz://logs/query-builder-guide` only before composing `filter` with unfamiliar workspace fields.
 
 - **Parameters**:
-  - `filter` (optional) - Filter expression using SigNoz search syntax. Combine conditions with AND, OR, and parentheses (e.g., "(severity_text = 'ERROR' OR body CONTAINS 'panic') AND service.name = 'payment-svc'"). Log keys are workspace-specific; even `service.name` is only present when the log pipeline sets it. See `signoz://logs/query-builder-guide`
-  - `service` (optional) - Service name to filter by (adds `service.name = '<value>'`; fails with `key service.name not found` when the workspace's logs lack that attribute)
-  - `severity` (optional) - Exact `severity_text`; DEBUG, INFO, WARN, ERROR, and FATAL are common examples, not an exhaustive enum. Discover values with `signoz_get_field_values(signal="logs", name="severity_text", fieldContext="log")`
+  - `filter` (optional) - Filter expression using SigNoz search syntax. Pass the expression text, not `{"expression": ...}`, which is rejected with a coded error. Combine conditions with AND, OR, and parentheses (e.g., "(severity_text = 'ERROR' OR body CONTAINS 'panic') AND service.name = 'payment-svc'"). Log keys are workspace-specific; even `service.name` is only present when the log pipeline sets it. See `signoz://logs/query-builder-guide` There is no `key:value`, `STARTS WITH`, or `IS NULL`; use `LIKE 'prefix%'` and `EXISTS` / `NOT EXISTS`.
+  - `service` (optional) - Service name to filter by (adds `service.name = '<value>'`; when the workspace's logs lack that attribute, the call usually returns no rows with a `key service.name not found in metadata` warning instead of failing)
+  - `severity` (optional) - `severity_text`, matched in any case and as a prefix, so `WARN` also matches `warning` and `Warning`; pass the short form (`ERR`, `WARN`, `INFO`). DEBUG, INFO, WARN, ERROR, and FATAL are common examples, not an exhaustive enum. Discover values with `signoz_get_field_values(signal="logs", name="severity_text", fieldContext="log")`
   - `searchText` (optional) - Literal text to find, escaped automatically; combines with `filter` using AND
-  - `searchScope` (optional) - Where `searchText` matches: `body` (default, `body CONTAINS`), `attribute` or `resource` (keys and values), or `all` (unscoped `search()`, slow on wide time ranges)
+  - `searchScope` (optional) - Where `searchText` matches: `body` (default, `body CONTAINS`), `attribute` or `resource` (keys and values), or `all` (unscoped `search()`, slow on wide time ranges). Ignored, with a note in the result, when `searchText` is empty; an unknown scope is rejected
   - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '24h', '7d'; default: '1h'; ignored when both `start` and `end` are provided)
   - `start` / `end` (optional) - Start/end time in unix milliseconds. When both are provided, they override `timeRange`.
   - `limit` (optional) - Maximum number of logs to return (default: 100, max: 10000; higher values are clamped; paginate with `offset`)
   - `offset` (optional) - Offset for pagination (default: 0)
-  - **Ordering**: generated raw log queries use `timestamp desc`, then `id desc`, so offset pagination is deterministic when multiple rows share a timestamp.
+  - `orderBy` (optional) - Row order as `<field> <direction>` (e.g. `timestamp asc`, `severity_number desc`; default: `timestamp desc`)
+  - `selectFields` (optional) - Extra fields to return on each row, added to the default set. An array of names or a comma-separated string, at most 50. Names can be resource attributes (`service.name`, `k8s.pod.name`), log attributes (`http.route`), or other log columns (`severity_number`); a body field (`body.<path>`) can be selected only when `signoz_get_field_keys` (`fieldContext="body"`) lists it, and is otherwise rejected with `can be filtered but not selected or grouped` or `field not found`, so filter on it instead; a `resource.`, `attribute.`, `log.`, or `body.` prefix picks the context. Discover names with `signoz_get_field_keys` (`signal="logs"`)
+  - **Default fields**: each row carries `timestamp`, `id`, `body`, `severity_text`, `trace_id`, and `span_id`, plus any `selectFields`. Every field is a flat row key; a field missing from a row was not selected. Resource attributes such as `service.name` are not in the default set because logs carry none by contract; name them in `selectFields`
+  - **Ordering**: generated raw log queries use `timestamp desc`, then `id desc`, so offset pagination is deterministic when multiple rows share a timestamp. When `orderBy` names `timestamp`, `id` follows in the same direction.
   - **Completeness note**: the response appends a note reporting `hasMore` (inferred from `returnedRows == limit`) and the `nextOffset` to fetch, so a truncated page is never mistaken for the full result set
   - **Key-not-found errors**: a filter referencing a key absent from this workspace's logs metadata fails with recovery guidance in the error text plus a machine-readable `missingKeys` array in the structured error content
 
@@ -856,15 +876,16 @@ The same expressions work in log aggregations and saved-query specs.
 
 #### `signoz_get_field_keys`
 
-Discover field names available for filtering or grouping metrics, traces, or logs. This returns keys, not observed values; use `signoz_get_field_values` after selecting a key. A `data.complete` of `false` means SigNoz truncated the key list; narrow with `searchText` or `fieldContext`.
+Discover field names available for filtering or grouping metrics, traces, or logs, including AI trace fields with `queryType: builder_ai_query`. This returns keys, not observed values; use `signoz_get_field_values` after selecting a key. A `data.complete` of `false` means SigNoz truncated the key list; narrow with `searchText` or `fieldContext`.
 
 - **Parameters**:
   - `signal` (required) - Signal type. Enum: `metrics`, `traces`, `logs`
   - `searchText` (optional) - Filter field keys by name substring
   - `metricName` (optional) - Filter by metric name (relevant for metrics signal)
-  - `fieldContext` (optional) - Restrict to a field context. Enum: `resource`, `attribute`, `scope`, `log`/`span`/`metric` (intrinsic columns), `body` (JSON log body). Use `attribute`, not the legacy Query Builder context `tag`, which SigNoz ignores here.
+  - `fieldContext` (optional) - Restrict to a field context. Enum: `resource`, `attribute`, `scope`, `log`/`span`/`metric` (intrinsic columns), `trace` (fields of a whole trace rather than one span, such as values computed over all of its spans; written with the `trace.` prefix), `body` (JSON log body). Use `attribute`, not the legacy Query Builder context `tag`, which SigNoz ignores here.
   - `fieldDataType` (optional) - Restrict to a data type: `string`, `bool`, `int64`, `float64`, `number`. An array form like `[]string` is treated as its element type.
   - `source` (optional) - For metrics, use `meter` for Cost Meter fields; omit for the default metrics store
+  - `queryType` (optional) - `builder_query` (default) lists the fields of `signal`. Set `builder_ai_query` for AI observability queries; it also lists the trace-level fields, such as `trace.estimated_total_cost`, and `gen_ai.*` attributes.
 
 #### `signoz_get_field_values`
 
@@ -881,56 +902,87 @@ Get observed values for a known field key. Use `signoz_get_field_keys` when the 
 
 #### `signoz_search_traces`
 
-Return individual paginated span rows matching service, operation, error, duration, or field filters, and use them to discover trace IDs. Use `signoz_aggregate_traces` for statistics or `signoz_get_trace_details` for one known trace.
+Return individual paginated span rows matching service, operation, error, duration, or field filters, and use them to discover trace IDs. With `requestType: trace` it returns one row per trace instead. With `queryType: builder_ai_query` it searches AI traces, also filters on per-trace cost, token, and call counts, and its trace rows carry those per-trace values. Use `signoz_aggregate_traces` for statistics or `signoz_get_trace_details` for one known trace.
 
 - **Parameters**:
-  - `filter` (optional) - Filter expression using SigNoz search syntax. Combine conditions with AND, OR, and parentheses (e.g., "service.name = 'payment-svc' AND (has_error = true OR attribute.http.response.status_code >= 500)"). Legacy `query` is still accepted for backward compatibility, but `filter` is canonical. See `signoz://traces/query-builder-guide`
+  - `filter` (optional) - Filter expression using SigNoz search syntax. Pass the expression text, not `{"expression": ...}`, which is rejected with a coded error. Combine conditions with AND, OR, and parentheses (e.g., "service.name = 'payment-svc' AND (has_error = true OR attribute.http.response.status_code >= 500)"). The former `query` alias is rejected with a coded error that names `filter`. Every condition needs a key and an operator: there is no full-text search, `key:value`, `STARTS WITH`, or `IS NULL`; use `LIKE 'prefix%'` and `EXISTS` / `NOT EXISTS`. `isRoot = true` and `isEntryPoint = true` select root and service entry spans. See `signoz://traces/query-builder-guide`
   - `service` (optional) - Service name to filter by
   - `operation` (optional) - Operation/span name to filter by
   - `error` (optional) - Filter by error status. Boolean (or the strings `"true"`/`"false"`). An invalid value is rejected rather than silently dropped
-  - `minDuration` / `maxDuration` (optional) - Min/max span duration in nanoseconds (e.g., '500000000' for 500ms)
+  - `minDuration` / `maxDuration` (optional) - Min/max span duration as a duration such as `'500ms'` or `'2s'` (units `ns`, `us`, `ms`, `s`, `m`, `h`). A bare number, string or JSON, is nanoseconds. SigNoz rejects any other value
   - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '24h', '7d'; default: '1h'; ignored when both `start` and `end` are provided)
   - `start` / `end` (optional) - Start/end time in unix milliseconds. When both are provided, they override `timeRange`.
-  - `limit` (optional) - Maximum span rows to return (default: 100, max: 10000; higher values are clamped; paginate with `offset`)
-  - `offset` (optional) - Number of span rows to skip (default: 0)
-  - `selectFields` (optional) - Extra fields to return on each row, added to the default set. An array of field names or a comma-separated string, at most 50. Names can be span columns (`db_name`), resource attributes (`k8s.pod.name`), or span attributes (`http.route`); a `resource.`, `attribute.`, or `span.` prefix picks the context. Discover names with `signoz_get_field_keys` (`signal="traces"`)
-  - **Default fields**: each row carries `timestamp`, `trace_id`, `span_id`, `parent_span_id`, `name`, `service.name`, `kind_string`, `duration_nano`, `has_error`, `status_code_string`, `status_message`, `response_status_code`, and `http_method`, plus any `selectFields`. Every field is a flat row key; a field missing from a row was not selected
-  - **Ordering**: generated raw trace queries use `timestamp desc`.
+  - `limit` (optional) - Maximum rows to return (default: 100, max: 10000; higher values are clamped; paginate with `offset`)
+  - `offset` (optional) - Number of rows to skip (default: 0)
+  - `selectFields` (optional) - Extra fields to return on each span row, added to the default set. An array of field names or a comma-separated string, at most 50. Names can be span columns (`db_name`), resource attributes (`k8s.pod.name`), or span attributes (`http.route`); a `resource.`, `attribute.`, or `span.` prefix picks the context. Discover names with `signoz_get_field_keys` (`signal="traces"`)
+  - **Default fields**: each span row carries `timestamp`, `trace_id`, `span_id`, `parent_span_id`, `name`, `service.name`, `kind_string`, `duration_nano`, `has_error`, `status_code_string`, `status_message`, `response_status_code`, and `http_method`, plus any `selectFields`. Every field is a flat row key; a field missing from a row was not selected
+  - `orderBy` (optional) - Row order as `'<expression> <direction>'` (e.g. `'duration_nano desc'`; direction defaults to `desc`). Span rows order by span fields and default to `timestamp desc`. `builder_ai_query` trace rows order by a trace-level field or `trace.last_activity_time`, e.g. `'trace.estimated_total_cost desc'`, and default to latest activity first. `builder_query` trace rows always come back slowest first; SigNoz ignores `orderBy` for them
+  - `queryType` (optional) - `builder_query` (default) searches all traces. Set `builder_ai_query` for AI observability queries: it searches AI traces (traces with an LLM, tool, or agent span), its span rows are only those spans, and `filter` also accepts the trace-level fields `trace.llm_call_count`, `trace.tool_call_count`, `trace.distinct_tool_count`, `trace.input_tokens`, `trace.output_tokens`, `trace.total_tokens`, `trace.estimated_total_cost`, and `trace.max_llm_duration_nano`, e.g. `trace.tool_call_count > 10`. An unknown value runs as `builder_query` with an input validation notice
+  - `requestType` (optional) - `raw` (default; one row per span) or `trace` (one row per trace). Span-level filters, including `operation`, `error`, `minDuration`, and `maxDuration`, keep the traces with at least one matching span, and `selectFields` does not apply to trace rows. `builder_query` trace rows carry `trace_id`, the root span `name`, `service.name`, `duration_nano`, and `span_count` (the spans matching the filter). `builder_ai_query` trace rows carry the trace-level fields without the `trace.` prefix (such as `llm_call_count`), plus `root_span_name`, `span_count`, `trace_duration_nano`, `error_count`, and the input and output message JSON. An unknown value runs as `raw` with an input validation notice
   - **Completeness note**: the response appends a note reporting `hasMore` (inferred from `returnedRows == limit`) and the `nextOffset` to fetch, so a truncated page is never mistaken for the full result set
+  - **AI notes**: with `queryType: builder_ai_query`, trace rows add a note that filters, `orderBy`, and the limit use the time window while values cover the whole trace, that cost is a USD estimate (null for unpriced models, listed by `signoz_get_ai_pricing` with `view=unpriced_models`), and that `total_tokens` includes cache tokens; an empty result adds a note suggesting a wider window, or finding the app's own model and tool keys with `signoz_get_field_keys`, checking `signoz_list_ai_attribute_mappings`, and mapping them to `gen_ai.*` on the Attribute Mapping tab
   - **Output note**: raw result row keys follow canonical Query Builder field names (for example `trace_id`, `span_id`, `duration_nano`, `has_error`). Legacy caller-provided filters such as `hasError` still pass through to the backend alias layer, but new response parsers should read the canonical snake_case keys.
   - **Key-not-found errors**: a filter referencing a key absent from this workspace's traces metadata fails with recovery guidance in the error text plus a machine-readable `missingKeys` array in the structured error content
 
 #### `signoz_aggregate_traces`
 
-Return custom aggregate statistics over spans (counts, rates, latency percentiles, grouped/top-N breakdowns, or time series) rather than individual rows or a full trace hierarchy. For one traced service's built-in operation table ranked by p99, use `signoz_get_service_top_operations`. Read `signoz://traces/query-builder-guide` before calling this tool.
+Return custom aggregate statistics over spans (counts, rates, latency percentiles, grouped/top-N breakdowns, or time series) rather than individual rows or a full trace hierarchy. For one row per trace, such as the most expensive AI traces, use `signoz_search_traces` with `requestType: trace`. For one traced service's built-in operation table ranked by p99, use `signoz_get_service_top_operations`. Read `signoz://traces/query-builder-guide` before calling this tool. For AI cost, token, or call-count statistics per trace, set `queryType: builder_ai_query` (see `signoz://ai/query-builder-guide`).
 
 - **Parameters**:
-  - `aggregation` (required) - Aggregation function: count, count_distinct, avg, sum, min, max, p50, p75, p90, p95, p99, rate
-  - `aggregateOn` (optional) - Field to aggregate on (e.g., 'duration_nano'). Required for all except count and rate
-  - `groupBy` (optional) - Comma-separated fields to group by (e.g., 'service.name, name')
-  - `filter` (optional) - Filter expression using SigNoz search syntax. Combine conditions with AND, OR, and parentheses. Unknown keys hard-error; ambiguous keys default to resource context. See `signoz://traces/query-builder-guide`
+  - `aggregations` (required) - Aggregation expressions as the Query Builder writes them: `count()`, `count_distinct(name)`, `avg(duration_nano)`, `p99(duration_nano)`, `rate()`, or a conditional such as `countIf(has_error = true)`; `duration_nano` is span latency in nanoseconds. One expression or an array (e.g. `["count()", "p95(duration_nano)", "p99(duration_nano)"]`); results come back as `__result_0`, `__result_1`, ... in that order. SigNoz validates the expressions. The former `aggregation` and `aggregateOn` inputs return a coded error naming this replacement
+  - `groupBy` (optional) - Fields to group by, as an array or a comma-separated string (e.g. `["service.name", "name"]`). An array of objects is rejected with a coded error naming both forms. For values over time use `requestType: time_series`; grouping by `timestamp` fails
+  - `having` (optional) - Condition on the aggregation results, applied after grouping (e.g. `p99(duration_nano) > 500000000`). SigNoz validates it
+  - `filter` (optional) - Filter expression using SigNoz search syntax. Pass the expression text, not `{"expression": ...}`, which is rejected with a coded error. Combine conditions with AND, OR, and parentheses. An unknown key may not fail: SigNoz can match a guessed attribute and return a `key ... not found in metadata` warning with no rows, so read that warning as an absent key. Ambiguous keys default to resource context. Every condition needs a key and an operator: there is no full-text search, `key:value`, `STARTS WITH`, or `IS NULL`; use `LIKE 'prefix%'` and `EXISTS` / `NOT EXISTS`. `isRoot = true` and `isEntryPoint = true` select root and service entry spans. See `signoz://traces/query-builder-guide`
   - `service` (optional) - Shortcut filter for service name
   - `operation` (optional) - Shortcut filter for span/operation name
   - `error` (optional) - Shortcut filter for error spans. Boolean (or the strings `"true"`/`"false"`). An invalid value is rejected rather than silently dropped
-  - `orderBy` (optional) - Order expression and direction (e.g., 'avg(duration_nano) desc')
+  - `minDuration` / `maxDuration` (optional) - Min/max span duration as a duration such as `'500ms'` or `'2s'` (units `ns`, `us`, `ms`, `s`, `m`, `h`). A bare number, string or JSON, is nanoseconds. SigNoz rejects any other value
+  - `orderBy` (optional) - Order expression and direction. The expression must be one of the call's aggregations, written exactly as in `aggregations`, or a `groupBy` key (e.g. `'p99(duration_nano) desc'` when aggregating `p99(duration_nano)`); default: the first aggregation, descending
   - `limit` (optional) - Maximum number of groups to return (default: 100, max: 10000; higher values are clamped to bound server memory)
+  - `functions` (optional) - Post-query transforms applied to each `time_series` result, as an array of `{name, args}` objects (or a JSON-encoded string). SigNoz returns `scalar` results unchanged, and the response notes it. Names such as `cutOffMin`, `clampMax`, `absolute`, `runningDiff`, `ewma3`, `timeShift`, and `fillZero`; SigNoz validates names and args
   - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '24h', '7d'; default: '1h'; ignored when both `start` and `end` are provided)
   - `start` / `end` (optional) - Start/end time in unix milliseconds. When both are provided, they override `timeRange`.
   - `requestType` (optional) - `scalar` (default; one aggregate value over the whole range) or `time_series` (one value per time bucket). Unknown values are rejected.
   - `stepInterval` (optional) - Time bucket size in seconds for `time_series` mode. Accepts a number or numeric string (backend auto-selects when omitted)
+  - `queryType` (optional) - `builder_query` (default) aggregates spans of all traces. Set `builder_ai_query` for AI observability queries: it aggregates spans of AI traces, and `aggregations`, `filter`, and `orderBy` also accept the trace-level fields listed for `signoz_search_traces`, e.g. `avg(trace.estimated_total_cost)`. One call cannot mix trace-level and span-level aggregations; `count()` and `count_distinct(trace_id)` are span-level, so count AI traces with `count_distinct(trace_id)` in a separate call. An unknown value runs as `builder_query` with an input validation notice
   - **Time-series ranking note**: the limit selects top groups over the whole requested window, not independently per bucket. Narrow the window or adjust the limit when a short-lived series could otherwise be hidden.
+  - **AI note**: with `queryType: builder_ai_query`, the response adds a note that only spans inside the time window count, that cost is a USD estimate, and that total tokens include cache tokens. Aggregations over a cost key add a note that null or 0 cost means an unpriced model, pointing at `signoz_get_ai_pricing`
   - **Key-not-found errors**: a filter referencing a key absent from this workspace's traces metadata fails with recovery guidance in the error text plus a machine-readable `missingKeys` array in the structured error content
 
 #### `signoz_get_trace_details`
 
-For a known trace ID, return its spans, metadata, and hierarchy. Use `signoz_search_traces` first when the ID is unknown, and choose a time window that contains the trace; the default last six hours can miss older traces.
+For a known trace ID, return its spans, metadata, and hierarchy. Use `signoz_search_traces` first when the ID is unknown. SigNoz locates the trace by its ID alone, so the tool takes no time window; an ID SigNoz does not know returns no spans. Each span includes the AI fields `gen_ai.operation.name`, `gen_ai.request.model`, `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`, `signoz.gen_ai.usage.tokens.cost`, `gen_ai.tool.name`, and `gen_ai.agent.name`, which are null on spans without them.
 
 - **Parameters**:
   - `traceId` (required) - Known trace ID, usually discovered with `signoz_search_traces`
-  - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '7d'; defaults to last 6 hours; ignored when both `start` and `end` are provided)
-  - `start` (optional) - Start time in unix milliseconds (defaults to 6 hours ago).
-  - `end` (optional) - End time in unix milliseconds (defaults to now)
   - `includeSpans` (optional) - Include detailed span information. Boolean (or the strings `"true"`/`"false"`), default: true
+
+#### `signoz_get_ai_pricing`
+
+Return the AI model prices SigNoz uses to compute span cost, or the models that have no price. SigNoz stamps cost on each span at ingest: spans of a model no rule prices carry no cost, and a price change does not touch spans already stored. Prices are changed on the Model pricing tab of AI Observability in SigNoz.
+
+- **Parameters**:
+  - `view` (optional) - `rules` (default): pricing rules with provider, model name and match patterns, input, output, and cache prices in USD per million tokens, and `enabled`. `unpriced_models`: models seen in spans during the last hour that no rule matches, with span counts
+  - `searchText` (optional) - Case-insensitive substring of the model name or provider (`gpt-4o` also matches `gpt-4o-mini`). An empty page with `searchText` means no entry matched; omit it to see whether any entries exist
+  - `limit` (optional) - Entries per page (default: 50, max: 1000; higher values are clamped)
+  - `offset` (optional) - Entries to skip; use `pagination.nextOffset` from the previous page (default: 0)
+- **Response**: `view`, `data` (SigNoz's pricing rule or unpriced model objects as returned), and `pagination` (`total`, `offset`, `limit`, `hasMore`, `nextOffset`)
+
+#### `signoz_list_ai_attribute_mappings`
+
+List the span attribute mapping groups that map vendor AI span attributes (OpenInference, OpenLLMetry, Vercel AI SDK, and others) to `gen_ai.*` keys at ingest. A group runs on spans whose attribute keys contain one of its condition substrings, and each mapper fills one `gen_ai.*` key from the first source key present, by priority. Mappings apply only to spans ingested afterwards and are changed on the Attribute Mapping tab of AI Observability in SigNoz.
+
+- **Parameters**: none besides `searchContext`
+- **Response**: `data` (each group as SigNoz returns it, plus `mappers` with each mapper's sources), `incomplete`, and, when the mappers of some groups could not be read, `failedGroups` (`groupId`, `name`, `code`, `status`, `message`) and `nextAction`. Authentication and permission failures fail the whole call with a coded error
+
+#### `signoz_test_ai_attribute_mapping`
+
+Run sample spans through the mapping groups in a sandbox and return each span as SigNoz would store it. Nothing is saved and no real span changes. A span that gains `gen_ai.request.model` counts as a model call.
+
+- **Parameters**:
+  - `spans` (required) - 1 to 100 sample spans, each `{attributes, resource}` with key-value maps. Example: `[{"attributes":{"llm.model_name":"gpt-4o","llm.token_count.prompt":120,"llm.token_count.completion":45}}]`
+  - `groups` (optional) - Mapping groups to test instead of the saved ones, in the shape SigNoz accepts (`name`, `condition`, `enabled`, `mappers`). Omit to test the saved groups; an empty list tests none. A group without `mappers` uses the saved mappers of the group with the same name. SigNoz skips disabled groups, mappers, and condition keys, so set `enabled: true` on each
+- **Response**: `groupSource` (`saved` or `provided`), `testedGroups` (names of the enabled groups sent), `spans` (the mapped spans, in input order), and `collectorLogs`. `spans` and `groups` reach SigNoz exactly as sent, so large integers keep their precision; a response without one mapped span per sample is a coded upstream error
 
 
 
@@ -939,10 +991,8 @@ For a known trace ID, return its spans, metadata, and hierarchy. Use `signoz_sea
 Create a new alert rule in SigNoz via `POST /api/v2/rules`.
 
 - **Parameters**: JSON payload matching the SigNoz alert rule schema.
-- **Schema varies by `ruleType`**:
-  - `threshold_rule` / `promql_rule` → **v2alpha1** (structured `condition.thresholds`, `evaluation`, `notificationSettings`).
-  - `anomaly_rule` → **v1**, metrics only: top-level `evalWindow`/`frequency`, condition anomaly fields, and direct top-level `preferredChannels`. Omit `thresholds`, `evaluation`, `notificationSettings`, and `schemaVersion`; policy routing is unsupported.
-- **Notification routing**: For direct routing, reuse a fully paginated `signoz_list_notification_channels` result only from the same still-current prepared operation; otherwise call it, refreshing only if state may have changed. V2 needs an exact returned displayName on every tier: SigNoz rejects a tier with no channels or a channel name that does not exist, and top-level `preferredChannels` plays no part in v2 routing. V1 anomaly uses direct top-level `preferredChannels`. If none fits, ask the user or offer `signoz_create_notification_channel` with user-provided config; never create automatically. Confirmed v2 policy routing may omit tier channels.
+- **Schema**: every `ruleType` (`threshold_rule`, `promql_rule`, `anomaly_rule`) uses **v2alpha1**: structured `condition.thresholds`, `evaluation`, `notificationSettings`, and `schemaVersion: "v2alpha1"` set explicitly, since SigNoz reads an omitted value as the retired v1 schema. `anomaly_rule` is metrics only, adds `condition.algorithm` and `condition.seasonality`, and compares each tier's signed target with the anomaly score (`below` with target `-2` fires on a drop of more than 2 standard deviations; `outside_bounds` with target `2` fires on a move of more than 2 either way).
+- **Notification routing**: For direct routing, reuse a fully paginated `signoz_list_notification_channels` result only from the same still-current prepared operation; otherwise call it, refreshing only if state may have changed. V2 needs an exact returned displayName on every tier: SigNoz rejects a tier with no channels or a channel name that does not exist, and top-level `preferredChannels` plays no part in routing. If none fits, ask the user or offer `signoz_create_notification_channel` with user-provided config; never create automatically. Confirmed v2 policy routing may omit tier channels.
 - **Tip**: Reuse alert resources only when already read for the same prepared operation; otherwise read `signoz://alert/instructions` and `signoz://alert/examples`. For PromQL, read `signoz://promql/instructions` when needed.
 
 #### `signoz_update_alert`
@@ -989,13 +1039,12 @@ display names before creating a channel.
   `generateName: true` with a `displayName`. SigNoz defaults `displayName` from
   an explicit `name` when omitted. Both names become immutable after creation.
   Alert routing references use `displayName`, not `name`.
-- **Provider kinds**: for example `slack`, `email`, `webhook`, `pagerduty`,
-  `opsgenie`, `msteams`, `googlechat`, `jira`, `jsmops`, and `incidentio`;
-  SigNoz validates the value and its rejection lists the kinds it accepts.
-  SigNoz also rejects an unknown or missing `config.spec` field with the exact
-  requirement, and a duplicate name with `already-exists`. Slack also accepts
-  message settings: `color`, `titleLink`, `pretext`, `fallback`, `footer`,
-  `fields`, and `actions`.
+- **Provider kinds**: `signoz://notification-channel/examples` lists every
+  kind the pinned SigNoz release accepts, each kind's `config.spec` fields, and a
+  worked payload per kind; it is generated from the SigNoz OpenAPI spec by
+  `make gen`. SigNoz validates the kind and its rejection lists the kinds it
+  accepts. SigNoz also rejects an unknown or missing `config.spec` field with
+  the exact requirement, and a duplicate name with `already-exists`.
 - **Resolve notifications**: `config.spec.sendResolved` uses the provider's
   default when omitted. Get returns its effective value; preserve it on update.
 - **Test sends**: `test` defaults to `false`. Set `test: true` only when a test
@@ -1048,15 +1097,16 @@ that dependency error and resolve references before retrying.
 
 Runs a SigNoz Query Builder v5 request that the dedicated tools cannot express, including multi-query requests, formulas, PromQL, and ClickHouse SQL. Prefer `signoz_search_logs` / `signoz_search_traces` for rows, `signoz_aggregate_logs` / `signoz_aggregate_traces` for grouped results, and `signoz_query_metrics` for ordinary metrics.
 
-- **Parameters**: `query` (required) - Complete SigNoz Query Builder v5 JSON object
+- **Parameters**: `query` (required) - the complete `query_range` request. The input schema describes its top-level fields (`start`, `end`, `requestType`, `compositeQuery`, `variables`, `formatOptions`, `noCache`) with the descriptions from the SigNoz OpenAPI spec; the query envelopes inside `compositeQuery.queries` are open objects the guides and `signoz://query-builder/examples` cover.
 - **Query types**: the per-envelope `compositeQuery.queries[i].type` selects the spec shape:
   - `builder_query`: signal-specific spec (logs/traces/metrics) with filter, aggregations, groupBy, etc.
+  - `builder_ai_query`: a traces builder spec run over AI traces, with the per-trace `trace.` keys. See `signoz://ai/query-builder-guide`.
   - `builder_formula`: formula expression referencing other query names (e.g. `A / B * 100`).
   - `promql`: `{name, query, disabled, step?, legend?}`. PromQL for OTel metrics requires the Prometheus 3.x UTF-8 quoted-selector form `{"metric.name.with.dots"}`; read the `signoz://promql/instructions` resource for details.
   - `clickhouse_sql`: `{name, query, disabled, legend?}`.
-- **Builder result bounds**: for predictable authored queries, explicitly supply a positive `spec.limit` and non-empty v5 `spec.order` (not dashboard/editor `orderBy`) on every `builder_query` and `builder_formula`. When omitted, null, or zero, standalone limits and formula-result limits default to `100`; a builder query referenced by a formula defaults to `10000` because base-query limits are applied before formula evaluation. Raw logs order by `timestamp desc, id desc`; raw traces by `timestamp desc`; metric scalar/time-series queries and formulas by `__result desc`; and log/trace scalar/time-series queries by the primary aggregation descending. Caller-supplied values are forwarded unchanged. The response appends a decisions note when defaults are inserted.
+- **Builder result bounds**: for predictable authored queries, explicitly supply a positive `spec.limit` and non-empty v5 `spec.order` (not dashboard/editor `orderBy`) on every `builder_formula` and on each `builder_query` no formula references. When omitted, null, or zero, standalone limits and formula-result limits default to `100`. A builder query referenced by a formula gets no inserted limit or order, because SigNoz applies base-query limits before formula evaluation and they drop groups from the result. Raw logs order by `timestamp desc, id desc`; raw traces by `timestamp desc`; metric scalar/time-series queries and formulas by `__result desc`; and log/trace scalar/time-series queries by the primary aggregation descending. A `builder_ai_query` gets the same default limit as a `builder_query` of its request type and no default order, because SigNoz orders AI trace rows by last activity. Caller-supplied values are forwarded unchanged. The response appends a decisions note when defaults are inserted.
 - **Validation**: apart from inserted bounds, the request reaches SigNoz verbatim and SigNoz validates it. `requestType` has no default (`raw`, `trace`, `time_series`, or `scalar`), and `start` and `end` are required Unix-millisecond timestamps.
-- **Guide routing**: read `signoz://logs/query-builder-guide` for logs, `signoz://traces/query-builder-guide` for traces, `signoz://metrics-aggregation-guide` for metrics/formulas, and `signoz://promql/instructions` for PromQL.
+- **Guide routing**: read `signoz://logs/query-builder-guide` for logs, `signoz://traces/query-builder-guide` for traces, `signoz://ai/query-builder-guide` for `builder_ai_query`, `signoz://metrics-aggregation-guide` for metrics/formulas, and `signoz://promql/instructions` for PromQL.
 - **Time-series ranking caveat**: top-N groups are ranked over the entire requested window. A short-lived spike can be omitted even when it dominates one bucket; narrow the window or adjust the limit when that matters.
 - **Backend warnings**: non-fatal warnings the backend returns (e.g. ambiguous-key resolution) are surfaced as a note alongside the raw response and WARN-logged, matching the search/aggregate/query_metrics tools (previously the body was returned verbatim and warnings were dropped).
 - **Key-not-found errors**: a filter referencing a key absent from the workspace's metadata for the queried signal fails with recovery guidance in the error text plus a machine-readable `missingKeys` array in the structured error content

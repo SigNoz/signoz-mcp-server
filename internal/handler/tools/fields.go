@@ -2,9 +2,12 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
+
+	"github.com/SigNoz/signoz-mcp-server/pkg/querybuilder"
 )
 
 const fieldContextParamDesc = "Restrict results to a single field context (optional). Valid values: " +
@@ -24,21 +27,22 @@ func (h *Handler) RegisterFieldsHandlers(s *mcp.Server) {
 
 	getFieldKeysTool := mcp.NewTool("signoz_get_field_keys",
 		withReadOnlyToolAnnotations(),
-		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
-		mcp.WithDescription("Use this when the user needs to discover field names available for filtering or grouping metrics, traces, or logs. It returns keys, not their observed values, scoped by signal and optional metric, context, or data type. SigNoz sets data.complete=false when it truncated the key list; narrow with searchText or fieldContext to see more. After choosing a key, use signoz_get_field_values to discover valid values."),
+		mcp.WithString("searchContext", mcp.Description(searchContextParamDescription)),
+		mcp.WithDescription("Use this when the user needs to discover field names available for filtering or grouping metrics, traces, or logs. It returns keys, not their observed values, scoped by signal and optional metric, context, or data type. SigNoz sets data.complete=false when it truncated the key list; narrow with searchText or fieldContext to see more. For AI trace fields (per-trace cost, tokens, call counts, gen_ai.*), set queryType=builder_ai_query. After choosing a key, use signoz_get_field_values to discover valid values."),
 		mcp.WithString("signal", mcp.Required(), mcp.Enum("metrics", "traces", "logs"), mcp.Description("Signal type: 'metrics', 'traces', or 'logs'.")),
 		mcp.WithString("searchText", mcp.Description("Filter field names by substring (optional).")),
 		mcp.WithString("metricName", mcp.Description("Metric name to scope field keys (optional, only relevant when signal=metrics).")),
-		mcp.WithString("fieldContext", mcp.Enum("resource", "attribute", "scope", "log", "span", "metric", "body"), mcp.Description(fieldContextParamDesc)),
+		mcp.WithString("fieldContext", mcp.Enum("resource", "attribute", "scope", "log", "span", "metric", "trace", "body"), mcp.Description(fieldContextParamDesc+" 'trace' (fields of a whole trace rather than one span, such as values computed over all of its spans; write them with the trace. prefix in queries).")),
 		mcp.WithString("fieldDataType", mcp.Description(fieldDataTypeParamDesc)),
 		mcp.WithString("source", mcp.Description("For signal=metrics, set \"meter\" to discover Cost Meter fields; omit for the default metrics store. Omit for logs and traces.")),
+		mcp.WithString("queryType", mcp.DefaultString(querybuilder.QueryTypeBuilder), mcp.Enum(querybuilder.QueryTypeBuilder, querybuilder.QueryTypeBuilderAI), mcp.Description("'builder_query' (default) lists the fields of signal. Set 'builder_ai_query' for AI observability queries; it also lists the trace-level fields, such as trace.estimated_total_cost, and gen_ai.* attributes.")),
 	)
 
 	h.addTool(s, getFieldKeysTool, h.handleGetFieldKeys)
 
 	getFieldValuesTool := mcp.NewTool("signoz_get_field_values",
 		withReadOnlyToolAnnotations(),
-		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
+		mcp.WithString("searchContext", mcp.Description(searchContextParamDescription)),
 		mcp.WithDescription("Use this when the user knows a field key and needs its observed values for a metrics, traces, or logs filter. It returns values, not field names; use signoz_get_field_keys when the key is unknown. Match signal and fieldContext to the query that will use the value. SigNoz sets data.complete=false when it truncated the value list; narrow with searchText to see more."),
 		mcp.WithString("signal", mcp.Required(), mcp.Enum("metrics", "traces", "logs"), mcp.Description("Signal type: 'metrics', 'traces', or 'logs'.")),
 		mcp.WithString("name", mcp.Required(), mcp.Description("Field name to get values for (e.g., 'service.name', 'http.status_code').")),
@@ -63,15 +67,23 @@ func (h *Handler) handleGetFieldKeys(ctx context.Context, req mcp.CallToolReques
 	fieldContext, _ := args["fieldContext"].(string)
 	fieldDataType, _ := args["fieldDataType"].(string)
 	source, _ := args["source"].(string)
+	queryType, _ := args["queryType"].(string)
 
-	h.logger.DebugContext(ctx, "Tool called: signoz_get_field_keys", slog.String("signal", signal), slog.String("searchText", searchText))
+	h.logger.DebugContext(ctx, "Tool called: signoz_get_field_keys", slog.String("signal", signal), slog.String("queryType", queryType), slog.String("searchText", searchText))
 	client, err := h.GetClient(ctx)
 	if err != nil {
 		return clientError(err), nil
 	}
-	result, err := client.GetFieldKeys(ctx, signal, metricName, searchText, fieldContext, fieldDataType, source)
+	var result json.RawMessage
+	// Like an out-of-enum signal, an out-of-enum queryType runs best-effort (here on the
+	// default endpoint) and the schema validation notice flags it.
+	if queryType == querybuilder.QueryTypeBuilderAI {
+		result, err = client.GetAIFieldKeys(ctx, searchText, fieldContext, fieldDataType)
+	} else {
+		result, err = client.GetFieldKeys(ctx, signal, metricName, searchText, fieldContext, fieldDataType, source)
+	}
 	if err != nil {
-		h.logUpstreamFailure(ctx, "Failed to get field keys", err, slog.String("signal", signal))
+		h.logUpstreamFailure(ctx, "Failed to get field keys", err, slog.String("signal", signal), slog.String("queryType", queryType))
 		return upstreamError(err), nil
 	}
 	return mcp.NewToolResultText(string(result)), nil

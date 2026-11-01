@@ -13,8 +13,6 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
 
-const notificationSearchContextDescription = "Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses."
-
 type notificationCreateArgs struct {
 	SearchContext string          `json:"searchContext,omitempty"`
 	Name          string          `json:"name,omitempty"`
@@ -178,7 +176,7 @@ func boolOrStringProperties(names ...string) mcp.ToolOption {
 
 func notificationRoot(properties map[string]any, required ...string) map[string]any {
 	properties["searchContext"] = map[string]any{
-		"type": "string", "description": notificationSearchContextDescription,
+		"type": "string", "description": searchContextParamDescription,
 	}
 	schema := map[string]any{
 		"type":                 "object",

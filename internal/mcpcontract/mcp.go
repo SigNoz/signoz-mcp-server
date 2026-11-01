@@ -64,7 +64,13 @@ type ToolHandlerFunc func(context.Context, CallToolRequest) (*CallToolResult, er
 type ResourceHandlerFunc func(context.Context, ReadResourceRequest) ([]ResourceContents, error)
 type PromptHandlerFunc func(context.Context, GetPromptRequest) (*GetPromptResult, error)
 
-type decodedToolArguments struct{ value any }
+type decodedToolArguments struct {
+	value any
+	raw   json.RawMessage
+}
+
+// toolArgumentsKey keys the cached arguments; it must stay comparable for context.WithValue.
+type toolArgumentsKey struct{}
 
 // CacheToolArguments lets the server observer and tool adapter share one JSON
 // decode. Focused handler tests that bypass the observer still decode here.
@@ -73,7 +79,15 @@ func CacheToolArguments(ctx context.Context, raw json.RawMessage) (context.Conte
 	if len(raw) > 0 {
 		_ = json.Unmarshal(raw, &decoded)
 	}
-	return context.WithValue(ctx, decodedToolArguments{}, decodedToolArguments{value: decoded}), decoded
+	return context.WithValue(ctx, toolArgumentsKey{}, decodedToolArguments{value: decoded, raw: raw}), decoded
+}
+
+// RawToolArguments returns the tool call's arguments as the client sent them,
+// for handlers that forward values verbatim: the decoded map holds numbers as
+// float64, which rounds integers above 2^53.
+func RawToolArguments(ctx context.Context) json.RawMessage {
+	cached, _ := ctx.Value(toolArgumentsKey{}).(decodedToolArguments)
+	return cached.raw
 }
 
 func AdaptToolHandler(next ToolHandlerFunc) official.ToolHandler {
@@ -84,7 +98,7 @@ func AdaptToolHandler(next ToolHandlerFunc) official.ToolHandler {
 			name = req.Params.Name
 			raw = req.Params.Arguments
 		}
-		cached, ok := ctx.Value(decodedToolArguments{}).(decodedToolArguments)
+		cached, ok := ctx.Value(toolArgumentsKey{}).(decodedToolArguments)
 		if !ok {
 			ctx, cached.value = CacheToolArguments(ctx, raw)
 		}
@@ -149,7 +163,10 @@ func WithDescription(description string) ToolOption {
 
 func WithInputSchema[T any]() ToolOption {
 	return func(t *Tool) {
-		schema, err := jsonschema.For[T](&jsonschema.ForOptions{IgnoreInvalidTypes: true})
+		schema, err := jsonschema.For[T](&jsonschema.ForOptions{
+			IgnoreInvalidTypes: true,
+			TypeSchemas:        unionTypeSchemas(reflect.TypeFor[T]()),
+		})
 		if err != nil {
 			panic(fmt.Errorf("infer input schema for tool %q from Go type %s: %w", t.Name, reflect.TypeFor[T](), err))
 		}
@@ -159,7 +176,10 @@ func WithInputSchema[T any]() ToolOption {
 
 func WithOutputSchema[T any]() ToolOption {
 	return func(t *Tool) {
-		schema, err := jsonschema.For[T](&jsonschema.ForOptions{IgnoreInvalidTypes: true})
+		schema, err := jsonschema.For[T](&jsonschema.ForOptions{
+			IgnoreInvalidTypes: true,
+			TypeSchemas:        unionTypeSchemas(reflect.TypeFor[T]()),
+		})
 		if err != nil {
 			panic(fmt.Errorf("infer output schema for tool %q from Go type %s: %w", t.Name, reflect.TypeFor[T](), err))
 		}
@@ -221,6 +241,36 @@ func WithStringItems(opts ...PropertyOption) PropertyOption {
 		}
 		schema["items"] = item
 	}
+}
+
+// Items sets a property's array item schema.
+func Items(item map[string]any) PropertyOption {
+	return func(schema map[string]any) { schema["items"] = item }
+}
+
+// FromSchema copies every key of source onto the property, so a property can
+// take its shape from a Go type (see SchemaFor) and then add a description.
+func FromSchema(source map[string]any) PropertyOption {
+	return func(schema map[string]any) {
+		for key, value := range source {
+			schema[key] = value
+		}
+	}
+}
+
+// SchemaFor renders T the way WithInputSchema does, with generated unions
+// listed by their variant types, for use as a nested property or item schema.
+func SchemaFor[T any]() map[string]any {
+	schema, err := jsonschema.For[T](&jsonschema.ForOptions{
+		IgnoreInvalidTypes: true,
+		TypeSchemas:        unionTypeSchemas(reflect.TypeFor[T]()),
+	})
+	if err != nil {
+		panic(fmt.Errorf("infer schema for Go type %s: %w", reflect.TypeFor[T](), err))
+	}
+	wire := mustSchemaMap(schema, reflect.TypeFor[T]().String(), "property")
+	delete(wire, "$schema")
+	return wire
 }
 
 func WithString(name string, opts ...PropertyOption) ToolOption {

@@ -13,6 +13,10 @@ INCORRECT: "filter": {"op": "AND", "items": [...]}
 Operators: =  !=  >  >=  <  <=  IN  NOT IN  LIKE  NOT LIKE  ILIKE  NOT ILIKE  CONTAINS  NOT CONTAINS  REGEXP  NOT REGEXP  BETWEEN  NOT BETWEEN  EXISTS  NOT EXISTS
 Combine:   AND  OR  (use parentheses for precedence)
 
+No other operators exist: write STARTS WITH as LIKE 'prefix%', IS NULL as NOT EXISTS, IS NOT NULL
+as EXISTS, and PromQL's =~ and !~ as REGEXP and NOT REGEXP. Every condition needs a key and an operator. Traces have no full-text search, so a bare word,
+a quoted phrase, or key:value fails; to find a known ID, filter trace_id = '<id>'.
+
 Examples:
   has_error = true
   duration_nano > 500000000
@@ -20,10 +24,20 @@ Examples:
   name LIKE '%payment%'
   has_error = true AND k8s.namespace.name = 'prod'
   (has_error = true OR duration_nano > 1000000000) AND service.name = 'checkout'
+  isRoot = true AND service.name = 'checkout'
+
+== SPAN SCOPE ==
+
+  isRoot = true         — root spans, the first span of each trace
+  isEntryPoint = true   — spans where a request enters a service, other than the trace root
+
+Both accept only "= true". To exclude root spans, filter parent_span_id != '' instead.
 
 == FIELD DISCOVERY ==
 
-Unknown keys hard-error. Built-in span columns are stable, but resource and span attributes depend
+An unknown key may not fail: SigNoz can match a guessed attribute, return the warning
+"key <name> not found in metadata", and match no rows; read that warning as an absent key.
+Built-in span columns are stable, but resource and span attributes depend
 on this workspace's instrumentation. Do not guess unfamiliar field names. Discover keys, then confirm
 their observed values before filtering:
   signoz_get_field_keys(signal="traces", fieldContext="span")
@@ -103,6 +117,10 @@ Every builder_query must include a positive limit and explicit order.
   raw / trace: limit 100; order by timestamp desc
   scalar:      limit 100 groups; order by the primary aggregation desc unless the task needs another order
   time_series: limit 100 groups; order by the primary aggregation desc unless the task needs another order
+
+In scalar and time_series queries, order[].key.name must be one of the query's aggregation expressions
+written exactly as in aggregations (count(), p99(duration_nano)), an aggregation index (0 for the
+first), or a groupBy key. The query name (A), __result, and timestamp are not order keys there.
 
 For time_series queries with groupBy, the limit selects top groups using the ordering across the ENTIRE
 time range, not each time bucket. A short-lived spike can fall outside the selected groups. Use an explicit
