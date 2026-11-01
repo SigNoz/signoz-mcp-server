@@ -24,3 +24,17 @@ func (s *SigNoz) GetOrgOverview(ctx context.Context) (json.RawMessage, error) {
 
 	return body, nil
 }
+
+// GetFeatures fetches the org's feature flags with their resolved values.
+func (s *SigNoz) GetFeatures(ctx context.Context) (json.RawMessage, error) {
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching feature flags")
+
+	body, err := s.callAPI(ctx, DefaultQueryTimeout, func(ctx context.Context, api *apiclient.Client) (*http.Response, error) {
+		return api.GetFeatures(ctx)
+	})
+	if err != nil {
+		return nil, fmt.Errorf("feature flags: %w", err)
+	}
+
+	return body, nil
+}

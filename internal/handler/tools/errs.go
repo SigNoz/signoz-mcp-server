@@ -243,15 +243,25 @@ func notAConfigObjectError() *mcp.CallToolResult {
 	return errorWithCode(CodeValidationFailed, notAConfigObjectMessage)
 }
 
-// logUpstreamFailure logs a failed outbound call (SigNoz backend, template
-// fetch) at a severity derived from its cause: context.Canceled — the MCP
-// client disconnected or aborted the request mid-flight — logs at DEBUG with a
-// cancellation note, while everything else, including context.DeadlineExceeded
-// (a real operational signal), stays ERROR. The record is always emitted at
-// the chosen level, never dropped (fail open, never fail silent).
-func (h *Handler) logUpstreamFailure(ctx context.Context, msg string, err error, attrs ...slog.Attr) {
+// upstreamFailureLevel picks the severity for a failed outbound call:
+// context.Canceled (the MCP client went away) is DEBUG, a 4xx is WARN because
+// SigNoz rejected the caller's input or credentials and the tool result
+// carries the code, and everything else, including timeouts and 5xx, is ERROR.
+func upstreamFailureLevel(err error) slog.Level {
 	level := logpkg.LevelForError(err)
-	if level != slog.LevelError {
+	var statusErr *signozclient.HTTPStatusError
+	if level == slog.LevelError && errors.As(err, &statusErr) && statusErr.StatusCode >= 400 && statusErr.StatusCode < 500 {
+		return slog.LevelWarn
+	}
+	return level
+}
+
+// logUpstreamFailure logs a failed outbound call (SigNoz backend, template
+// fetch) at upstreamFailureLevel. The record is always emitted, never
+// dropped (fail open, never fail silent).
+func (h *Handler) logUpstreamFailure(ctx context.Context, msg string, err error, attrs ...slog.Attr) {
+	level := upstreamFailureLevel(err)
+	if level == slog.LevelDebug {
 		msg += " (request cancelled by client)"
 	}
 	args := make([]any, 0, len(attrs)+1)
@@ -370,20 +380,33 @@ func missingKeyGuidance(keys []string, signal string) string {
 func upstreamQueryError(err error, signal string) *mcp.CallToolResult {
 	res := upstreamError(err)
 	keys := missingFilterKeys(err)
-	if len(keys) == 0 {
+	var guidance string
+	switch {
+	case len(keys) > 0:
+		guidance = missingKeyGuidance(keys, signal)
+	case strings.Contains(err.Error(), promQLMatcherParseError):
+		guidance = promQLMatcherGuidance
+	default:
 		return res
 	}
 	if len(res.Content) == 1 {
 		if tc, ok := res.Content[0].(*mcp.TextContent); ok {
-			tc.Text += "\n\n" + missingKeyGuidance(keys, signal)
+			tc.Text += "\n\n" + guidance
 			res.Content[0] = tc
 		}
 	}
-	if structured, ok := res.StructuredContent.(map[string]any); ok {
+	if structured, ok := res.StructuredContent.(map[string]any); ok && len(keys) > 0 {
 		structured["missingKeys"] = keys
 	}
 	return res
 }
+
+// SigNoz's filter parser stops at the "~" of a PromQL =~ or !~ matcher; its error
+// lists the expected tokens but never names the Query Builder regex operator.
+const (
+	promQLMatcherParseError = "but got '~'"
+	promQLMatcherGuidance   = "`=~` and `!~` are PromQL matchers. Query Builder filters use REGEXP and NOT REGEXP instead, for example `k8s.pod.name REGEXP 'checkout-.*'`."
+)
 
 // logQueryFailure is the QB v5 tools' variant of logUpstreamFailure: a 400 whose
 // filter references keys absent from the workspace's metadata is an expected agent

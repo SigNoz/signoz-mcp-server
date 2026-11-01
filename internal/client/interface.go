@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/SigNoz/signoz-mcp-server/internal/apiclient"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
 
@@ -13,12 +14,14 @@ type Client interface {
 	GetExternalURL(ctx context.Context) (string, error)
 	GetAnalyticsIdentity(ctx context.Context) (*AnalyticsIdentity, error)
 	GetOrgOverview(ctx context.Context) (json.RawMessage, error)
+	GetFeatures(ctx context.Context) (json.RawMessage, error)
 	ListMetrics(ctx context.Context, start, end int64, limit int, searchText, source string) (json.RawMessage, error)
+	GetMetricMetadata(ctx context.Context, metricName string) (json.RawMessage, error)
 	GetTopMetrics(ctx context.Context, start, end int64, limit int) (json.RawMessage, error)
 	ListAlerts(ctx context.Context, params types.ListAlertsParams) (json.RawMessage, error)
-	ListAlertRules(ctx context.Context) (json.RawMessage, error)
+	ListAlertRules(ctx context.Context, params *apiclient.ListRulesV3Params) (json.RawMessage, error)
 	GetAlertByRuleID(ctx context.Context, ruleID string) (json.RawMessage, error)
-	GetAlertHistory(ctx context.Context, ruleID string, req types.AlertHistoryRequest) (json.RawMessage, error)
+	GetAlertHistory(ctx context.Context, ruleID string, params *apiclient.GetRuleHistoryTimelineParams) (json.RawMessage, error)
 	ListDashboards(ctx context.Context, limit, offset int, filter, sort, order string) (json.RawMessage, error)
 	GetDashboard(ctx context.Context, id string) (json.RawMessage, error)
 	CreateDashboardRaw(ctx context.Context, dashboardJSON []byte) (json.RawMessage, error)
@@ -35,12 +38,12 @@ type Client interface {
 	DeleteView(ctx context.Context, viewID string) (json.RawMessage, error)
 	GetFieldKeys(ctx context.Context, signal, metricName, searchText, fieldContext, fieldDataType, source string) (json.RawMessage, error)
 	GetFieldValues(ctx context.Context, signal, name, metricName, searchText, fieldContext, source string) (json.RawMessage, error)
-	GetTraceDetails(ctx context.Context, traceID string, includeSpans bool, startTime, endTime int64) (json.RawMessage, error)
+	GetAIFieldKeys(ctx context.Context, searchText, fieldContext, fieldDataType string) (json.RawMessage, error)
+	GetTraceDetails(ctx context.Context, traceID string, includeSpans bool) (json.RawMessage, error)
 	CreateAlertRule(ctx context.Context, alertJSON []byte) (json.RawMessage, error)
 	UpdateAlertRule(ctx context.Context, ruleID string, alertJSON []byte) error
 	DeleteAlertRule(ctx context.Context, ruleID string) error
 	CheckMetricUsage(ctx context.Context, names []string) (map[string]MetricUsage, error)
-	ListNotificationChannels(ctx context.Context) (json.RawMessage, error)
 	ListNotificationChannelsV2(ctx context.Context, params types.NotificationChannelListParams) (types.NotificationChannelList, error)
 	GetNotificationChannel(ctx context.Context, id string) (json.RawMessage, error)
 	CreateNotificationChannel(ctx context.Context, receiverJSON []byte) (json.RawMessage, error)
@@ -48,4 +51,9 @@ type Client interface {
 	DeleteNotificationChannel(ctx context.Context, id string) error
 	TestNotificationChannel(ctx context.Context, receiverJSON []byte) error
 	GetMetricCardinality(ctx context.Context, name string, start, end int64) (json.RawMessage, error)
+	ListAIPricingRules(ctx context.Context, offset, limit int, search string) (json.RawMessage, error)
+	ListUnpricedAIModels(ctx context.Context) (json.RawMessage, error)
+	ListAIAttributeMappingGroups(ctx context.Context) (json.RawMessage, error)
+	ListAIAttributeMappers(ctx context.Context, groupID string) (json.RawMessage, error)
+	TestAIAttributeMappings(ctx context.Context, body []byte) (json.RawMessage, error)
 }

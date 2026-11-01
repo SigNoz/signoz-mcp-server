@@ -33,18 +33,22 @@ var OfficialServerAliases = []string{"signoz", "signoz-mcp-server", "SigNozMCP"}
 // only schemas allowed above MaxTopLevelProperties. Adding or changing an
 // entry requires explicit guardrail review.
 var GrandfatheredWideSchemaProperties = map[string][]string{
+	// queryType takes aggregate to 18 on purpose: a separate AI aggregate tool
+	// would repeat every other parameter.
 	"signoz_aggregate_traces": {
-		"aggregateOn",
-		"aggregation",
+		"aggregations",
 		"end",
 		"error",
 		"filter",
+		"functions",
 		"groupBy",
+		"having",
 		"limit",
 		"maxDuration",
 		"minDuration",
 		"operation",
 		"orderBy",
+		"queryType",
 		"requestType",
 		"searchContext",
 		"service",
@@ -76,10 +80,14 @@ var GrandfatheredWideSchemaProperties = map[string][]string{
 		"filter",
 		"formula",
 		"formulaQueries",
+		"functions",
 		"groupBy",
+		"having",
 		"isMonotonic",
+		"limit",
 		"metricName",
 		"metricType",
+		"orderBy",
 		"reduceTo",
 		"requestType",
 		"searchContext",
@@ -89,6 +97,27 @@ var GrandfatheredWideSchemaProperties = map[string][]string{
 		"stepInterval",
 		"temporality",
 		"timeAggregation",
+		"timeRange",
+	},
+	// orderBy, queryType, and requestType take search to 16 on purpose: a
+	// separate trace-list or AI search tool would repeat the filter, time, and
+	// paging parameters.
+	"signoz_search_traces": {
+		"end",
+		"error",
+		"filter",
+		"limit",
+		"maxDuration",
+		"minDuration",
+		"offset",
+		"operation",
+		"orderBy",
+		"queryType",
+		"requestType",
+		"searchContext",
+		"selectFields",
+		"service",
+		"start",
 		"timeRange",
 	},
 	"signoz_update_alert": {

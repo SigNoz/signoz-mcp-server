@@ -8,7 +8,7 @@ For the rules behind these (which panel and query type to choose, layout, legend
 Quick reference (all illustrated below):
 - Aggregations: count(), p50/p95/p99(field), avg/sum/min/max(field). Name a column with the aggregation's "alias" field (NOT "as '...'" inside the expression). Multiple aggregations = multiple entries in the aggregations[] array.
 - Filters: a single filter.expression string. Operators include =, !=, IN, AND, EXISTS. Reference variables as $name (omit the $ and it matches the literal string instead).
-- Result bounds and ordering: give every builder query an explicit positive "limit" and a non-empty "order". An order entry is {"key": {"name": <field-or-aggregation>}, "direction": "asc"|"desc"}. Order raw/list queries by timestamp desc (logs: timestamp desc then id desc); order scalar/time_series (aggregated or grouped) queries by the primary aggregation expression desc, e.g. {"key": {"name": "count()"}, "direction": "desc"}. Use limit 100 for standalone graph/table/pie/value and grouped queries; for time_series it ranks the top N groups over the whole selected window, so a locally significant series can fall outside it. For a formula, each base query it references uses a larger limit (e.g. 10000, because base limits apply before the formula runs) and the formula output orders by "__result" desc; narrow filters/grouping when formula-input cardinality can exceed that.
+- Result bounds and ordering: give every builder query an explicit positive "limit" and a non-empty "order", except the base queries of a formula. An order entry is {"key": {"name": <field-or-aggregation>}, "direction": "asc"|"desc"}. Order raw/list queries by timestamp desc (logs: timestamp desc then id desc); order scalar/time_series (aggregated or grouped) queries by the primary aggregation expression desc, e.g. {"key": {"name": "count()"}, "direction": "desc"}. Use limit 100 for standalone graph/table/pie/value and grouped queries; for time_series it ranks the top N groups over the whole selected window, so a locally significant series can fall outside it. For a formula, omit "limit" and "order" on each base query it references, because SigNoz applies base limits before the formula runs and drops series from its result; the formula output uses limit 100 and orders by "__result" desc.
 
 === EXAMPLES ===
 
@@ -42,9 +42,7 @@ A single widget: one entry from spec.panels (keyed by a panel id, e.g. "token-us
                     "name": "A",
                     "disabled": true,
                     "aggregations": [ { "expression": "sum(llm.token_count.prompt)", "alias": "prompt_tokens" } ],
-                    "filter": { "expression": "service.name IN $service_name AND telemetry.sdk.language IN $language AND llm.model_name IN $llm_model" },
-                    "order": [ { "key": { "name": "sum(llm.token_count.prompt)" }, "direction": "desc" } ],
-                    "limit": 10000
+                    "filter": { "expression": "service.name IN $service_name AND telemetry.sdk.language IN $language AND llm.model_name IN $llm_model" }
                   }
                 },
                 {
@@ -54,9 +52,7 @@ A single widget: one entry from spec.panels (keyed by a panel id, e.g. "token-us
                     "name": "B",
                     "disabled": true,
                     "aggregations": [ { "expression": "sum(llm.token_count.completion)", "alias": "completion_tokens" } ],
-                    "filter": { "expression": "service.name IN $service_name AND telemetry.sdk.language IN $language AND llm.model_name IN $llm_model" },
-                    "order": [ { "key": { "name": "sum(llm.token_count.completion)" }, "direction": "desc" } ],
-                    "limit": 10000
+                    "filter": { "expression": "service.name IN $service_name AND telemetry.sdk.language IN $language AND llm.model_name IN $llm_model" }
                   }
                 },
                 {
@@ -651,9 +647,7 @@ A value widget computing errored ÷ total as a single percentage. Because it com
                     "name": "A",
                     "disabled": true,
                     "aggregations": [ { "expression": "count()" } ],
-                    "filter": { "expression": "has_error = true AND service.name IN $service_name" },
-                    "order": [ { "key": { "name": "count()" }, "direction": "desc" } ],
-                    "limit": 10000
+                    "filter": { "expression": "has_error = true AND service.name IN $service_name" }
                   }
                 },
                 {
@@ -663,9 +657,7 @@ A value widget computing errored ÷ total as a single percentage. Because it com
                     "name": "B",
                     "disabled": true,
                     "aggregations": [ { "expression": "count()" } ],
-                    "filter": { "expression": "has_error = false AND service.name IN $service_name" },
-                    "order": [ { "key": { "name": "count()" }, "direction": "desc" } ],
-                    "limit": 10000
+                    "filter": { "expression": "has_error = false AND service.name IN $service_name" }
                   }
                 },
                 {

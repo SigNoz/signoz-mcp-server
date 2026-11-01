@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -16,122 +15,10 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/pkg/timeutil"
 )
 
-var validAggregations = map[string]bool{
-	"count":          true,
-	"count_distinct": true,
-	"avg":            true,
-	"sum":            true,
-	"min":            true,
-	"max":            true,
-	"p50":            true,
-	"p75":            true,
-	"p90":            true,
-	"p95":            true,
-	"p99":            true,
-	"rate":           true,
-}
-
-var aggregationsWithoutField = map[string]bool{
-	"count": true,
-	"rate":  true,
-}
-
-const allowedAggregations = "avg, count, count_distinct, max, min, p50, p75, p90, p95, p99, rate, sum"
-
-const conflictingFilterAliasError = "both 'filter' and 'query' were provided with different values; use only 'filter' (the 'query' alias is legacy)"
-
-var traceGroupByFieldMetadata = map[string]querybuilder.FieldKey{
-	"trace_id":             querybuilder.NewFieldKey("trace_id", "traces", "span", "string"),
-	"span_id":              querybuilder.NewFieldKey("span_id", "traces", "span", "string"),
-	"parent_span_id":       querybuilder.NewFieldKey("parent_span_id", "traces", "span", "string"),
-	"name":                 querybuilder.NewFieldKey("name", "traces", "span", "string"),
-	"duration_nano":        querybuilder.NewFieldKey("duration_nano", "traces", "span", "number"),
-	"timestamp":            querybuilder.NewFieldKey("timestamp", "traces", "span", "number"),
-	"has_error":            querybuilder.NewFieldKey("has_error", "traces", "span", "bool"),
-	"status_code":          querybuilder.NewFieldKey("status_code", "traces", "span", "number"),
-	"status_code_string":   querybuilder.NewFieldKey("status_code_string", "traces", "span", "string"),
-	"http_method":          querybuilder.NewFieldKey("http_method", "traces", "span", "string"),
-	"http_url":             querybuilder.NewFieldKey("http_url", "traces", "span", "string"),
-	"kind_string":          querybuilder.NewFieldKey("kind_string", "traces", "span", "string"),
-	"kind":                 querybuilder.NewFieldKey("kind", "traces", "span", "number"),
-	"response_status_code": querybuilder.NewFieldKey("response_status_code", "traces", "span", "string"),
-	"status_message":       querybuilder.NewFieldKey("status_message", "traces", "span", "string"),
-
-	"service.name":            querybuilder.NewFieldKey("service.name", "traces", "resource", "string"),
-	"cloud.account.id":        querybuilder.NewFieldKey("cloud.account.id", "traces", "resource", "string"),
-	"cloud.platform":          querybuilder.NewFieldKey("cloud.platform", "traces", "resource", "string"),
-	"cloud.provider":          querybuilder.NewFieldKey("cloud.provider", "traces", "resource", "string"),
-	"cloud.region":            querybuilder.NewFieldKey("cloud.region", "traces", "resource", "string"),
-	"deployment.environment":  querybuilder.NewFieldKey("deployment.environment", "traces", "resource", "string"),
-	"host.name":               querybuilder.NewFieldKey("host.name", "traces", "resource", "string"),
-	"k8s.cluster.name":        querybuilder.NewFieldKey("k8s.cluster.name", "traces", "resource", "string"),
-	"k8s.namespace.name":      querybuilder.NewFieldKey("k8s.namespace.name", "traces", "resource", "string"),
-	"k8s.node.name":           querybuilder.NewFieldKey("k8s.node.name", "traces", "resource", "string"),
-	"k8s.pod.name":            querybuilder.NewFieldKey("k8s.pod.name", "traces", "resource", "string"),
-	"k8s.pod.start_time":      querybuilder.NewFieldKey("k8s.pod.start_time", "traces", "resource", "string"),
-	"k8s.pod.uid":             querybuilder.NewFieldKey("k8s.pod.uid", "traces", "resource", "string"),
-	"k8s.statefulset.name":    querybuilder.NewFieldKey("k8s.statefulset.name", "traces", "resource", "string"),
-	"service.version":         querybuilder.NewFieldKey("service.version", "traces", "resource", "string"),
-	"signoz.deployment.tier":  querybuilder.NewFieldKey("signoz.deployment.tier", "traces", "resource", "string"),
-	"signoz.workload":         querybuilder.NewFieldKey("signoz.workload", "traces", "resource", "string"),
-	"signoz.workspace.key.id": querybuilder.NewFieldKey("signoz.workspace.key.id", "traces", "resource", "string"),
-
-	"client.address":            querybuilder.NewFieldKey("client.address", "traces", "tag", "string"),
-	"http.request.method":       querybuilder.NewFieldKey("http.request.method", "traces", "tag", "string"),
-	"http.response.body.size":   querybuilder.NewFieldKey("http.response.body.size", "traces", "tag", "string"),
-	"http.response.status_code": querybuilder.NewFieldKey("http.response.status_code", "traces", "tag", "number"),
-	"http.route":                querybuilder.NewFieldKey("http.route", "traces", "tag", "string"),
-	"rpc.method":                querybuilder.NewFieldKey("rpc.method", "traces", "tag", "string"),
-	"network.peer.address":      querybuilder.NewFieldKey("network.peer.address", "traces", "tag", "string"),
-	"network.peer.port":         querybuilder.NewFieldKey("network.peer.port", "traces", "tag", "string"),
-	"network.protocol.version":  querybuilder.NewFieldKey("network.protocol.version", "traces", "tag", "string"),
-	"server.address":            querybuilder.NewFieldKey("server.address", "traces", "tag", "string"),
-	"url.path":                  querybuilder.NewFieldKey("url.path", "traces", "tag", "string"),
-	"url.scheme":                querybuilder.NewFieldKey("url.scheme", "traces", "tag", "string"),
-	"db.operation":              querybuilder.NewFieldKey("db.operation", "traces", "tag", "string"),
-	"db.statement":              querybuilder.NewFieldKey("db.statement", "traces", "tag", "string"),
-	"db.system":                 querybuilder.NewFieldKey("db.system", "traces", "tag", "string"),
-	"messaging.system":          querybuilder.NewFieldKey("messaging.system", "traces", "tag", "string"),
-}
-
-// timeRangeDesc builds the shared "timeRange" description. All time-windowed
-// tools use one parser (timeutil.ParseTimeRange), so only the per-tool default
-// window differs — defaultDesc is that trailing sentence (e.g. "Defaults to
-// '1h'."). The full Go-duration grammar is accepted; we advertise the m/h/d
-// subset because it covers every realistic observability window.
-func timeRangeDesc(defaultDesc string) string {
-	return "Relative time range. Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). " +
-		"Examples: '30m', '1h', '2h', '6h', '24h', '3d', '7d'. " +
-		"Ignored when both start and end are provided. " + defaultDesc
-}
-
-// stepIntervalDesc is the shared "stepInterval" description (seconds value with
-// backend auto-selection).
-const stepIntervalDesc = "Time bucket size in seconds for time_series mode (optional). " +
-	"When omitted, the backend auto-selects an appropriate interval. " +
-	"Only set this if the user explicitly requests a specific granularity. " +
-	"Examples: '60' (1 min), '3600' (1 hour), '86400' (1 day)."
-
-// readFilterExpr returns the QB filter expression, accepting the canonical
-// "filter" key and the legacy "query" alias. TrimSpace is used only to decide
-// presence/equality; the returned expression preserves the caller's original
-// text. Never log filter expressions here because they can contain user data.
-func readFilterExpr(args map[string]any) (string, error) {
-	filterRaw := stringValue(args["filter"])
-	queryRaw := stringValue(args["query"])
-	filterTrimmed := strings.TrimSpace(filterRaw)
-	queryTrimmed := strings.TrimSpace(queryRaw)
-
-	if filterTrimmed != "" && queryTrimmed != "" && filterTrimmed != queryTrimmed {
-		return "", errors.New(conflictingFilterAliasError)
-	}
-	if filterTrimmed != "" {
-		return filterRaw, nil
-	}
-	if queryTrimmed != "" {
-		return queryRaw, nil
-	}
-	return "", nil
+// legacyAggregationParamsError names the replacement for the retired
+// aggregation and aggregateOn inputs (the CMP-2 compatibility path).
+func legacyAggregationParamsError() error {
+	return fmt.Errorf(`%s "aggregation" and "aggregateOn" were replaced by "aggregations", which takes the full expressions; for example {"aggregations": ["count()", "p99(duration_nano)"]}`, validationErrorPrefix)
 }
 
 func stringValue(v any) string {
@@ -176,6 +63,9 @@ func parseBoolArg(args map[string]any, key string) (bool, bool, error) {
 
 // AggregateRequest keeps parameters for any aggregation query.
 type AggregateRequest struct {
+	// Aggregations are the expressions sent, in caller order; AggregationExpr is
+	// the first one, which the default order and the log lines use.
+	Aggregations     []string
 	AggregationExpr  string
 	FilterExpression string
 	GroupBy          []querybuilder.FieldKey
@@ -186,7 +76,10 @@ type AggregateRequest struct {
 	StartTime        int64
 	EndTime          int64
 	RequestType      string // "scalar" (default) or "time_series"
+	QueryType        string // traces only; builder_ai_query selects the AI envelope
 	StepInterval     *int64 // nil = let backend auto-select
+	Having           string
+	Functions        []querybuilder.Function
 	// StepIntervalWarning is set when a stepInterval value was provided but could
 	// not be parsed as a positive integer. The handler logs it (WARN) so a
 	// silently-dropped value is detectable rather than vanishing.
@@ -196,59 +89,29 @@ type AggregateRequest struct {
 // parseAggregateArgs validates and parses  aggregate arguments.
 // this is crucial as the input is provided by llm and if there is an error it must be suggested how to correct
 func parseAggregateArgs(args map[string]any, signal string, filterExpr string) (*AggregateRequest, error) {
-	aggregation, _ := args["aggregation"].(string)
-	if aggregation == "" {
-		return nil, fmt.Errorf(
-			"%s \"aggregation\" is required. Supported values: %s. "+
-				"Tip: for simple totals use {\"aggregation\": \"count\", \"groupBy\": \"service.name\"}",
-			validationErrorPrefix, allowedAggregations)
+	aggregations, err := parseAggregationsArg(args)
+	if err != nil {
+		return nil, err
 	}
-	if !validAggregations[aggregation] {
-		return nil, fmt.Errorf(
-			"%s \"aggregation\" is invalid (%q). Supported values: %s. "+
-				"Tip: for counting use \"count\", for averages use \"avg\"",
-			validationErrorPrefix, aggregation, allowedAggregations)
+	aggregationExpr := aggregations[0]
+
+	groupByNames, err := parseFieldNameList("groupBy", args["groupBy"])
+	if err != nil {
+		return nil, fmt.Errorf("%s %w", validationErrorPrefix, err)
+	}
+	groupByFields := make([]querybuilder.FieldKey, 0, len(groupByNames))
+	for _, name := range groupByNames {
+		groupByFields = append(groupByFields, aggregateGroupByField(signal, name))
 	}
 
-	aggregateOn, _ := args["aggregateOn"].(string)
-	if !aggregationsWithoutField[aggregation] && aggregateOn == "" {
-		return nil, fmt.Errorf(
-			"%s \"aggregateOn\" is required for %q aggregation. Specify the field to aggregate, "+
-				"e.g. {\"aggregation\": \"%s\", \"aggregateOn\": \"duration\"}",
-			validationErrorPrefix, aggregation, aggregation)
-	}
-
-	var aggregationExpr string
-	if aggregateOn != "" {
-		aggregationExpr = fmt.Sprintf("%s(%s)", aggregation, aggregateOn)
-	} else {
-		aggregationExpr = fmt.Sprintf("%s()", aggregation)
-	}
-
-	var groupByFields []querybuilder.FieldKey
-	if groupByStr, _ := args["groupBy"].(string); groupByStr != "" {
-		for _, field := range strings.Split(groupByStr, ",") {
-			field = strings.TrimSpace(field)
-			if field != "" {
-				groupByFields = append(groupByFields, aggregateGroupByField(signal, field))
-			}
-		}
-	}
-
-	orderByRaw, _ := args["orderBy"].(string)
-	orderByStr := strings.TrimSpace(orderByRaw)
 	orderExpr, orderDir := aggregationExpr, "desc"
-	if orderByStr != "" {
-		lower := strings.ToLower(orderByStr)
-		switch {
-		case strings.HasSuffix(lower, " asc"):
-			orderExpr = strings.TrimSpace(orderByStr[:len(orderByStr)-4])
-			orderDir = "asc"
-		case strings.HasSuffix(lower, " desc"):
-			orderExpr = strings.TrimSpace(orderByStr[:len(orderByStr)-5])
-		default:
-			orderExpr = orderByStr
-		}
+	if orderByStr := strings.TrimSpace(stringValue(args["orderBy"])); orderByStr != "" {
+		orderExpr, orderDir = parseOrderBy(orderByStr)
+	}
+
+	functions, err := parseFunctionsArg(args["functions"])
+	if err != nil {
+		return nil, err
 	}
 
 	limit, err := intArg(args, "limit", querybuilder.DefaultAggregateQueryLimit)
@@ -278,6 +141,7 @@ func parseAggregateArgs(args map[string]any, signal string, filterExpr string) (
 	stepInterval, stepIntervalWarning := parseStepInterval(args["stepInterval"])
 
 	return &AggregateRequest{
+		Aggregations:        aggregations,
 		AggregationExpr:     aggregationExpr,
 		FilterExpression:    filterExpr,
 		GroupBy:             groupByFields,
@@ -290,15 +154,74 @@ func parseAggregateArgs(args map[string]any, signal string, filterExpr string) (
 		RequestType:         requestType,
 		StepInterval:        stepInterval,
 		StepIntervalWarning: stepIntervalWarning,
+		Having:              strings.TrimSpace(stringValue(args["having"])),
+		Functions:           functions,
 	}, nil
 }
 
-func aggregateGroupByField(signal, name string) querybuilder.FieldKey {
-	if signal == "traces" {
-		if field, ok := traceGroupByFieldMetadata[name]; ok {
-			return field
+// aggregateNotes returns the advisory notes an aggregate request earns before
+// the result is read: today only that functions do nothing on scalar results.
+func aggregateNotes(reqData *AggregateRequest) []string {
+	var notes []string
+	if len(reqData.Functions) > 0 && reqData.RequestType == "scalar" {
+		notes = append(notes, functionsIgnoredOnScalarNote)
+	}
+	return notes
+}
+
+// parseAggregationsArg reads aggregations: one expression string, an array of
+// expression strings, or a JSON-encoded array. Expressions are forwarded
+// verbatim for SigNoz to validate. The retired aggregation and aggregateOn
+// inputs get a coded error naming their replacement.
+func parseAggregationsArg(args map[string]any) ([]string, error) {
+	if _, legacy := args["aggregation"]; legacy {
+		return nil, legacyAggregationParamsError()
+	}
+	if _, legacy := args["aggregateOn"]; legacy {
+		return nil, legacyAggregationParamsError()
+	}
+	var items []string
+	switch v := args["aggregations"].(type) {
+	case nil:
+	case string:
+		if trimmed := strings.TrimSpace(v); strings.HasPrefix(trimmed, "[") {
+			if err := json.Unmarshal([]byte(trimmed), &items); err != nil {
+				return nil, fmt.Errorf(`%s "aggregations" is not a valid JSON array of expression strings: %v`, validationErrorPrefix, err)
+			}
+		} else {
+			items = []string{v}
+		}
+	case []any:
+		for _, item := range v {
+			text, ok := item.(string)
+			if !ok {
+				return nil, fmt.Errorf(`%s "aggregations" items must be expression strings such as "count()" or "p99(duration_nano)", not %v`, validationErrorPrefix, item)
+			}
+			items = append(items, text)
+		}
+	case []string:
+		items = v
+	default:
+		return nil, fmt.Errorf(`%s "aggregations" must be an expression string or an array of expression strings, not %v`, validationErrorPrefix, v)
+	}
+
+	expressions := make([]string, 0, len(items))
+	for _, item := range items {
+		if item = strings.TrimSpace(item); item != "" {
+			expressions = append(expressions, item)
 		}
 	}
+	if len(expressions) == 0 {
+		return nil, fmt.Errorf(
+			`%s "aggregations" is required: one or more aggregation expressions such as "count()", "count_distinct(user_id)", "avg(duration)", or "p99(duration_nano)". Tip: for simple totals use {"aggregations": ["count()"], "groupBy": "service.name"}`,
+			validationErrorPrefix)
+	}
+	return expressions, nil
+}
+
+// aggregateGroupByField sends a bare name; SigNoz resolves its context and
+// type against the workspace's field metadata.
+func aggregateGroupByField(signal, name string) querybuilder.FieldKey {
 	return querybuilder.NewFieldKey(name, signal, "", "")
 }
 
@@ -805,8 +728,8 @@ func warnRowCountUnknown(ctx context.Context, logger *slog.Logger, toolName stri
 // search_traces), which support offset pagination. It appends a completeness
 // note (hasMore + nextOffset) inferred from the returned row count so callers
 // never silently assume a truncated page is complete.
-func rawSearchResult(ctx context.Context, logger *slog.Logger, toolName string, payload []byte, limit, offset int, limitClamped bool) *mcp.CallToolResult {
-	var notes []string
+func rawSearchResult(ctx context.Context, logger *slog.Logger, toolName string, payload []byte, limit, offset int, limitClamped bool, extraNotes ...string) *mcp.CallToolResult {
+	notes := append([]string(nil), extraNotes...)
 	if limitClamped {
 		notes = append(notes, fmt.Sprintf(
 			"note: result limited to %d rows to bound server memory; paginate with \"offset\" (or narrow the time range/filters) for more.",
@@ -826,8 +749,8 @@ func rawSearchResult(ctx context.Context, logger *slog.Logger, toolName string, 
 
 // aggregateResult is the result wrapper for aggregation tools. Aggregations
 // have no offset pagination, so the note advises narrowing the query instead.
-func aggregateResult(ctx context.Context, logger *slog.Logger, toolName string, payload []byte, limitClamped bool) *mcp.CallToolResult {
-	var notes []string
+func aggregateResult(ctx context.Context, logger *slog.Logger, toolName string, payload []byte, limitClamped bool, extraNotes ...string) *mcp.CallToolResult {
+	notes := append([]string(nil), extraNotes...)
 	if limitClamped {
 		notes = append(notes, fmt.Sprintf(
 			"note: result limited to %d groups to bound server memory; narrow the time range, filters, or groupBy cardinality for fewer, more-specific groups.",

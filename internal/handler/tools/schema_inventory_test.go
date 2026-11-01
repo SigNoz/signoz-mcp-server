@@ -124,10 +124,17 @@ const validRuleUUIDv7 = "0196634d-5d66-75c4-b778-e317f49dab7a"
 
 func validAlertWriteBackFixture() map[string]any {
 	return map[string]any{
-		"alert":     "Updated Alert",
-		"alertType": "METRIC_BASED_ALERT",
-		"ruleType":  "threshold_rule",
+		"alert":         "Updated Alert",
+		"alertType":     "METRIC_BASED_ALERT",
+		"ruleType":      "threshold_rule",
+		"schemaVersion": "v2alpha1",
+		"evaluation": map[string]any{
+			"kind": "rolling",
+			"spec": map[string]any{"evalWindow": "5m", "frequency": "1m"},
+		},
+		"notificationSettings": map[string]any{"usePolicy": false},
 		"condition": map[string]any{
+			"selectedQueryName": "A",
 			"compositeQuery": map[string]any{
 				"queryType": "builder",
 				"panelType": "graph",

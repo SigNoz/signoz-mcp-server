@@ -3,6 +3,7 @@ package tools
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"strings"
 	"testing"
@@ -49,7 +50,7 @@ func TestParseFilterExpressionParam_CanonicalFilterContract(t *testing.T) {
 				}
 				return req.FilterExpression, nil
 			},
-			base: map[string]any{"aggregation": "count", "timeRange": "1h"},
+			base: map[string]any{"aggregations": "count()", "timeRange": "1h"},
 		},
 		{
 			name: "aggregate_traces",
@@ -60,7 +61,7 @@ func TestParseFilterExpressionParam_CanonicalFilterContract(t *testing.T) {
 				}
 				return req.FilterExpression, nil
 			},
-			base: map[string]any{"aggregation": "count", "timeRange": "1h"},
+			base: map[string]any{"aggregations": "count()", "timeRange": "1h"},
 		},
 		{
 			name: "query_metrics",
@@ -92,63 +93,37 @@ func TestParseFilterExpressionParam_CanonicalFilterContract(t *testing.T) {
 	})
 
 	// Every supplied query form is rejected at the parser layer
-	// (TestReadLogFilterExpr); each logs tool only has to route through it.
-	t.Run("logs reject the retired query alias", func(t *testing.T) {
-		for _, parser := range []parserCase{parsers[0], parsers[2]} {
+	// (TestReadLogFilterExpr); each query tool only has to route through it.
+	t.Run("every query tool rejects the retired query alias", func(t *testing.T) {
+		for parser, want := range map[*parserCase]string{
+			&parsers[0]: logsLegacyQueryAliasError,
+			&parsers[1]: tracesLegacyQueryAliasError,
+			&parsers[2]: logsLegacyQueryAliasError,
+			&parsers[3]: tracesLegacyQueryAliasError,
+			&parsers[4]: metricsLegacyQueryAliasError,
+		} {
 			t.Run(parser.name, func(t *testing.T) {
 				_, err := parser.parse(mergeArgs(parser.base, map[string]any{"query": "service.name = 'checkout'"}))
-				if err == nil || err.Error() != logsLegacyQueryAliasError {
-					t.Fatalf("error = %v, want %q", err, logsLegacyQueryAliasError)
+				if err == nil || err.Error() != want {
+					t.Fatalf("error = %v, want %q", err, want)
 				}
 			})
 		}
 	})
 
-	t.Run("traces and metrics retain legacy query alias", func(t *testing.T) {
-		aliasParsers := []parserCase{parsers[1], parsers[3], parsers[4]}
-		tests := []struct {
-			name    string
-			args    map[string]any
-			want    string
-			wantErr string
-		}{
-			{
-				name: "query only",
-				args: map[string]any{"query": "service.name = 'checkout'"},
-				want: "service.name = 'checkout'",
-			},
-			{
-				name: "equal pair keeps raw filter",
-				args: map[string]any{
-					"filter": " service.name = 'checkout' ",
-					"query":  "service.name = 'checkout'",
-				},
-				want: " service.name = 'checkout' ",
-			},
-			{
-				name: "differing pair conflicts",
-				args: map[string]any{
-					"filter": "service.name = 'checkout'",
-					"query":  "service.name = 'frontend'",
-				},
-				wantErr: conflictingFilterAliasError,
-			},
-		}
-		for _, parser := range aliasParsers {
-			for _, tt := range tests {
-				t.Run(parser.name+"/"+tt.name, func(t *testing.T) {
-					got, err := parser.parse(mergeArgs(parser.base, tt.args))
-					if tt.wantErr != "" {
-						if err == nil || err.Error() != tt.wantErr {
-							t.Fatalf("error = %v, want %q", err, tt.wantErr)
-						}
-						return
-					}
-					if err != nil {
-						t.Fatalf("unexpected error: %v", err)
-					}
-					if got != tt.want {
-						t.Fatalf("filter expression = %q, want %q", got, tt.want)
+	// Sent as text, the wire object is a full-text search on logs that matches nothing;
+	// sent as an object, it used to be dropped and the query ran unfiltered.
+	t.Run("every query tool rejects the filter wire object", func(t *testing.T) {
+		const want = `Parameter validation failed: "filter" takes the expression text as a string, such as "service.name = 'api'", not {"expression": ...}`
+		for _, filter := range []any{
+			` {"expression": "http.route CONTAINS 'invit'"} `,
+			map[string]any{"expression": "http.route CONTAINS 'invit'"},
+		} {
+			for _, parser := range parsers {
+				t.Run(fmt.Sprintf("%s %T", parser.name, filter), func(t *testing.T) {
+					_, err := parser.parse(mergeArgs(parser.base, map[string]any{"filter": filter}))
+					if err == nil || err.Error() != want {
+						t.Fatalf("error = %v, want %q", err, want)
 					}
 				})
 			}

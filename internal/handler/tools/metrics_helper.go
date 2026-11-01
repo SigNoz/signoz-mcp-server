@@ -6,8 +6,11 @@ import (
 	"strconv"
 	"strings"
 
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 	"github.com/SigNoz/signoz-mcp-server/pkg/querybuilder"
 )
+
+const metricsLegacyQueryAliasError = `parameter validation failed: "query" is not accepted by signoz_query_metrics; use "filter" with a Query Builder filter expression (see signoz://metrics-aggregation-guide)`
 
 // metricsQueryRequest holds parsed arguments for signoz_query_metrics.
 type metricsQueryRequest struct {
@@ -32,19 +35,44 @@ type metricsQueryRequest struct {
 	Formula             string
 	FormulaQueries      []formulaSubQuery
 	Source              string
+	// Result shaping. Limit 0 means the server default; an empty OrderKey keeps
+	// __result desc.
+	Limit        int
+	LimitClamped bool
+	OrderKey     string
+	OrderDir     string
+	Having       string
+	Functions    []querybuilder.Function
 }
 
-// formulaSubQuery represents one sub-query within a formula request.
+// formulaSubQuery represents one sub-query within a formula request. Its
+// jsonschema tags are the advertised item schema of formulaQueries; groupBy and
+// isMonotonic also accept their string forms, which the schema adds separately.
 type formulaSubQuery struct {
-	Name             string   `json:"name"`
-	MetricName       string   `json:"metricName"`
-	MetricType       string   `json:"metricType"`
-	IsMonotonic      bool     `json:"isMonotonic"`
-	Temporality      string   `json:"temporality"`
-	TimeAggregation  string   `json:"timeAggregation"`
-	SpaceAggregation string   `json:"spaceAggregation"`
-	GroupBy          []string `json:"groupBy"`
-	Filter           string   `json:"filter"`
+	Name             string   `json:"name" jsonschema:"Query name the formula references, for example B."`
+	MetricName       string   `json:"metricName" jsonschema:"Metric to query, for example http_requests_total."`
+	MetricType       string   `json:"metricType,omitempty" jsonschema:"gauge, sum, histogram, exponential_histogram, or summary. Omit to auto-fetch it with temporality and monotonicity."`
+	IsMonotonic      bool     `json:"isMonotonic,omitempty" jsonschema:"Whether a sum metric only increases. Auto-fetched when metricType is omitted."`
+	Temporality      string   `json:"temporality,omitempty" jsonschema:"cumulative, delta, or unspecified. Auto-fetched when metricType is omitted."`
+	TimeAggregation  string   `json:"timeAggregation,omitempty" jsonschema:"Aggregation over time buckets: latest, sum, avg, min, max, count, count_distinct, rate, or increase. Defaulted by metric type."`
+	SpaceAggregation string   `json:"spaceAggregation,omitempty" jsonschema:"Aggregation across series: sum, avg, min, max, count, or p50 to p99 for histograms. Defaulted by metric type."`
+	GroupBy          []string `json:"groupBy,omitempty" jsonschema:"Field names to group by, as an array or a comma-separated string. Use the same groupBy as the primary query so the formula can match series."`
+	Filter           string   `json:"filter,omitempty" jsonschema:"Filter expression, for example \"service.name = 'checkout'\"."`
+	ReduceTo         string   `json:"reduceTo,omitempty" jsonschema:"Required when requestType is scalar: how to reduce each series to one value (last, max, min, avg, sum, count, or median)."`
+}
+
+// formulaSubQuerySchema is the formulaQueries item schema, derived from
+// formulaSubQuery with the string forms the parser also accepts.
+func formulaSubQuerySchema() map[string]any {
+	schema := mcp.SchemaFor[formulaSubQuery]()
+	properties, _ := schema["properties"].(map[string]any)
+	if groupBy, ok := properties["groupBy"].(map[string]any); ok {
+		groupBy["type"] = []string{"array", "string"}
+	}
+	if isMonotonic, ok := properties["isMonotonic"].(map[string]any); ok {
+		isMonotonic["type"] = []string{"boolean", "string"}
+	}
+	return schema
 }
 
 func parseMetricsQueryArgs(args map[string]any) (*metricsQueryRequest, error) {
@@ -52,7 +80,7 @@ func parseMetricsQueryArgs(args map[string]any) (*metricsQueryRequest, error) {
 	if metricName == "" {
 		return nil, fmt.Errorf(`%s "metricName" is required. Use signoz_list_metrics to find available metrics`, validationErrorPrefix)
 	}
-	filter, err := readFilterExpr(args)
+	filter, err := readFilterRejectingQueryAlias(args, metricsLegacyQueryAliasError)
 	if err != nil {
 		return nil, err
 	}
@@ -89,24 +117,11 @@ func parseMetricsQueryArgs(args map[string]any) (*metricsQueryRequest, error) {
 		req.IsMonotonic = v
 	}
 
-	// groupBy — accept []string, []any, or comma-separated string
-	switch v := args["groupBy"].(type) {
-	case []any:
-		for _, item := range v {
-			if s, ok := item.(string); ok && s != "" {
-				req.GroupBy = append(req.GroupBy, strings.TrimSpace(s))
-			}
-		}
-	case string:
-		if v != "" {
-			for _, field := range strings.Split(v, ",") {
-				field = strings.TrimSpace(field)
-				if field != "" {
-					req.GroupBy = append(req.GroupBy, field)
-				}
-			}
-		}
+	groupBy, err := parseFieldNameList("groupBy", args["groupBy"])
+	if err != nil {
+		return nil, fmt.Errorf("%s %w", validationErrorPrefix, err)
 	}
+	req.GroupBy = groupBy
 
 	// start / end
 	if s, ok := args["start"]; ok {
@@ -130,24 +145,52 @@ func parseMetricsQueryArgs(args map[string]any) (*metricsQueryRequest, error) {
 		}
 	}
 
-	// formulaQueries — JSON array of sub-query objects
-	if fq, ok := args["formulaQueries"]; ok {
-		switch v := fq.(type) {
-		case []any:
-			data, err := json.Marshal(v)
+	// formulaQueries: an array of sub-query objects, or a JSON-encoded string
+	// of one. Each item's groupBy and isMonotonic accept their string forms.
+	if raw, ok := args["formulaQueries"]; ok {
+		var items []map[string]any
+		if _, err := decodeJSONArg("formulaQueries", raw, &items); err != nil {
+			return nil, fmt.Errorf(`%w; pass an array of {name, metricName, ...} objects`, err)
+		}
+		for i, item := range items {
+			if text, ok := item["groupBy"].(string); ok {
+				names, err := parseFieldNameList("groupBy", text)
+				if err != nil {
+					return nil, fmt.Errorf("%s formulaQueries[%d]: %w", validationErrorPrefix, i, err)
+				}
+				item["groupBy"] = names
+			}
+			if _, ok := item["isMonotonic"].(string); ok {
+				v, _, err := parseBoolArg(item, "isMonotonic")
+				if err != nil {
+					return nil, fmt.Errorf("%s formulaQueries[%d]: %w", validationErrorPrefix, i, err)
+				}
+				item["isMonotonic"] = v
+			}
+		}
+		if len(items) > 0 {
+			data, err := json.Marshal(items)
 			if err != nil {
 				return nil, fmt.Errorf("invalid formulaQueries: %w", err)
 			}
 			if err := json.Unmarshal(data, &req.FormulaQueries); err != nil {
-				return nil, fmt.Errorf("invalid formulaQueries schema: %w", err)
-			}
-		case string:
-			if v != "" {
-				if err := json.Unmarshal([]byte(v), &req.FormulaQueries); err != nil {
-					return nil, fmt.Errorf("invalid formulaQueries JSON string: %w", err)
-				}
+				return nil, fmt.Errorf(`%s "formulaQueries" has the wrong shape: %v; each item is {name, metricName, metricType, isMonotonic, temporality, timeAggregation, spaceAggregation, reduceTo, groupBy, filter}`, validationErrorPrefix, err)
 			}
 		}
+	}
+
+	// Result shaping: limit, orderBy, having, functions.
+	limit, err := intArg(args, "limit", 0)
+	if err != nil {
+		return nil, err
+	}
+	req.Limit, req.LimitClamped = clampLimit(limit)
+	if raw := strings.TrimSpace(stringArg(args, "orderBy")); raw != "" {
+		req.OrderKey, req.OrderDir = parseOrderBy(raw)
+	}
+	req.Having = strings.TrimSpace(stringArg(args, "having"))
+	if req.Functions, err = parseFunctionsArg(args["functions"]); err != nil {
+		return nil, err
 	}
 
 	// Defaults
@@ -161,28 +204,16 @@ func parseMetricsQueryArgs(args map[string]any) (*metricsQueryRequest, error) {
 	return req, nil
 }
 
-// buildGroupByFields converts field name strings to field keys with auto-detected fieldContext.
+// buildGroupByFields sends every metrics groupBy key in attribute context.
+// SigNoz keeps resource and point attributes in one labels set for metrics,
+// so any label context reads the same value; a key with no context would
+// read an intrinsic column such as type or temporality instead of the label.
 func buildGroupByFields(names []string) []querybuilder.FieldKey {
 	fields := make([]querybuilder.FieldKey, 0, len(names))
 	for _, name := range names {
-		fields = append(fields, querybuilder.NewFieldKey(name, "metrics", detectFieldContext(name), ""))
+		fields = append(fields, querybuilder.NewFieldKey(name, "metrics", "attribute", ""))
 	}
 	return fields
-}
-
-// resourcePrefixes are attribute name prefixes that indicate a resource attribute.
-var resourcePrefixes = []string{
-	"k8s.", "container.", "host.", "cloud.", "deployment.", "process.",
-	"service.", "telemetry.", "os.",
-}
-
-func detectFieldContext(name string) string {
-	for _, prefix := range resourcePrefixes {
-		if strings.HasPrefix(name, prefix) {
-			return "resource"
-		}
-	}
-	return "attribute"
 }
 
 // extractStepInterval parses meta.stepIntervals from the backend response JSON

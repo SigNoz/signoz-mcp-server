@@ -146,7 +146,7 @@ func TestParseStepInterval_RejectsSuffixedStrings(t *testing.T) {
 	// End-to-end through the aggregate parser: an accepted value reaches the
 	// request, and "1h" must not yield 1.
 	accepted, err := parseAggregateArgs(map[string]any{
-		"aggregation":  "count",
+		"aggregations": "count()",
 		"timeRange":    "1h",
 		"stepInterval": float64(60),
 	}, "logs", "")
@@ -157,7 +157,7 @@ func TestParseStepInterval_RejectsSuffixedStrings(t *testing.T) {
 		t.Fatalf("expected stepInterval=60 to reach the aggregate request, got %v", accepted.StepInterval)
 	}
 	req, err := parseAggregateArgs(map[string]any{
-		"aggregation":  "count",
+		"aggregations": "count()",
 		"timeRange":    "1h",
 		"stepInterval": "1h",
 	}, "logs", "")

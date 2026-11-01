@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"sort"
 
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 
@@ -18,9 +19,9 @@ func (h *Handler) RegisterServiceHandlers(s *mcp.Server) {
 
 	listTool := mcp.NewTool("signoz_list_services",
 		withReadOnlyToolAnnotations(),
-		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
-		mcp.WithDescription("Use this when the user wants APM services with trace activity and their call or latency summaries in a time window. It returns paginated traced-service records; absence means no trace activity in that window, not that a matching service.name never appears in logs. For log values use signoz_get_field_values with signal=\"logs\" and name=\"service.name\"; for one service's operations use signoz_get_service_top_operations. Follow pagination.nextOffset until hasMore=false before concluding a traced service is absent."),
-		mcp.WithString("timeRange", mcp.DefaultString("6h"), mcp.Description(timeRangeDesc("Defaults to last 6 hours if not provided."))),
+		mcp.WithString("searchContext", mcp.Description(searchContextParamDescription)),
+		mcp.WithDescription("Use this when the user wants APM services with trace activity and their call or latency summaries in a time window. It returns traced-service records sorted by name and paginated; absence means no trace activity in that window, not that a matching service.name never appears in logs. For log values use signoz_get_field_values with signal=\"logs\" and name=\"service.name\"; for one service's operations use signoz_get_service_top_operations. Follow pagination.nextOffset until hasMore=false before concluding a traced service is absent."),
+		mcp.WithString("timeRange", mcp.DefaultString("6h"), mcp.Description(timeRangeParamDescription("Defaults to last 6 hours if not provided."))),
 		mcp.WithString("start", intOrStringType(), mcp.Description("Start time in unix milliseconds (optional, defaults to 6 hours ago).")),
 		mcp.WithString("end", intOrStringType(), mcp.Description("End time in unix milliseconds (optional, defaults to now).")),
 		mcp.WithString("limit", mcp.DefaultString("50"), intOrStringType(), mcp.Description("Maximum services per page. Default: 50; max: 1000 (higher values are clamped).")),
@@ -31,10 +32,10 @@ func (h *Handler) RegisterServiceHandlers(s *mcp.Server) {
 
 	getOpsTool := mcp.NewTool("signoz_get_service_top_operations",
 		withReadOnlyToolAnnotations(),
-		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
+		mcp.WithString("searchContext", mcp.Description(searchContextParamDescription)),
 		mcp.WithDescription("Use this when the user wants the built-in operation table for one traced service in a time window. It ranks operation names by p99 latency and returns p50, p95, p99, call count, and error count. Use signoz_list_services to discover active traced service names. For custom aggregation, grouping, time series, cross-service comparison, or arbitrary trace filters, use signoz_aggregate_traces instead. The optional tags parameter is a JSON-encoded TagQueryParam array."),
 		mcp.WithString("service", mcp.Required(), mcp.Description("Exact traced service name, typically from signoz_list_services.")),
-		mcp.WithString("timeRange", mcp.DefaultString("6h"), mcp.Description(timeRangeDesc("Defaults to last 6 hours if not provided."))),
+		mcp.WithString("timeRange", mcp.DefaultString("6h"), mcp.Description(timeRangeParamDescription("Defaults to last 6 hours if not provided."))),
 		mcp.WithString("start", intOrStringType(), mcp.Description("Start time in unix milliseconds (optional, defaults to 6 hours ago).")),
 		mcp.WithString("end", intOrStringType(), mcp.Description("End time in unix milliseconds (optional, defaults to now).")),
 		mcp.WithString("tags", mcp.Description("JSON-encoded TagQueryParam array; omit for no tag filter. Example: [{\"key\":\"http.method\",\"tagType\":\"SpanAttribute\",\"operator\":\"In\",\"stringValues\":[\"GET\"]}]. Pass the array as a string, not as a JSON array value.")),
@@ -67,20 +68,27 @@ func (h *Handler) handleListServices(ctx context.Context, req mcp.CallToolReques
 		return upstreamError(err), nil
 	}
 
-	var services []any
-	if err := json.Unmarshal(result, &services); err != nil {
-		h.logger.ErrorContext(ctx, "Failed to parse services response", logpkg.ErrAttr(err))
-		return upstreamResponseError("failed to parse response: " + err.Error()), nil
+	var envelope struct {
+		Data *[]any `json:"data"`
 	}
+	if err := json.Unmarshal(result, &envelope); err != nil || envelope.Data == nil {
+		h.logger.WarnContext(ctx, "Services response is not a data array", logpkg.ErrAttr(err), slog.String("response", logpkg.TruncBody(result)))
+		return upstreamResponseError("services response has no data array"), nil
+	}
+	services := *envelope.Data
 
+	// SigNoz orders services by p99, which moves between calls; a stable
+	// order keeps offset pages from skipping or repeating services.
+	sort.SliceStable(services, func(i, j int) bool {
+		return serviceItemName(services[i]) < serviceItemName(services[j])
+	})
 	if base != "" {
 		for _, item := range services {
 			m, ok := item.(map[string]any)
 			if !ok {
 				continue
 			}
-			name, _ := m["serviceName"].(string)
-			if webURL, ok := util.ResourceWebURL(base, "service", name); ok {
+			if webURL, ok := util.ResourceWebURL(base, "service", serviceItemName(m)); ok {
 				m["webUrl"] = webURL
 			}
 		}
@@ -96,6 +104,12 @@ func (h *Handler) handleListServices(ctx context.Context, req mcp.CallToolReques
 	}
 
 	return listResult(resultJSON, limitClamped), nil
+}
+
+func serviceItemName(item any) string {
+	m, _ := item.(map[string]any)
+	name, _ := m["serviceName"].(string)
+	return name
 }
 
 func (h *Handler) handleGetServiceTopOperations(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

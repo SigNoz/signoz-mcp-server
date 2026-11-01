@@ -10,8 +10,6 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/pkg/paginate"
 )
 
-const aggregateRequestTypeDescription = `Result shape. "scalar" (default) returns one value or a grouped/ranked table over the full time range; use it for totals, percentiles, and top lists. "time_series" returns time-bucketed values, with one series per group when grouped; use it for spikes, trends, changes over time, or questions about when something happened.`
-
 // listResult wraps a paginated list payload (a code-controlled envelope) as a
 // structured tool result, so list tools keep StructuredContent alongside the
 // text block. When the requested per-page limit was clamped to paginate.MaxLimit

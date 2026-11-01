@@ -23,6 +23,101 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+
+
+## [0.17.0] - 2026-10-30
+
+### Breaking changes
+- build anomaly rules as v2alpha1 and target SigNoz v0.148.1 ([#420](https://github.com/SigNoz/signoz-mcp-server/pull/420))
+- make reduceTo an explicit choice for scalar queries ([#396](https://github.com/SigNoz/signoz-mcp-server/pull/396))
+- reject the legacy query alias like the log and trace tools ([#395](https://github.com/SigNoz/signoz-mcp-server/pull/395))
+- find a trace by ID alone in get_trace_details ([#388](https://github.com/SigNoz/signoz-mcp-server/pull/388))
+- reject the legacy query alias like the log tools ([#385](https://github.com/SigNoz/signoz-mcp-server/pull/385))
+- aggregations expressions, having, functions, order, and selectFields on the query tools ([#380](https://github.com/SigNoz/signoz-mcp-server/pull/380))
+
+### Added
+- report the org's feature flags ([#419](https://github.com/SigNoz/signoz-mcp-server/pull/419))
+- log and count tool arguments the input schema does not declare ([#415](https://github.com/SigNoz/signoz-mcp-server/pull/415))
+- filter, state, and sort alert rules in SigNoz before paging ([#418](https://github.com/SigNoz/signoz-mcp-server/pull/418))
+- signoz_test_ai_attribute_mapping runs sample spans through the mappings ([#411](https://github.com/SigNoz/signoz-mcp-server/pull/411))
+- route LLM and agent questions to builder_ai_query and explain AI results ([#410](https://github.com/SigNoz/signoz-mcp-server/pull/410))
+- add pricing and mapping tools ([#407](https://github.com/SigNoz/signoz-mcp-server/pull/407))
+- AI aggregates and the AI query guide ([#404](https://github.com/SigNoz/signoz-mcp-server/pull/404))
+- AI search and trace rows on signoz_search_traces ([#390](https://github.com/SigNoz/signoz-mcp-server/pull/390))
+- add queryType to select AI fields on signoz_get_field_keys ([#381](https://github.com/SigNoz/signoz-mcp-server/pull/381))
+- derive the signoz_execute_builder_query input schema from the SigNoz spec ([#378](https://github.com/SigNoz/signoz-mcp-server/pull/378))
+- drive tool schemas, descriptions, and examples from the SigNoz spec ([#377](https://github.com/SigNoz/signoz-mcp-server/pull/377))
+- search the template catalog with searchText ([#371](https://github.com/SigNoz/signoz-mcp-server/pull/371))
+
+### Fixed
+- name REGEXP when SigNoz rejects a PromQL =~ matcher ([#421](https://github.com/SigNoz/signoz-mcp-server/pull/421))
+- list services from the v2 endpoint, sorted by name ([#417](https://github.com/SigNoz/signoz-mcp-server/pull/417))
+- reject a filter sent as the {"expression": ...} wire object ([#414](https://github.com/SigNoz/signoz-mcp-server/pull/414))
+- read a JSON-encoded array string for groupBy and selectFields ([#413](https://github.com/SigNoz/signoz-mcp-server/pull/413))
+- match the severity shortcut as a case-insensitive prefix ([#398](https://github.com/SigNoz/signoz-mcp-server/pull/398))
+- parse query_metrics groupBy like the other query tools ([#394](https://github.com/SigNoz/signoz-mcp-server/pull/394))
+- look up query_metrics metadata by exact name ([#393](https://github.com/SigNoz/signoz-mcp-server/pull/393))
+- let SigNoz validate aggregation combinations ([#392](https://github.com/SigNoz/signoz-mcp-server/pull/392))
+- let SigNoz parse minDuration and maxDuration units ([#387](https://github.com/SigNoz/signoz-mcp-server/pull/387))
+- parenthesize the filter and quote shortcut values ([#386](https://github.com/SigNoz/signoz-mcp-server/pull/386))
+- ignore searchScope without searchText instead of failing ([#384](https://github.com/SigNoz/signoz-mcp-server/pull/384))
+- teach the unknown-key fallback instead of a hard error ([#383](https://github.com/SigNoz/signoz-mcp-server/pull/383))
+- stop limiting formula input queries ([#405](https://github.com/SigNoz/signoz-mcp-server/pull/405))
+- log rejected SigNoz requests at WARN, not ERROR ([#397](https://github.com/SigNoz/signoz-mcp-server/pull/397))
+
+### Changed
+- let SigNoz resolve trace field names ([#400](https://github.com/SigNoz/signoz-mcp-server/pull/400))
+- keep the query tools' parameter descriptions in one file ([#382](https://github.com/SigNoz/signoz-mcp-server/pull/382))
+- send every documented SigNoz call through the generated client ([#379](https://github.com/SigNoz/signoz-mcp-server/pull/379))
+
+### Documentation
+- teach that orderBy names the query's own aggregation ([#422](https://github.com/SigNoz/signoz-mcp-server/pull/422))
+- teach searching list_metrics by one word, not a separator guess ([#416](https://github.com/SigNoz/signoz-mcp-server/pull/416))
+- group and select a body field only when field keys list it ([#412](https://github.com/SigNoz/signoz-mcp-server/pull/412))
+- teach the filter operators agents reach for that do not exist ([#399](https://github.com/SigNoz/signoz-mcp-server/pull/399))
+- teach explicit full-text predicates in the query-builder example ([#409](https://github.com/SigNoz/signoz-mcp-server/pull/409))
+- teach the filter grammar agents trip on ([#389](https://github.com/SigNoz/signoz-mcp-server/pull/389))
+
+## [0.16.0] - 2026-10-23
+
+### Breaking changes
+- replace the hand-copied QB v5 mirror with the generated types ([#358](https://github.com/SigNoz/signoz-mcp-server/pull/358))
+- delete client-side validation and the hand-copied rule types, SigNoz is the only validator ([#354](https://github.com/SigNoz/signoz-mcp-server/pull/354))
+- delete the hand-copied provider specs and validation, SigNoz is the only validator ([#355](https://github.com/SigNoz/signoz-mcp-server/pull/355))
+- delete client-side validation, SigNoz is the only validator ([#349](https://github.com/SigNoz/signoz-mcp-server/pull/349))
+- delete MockClient and everything that relied on it ([#352](https://github.com/SigNoz/signoz-mcp-server/pull/352))
+- delete client-side validation and teach the truncation signal ([#351](https://github.com/SigNoz/signoz-mcp-server/pull/351))
+- stop injecting limit/order into alert evaluation queries ([#345](https://github.com/SigNoz/signoz-mcp-server/pull/345))
+- return a core field set from search and add optional `selectFields` ([#325](https://github.com/SigNoz/signoz-mcp-server/pull/325))
+
+### Added
+- generate the SigNoz API client with skaff ([#341](https://github.com/SigNoz/signoz-mcp-server/pull/341))
+
+### Fixed
+- stop pinning temporality in dashboard and metrics examples ([#370](https://github.com/SigNoz/signoz-mcp-server/pull/370))
+- discover browser links from SigNoz global config ([#339](https://github.com/SigNoz/signoz-mcp-server/pull/339))
+- stop logging the value of a custom header that collides with the auth header ([#359](https://github.com/SigNoz/signoz-mcp-server/pull/359))
+- stop teaching the legacy 'tag' fieldContext alias ([#350](https://github.com/SigNoz/signoz-mcp-server/pull/350))
+- use public SigNoz URL for resource links ([#332](https://github.com/SigNoz/signoz-mcp-server/pull/332))
+
+### Other
+- keep only the checks that need SigNoz ([#365](https://github.com/SigNoz/signoz-mcp-server/pull/365))
+- keep each rule pinned once, at the lowest layer that runs it ([#364](https://github.com/SigNoz/signoz-mcp-server/pull/364))
+- drop tests that assert the wrong thing or only test library behavior ([#363](https://github.com/SigNoz/signoz-mcp-server/pull/363))
+- drop re-pins of the wire catalog, wording pins, and count pins ([#362](https://github.com/SigNoz/signoz-mcp-server/pull/362))
+- drop logger and telemetry plumbing tests ([#361](https://github.com/SigNoz/signoz-mcp-server/pull/361))
+- record what the server sends instead of rewriting it into mcp-go shapes ([#360](https://github.com/SigNoz/signoz-mcp-server/pull/360))
+- delete dead code left behind by the validation-deletion wave ([#356](https://github.com/SigNoz/signoz-mcp-server/pull/356))
+- bump @modelcontextprotocol/sdk from 1.29.0 to 1.32.1 in /tools/mcp-ci ([#342](https://github.com/SigNoz/signoz-mcp-server/pull/342))
+- bump proxy-addr from 2.0.7 to 2.0.8 in /tools/mcp-ci ([#343](https://github.com/SigNoz/signoz-mcp-server/pull/343))
+- apply the testing standard to the existing suite ([#348](https://github.com/SigNoz/signoz-mcp-server/pull/348))
+- add testing doc ([#340](https://github.com/SigNoz/signoz-mcp-server/pull/340))
+- bump urllib3 from 2.7.0 to 2.8.0 in /tests ([#337](https://github.com/SigNoz/signoz-mcp-server/pull/337))
+- bump ip-address from 10.5.0 to 10.7.3 in /tools/mcp-ci ([#330](https://github.com/SigNoz/signoz-mcp-server/pull/330))
+- bump undici from 7.29.0 to 7.30.0 in /tools/mcp-ci ([#336](https://github.com/SigNoz/signoz-mcp-server/pull/336))
+- bump pyjwt from 2.13.0 to 2.15.0 in /tests ([#338](https://github.com/SigNoz/signoz-mcp-server/pull/338))
+- upgrade MCP Go SDK to v1.8.0 ([#326](https://github.com/SigNoz/signoz-mcp-server/pull/326))
+
 ## [0.15.0] - 2026-09-25
 
 ### Breaking changes
@@ -429,3 +524,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [0.13.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.12.0...v0.13.0
 [0.14.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.13.0...v0.14.0
 [0.15.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.14.0...v0.15.0
+[0.16.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.15.0...v0.16.0
+[0.17.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.16.0...v0.17.0

@@ -112,6 +112,11 @@ func TestDocsHandlers(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, docsindex.CodeOutOfScopeURL, result.StructuredContent.(map[string]any)["code"])
 
+		result, err = h.handleFetchDoc(ctx, makeToolRequest("signoz_fetch_doc", map[string]any{"url": "signoz://traces/query-builder-guide"}))
+		require.NoError(t, err)
+		require.Equal(t, docsindex.CodeOutOfScopeURL, result.StructuredContent.(map[string]any)["code"])
+		require.Contains(t, result.Content[0].(*mcp.TextContent).Text, "signoz:// URIs are MCP resources: read them with resources/read, not signoz_fetch_doc.")
+
 		result, err = h.handleFetchDoc(ctx, makeToolRequest("signoz_fetch_doc", map[string]any{"url": "https://signoz.io/docs/missing/"}))
 		require.NoError(t, err)
 		require.Equal(t, docsindex.CodeDocNotFound, result.StructuredContent.(map[string]any)["code"])

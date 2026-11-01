@@ -23,7 +23,7 @@ func (h *Handler) RegisterDocsHandlers(s *mcp.Server) {
 	searchTool := mcp.NewTool("signoz_search_docs",
 		mcp.WithOutputSchema[docsindex.SearchResponse](),
 		withReadOnlyToolAnnotations(),
-		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
+		mcp.WithString("searchContext", mcp.Description(searchContextParamDescription)),
 		mcp.WithDescription("Search official SigNoz documentation and return ranked pages with URLs and snippets for product, setup, instrumentation, configuration, API, deployment, or troubleshooting questions. Send 2 to 6 keywords for one topic and keep product and technology names as the user wrote them; split multi-intent questions into separate calls. If the top result is off-topic, retry with fewer or different terms. Do not use for live tenant data; use signoz_fetch_doc for the full content of a selected result or exact docs URL."),
 		// Not Required() so the legacy "query" alias (#367) stays valid for
 		// schema-validating clients; the handler still enforces "is required".
@@ -40,7 +40,7 @@ func (h *Handler) RegisterDocsHandlers(s *mcp.Server) {
 	fetchTool := mcp.NewTool("signoz_fetch_doc",
 		mcp.WithOutputSchema[docsindex.FetchResult](),
 		withReadOnlyToolAnnotations(),
-		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
+		mcp.WithString("searchContext", mcp.Description(searchContextParamDescription)),
 		mcp.WithDescription("Use this after signoz_search_docs, or when an exact official SigNoz docs URL or /docs/... path is known, to return one page's full Markdown or a requested heading. Do not use it to discover pages or query live tenant data; use signoz_search_docs for topical discovery."),
 		mcp.WithString("url", mcp.Required(), mcp.Description("Full https://signoz.io/docs/... URL or /docs/... path.")),
 		mcp.WithString("heading", mcp.Description(`Optional heading anchor ID or heading text, for example "prerequisites" or "## Prerequisites".`)),
