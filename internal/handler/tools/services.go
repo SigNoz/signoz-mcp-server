@@ -3,9 +3,11 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"sort"
 
+	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
@@ -133,10 +135,8 @@ func (h *Handler) handleGetServiceTopOperations(ctx context.Context, req mcp.Cal
 
 	start, end := timeutil.GetTimestampsWithDefaults(args, timeutil.UnitNanos)
 
-	// tags is passed through to the SigNoz API verbatim. The backend's
-	// /api/v1/service/top_operations expects a structured []TagQueryParam array,
-	// so the caller supplies that raw JSON; an absent/non-string value defaults
-	// to an empty filter. (A friendlier typed-tags schema is tracked as a follow-up.)
+	// tags is passed through to SigNoz verbatim as its tag filter array; an
+	// absent or non-string value means no tag filter.
 	var tags json.RawMessage
 	if t, ok := args["tags"].(string); ok && t != "" {
 		tags = json.RawMessage(t)
@@ -158,5 +158,29 @@ func (h *Handler) handleGetServiceTopOperations(ctx context.Context, req mcp.Cal
 		h.logUpstreamFailure(ctx, "Failed to get service top operations", err, slog.String("start", start), slog.String("end", end), slog.String("service", service))
 		return upstreamError(err), nil
 	}
-	return mcp.NewToolResultText(string(result)), nil
+
+	// SigNoz sends "data": null when the service has no operations in the window.
+	var envelope struct {
+		Data json.RawMessage `json:"data"`
+	}
+	operations := []json.RawMessage{}
+	err = json.Unmarshal(result, &envelope)
+	if err == nil && len(envelope.Data) == 0 {
+		err = errors.New("response has no data field")
+	}
+	if err == nil && string(envelope.Data) != "null" {
+		err = json.Unmarshal(envelope.Data, &operations)
+	}
+	if err != nil {
+		h.logger.WarnContext(ctx, "Top operations response is not a data array", logpkg.ErrAttr(err), slog.String("response", logpkg.TruncBody(result)))
+		return upstreamResponseError("top operations response has no data array"), nil
+	}
+	payload, err := json.Marshal(operations)
+	if err != nil {
+		return InternalErrorResult("failed to marshal response: " + err.Error()), nil
+	}
+	if len(operations) >= signozclient.TopOperationsLimit {
+		return resultWithNotes(payload, limitOnlyCompletenessNote(len(operations), signozclient.TopOperationsLimit, true, "a shorter time range or tags")), nil
+	}
+	return mcp.NewToolResultText(string(payload)), nil
 }
