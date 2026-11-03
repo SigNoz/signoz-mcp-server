@@ -41,6 +41,9 @@ import (
 const (
 	officialSDKPageSize = 128
 	unknownToolName     = "unknown"
+	// maxRequestedToolNameLength bounds the logged name of an unknown tool;
+	// registered names are far shorter.
+	maxRequestedToolNameLength = 128
 )
 
 type MCPServer struct {
@@ -561,6 +564,15 @@ func (m *MCPServer) receivingMiddleware(isRegisteredTool func(string) bool) mcp.
 				if err != nil {
 					message := "mcp error"
 					attrs := []any{slog.String("mcp.method.name", observedMethod), logpkg.BoundedErrAttr(observableToolError(toolName, err))}
+					// The requested name of an unknown tool is client-chosen, so it goes
+					// only into this log, never into span names or metric dimensions.
+					if req, ok := request.(*mcp.CallToolRequest); ok && toolName == unknownToolName && req.Params != nil {
+						requested := req.Params.Name
+						if len(requested) > maxRequestedToolNameLength {
+							requested = requested[:maxRequestedToolNameLength]
+						}
+						attrs = append(attrs, slog.String("mcp.tool.requested_name", requested))
+					}
 					if recoveredPanic {
 						message = "mcp handler panic recovered"
 						attrs = append(attrs, slog.String("stack", logpkg.TruncBody(debug.Stack())))
