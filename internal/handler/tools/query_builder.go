@@ -145,9 +145,8 @@ func (h *Handler) handleExecuteBuilderQuery(ctx context.Context, req mcp.CallToo
 
 	h.logger.DebugContext(ctx, "Successfully executed query builder v5")
 
-	// Surface non-fatal backend warnings as a note + WARN log, matching the five
-	// sibling QueryBuilderV5 callers (search/aggregate logs & traces, query_metrics).
-	// Returning the body verbatim previously dropped them entirely.
+	// Non-fatal backend warnings stay in the payload's data.warning; they are
+	// only WARN-logged here, as in the other QueryBuilderV5 callers.
 	var notes []string
 	if len(applied) > 0 {
 		requestType, _ := queryObj["requestType"].(string)
@@ -156,9 +155,6 @@ func (h *Handler) handleExecuteBuilderQuery(ctx context.Context, req mcp.CallToo
 	warnings := extractBackendWarningMessages(data)
 	warnBackendWarnings(ctx, h.logger, "signoz_execute_builder_query", warnings)
 	warnUnparsedWarningEnvelope(ctx, h.logger, "signoz_execute_builder_query", data, len(warnings))
-	if len(warnings) > 0 {
-		notes = append(notes, backendWarningsNote(warnings))
-	}
 	return resultWithNotes(data, notes...), nil
 }
 

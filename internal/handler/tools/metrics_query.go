@@ -250,14 +250,14 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 	// aggregate siblings); decisions/warnings go into a SEPARATE note block
 	// rather than prepended. query_metrics is a raw QB passthrough, so it stays
 	// text-only (no structuredContent) — its upstream shape is variable.
-	note := buildMetricsDecisionsNote(decisions, resolved.Warnings, backendWarnings)
+	note := buildMetricsDecisionsNote(decisions, resolved.Warnings)
 	return resultWithNotes(result, note), nil
 }
 
 // buildMetricsDecisionsNote renders the decisions/warnings advisory block that
 // query_metrics surfaces alongside (not prepended into) its JSON payload. It is
 // emitted as a separate content block via resultWithNotes.
-func buildMetricsDecisionsNote(decisions, defaultWarnings, backendWarnings []string) string {
+func buildMetricsDecisionsNote(decisions, defaultWarnings []string) string {
 	var b strings.Builder
 	b.WriteString("[Decisions applied]\n")
 	for _, d := range decisions {
@@ -265,9 +265,6 @@ func buildMetricsDecisionsNote(decisions, defaultWarnings, backendWarnings []str
 	}
 	for _, w := range defaultWarnings {
 		fmt.Fprintf(&b, "  WARNING: %s\n", w)
-	}
-	for _, w := range backendWarnings {
-		fmt.Fprintf(&b, "  WARNING: backend: %s\n", w)
 	}
 	return strings.TrimRight(b.String(), "\n")
 }

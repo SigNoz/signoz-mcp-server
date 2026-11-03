@@ -184,16 +184,16 @@ func TestRawSearchResult_KeepsRawJSONFirstAndAppendsNoteBlocks(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn}))
 
 	unclamped := rawSearchResult(testCtx(), logger, "signoz_search_logs", payload, 100, 0, false)
-	if len(unclamped.Content) != 3 {
-		t.Fatalf("unclamped content block count = %d, want raw JSON + completeness note + warning note", len(unclamped.Content))
+	if len(unclamped.Content) != 2 {
+		t.Fatalf("unclamped content block count = %d, want raw JSON + completeness note", len(unclamped.Content))
 	}
 	if note := noteText(t, unclamped, 1); strings.Contains(note, "result limited to") {
 		t.Fatalf("unclamped block 1 = %q, want no clamp note", note)
 	}
 
 	result := rawSearchResult(testCtx(), logger, "signoz_search_logs", payload, 100, 0, true)
-	if len(result.Content) != 4 {
-		t.Fatalf("content block count = %d, want raw JSON + clamp note + completeness note + warning note", len(result.Content))
+	if len(result.Content) != 3 {
+		t.Fatalf("content block count = %d, want raw JSON + clamp note + completeness note", len(result.Content))
 	}
 	if block0 := noteText(t, result, 0); block0 != string(payload) {
 		t.Fatalf("block 0 = %q, want raw response unchanged", block0)
@@ -204,8 +204,11 @@ func TestRawSearchResult_KeepsRawJSONFirstAndAppendsNoteBlocks(t *testing.T) {
 	if completenessNote := noteText(t, result, 2); !strings.Contains(completenessNote, "hasMore") {
 		t.Fatalf("block 2 = %q, want completeness note", completenessNote)
 	}
-	if warningNote := noteText(t, result, 3); !strings.Contains(warningNote, "ambiguous key") {
-		t.Fatalf("block 3 = %q, want warning note", warningNote)
+	// The backend warning stays in block 0's data.warning and is not repeated in a note.
+	for i := 1; i < len(result.Content); i++ {
+		if note := noteText(t, result, i); strings.Contains(note, "ambiguous key") {
+			t.Fatalf("block %d = %q repeats the backend warning from block 0", i, note)
+		}
 	}
 }
 

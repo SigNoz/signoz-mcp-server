@@ -19,11 +19,17 @@ def first_text_block(result: dict) -> str:
 
 
 def note_blocks(result: dict) -> str:
-    """All text blocks after block 0 (completeness / clamp / warning notes)."""
+    """All text blocks after block 0 (completeness and clamp notes)."""
     content = result.get("content", [])
     if len(content) < 2:
         return ""
     return "\n".join(b.get("text", "") for b in content[1:] if b.get("type") == "text")
+
+
+def backend_warnings(result: dict) -> str:
+    """SigNoz's non-fatal warning messages from block 0's data.warning."""
+    warning = (first_block_json(result).get("data") or {}).get("warning") or {}
+    return "\n".join(w.get("message", "") for w in warning.get("warnings") or [])
 
 
 def first_block_json(result: dict) -> Any:

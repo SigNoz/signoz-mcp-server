@@ -170,7 +170,7 @@ def test_search_traces_core_fields_and_select_fields(mcp_client: MCPClient, test
     assert "selectFields" in first_text_block(invalid), f"error must name selectFields: {first_text_block(invalid)!r}"
 
     # An unknown field is never silent: SigNoz either rejects the key or runs the
-    # query and returns a key-not-found warning, which the tool shows as a note.
+    # query and returns a key-not-found warning in the response's data.warning.
     unknown_key = f"mcp.e2e.absent.{test_id.replace('-', '_')}"
     unknown = mcp_client.call_tool(
         "signoz_search_traces",
