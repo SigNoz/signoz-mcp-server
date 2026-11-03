@@ -8,6 +8,8 @@ import (
 
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 	"github.com/SigNoz/signoz-mcp-server/pkg/paginate"
+	"github.com/SigNoz/signoz-mcp-server/pkg/querybuilder"
+	"github.com/SigNoz/signoz-mcp-server/pkg/timeutil"
 )
 
 // listResult wraps a paginated list payload (a code-controlled envelope) as a
@@ -182,4 +184,153 @@ func readResourceID(args map[string]any, legacyKey string) string {
 		return v
 	}
 	return ""
+}
+
+func stringValue(v any) string {
+	s, _ := v.(string)
+	return s
+}
+
+// parseBoolArg parses a boolean tool argument. It accepts a real JSON bool, or
+// the case-insensitive strings "true"/"false" (so legacy string-typed callers
+// keep working after the schema is declared as a real boolean). Any other
+// non-empty value is a typed error so the LLM gets a correctable message rather
+// than the value being silently dropped.
+//
+// Returns (value, present, error):
+//   - present is false when the key is absent or an empty string (treat as "not set")
+//   - error is non-nil only when a present value cannot be interpreted as a bool
+func parseBoolArg(args map[string]any, key string) (bool, bool, error) {
+	raw, exists := args[key]
+	if !exists || raw == nil {
+		return false, false, nil
+	}
+	switch v := raw.(type) {
+	case bool:
+		return v, true, nil
+	case string:
+		s := strings.TrimSpace(v)
+		if s == "" {
+			return false, false, nil
+		}
+		switch strings.ToLower(s) {
+		case "true":
+			return true, true, nil
+		case "false":
+			return false, true, nil
+		default:
+			return false, false, fmt.Errorf(`invalid %q value %q: must be a boolean (true or false)`, key, v)
+		}
+	default:
+		return false, false, fmt.Errorf(`invalid %q value: must be a boolean (true or false)`, key)
+	}
+}
+
+func resolveTimestamps(args map[string]any, defaultRange string) (int64, int64, error) {
+	// Reject a present-but-malformed start/end LOUDLY before falling through to
+	// the default window. GetTimestampsWithDefaults silently defaults on a bad
+	// value, which would hand back the wrong time range with no error.
+	if err := timeutil.ValidateExplicitTimestamps(args); err != nil {
+		return 0, 0, err
+	}
+	// Inject the tool's advertised default window when there is no usable explicit
+	// time input — no usable timeRange string AND no usable explicit start. A
+	// present-but-empty start (which timeutil treats as absent) must NOT block the
+	// default, or GetTimestampsWithDefaults silently falls back to its generic 6h
+	// window. A present-but-non-string timeRange is already rejected loudly by
+	// ValidateExplicitTimestamps above; an empty-string timeRange means "use default".
+	if tr, ok := args["timeRange"].(string); !ok || tr == "" {
+		if !timeutil.HasUsableTimestamp(args, "start") {
+			args["timeRange"] = defaultRange
+		}
+	}
+	start, end := timeutil.GetTimestampsWithDefaults(args, "ms")
+	var startTime, endTime int64
+	if err := json.Unmarshal([]byte(start), &startTime); err != nil {
+		return 0, 0, fmt.Errorf("invalid start timestamp: use timeRange instead (e.g., \"1h\", \"24h\")")
+	}
+	if err := json.Unmarshal([]byte(end), &endTime); err != nil {
+		return 0, 0, fmt.Errorf("invalid end timestamp: use timeRange instead (e.g., \"1h\", \"24h\")")
+	}
+	return startTime, endTime, nil
+}
+
+// parseStepInterval parses an optional stepInterval (seconds) argument for the
+// aggregate tools. It accepts a real JSON number OR a string that is ENTIRELY a
+// positive integer. It deliberately does NOT use parseIntLoose for the string
+// case: parseIntLoose scans a numeric prefix via Sscanf("%d"), so "1h"/"60s"
+// would silently become 1/60 — a wrong bucket size. A present-but-invalid value
+// (non-numeric, suffixed, or <= 0) yields a nil interval and a warning so the
+// backend auto-selects rather than applying a silently-wrong granularity.
+//
+// Returns (nil, "") when the argument is absent or an empty string.
+func parseStepInterval(raw any) (*int64, string) {
+	if raw == nil {
+		return nil, ""
+	}
+	warn := func() (*int64, string) {
+		return nil, fmt.Sprintf(
+			"stepInterval %v could not be parsed as a positive integer number of seconds; letting the backend auto-select the bucket size",
+			raw)
+	}
+	switch v := raw.(type) {
+	case string:
+		s := strings.TrimSpace(v)
+		if s == "" {
+			return nil, "" // treat empty string as not set
+		}
+		// Require the ENTIRE string to be a base-10 integer (no "1h"/"60s"/hex).
+		n, err := strconv.ParseInt(s, 10, 64)
+		if err != nil || n <= 0 {
+			return warn()
+		}
+		return &n, ""
+	case float64:
+		// JSON numbers decode as float64. Reject non-integral values (e.g.
+		// 60.9) rather than truncating to 60 — the contract is "positive
+		// integer seconds", so a fractional value is invalid → auto-select.
+		if v != float64(int64(v)) || v <= 0 {
+			return warn()
+		}
+		n := int64(v)
+		return &n, ""
+	case json.Number:
+		// A json.Number preserves the literal; require it parse as a positive
+		// integer (Int64 errors on a fractional literal like "60.9").
+		n, err := v.Int64()
+		if err != nil || n <= 0 {
+			return warn()
+		}
+		return &n, ""
+	case int:
+		if v <= 0 {
+			return warn()
+		}
+		n := int64(v)
+		return &n, ""
+	case int64:
+		if v <= 0 {
+			return warn()
+		}
+		return &v, ""
+	default:
+		return warn()
+	}
+}
+
+// MaxRawResultLimit caps how many raw rows search_logs / search_traces will
+// request from the backend. Each row is read fully into memory, decoded, and
+// re-marshaled into the tool response (~1.6 MiB per 1000 log rows measured
+// against a real backend), so an uncapped limit is an unbounded single-request
+// memory vector on the shared, memory-limited multi-tenant pod. Callers that
+// need more rows should paginate via offset.
+const MaxRawResultLimit = querybuilder.MaxQueryLimit
+
+// clampLimit bounds a parsed limit to MaxRawResultLimit. It returns the
+// effective limit and whether clamping occurred so handlers can surface it.
+func clampLimit(n int) (int, bool) {
+	if n > MaxRawResultLimit {
+		return MaxRawResultLimit, true
+	}
+	return n, false
 }
