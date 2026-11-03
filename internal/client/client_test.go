@@ -598,6 +598,7 @@ func TestGetFieldKeys(t *testing.T) {
 		assert.Equal(t, "resource", q.Get("fieldContext"))
 		assert.Equal(t, "string", q.Get("fieldDataType"))
 		assert.Equal(t, "otel", q.Get("source"))
+		assert.Equal(t, "100", q.Get("limit"))
 
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"success","data":[]}`))
@@ -607,7 +608,7 @@ func TestGetFieldKeys(t *testing.T) {
 	logger := logpkg.New("debug")
 	client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
-	_, err := client.GetFieldKeys(context.Background(), "metrics", "container.cpu.usage", "cpu", "resource", "string", "otel")
+	_, err := client.GetFieldKeys(context.Background(), "metrics", "container.cpu.usage", "cpu", "resource", "string", "otel", 100)
 	require.NoError(t, err)
 }
 
@@ -623,6 +624,7 @@ func TestGetFieldValues(t *testing.T) {
 		assert.Equal(t, "prod", q.Get("searchText"))
 		assert.Equal(t, "resource", q.Get("fieldContext"))
 		assert.Equal(t, "otel", q.Get("source"))
+		assert.False(t, q.Has("limit"), "an unset limit leaves SigNoz's default")
 
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"success","data":[]}`))
@@ -632,7 +634,7 @@ func TestGetFieldValues(t *testing.T) {
 	logger := logpkg.New("debug")
 	client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
-	_, err := client.GetFieldValues(context.Background(), "metrics", "host.name", "container.cpu.usage", "prod", "resource", "otel")
+	_, err := client.GetFieldValues(context.Background(), "metrics", "host.name", "container.cpu.usage", "prod", "resource", "otel", 0)
 	require.NoError(t, err)
 }
 

@@ -635,7 +635,7 @@ func (s *SigNoz) DeleteView(ctx context.Context, viewID string) (json.RawMessage
 	})
 }
 
-func (s *SigNoz) GetFieldKeys(ctx context.Context, signal, metricName, searchText, fieldContext, fieldDataType, source string) (json.RawMessage, error) {
+func (s *SigNoz) GetFieldKeys(ctx context.Context, signal, metricName, searchText, fieldContext, fieldDataType, source string, limit int) (json.RawMessage, error) {
 	params := &apiclient.GetFieldsKeysParams{
 		Signal:        ptr(apitypes.TelemetrytypesSignal(signal)),
 		Source:        optEnum[apitypes.TelemetrytypesSource](source),
@@ -643,6 +643,7 @@ func (s *SigNoz) GetFieldKeys(ctx context.Context, signal, metricName, searchTex
 		FieldDataType: optEnum[apitypes.TelemetrytypesFieldDataType](fieldDataType),
 		MetricName:    optString(metricName),
 		SearchText:    optString(searchText),
+		Limit:         optInt(limit),
 	}
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching field keys",
 		slog.String("signal", signal),
@@ -652,7 +653,7 @@ func (s *SigNoz) GetFieldKeys(ctx context.Context, signal, metricName, searchTex
 	})
 }
 
-func (s *SigNoz) GetFieldValues(ctx context.Context, signal, name, metricName, searchText, fieldContext, source string) (json.RawMessage, error) {
+func (s *SigNoz) GetFieldValues(ctx context.Context, signal, name, metricName, searchText, fieldContext, source string, limit int) (json.RawMessage, error) {
 	params := &apiclient.GetFieldsValuesParams{
 		Signal:       ptr(apitypes.TelemetrytypesSignal(signal)),
 		Source:       optEnum[apitypes.TelemetrytypesSource](source),
@@ -660,6 +661,7 @@ func (s *SigNoz) GetFieldValues(ctx context.Context, signal, name, metricName, s
 		MetricName:   optString(metricName),
 		SearchText:   optString(searchText),
 		Name:         ptr(name),
+		Limit:        optInt(limit),
 	}
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching field values",
 		slog.String("signal", signal),
@@ -670,11 +672,12 @@ func (s *SigNoz) GetFieldValues(ctx context.Context, signal, name, metricName, s
 }
 
 // The AI fields endpoints always read trace fields, so they take no signal, source, or metricName.
-func (s *SigNoz) GetAIFieldKeys(ctx context.Context, searchText, fieldContext, fieldDataType string) (json.RawMessage, error) {
+func (s *SigNoz) GetAIFieldKeys(ctx context.Context, searchText, fieldContext, fieldDataType string, limit int) (json.RawMessage, error) {
 	params := &apiclient.GetAIObservabilityFieldsKeysParams{
 		FieldContext:  optEnum[apitypes.TelemetrytypesFieldContext](fieldContext),
 		FieldDataType: optEnum[apitypes.TelemetrytypesFieldDataType](fieldDataType),
 		SearchText:    optString(searchText),
+		Limit:         optInt(limit),
 	}
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching AI field keys", slog.String("searchText", searchText))
 	return s.callAPI(ctx, DefaultQueryTimeout, func(ctx context.Context, api *apiclient.Client) (*http.Response, error) {

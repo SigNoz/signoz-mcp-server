@@ -36,9 +36,9 @@ type Client interface {
 	CreateView(ctx context.Context, body []byte) (json.RawMessage, error)
 	UpdateView(ctx context.Context, viewID string, body []byte) (json.RawMessage, error)
 	DeleteView(ctx context.Context, viewID string) (json.RawMessage, error)
-	GetFieldKeys(ctx context.Context, signal, metricName, searchText, fieldContext, fieldDataType, source string) (json.RawMessage, error)
-	GetFieldValues(ctx context.Context, signal, name, metricName, searchText, fieldContext, source string) (json.RawMessage, error)
-	GetAIFieldKeys(ctx context.Context, searchText, fieldContext, fieldDataType string) (json.RawMessage, error)
+	GetFieldKeys(ctx context.Context, signal, metricName, searchText, fieldContext, fieldDataType, source string, limit int) (json.RawMessage, error)
+	GetFieldValues(ctx context.Context, signal, name, metricName, searchText, fieldContext, source string, limit int) (json.RawMessage, error)
+	GetAIFieldKeys(ctx context.Context, searchText, fieldContext, fieldDataType string, limit int) (json.RawMessage, error)
 	GetTraceDetails(ctx context.Context, traceID string, includeSpans bool) (json.RawMessage, error)
 	CreateAlertRule(ctx context.Context, alertJSON []byte) (json.RawMessage, error)
 	UpdateAlertRule(ctx context.Context, ruleID string, alertJSON []byte) error
