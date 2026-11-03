@@ -300,7 +300,8 @@ The payload is forwarded to SigNoz exactly as composed, and SigNoz fills in very
 - evaluation and notificationSettings: SigNoz rejects a v2alpha1 rule missing either block.
 - panelType: set "graph"; SigNoz stores an empty value when omitted.
 - selectedQueryName: set it on every rule to the query or formula the rule alerts on, even when there is only one query.
-- labels.severity and annotations: SigNoz adds no defaults; include them so routing tiers and notification text work.
+- labels.severity: optional on v2alpha1 rules. Each firing already carries severity equal to the tier that fired; a static labels.severity replaces that value on every firing, and the alert-rule list sorts and filters by it. A v1 rule used labels.severity as its tier name (critical when absent); keep that name when converting one to v2alpha1.
+- annotations: SigNoz adds none, and without summary and description the default channel templates send only the alert name and labels.
 - Omit server-populated fields (createdAt, updatedAt, createdBy, updatedBy) and the injected webUrl, also when composing an update from a signoz_get_alert result.
 
 ## Further Reading
