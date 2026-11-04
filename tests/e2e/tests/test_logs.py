@@ -2,7 +2,7 @@ import pytest
 
 from fixtures.logger import setup_logger
 from fixtures.mcpclient import MCPClient, assert_tool_ok, first_json, text_blocks
-from fixtures.results import first_text_block, note_blocks, query_range_rows
+from fixtures.results import backend_warnings, first_text_block, note_blocks, query_range_rows
 from fixtures.telemetry import seed_field_tokens, seed_logs, wait_for
 
 logger = setup_logger(__name__)
@@ -158,8 +158,8 @@ def test_explicit_search_scopes_quoting_and_warning_round_trip(
     assert query_range_rows(first_text_block(plain)), "plain scoped search() missed the service-visible body"
     assert _decoded_rows_contain(search_text_result, body_token)
     assert _decoded_rows_contain(unscoped, body_token), "unscoped search() missed the escaped body token"
-    assert "search() runs across all fields" in note_blocks(unscoped), (
-        f"upstream search() cost warning was not preserved: {note_blocks(unscoped)!r}"
+    assert "search() runs across all fields" in backend_warnings(unscoped), (
+        f"upstream search() cost warning was not preserved: {backend_warnings(unscoped)!r}"
     )
 
     for scope in ("body", "attribute", "resource"):
@@ -231,8 +231,8 @@ def test_missing_filter_key_returns_no_rows_with_the_taught_warning(
         )
     )
     assert not query_range_rows(first_text_block(filtered)), "a missing key matched rows"
-    assert f"key `{missing_key}` not found in metadata" in note_blocks(filtered), (
-        f"the taught warning is missing: {note_blocks(filtered)!r}"
+    assert f"key `{missing_key}` not found in metadata" in backend_warnings(filtered), (
+        f"the taught warning is missing: {backend_warnings(filtered)!r}"
     )
 
 
