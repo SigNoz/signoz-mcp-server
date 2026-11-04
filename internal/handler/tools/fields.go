@@ -139,7 +139,8 @@ func (h *Handler) fieldListResult(ctx context.Context, toolName string, result j
 	var envelope struct {
 		Data map[string]json.RawMessage `json:"data"`
 	}
-	var complete bool
+	// A pointer, because json.Unmarshal leaves a bool false on null.
+	var complete *bool
 	err := json.Unmarshal(result, &envelope)
 	if err == nil {
 		raw, ok := envelope.Data["complete"]
@@ -149,11 +150,14 @@ func (h *Handler) fieldListResult(ctx context.Context, toolName string, result j
 			err = json.Unmarshal(raw, &complete)
 		}
 	}
+	if err == nil && complete == nil {
+		err = errors.New("data.complete is null")
+	}
 	if err != nil {
 		h.logger.WarnContext(ctx, "Field lookup response has no readable data.complete", slog.String("tool", toolName), logpkg.ErrAttr(err), slog.String("response", logpkg.TruncBody(result)))
 		return mcp.NewToolResultText(string(result))
 	}
-	if complete {
+	if *complete {
 		return mcp.NewToolResultText(string(result))
 	}
 	return resultWithNotes(result, "note: SigNoz cut this list (data.complete=false). To see more, narrow it with "+narrowWith+", or raise limit.")
