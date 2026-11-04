@@ -107,7 +107,7 @@ func (h *Handler) GetClient(ctx context.Context) (signozclient.Client, error) {
 	// SIGNOZ_URL to prevent leaking proxy-auth credentials (e.g. Cloudflare
 	// Access tokens) to arbitrary third-party hosts.
 	var headers map[string]string
-	if util.SameSigNozOrigin(signozURL, h.configURL) {
+	if signozURL == h.configURL {
 		headers = h.customHeaders
 	}
 

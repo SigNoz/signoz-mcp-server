@@ -138,6 +138,16 @@ func TestSameSigNozOrigin(t *testing.T) {
 	}
 }
 
+func TestNormalizeSigNozURLRejectsNonASCIIHost(t *testing.T) {
+	if _, err := NormalizeSigNozURL("https://s\u0130gnoz.example.com"); err == nil {
+		t.Fatalf("expected a non-ASCII host to be rejected")
+	}
+	got, err := NormalizeSigNozURL("https://xn--sgnoz-ipb.example.com")
+	if err != nil || got != "https://xn--sgnoz-ipb.example.com" {
+		t.Fatalf("punycode host = %q, err = %v", got, err)
+	}
+}
+
 func TestNormalizeSigNozURLCanonicalizesOrigin(t *testing.T) {
 	tests := []struct {
 		name string

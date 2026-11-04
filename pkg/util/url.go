@@ -32,10 +32,19 @@ func NormalizeSigNozURL(rawURL string) (string, error) {
 		return "", fmt.Errorf("URL must not include user info")
 	}
 
-	host := strings.ToLower(parsed.Hostname())
-	if host == "" {
+	rawHost := parsed.Hostname()
+	if rawHost == "" {
 		return "", fmt.Errorf("URL must include a host")
 	}
+	// Lowercasing and the IDNA mapping net/http dials with disagree on some
+	// letters, so a non-ASCII host could compare equal to one host and connect
+	// to another. Callers must send the punycode form.
+	for i := 0; i < len(rawHost); i++ {
+		if rawHost[i] >= 0x80 {
+			return "", fmt.Errorf("host must be ASCII; use the punycode form")
+		}
+	}
+	host := strings.ToLower(rawHost)
 	if host == "localhost" || host == "0.0.0.0" || host == "::" {
 		return "", fmt.Errorf("host %q is not allowed", host)
 	}

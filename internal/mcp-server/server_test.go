@@ -443,6 +443,7 @@ func TestAuthMiddlewareConfigAPIKeyStaysWithConfigURL(t *testing.T) {
 		{name: "config instance with default https port", configURL: "https://signoz.example.com:443", customURL: "https://signoz.example.com", wantCode: http.StatusOK},
 		{name: "config instance with default http port", configURL: "http://signoz.example.com:80", customURL: "http://signoz.example.com:80", wantCode: http.StatusOK},
 		{name: "config instance with path", configURL: "https://signoz.example.com/signoz", customURL: "https://signoz.example.com", wantCode: http.StatusOK},
+		{name: "lookalike unicode host", configURL: "https://signoz.example.com", customURL: "https://s\u0130gnoz.example.com", wantCode: http.StatusBadRequest},
 	}
 
 	for _, tc := range cases {
@@ -475,8 +476,8 @@ func TestAuthMiddlewareConfigAPIKeyStaysWithConfigURL(t *testing.T) {
 			if got := rr.Header().Get("X-API-Key"); got != "server-held-key" {
 				t.Fatalf("api key = %q, want %q", got, "server-held-key")
 			}
-			if got := rr.Header().Get("X-SigNoz-URL"); !util.SameSigNozOrigin(got, tc.configURL) {
-				t.Fatalf("signoz url = %q, want the origin of %q", got, tc.configURL)
+			if got := rr.Header().Get("X-SigNoz-URL"); got != tc.configURL {
+				t.Fatalf("signoz url = %q, want %q", got, tc.configURL)
 			}
 		})
 	}
