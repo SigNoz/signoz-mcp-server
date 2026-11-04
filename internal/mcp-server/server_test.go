@@ -431,6 +431,53 @@ func TestAuthMiddlewareHonorsAuthorizationWithConfigURL(t *testing.T) {
 	}
 }
 
+func TestAuthMiddlewareConfigAPIKeyStaysWithConfigURL(t *testing.T) {
+	cases := []struct {
+		name      string
+		customURL string
+		wantCode  int
+	}{
+		{name: "other instance", customURL: "https://other.example.com", wantCode: http.StatusUnauthorized},
+		{name: "config instance", customURL: "https://Signoz.example.com/", wantCode: http.StatusOK},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := &config.Config{URL: "https://signoz.example.com", APIKey: "server-held-key"}
+			server := &MCPServer{logger: logpkg.New("error"), config: cfg, analytics: noopanalytics.New()}
+			req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+			req.Header.Set("X-SigNoz-URL", tc.customURL)
+
+			rr := httptest.NewRecorder()
+			nextCalled := false
+			server.authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				nextCalled = true
+				apiKey, _ := util.GetAPIKey(r.Context())
+				signozURL, _ := util.GetSigNozURL(r.Context())
+				w.Header().Set("X-API-Key", apiKey)
+				w.Header().Set("X-SigNoz-URL", signozURL)
+				w.WriteHeader(http.StatusOK)
+			})).ServeHTTP(rr, req)
+
+			if rr.Code != tc.wantCode {
+				t.Fatalf("status = %d, want %d", rr.Code, tc.wantCode)
+			}
+			if tc.wantCode != http.StatusOK {
+				if nextCalled {
+					t.Fatalf("next handler must not run when the server-held key would leave SIGNOZ_URL")
+				}
+				return
+			}
+			if got := rr.Header().Get("X-API-Key"); got != "server-held-key" {
+				t.Fatalf("api key = %q, want %q", got, "server-held-key")
+			}
+			if got := rr.Header().Get("X-SigNoz-URL"); got != "https://signoz.example.com" {
+				t.Fatalf("signoz url = %q, want %q", got, "https://signoz.example.com")
+			}
+		})
+	}
+}
+
 func TestAuthMiddlewareRejectsInstanceURLNotInAllowlist(t *testing.T) {
 	cfg := &config.Config{
 		InstanceURLAllowlist: util.ParseInstanceURLAllowlist("*.us.signoz.cloud"),

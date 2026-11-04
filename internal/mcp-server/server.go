@@ -1186,6 +1186,16 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 			}
 			// Set the SigNoz URL on ctx first so an allowlist rejection is attributed.
 			ctx = util.SetSigNozURL(ctx, normalized)
+			// The server-held key belongs to SIGNOZ_URL only. A caller who
+			// picks another instance must bring the credential for it.
+			if authMode == authModeConfigAPIKey && !strings.EqualFold(normalized, m.config.URL) {
+				m.logAuthFailure(ctx, r, http.StatusUnauthorized, authFailureMissingCredential, authMode, "X-SigNoz-URL differs from SIGNOZ_URL and the request carries no credential")
+				if m.config.OAuthEnabled {
+					m.setOAuthChallenge(w, "")
+				}
+				http.Error(w, "Authorization or SIGNOZ-API-KEY header required when X-SigNoz-URL names another instance", http.StatusUnauthorized)
+				return
+			}
 			if !m.enforceInstanceURLAllowlist(ctx, w, r, normalized, authMode) {
 				return
 			}
