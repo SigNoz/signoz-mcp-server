@@ -19,7 +19,7 @@ import (
 type Handler struct {
 	logger        *slog.Logger
 	clientCache   *expirable.LRU[string, *signozclient.SigNoz]
-	configURL     string
+	config        *config.Config
 	customHeaders map[string]string
 	meters        *otelpkg.Meters
 	docsIndex     *docsindex.IndexRegistry
@@ -56,7 +56,7 @@ func NewHandler(log *slog.Logger, cfg *config.Config) *Handler {
 	return &Handler{
 		logger:        log,
 		clientCache:   expirable.NewLRU[string, *signozclient.SigNoz](cfg.ClientCacheSize, nil, cfg.ClientCacheTTL),
-		configURL:     cfg.URL,
+		config:        cfg,
 		customHeaders: cfg.CustomHeaders,
 	}
 }
@@ -97,6 +97,9 @@ func (h *Handler) GetClient(ctx context.Context) (signozclient.Client, error) {
 		authHeader = "SIGNOZ-API-KEY"
 	}
 
+	// Producers that bypass the auth middleware, such as the OAuth analytics
+	// path, still carry the origin form of the operator's instance.
+	signozURL = h.config.ResolveInstanceURL(signozURL)
 	cacheKey := util.HashTenantKey(authHeader, apiKey, signozURL)
 
 	if cachedClient, ok := h.clientCache.Get(cacheKey); ok {
@@ -107,7 +110,7 @@ func (h *Handler) GetClient(ctx context.Context) (signozclient.Client, error) {
 	// SIGNOZ_URL to prevent leaking proxy-auth credentials (e.g. Cloudflare
 	// Access tokens) to arbitrary third-party hosts.
 	var headers map[string]string
-	if signozURL == h.configURL {
+	if signozURL == h.config.URL {
 		headers = h.customHeaders
 	}
 

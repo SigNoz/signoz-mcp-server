@@ -1161,11 +1161,7 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 		}
 
 		if usedOAuthToken {
-			// The operator's own instance resolves to SIGNOZ_URL itself, path
-			// included, so later checks compare the configured value.
-			if util.SameSigNozOrigin(signozURL, m.config.URL) {
-				signozURL = m.config.URL
-			}
+			signozURL = m.config.ResolveInstanceURL(signozURL)
 			ctx = util.SetSigNozURL(ctx, signozURL)
 			if attr, ok := otelpkg.TenantURLAttr(ctx); ok {
 				trace.SpanFromContext(ctx).SetAttributes(attr)
@@ -1189,9 +1185,7 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 				http.Error(w, fmt.Sprintf("Invalid X-SigNoz-URL: %v", err), http.StatusBadRequest)
 				return
 			}
-			if util.SameSigNozOrigin(normalized, m.config.URL) {
-				normalized = m.config.URL
-			}
+			normalized = m.config.ResolveInstanceURL(normalized)
 			// Set the SigNoz URL on ctx first so an allowlist rejection is attributed.
 			ctx = util.SetSigNozURL(ctx, normalized)
 			// The server-held key belongs to SIGNOZ_URL only. A caller who

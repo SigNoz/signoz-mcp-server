@@ -80,6 +80,14 @@ func TestLoadConfig_CustomHeaders(t *testing.T) {
 	}
 }
 
+func TestResolveInstanceURL(t *testing.T) {
+	cfg := &Config{URL: "https://signoz.example.com:443/signoz"}
+	require.Equal(t, "https://signoz.example.com:443/signoz", cfg.ResolveInstanceURL("https://signoz.example.com"))
+	require.Equal(t, "https://signoz.example.com:443/signoz", cfg.ResolveInstanceURL("https://SIGNOZ.example.com:443"))
+	require.Equal(t, "https://other.example.com", cfg.ResolveInstanceURL("https://other.example.com"))
+	require.Equal(t, "https://tenant.example.com", (&Config{}).ResolveInstanceURL("https://tenant.example.com"))
+}
+
 func TestValidateConfig_HTTPAllowsCredentialsFromHeaders(t *testing.T) {
 	cfg := &Config{
 		TransportMode: "http",
