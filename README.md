@@ -322,7 +322,7 @@ The client discovers OAuth endpoints automatically, opens a browser for credenti
 
 The API key and SigNoz URL only need to be provided in **one** place: the server or the client.
 
-**Option A — Credentials on the server** (simpler client config):
+**Option A — Credentials on the server** (simpler client config). The server-held key is sent only to `SIGNOZ_URL`. A request that names another instance in `X-SigNoz-URL` must carry its own `SIGNOZ-API-KEY` or `Authorization` header, or it is refused with HTTP 401.
 
 ```bash
 SIGNOZ_URL=https://your-signoz-instance.com \
