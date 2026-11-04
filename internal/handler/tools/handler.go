@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"strings"
 	"sync"
 
 	expirable "github.com/hashicorp/golang-lru/v2/expirable"
@@ -54,16 +53,10 @@ func (h *Handler) DocsIndexReady() bool {
 }
 
 func NewHandler(log *slog.Logger, cfg *config.Config) *Handler {
-	// Normalize the configured URL so that the URL comparison in GetClient
-	// works reliably (e.g. https://example.com:443 == https://example.com).
-	normalizedURL := cfg.URL
-	if n, err := util.NormalizeSigNozURL(cfg.URL); err == nil {
-		normalizedURL = n
-	}
 	return &Handler{
 		logger:        log,
 		clientCache:   expirable.NewLRU[string, *signozclient.SigNoz](cfg.ClientCacheSize, nil, cfg.ClientCacheTTL),
-		configURL:     normalizedURL,
+		configURL:     cfg.URL,
 		customHeaders: cfg.CustomHeaders,
 	}
 }
@@ -114,7 +107,7 @@ func (h *Handler) GetClient(ctx context.Context) (signozclient.Client, error) {
 	// SIGNOZ_URL to prevent leaking proxy-auth credentials (e.g. Cloudflare
 	// Access tokens) to arbitrary third-party hosts.
 	var headers map[string]string
-	if strings.EqualFold(signozURL, h.configURL) {
+	if util.SameSigNozOrigin(signozURL, h.configURL) {
 		headers = h.customHeaders
 	}
 

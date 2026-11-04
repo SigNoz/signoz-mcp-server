@@ -1188,7 +1188,7 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 			ctx = util.SetSigNozURL(ctx, normalized)
 			// The server-held key belongs to SIGNOZ_URL only. A caller who
 			// picks another instance must bring the credential for it.
-			if authMode == authModeConfigAPIKey && !strings.EqualFold(normalized, m.config.URL) {
+			if authMode == authModeConfigAPIKey && !util.SameSigNozOrigin(normalized, m.config.URL) {
 				m.logAuthFailure(ctx, r, http.StatusUnauthorized, authFailureMissingCredential, authMode, "X-SigNoz-URL differs from SIGNOZ_URL and the request carries no credential")
 				if m.config.OAuthEnabled {
 					m.setOAuthChallenge(w, "")

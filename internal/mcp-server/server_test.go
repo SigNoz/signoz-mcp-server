@@ -434,16 +434,20 @@ func TestAuthMiddlewareHonorsAuthorizationWithConfigURL(t *testing.T) {
 func TestAuthMiddlewareConfigAPIKeyStaysWithConfigURL(t *testing.T) {
 	cases := []struct {
 		name      string
+		configURL string
 		customURL string
 		wantCode  int
 	}{
-		{name: "other instance", customURL: "https://other.example.com", wantCode: http.StatusUnauthorized},
-		{name: "config instance", customURL: "https://Signoz.example.com/", wantCode: http.StatusOK},
+		{name: "other instance", configURL: "https://signoz.example.com", customURL: "https://other.example.com", wantCode: http.StatusUnauthorized},
+		{name: "config instance", configURL: "https://signoz.example.com", customURL: "https://Signoz.example.com/", wantCode: http.StatusOK},
+		{name: "config instance with default https port", configURL: "https://signoz.example.com:443", customURL: "https://signoz.example.com", wantCode: http.StatusOK},
+		{name: "config instance with default http port", configURL: "http://signoz.example.com:80", customURL: "http://signoz.example.com:80", wantCode: http.StatusOK},
+		{name: "config instance with path", configURL: "https://signoz.example.com/signoz", customURL: "https://signoz.example.com", wantCode: http.StatusOK},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			cfg := &config.Config{URL: "https://signoz.example.com", APIKey: "server-held-key"}
+			cfg := &config.Config{URL: tc.configURL, APIKey: "server-held-key"}
 			server := &MCPServer{logger: logpkg.New("error"), config: cfg, analytics: noopanalytics.New()}
 			req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
 			req.Header.Set("X-SigNoz-URL", tc.customURL)
@@ -471,8 +475,8 @@ func TestAuthMiddlewareConfigAPIKeyStaysWithConfigURL(t *testing.T) {
 			if got := rr.Header().Get("X-API-Key"); got != "server-held-key" {
 				t.Fatalf("api key = %q, want %q", got, "server-held-key")
 			}
-			if got := rr.Header().Get("X-SigNoz-URL"); got != "https://signoz.example.com" {
-				t.Fatalf("signoz url = %q, want %q", got, "https://signoz.example.com")
+			if got := rr.Header().Get("X-SigNoz-URL"); !util.SameSigNozOrigin(got, tc.configURL) {
+				t.Fatalf("signoz url = %q, want the origin of %q", got, tc.configURL)
 			}
 		})
 	}

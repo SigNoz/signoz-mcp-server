@@ -40,21 +40,45 @@ func NormalizeSigNozURL(rawURL string) (string, error) {
 		return "", fmt.Errorf("host %q is not allowed", host)
 	}
 
+	return originOf(parsed), nil
+}
+
+// originOf builds scheme://host[:port] from a parsed URL: lowercased, with a
+// default port dropped and path, query and fragment ignored. Empty when the
+// URL has no host.
+func originOf(parsed *url.URL) string {
+	scheme := strings.ToLower(parsed.Scheme)
+	host := strings.ToLower(parsed.Hostname())
+	if host == "" {
+		return ""
+	}
+
 	port := parsed.Port()
 	if (scheme == "http" && port == "80") || (scheme == "https" && port == "443") {
 		port = ""
 	}
 
-	originHost := host
-	if strings.Contains(originHost, ":") && !strings.HasPrefix(originHost, "[") {
-		originHost = "[" + originHost + "]"
+	if strings.Contains(host, ":") && !strings.HasPrefix(host, "[") {
+		host = "[" + host + "]"
 	}
 
-	origin := scheme + "://" + originHost
+	origin := scheme + "://" + host
 	if port != "" {
 		origin += ":" + port
 	}
-	return origin, nil
+	return origin
+}
+
+// SameSigNozOrigin reports whether two SigNoz URLs name the same origin. The
+// configured SIGNOZ_URL may carry a path, so only scheme, host and port count.
+func SameSigNozOrigin(a, b string) bool {
+	parsedA, errA := url.Parse(strings.TrimSpace(a))
+	parsedB, errB := url.Parse(strings.TrimSpace(b))
+	if errA != nil || errB != nil {
+		return false
+	}
+	originA := originOf(parsedA)
+	return originA != "" && originA == originOf(parsedB)
 }
 
 // NormalizeSigNozURLFormInput normalizes URLs entered by humans in auth forms. It
