@@ -56,6 +56,27 @@ func TestGetAlertByRuleID(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestClientDoesNotFollowRedirects(t *testing.T) {
+	var elsewhereHits int32
+	elsewhere := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&elsewhereHits, 1)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"success","data":{}}`))
+	}))
+	defer elsewhere.Close()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, elsewhere.URL+r.URL.Path, http.StatusFound)
+	}))
+	defer server.Close()
+
+	client := NewClient(logpkg.New("error"), server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+
+	_, err := client.GetAlertByRuleID(context.Background(), "ruleid-abc")
+	require.Error(t, err)
+	require.Equal(t, int32(0), atomic.LoadInt32(&elsewhereHits), "the redirect target must never be contacted")
+}
+
 func TestListAlertRules(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
