@@ -32,8 +32,8 @@ type Config struct {
 
 	CustomHeaders map[string]string
 
-	// InstanceURLAllowlist optionally restricts which SigNoz backend hosts the
-	// (multi-tenant) server will proxy to. Empty => every host is allowed.
+	// InstanceURLAllowlist restricts which SigNoz backend hosts the
+	// (multi-tenant) server will proxy to. Empty => only URL is allowed.
 	InstanceURLAllowlist util.InstanceURLAllowlist
 
 	// Analytics settings
@@ -216,6 +216,13 @@ func (c *Config) ResolveInstanceURL(signozURL string) string {
 	return signozURL
 }
 
+// AllowsInstanceURL reports whether a client-supplied SigNoz origin may be
+// proxied to: the operator's own URL always, any other host only through the
+// allowlist.
+func (c *Config) AllowsInstanceURL(signozURL string) bool {
+	return util.SameSigNozOrigin(signozURL, c.URL) || c.InstanceURLAllowlist.AllowsURL(signozURL)
+}
+
 func (c *Config) ValidateConfig() error {
 	// In HTTP mode, API key can come from Authorization header, so it's optional.
 	// In stdio mode, API key must be provided via environment variable.
@@ -230,6 +237,9 @@ func (c *Config) ValidateConfig() error {
 	if c.TransportMode == "http" {
 		if c.Port == "" {
 			return fmt.Errorf("MCP_SERVER_PORT is required for HTTP transport mode")
+		}
+		if c.URL == "" && !c.InstanceURLAllowlist.Configured() {
+			return fmt.Errorf("%s is required for HTTP transport mode when %s is not set", InstanceURLAllowlistEnv, SignozURL)
 		}
 	}
 

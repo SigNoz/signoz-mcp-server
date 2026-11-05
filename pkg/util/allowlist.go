@@ -12,7 +12,7 @@ const MCPDocsURL = "https://signoz.io/docs/ai/signoz-mcp-server/"
 
 // InstanceURLAllowlist restricts which SigNoz backend hosts a multi-tenant
 // deployment will proxy to (see ParseInstanceURLAllowlist). An empty allowlist
-// permits every host.
+// permits no host; the operator's own SIGNOZ_URL is allowed by the caller.
 type InstanceURLAllowlist struct {
 	// exact holds lowercased hostnames that must match in full.
 	exact map[string]struct{}
@@ -50,19 +50,14 @@ func ParseInstanceURLAllowlist(raw string) InstanceURLAllowlist {
 	return al
 }
 
-// Configured reports whether the allowlist contains any patterns. When false,
-// every host is allowed.
+// Configured reports whether the allowlist contains any patterns.
 func (a InstanceURLAllowlist) Configured() bool {
 	return len(a.exact) > 0 || len(a.suffixes) > 0
 }
 
-// AllowsHost reports whether host is permitted. An unconfigured allowlist allows
-// everything; otherwise the host must exact-match or fall under a wildcard
-// suffix.
+// AllowsHost reports whether host is permitted: it must exact-match or fall
+// under a wildcard suffix. An unconfigured allowlist allows nothing.
 func (a InstanceURLAllowlist) AllowsHost(host string) bool {
-	if !a.Configured() {
-		return true
-	}
 	host = strings.ToLower(strings.TrimSpace(host))
 	if host == "" {
 		return false
@@ -80,12 +75,8 @@ func (a InstanceURLAllowlist) AllowsHost(host string) bool {
 }
 
 // AllowsURL parses a normalized origin URL (scheme://host[:port]) and reports
-// whether its host is permitted. A malformed URL is rejected when the allowlist
-// is configured.
+// whether its host is permitted. A malformed URL is rejected.
 func (a InstanceURLAllowlist) AllowsURL(rawURL string) bool {
-	if !a.Configured() {
-		return true
-	}
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
 		return false

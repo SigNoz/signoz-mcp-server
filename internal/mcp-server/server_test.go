@@ -194,9 +194,10 @@ func toolRequest(name string, arguments string) *mcp.CallToolRequest {
 
 func TestAuthMiddlewareOAuthBearerIgnoresCustomURL(t *testing.T) {
 	cfg := &config.Config{
-		OAuthEnabled:     true,
-		OAuthTokenSecret: "0123456789abcdef0123456789abcdef",
-		OAuthIssuerURL:   "https://mcp.example.com",
+		OAuthEnabled:         true,
+		OAuthTokenSecret:     "0123456789abcdef0123456789abcdef",
+		OAuthIssuerURL:       "https://mcp.example.com",
+		InstanceURLAllowlist: util.ParseInstanceURLAllowlist("oauth.example.com"),
 	}
 
 	token, err := oauth.EncryptToken(
@@ -248,9 +249,10 @@ func TestAuthMiddlewareOAuthBearerIgnoresCustomURL(t *testing.T) {
 
 func TestAuthMiddlewareExpiredOAuthBearerDoesNotDowngradeWithCustomURL(t *testing.T) {
 	cfg := &config.Config{
-		OAuthEnabled:     true,
-		OAuthTokenSecret: "0123456789abcdef0123456789abcdef",
-		OAuthIssuerURL:   "https://mcp.example.com",
+		OAuthEnabled:         true,
+		OAuthTokenSecret:     "0123456789abcdef0123456789abcdef",
+		OAuthIssuerURL:       "https://mcp.example.com",
+		InstanceURLAllowlist: util.ParseInstanceURLAllowlist("oauth.example.com"),
 	}
 	token, err := oauth.EncryptToken(
 		"oauth-api-key",
@@ -322,9 +324,10 @@ func TestAuthMiddlewareOAuthBearerEnforcesEmbeddedURLAllowlist(t *testing.T) {
 // and JWT-shaped tokens must behave identically.
 func TestAuthMiddlewareHonorsAuthorizationIngress(t *testing.T) {
 	cfg := &config.Config{
-		OAuthEnabled:     true,
-		OAuthTokenSecret: "0123456789abcdef0123456789abcdef",
-		OAuthIssuerURL:   "https://mcp.example.com",
+		OAuthEnabled:         true,
+		OAuthTokenSecret:     "0123456789abcdef0123456789abcdef",
+		OAuthIssuerURL:       "https://mcp.example.com",
+		InstanceURLAllowlist: util.ParseInstanceURLAllowlist("1.1.1.1"),
 	}
 
 	// authHeader is the raw Authorization value; wantAPIKey is what must be
@@ -483,6 +486,37 @@ func TestAuthMiddlewareConfigAPIKeyStaysWithConfigURL(t *testing.T) {
 	}
 }
 
+func TestAuthMiddlewareWithoutAllowlistServesOnlyConfigURL(t *testing.T) {
+	cases := []struct {
+		name      string
+		customURL string
+		wantCode  int
+	}{
+		{name: "other host", customURL: "http://10.0.0.5:9000", wantCode: http.StatusForbidden},
+		{name: "config host", customURL: "https://SigNoz.example.com", wantCode: http.StatusOK},
+		{name: "config host with default port", customURL: "https://signoz.example.com:443", wantCode: http.StatusOK},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := &config.Config{URL: "https://signoz.example.com"}
+			server := &MCPServer{logger: logpkg.New("error"), config: cfg, analytics: noopanalytics.New()}
+			req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+			req.Header.Set("SIGNOZ-API-KEY", "pat-token")
+			req.Header.Set("X-SigNoz-URL", tc.customURL)
+
+			rr := httptest.NewRecorder()
+			server.authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			})).ServeHTTP(rr, req)
+
+			if rr.Code != tc.wantCode {
+				t.Fatalf("status = %d, want %d", rr.Code, tc.wantCode)
+			}
+		})
+	}
+}
+
 func TestAuthMiddlewareRejectsInstanceURLNotInAllowlist(t *testing.T) {
 	cfg := &config.Config{
 		InstanceURLAllowlist: util.ParseInstanceURLAllowlist("*.us.signoz.cloud"),
@@ -560,7 +594,7 @@ func TestAuthMiddlewareRejectsInvalidOAuthBearerWithoutSigNozURL(t *testing.T) {
 }
 
 func TestAuthMiddlewarePropagatesAssistantCorrelationHeaders(t *testing.T) {
-	cfg := &config.Config{}
+	cfg := &config.Config{InstanceURLAllowlist: util.ParseInstanceURLAllowlist("tenant.example.com")}
 	server := &MCPServer{logger: logpkg.New("error"), config: cfg, analytics: noopanalytics.New()}
 
 	cases := []struct {
