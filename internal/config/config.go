@@ -206,6 +206,16 @@ func getEnvRefreshInterval(key string, defaultValue time.Duration) (time.Duratio
 	return defaultValue, false
 }
 
+// ResolveInstanceURL returns URL for a client-supplied SigNoz URL of the
+// operator's own instance, path included, so every later comparison and
+// request uses the configured value. Any other URL is returned unchanged.
+func (c *Config) ResolveInstanceURL(signozURL string) string {
+	if util.SameSigNozOrigin(signozURL, c.URL) {
+		return c.URL
+	}
+	return signozURL
+}
+
 func (c *Config) ValidateConfig() error {
 	// In HTTP mode, API key can come from Authorization header, so it's optional.
 	// In stdio mode, API key must be provided via environment variable.
