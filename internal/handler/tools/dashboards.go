@@ -648,7 +648,7 @@ func (h *Handler) handlePatchDashboard(ctx context.Context, req mcp.CallToolRequ
 	}
 	data, err := client.PatchDashboardRaw(ctx, id, body)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "Failed to patch dashboard in SigNoz", logpkg.ErrAttr(err))
+		h.logUpstreamFailure(ctx, "Failed to patch dashboard in SigNoz", err)
 		return upstreamError(err), nil
 	}
 

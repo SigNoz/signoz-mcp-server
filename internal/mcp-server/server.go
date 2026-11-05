@@ -966,7 +966,7 @@ const (
 // SIGNOZ_INSTANCE_URL_ALLOWLIST, returning false after writing the 403 + auth
 // failure. signozURL must already be on ctx so the failure carries mcp.tenant_url.
 func (m *MCPServer) enforceInstanceURLAllowlist(ctx context.Context, w http.ResponseWriter, r *http.Request, signozURL, authMode string) bool {
-	if m.config.InstanceURLAllowlist.AllowsURL(signozURL) {
+	if m.config.AllowsInstanceURL(signozURL) {
 		return true
 	}
 	m.logAuthFailure(ctx, r, http.StatusForbidden, authFailureDisallowedSignozURL, authMode,
@@ -1161,6 +1161,7 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 		}
 
 		if usedOAuthToken {
+			signozURL = m.config.ResolveInstanceURL(signozURL)
 			ctx = util.SetSigNozURL(ctx, signozURL)
 			if attr, ok := otelpkg.TenantURLAttr(ctx); ok {
 				trace.SpanFromContext(ctx).SetAttributes(attr)
@@ -1184,8 +1185,19 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 				http.Error(w, fmt.Sprintf("Invalid X-SigNoz-URL: %v", err), http.StatusBadRequest)
 				return
 			}
+			normalized = m.config.ResolveInstanceURL(normalized)
 			// Set the SigNoz URL on ctx first so an allowlist rejection is attributed.
 			ctx = util.SetSigNozURL(ctx, normalized)
+			// The server-held key belongs to SIGNOZ_URL only. A caller who
+			// picks another instance must bring the credential for it.
+			if authMode == authModeConfigAPIKey && normalized != m.config.URL {
+				m.logAuthFailure(ctx, r, http.StatusUnauthorized, authFailureMissingCredential, authMode, "X-SigNoz-URL differs from SIGNOZ_URL and the request carries no credential")
+				if m.config.OAuthEnabled {
+					m.setOAuthChallenge(w, "")
+				}
+				http.Error(w, "Authorization or SIGNOZ-API-KEY header required when X-SigNoz-URL names another instance", http.StatusUnauthorized)
+				return
+			}
 			if !m.enforceInstanceURLAllowlist(ctx, w, r, normalized, authMode) {
 				return
 			}

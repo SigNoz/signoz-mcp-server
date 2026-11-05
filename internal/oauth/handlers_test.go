@@ -41,12 +41,13 @@ func TestOAuthAuthorizationFlow(t *testing.T) {
 	defer signozServer.Close()
 
 	cfg := &config.Config{
-		OAuthEnabled:     true,
-		OAuthTokenSecret: "0123456789abcdef0123456789abcdef",
-		OAuthIssuerURL:   "https://mcp.example.com",
-		AccessTokenTTL:   time.Hour,
-		RefreshTokenTTL:  24 * time.Hour,
-		AuthCodeTTL:      10 * time.Minute,
+		OAuthEnabled:         true,
+		OAuthTokenSecret:     "0123456789abcdef0123456789abcdef",
+		OAuthIssuerURL:       "https://mcp.example.com",
+		InstanceURLAllowlist: util.ParseInstanceURLAllowlist("127.0.0.1"),
+		AccessTokenTTL:       time.Hour,
+		RefreshTokenTTL:      24 * time.Hour,
+		AuthCodeTTL:          10 * time.Minute,
 	}
 
 	handler := NewHandler(logpkg.New("error"), cfg, nil, nil)
@@ -261,10 +262,11 @@ func TestAuthorizeSubmitInstanceFailureGuidance(t *testing.T) {
 			defer signozServer.Close()
 
 			cfg := &config.Config{
-				OAuthEnabled:     true,
-				OAuthTokenSecret: "0123456789abcdef0123456789abcdef",
-				OAuthIssuerURL:   "https://mcp.example.com",
-				AuthCodeTTL:      10 * time.Minute,
+				OAuthEnabled:         true,
+				OAuthTokenSecret:     "0123456789abcdef0123456789abcdef",
+				OAuthIssuerURL:       "https://mcp.example.com",
+				InstanceURLAllowlist: util.ParseInstanceURLAllowlist("127.0.0.1"),
+				AuthCodeTTL:          10 * time.Minute,
 			}
 
 			handler := NewHandler(logpkg.New("error"), cfg, nil, nil)
@@ -342,10 +344,11 @@ func TestAuthorizeSubmitRejectsInvalidSigNozCredentials(t *testing.T) {
 	defer signozServer.Close()
 
 	cfg := &config.Config{
-		OAuthEnabled:     true,
-		OAuthTokenSecret: "0123456789abcdef0123456789abcdef",
-		OAuthIssuerURL:   "https://mcp.example.com",
-		AuthCodeTTL:      10 * time.Minute,
+		OAuthEnabled:         true,
+		OAuthTokenSecret:     "0123456789abcdef0123456789abcdef",
+		OAuthIssuerURL:       "https://mcp.example.com",
+		InstanceURLAllowlist: util.ParseInstanceURLAllowlist("127.0.0.1"),
+		AuthCodeTTL:          10 * time.Minute,
 	}
 
 	handler := NewHandler(logpkg.New("error"), cfg, nil, nil)
@@ -431,10 +434,11 @@ func TestAuthorizeSubmitStripsSigNozURLPathQueryFragment(t *testing.T) {
 	defer signozServer.Close()
 
 	cfg := &config.Config{
-		OAuthEnabled:     true,
-		OAuthTokenSecret: "0123456789abcdef0123456789abcdef",
-		OAuthIssuerURL:   "https://mcp.example.com",
-		AuthCodeTTL:      10 * time.Minute,
+		OAuthEnabled:         true,
+		OAuthTokenSecret:     "0123456789abcdef0123456789abcdef",
+		OAuthIssuerURL:       "https://mcp.example.com",
+		InstanceURLAllowlist: util.ParseInstanceURLAllowlist("127.0.0.1"),
+		AuthCodeTTL:          10 * time.Minute,
 	}
 
 	handler := NewHandler(logpkg.New("error"), cfg, nil, nil)
@@ -503,9 +507,10 @@ func TestAuthorizeSubmitStripsSigNozURLPathQueryFragment(t *testing.T) {
 
 func TestRegisterClientAcceptsIPv6LoopbackRedirectURI(t *testing.T) {
 	cfg := &config.Config{
-		OAuthEnabled:     true,
-		OAuthTokenSecret: "0123456789abcdef0123456789abcdef",
-		OAuthIssuerURL:   "https://mcp.example.com",
+		OAuthEnabled:         true,
+		OAuthTokenSecret:     "0123456789abcdef0123456789abcdef",
+		OAuthIssuerURL:       "https://mcp.example.com",
+		InstanceURLAllowlist: util.ParseInstanceURLAllowlist("127.0.0.1"),
 	}
 
 	handler := NewHandler(logpkg.New("error"), cfg, nil, nil)
@@ -522,9 +527,10 @@ func TestRegisterClientAcceptsIPv6LoopbackRedirectURI(t *testing.T) {
 
 func TestRegisterClientRejectsUnsupportedCustomRedirectScheme(t *testing.T) {
 	cfg := &config.Config{
-		OAuthEnabled:     true,
-		OAuthTokenSecret: "0123456789abcdef0123456789abcdef",
-		OAuthIssuerURL:   "https://mcp.example.com",
+		OAuthEnabled:         true,
+		OAuthTokenSecret:     "0123456789abcdef0123456789abcdef",
+		OAuthIssuerURL:       "https://mcp.example.com",
+		InstanceURLAllowlist: util.ParseInstanceURLAllowlist("127.0.0.1"),
 	}
 
 	handler := NewHandler(logpkg.New("error"), cfg, nil, nil)
@@ -564,10 +570,11 @@ func TestAuthorizePageUsesIssuerPathPrefixForFormAndCSRFCookie(t *testing.T) {
 	defer signozServer.Close()
 
 	cfg := &config.Config{
-		OAuthEnabled:     true,
-		OAuthTokenSecret: "0123456789abcdef0123456789abcdef",
-		OAuthIssuerURL:   "https://mcp.example.com/signoz-mcp",
-		AuthCodeTTL:      10 * time.Minute,
+		OAuthEnabled:         true,
+		OAuthTokenSecret:     "0123456789abcdef0123456789abcdef",
+		OAuthIssuerURL:       "https://mcp.example.com/signoz-mcp",
+		InstanceURLAllowlist: util.ParseInstanceURLAllowlist("127.0.0.1"),
+		AuthCodeTTL:          10 * time.Minute,
 	}
 
 	handler := NewHandler(logpkg.New("error"), cfg, nil, nil)
@@ -634,9 +641,10 @@ func TestAuthorizePageUsesIssuerPathPrefixForFormAndCSRFCookie(t *testing.T) {
 
 func TestTokenRejectsUnsupportedGrantType(t *testing.T) {
 	cfg := &config.Config{
-		OAuthEnabled:     true,
-		OAuthTokenSecret: "0123456789abcdef0123456789abcdef",
-		OAuthIssuerURL:   "https://mcp.example.com",
+		OAuthEnabled:         true,
+		OAuthTokenSecret:     "0123456789abcdef0123456789abcdef",
+		OAuthIssuerURL:       "https://mcp.example.com",
+		InstanceURLAllowlist: util.ParseInstanceURLAllowlist("127.0.0.1"),
 	}
 
 	handler := NewHandler(logpkg.New("error"), cfg, nil, nil)

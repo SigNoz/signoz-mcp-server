@@ -146,6 +146,12 @@ func NewClient(log *slog.Logger, baseURL, apiKey, authHeaderName string, customH
 			// All clients share sharedTransport so connections to a SigNoz host
 			// are pooled/reused process-wide regardless of how many clients exist.
 			Transport: otelhttp.NewTransport(sharedTransport),
+			// The SigNoz API never redirects. Following one would carry the
+			// API key and the custom headers to a host the destination checks
+			// never saw.
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
 		},
 	}
 }
