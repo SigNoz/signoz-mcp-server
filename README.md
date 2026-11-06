@@ -876,7 +876,7 @@ The same expressions work in log aggregations and saved-query specs.
 
 #### `signoz_get_field_keys`
 
-Discover field names available for filtering or grouping metrics, traces, or logs, including AI trace fields with `queryType: builder_ai_query`. This returns keys, not observed values; use `signoz_get_field_values` after selecting a key. A `data.complete` of `false` means SigNoz truncated the key list; narrow with `searchText` or `fieldContext`.
+Discover field names available for filtering or grouping metrics, traces, or logs, including AI trace fields with `queryType: builder_ai_query`. This returns keys, not observed values; use `signoz_get_field_values` after selecting a key. Keys come from all retained metadata; the tool takes no time range. A `data.complete` of `false` means SigNoz cut the key list, and the result then carries a note with next steps: narrow with `searchText` or `fieldContext`, or raise `limit`.
 
 - **Parameters**:
   - `signal` (required) - Signal type. Enum: `metrics`, `traces`, `logs`
@@ -886,10 +886,11 @@ Discover field names available for filtering or grouping metrics, traces, or log
   - `fieldDataType` (optional) - Restrict to a data type: `string`, `bool`, `int64`, `float64`, `number`. An array form like `[]string` is treated as its element type.
   - `source` (optional) - For metrics, use `meter` for Cost Meter fields; omit for the default metrics store
   - `queryType` (optional) - `builder_query` (default) lists the fields of `signal`. Set `builder_ai_query` for AI observability queries; it also lists the trace-level fields, such as `trace.estimated_total_cost`, and `gen_ai.*` attributes.
+  - `limit` (optional) - Maximum number of keys to return for each signal, as an integer or string. Omit it for the SigNoz default. Intrinsic and materialized fields come on top of the limit, so the list can be longer.
 
 #### `signoz_get_field_values`
 
-Get observed values for a known field key. Use `signoz_get_field_keys` when the key is unknown, and match `signal` and `fieldContext` to the query that will use the value. A `data.complete` of `false` means SigNoz truncated the value list; narrow with `searchText`.
+Get observed values for a known field key. Use `signoz_get_field_keys` when the key is unknown, and match `signal` and `fieldContext` to the query that will use the value. Values come from all retained metadata; the tool takes no time range. A `data.complete` of `false` means SigNoz cut the value list, and the result then carries a note with next steps: narrow with `searchText`, or raise `limit`.
 
 - **Parameters**:
   - `signal` (required) - Signal type. Enum: `metrics`, `traces`, `logs`
@@ -898,6 +899,7 @@ Get observed values for a known field key. Use `signoz_get_field_keys` when the 
   - `metricName` (optional) - Filter by metric name (relevant for metrics signal)
   - `fieldContext` (optional) - Restrict the lookup to a field context (`resource`, `attribute`, `scope`, `log`/`span`/`metric`, `body`) when the same key name exists in more than one. Use `attribute`, not the legacy Query Builder context `tag`; SigNoz returns no values for `tag`.
   - `source` (optional) - For metrics, use `meter` for Cost Meter values; omit for the default metrics store
+  - `limit` (optional) - Maximum number of values to return, as an integer or string. Omit it for the SigNoz default.
 
 
 #### `signoz_search_traces`
