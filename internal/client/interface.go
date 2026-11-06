@@ -47,7 +47,7 @@ type Client interface {
 	ListNotificationChannelsV2(ctx context.Context, params types.NotificationChannelListParams) (types.NotificationChannelList, error)
 	GetNotificationChannel(ctx context.Context, id string) (json.RawMessage, error)
 	CreateNotificationChannel(ctx context.Context, receiverJSON []byte) (json.RawMessage, error)
-	UpdateNotificationChannel(ctx context.Context, id string, receiverJSON []byte) error
+	UpdateNotificationChannel(ctx context.Context, id string, receiverJSON []byte) (json.RawMessage, error)
 	DeleteNotificationChannel(ctx context.Context, id string) error
 	TestNotificationChannel(ctx context.Context, receiverJSON []byte) error
 	GetMetricCardinality(ctx context.Context, name string, start, end int64) (json.RawMessage, error)
