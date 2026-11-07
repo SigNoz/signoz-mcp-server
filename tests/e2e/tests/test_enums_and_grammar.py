@@ -4,8 +4,10 @@ The signal values get_field_keys teaches, the advertised aggregation set and
 both request types against the backend, and the top-operations tag filter.
 """
 
+import json
+
 from fixtures.mcpclient import MCPClient, assert_tool_ok
-from fixtures.results import first_text_block, result_code
+from fixtures.results import first_block_json, first_text_block, result_code
 from fixtures.telemetry import seed_traces, wait_for
 
 # Aggregation expressions the tool descriptions use as examples; each must run
@@ -58,7 +60,7 @@ def test_aggregation_set_matches_backend(mcp_client: MCPClient) -> None:
 def test_service_top_operations_lists_the_seeded_operation(
     mcp_client: MCPClient, test_id: str, telemetry: None
 ) -> None:
-    """Omitted and empty tags both return the seeded operation."""
+    """Omitted, empty, and matching tags return the seeded operation; a non-matching tag returns none."""
     service = f"mcp-e2e-{test_id}"
     seed_traces(service, count=2)
 
@@ -71,13 +73,24 @@ def test_service_top_operations_lists_the_seeded_operation(
 
     wait_for(visible, f"operation of {service} visible")
 
-    # A matching tag filter is not pinned: on the pinned release it returns no operations (SigNoz/nerve-pod#440).
-    for tags in (None, "[]"):
+    # e2e.marker is a span attribute, so a matching tag proves the filter reads span attributes.
+    def marker_tag(value: str) -> str:
+        return json.dumps(
+            [{"key": "e2e.marker", "tagType": "SpanAttribute", "operator": "In", "stringValues": [value]}]
+        )
+
+    for tags, want in (
+        (None, True),
+        ("[]", True),
+        (marker_tag(service), True),
+        (marker_tag(f"{service}-other"), False),
+    ):
         args = {"searchContext": f"top operations for {service}", "service": service, "timeRange": "1h"}
         if tags is not None:
             args["tags"] = tags
-        body = first_text_block(assert_tool_ok(mcp_client.call_tool("signoz_get_service_top_operations", args)))
-        assert "e2e-operation" in body, f"tags={tags!r}: seeded operation missing: {body[:300]}"
+        operations = first_block_json(assert_tool_ok(mcp_client.call_tool("signoz_get_service_top_operations", args)))
+        names = [op.get("name") for op in operations]
+        assert ("e2e-operation" in names) == want, f"tags={tags!r}: operations {names}"
 
 
 def test_promql_matcher_error_names_regexp(mcp_client: MCPClient) -> None:

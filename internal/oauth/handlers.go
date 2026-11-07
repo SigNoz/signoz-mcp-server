@@ -244,7 +244,7 @@ func (h *Handler) HandleAuthorizeSubmit(w http.ResponseWriter, r *http.Request) 
 	r = r.WithContext(util.SetSigNozURL(r.Context(), normalizedURL))
 	// Reject disallowed backends before probing them, so the server never
 	// dials — or issues a token for — a host it will not serve.
-	if !h.config.InstanceURLAllowlist.AllowsURL(normalizedURL) {
+	if !h.config.AllowsInstanceURL(normalizedURL) {
 		h.renderAuthorizePage(w, r, http.StatusForbidden, authorizeTemplateData{
 			ClientID:            params.ClientID,
 			ClientName:          params.ClientName,
@@ -349,9 +349,9 @@ func (h *Handler) validateSigNozCredentials(ctx context.Context, signozURL, apiK
 	// Only forward custom headers when the user-supplied URL matches the
 	// configured SIGNOZ_URL to prevent leaking proxy-auth credentials to
 	// attacker-controlled hosts.
+	signozURL = h.config.ResolveInstanceURL(signozURL)
 	var headers map[string]string
-	configNormalized, _ := util.NormalizeSigNozURL(h.config.URL)
-	if strings.EqualFold(signozURL, configNormalized) {
+	if signozURL == h.config.URL {
 		headers = h.config.CustomHeaders
 	}
 	signozClient := client.NewClient(h.logger, signozURL, apiKey, "SIGNOZ-API-KEY", headers)
@@ -473,7 +473,7 @@ func (h *Handler) issueTokenPair(w http.ResponseWriter, r *http.Request, clientI
 	// Refuse to mint tokens for a now-disallowed SigNoz URL (e.g. a refresh token
 	// from before the allowlist tightened). invalid_grant makes the client
 	// re-run the authorize flow, where the form rejects the URL up front.
-	if !h.config.InstanceURLAllowlist.AllowsURL(signozURL) {
+	if !h.config.AllowsInstanceURL(signozURL) {
 		h.writeOAuthError(r, w, http.StatusBadRequest, "invalid_grant",
 			util.InstanceURLNotPermittedMessage(),
 			attribute.String("mcp.auth.failure_reason", authFailureDisallowedSignozURL))

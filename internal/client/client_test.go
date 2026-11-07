@@ -56,6 +56,27 @@ func TestGetAlertByRuleID(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestClientDoesNotFollowRedirects(t *testing.T) {
+	var elsewhereHits int32
+	elsewhere := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&elsewhereHits, 1)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"success","data":{}}`))
+	}))
+	defer elsewhere.Close()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, elsewhere.URL+r.URL.Path, http.StatusFound)
+	}))
+	defer server.Close()
+
+	client := NewClient(logpkg.New("error"), server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+
+	_, err := client.GetAlertByRuleID(context.Background(), "ruleid-abc")
+	require.Error(t, err)
+	require.Equal(t, int32(0), atomic.LoadInt32(&elsewhereHits), "the redirect target must never be contacted")
+}
+
 func TestListAlertRules(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
@@ -598,6 +619,7 @@ func TestGetFieldKeys(t *testing.T) {
 		assert.Equal(t, "resource", q.Get("fieldContext"))
 		assert.Equal(t, "string", q.Get("fieldDataType"))
 		assert.Equal(t, "otel", q.Get("source"))
+		assert.Equal(t, "100", q.Get("limit"))
 
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"success","data":[]}`))
@@ -607,7 +629,7 @@ func TestGetFieldKeys(t *testing.T) {
 	logger := logpkg.New("debug")
 	client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
-	_, err := client.GetFieldKeys(context.Background(), "metrics", "container.cpu.usage", "cpu", "resource", "string", "otel")
+	_, err := client.GetFieldKeys(context.Background(), "metrics", "container.cpu.usage", "cpu", "resource", "string", "otel", 100)
 	require.NoError(t, err)
 }
 
@@ -623,6 +645,7 @@ func TestGetFieldValues(t *testing.T) {
 		assert.Equal(t, "prod", q.Get("searchText"))
 		assert.Equal(t, "resource", q.Get("fieldContext"))
 		assert.Equal(t, "otel", q.Get("source"))
+		assert.False(t, q.Has("limit"), "an unset limit leaves SigNoz's default")
 
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"success","data":[]}`))
@@ -632,7 +655,7 @@ func TestGetFieldValues(t *testing.T) {
 	logger := logpkg.New("debug")
 	client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
-	_, err := client.GetFieldValues(context.Background(), "metrics", "host.name", "container.cpu.usage", "prod", "resource", "otel")
+	_, err := client.GetFieldValues(context.Background(), "metrics", "host.name", "container.cpu.usage", "prod", "resource", "otel", 0)
 	require.NoError(t, err)
 }
 

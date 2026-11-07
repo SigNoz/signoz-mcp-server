@@ -55,8 +55,5 @@ func rawSearchResult(ctx context.Context, logger *slog.Logger, toolName string, 
 	warnings := extractBackendWarningMessages(payload)
 	warnBackendWarnings(ctx, logger, toolName, warnings)
 	warnUnparsedWarningEnvelope(ctx, logger, toolName, payload, len(warnings))
-	if len(warnings) > 0 {
-		notes = append(notes, backendWarningsNote(warnings))
-	}
 	return resultWithNotes(payload, notes...)
 }

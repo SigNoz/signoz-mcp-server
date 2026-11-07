@@ -110,6 +110,44 @@ func TestNormalizeSigNozURLRejectsNonOriginURLs(t *testing.T) {
 	}
 }
 
+func TestSameSigNozOrigin(t *testing.T) {
+	tests := []struct {
+		name string
+		a, b string
+		want bool
+	}{
+		{name: "default https port", a: "https://signoz.example.com", b: "https://signoz.example.com:443", want: true},
+		{name: "default http port", a: "http://signoz.example.com", b: "http://signoz.example.com:80", want: true},
+		{name: "host case", a: "https://signoz.example.com", b: "https://SigNoz.Example.com", want: true},
+		{name: "trailing slash", a: "https://signoz.example.com", b: "https://signoz.example.com/", want: true},
+		{name: "configured path", a: "https://signoz.example.com", b: "https://signoz.example.com/signoz", want: true},
+		{name: "non-default port kept", a: "http://signoz:8080", b: "http://signoz:8080/", want: true},
+		{name: "different port", a: "http://signoz:8080", b: "http://signoz:8081", want: false},
+		{name: "different scheme", a: "http://signoz.example.com", b: "https://signoz.example.com", want: false},
+		{name: "different host", a: "https://signoz.example.com", b: "https://other.example.com", want: false},
+		{name: "empty configured url", a: "https://signoz.example.com", b: "", want: false},
+		{name: "both empty", a: "", b: "", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := SameSigNozOrigin(tt.a, tt.b); got != tt.want {
+				t.Fatalf("SameSigNozOrigin(%q, %q) = %v, want %v", tt.a, tt.b, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNormalizeSigNozURLRejectsNonASCIIHost(t *testing.T) {
+	if _, err := NormalizeSigNozURL("https://s\u0130gnoz.example.com"); err == nil {
+		t.Fatalf("expected a non-ASCII host to be rejected")
+	}
+	got, err := NormalizeSigNozURL("https://xn--sgnoz-ipb.example.com")
+	if err != nil || got != "https://xn--sgnoz-ipb.example.com" {
+		t.Fatalf("punycode host = %q, err = %v", got, err)
+	}
+}
+
 func TestNormalizeSigNozURLCanonicalizesOrigin(t *testing.T) {
 	tests := []struct {
 		name string

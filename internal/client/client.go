@@ -146,6 +146,12 @@ func NewClient(log *slog.Logger, baseURL, apiKey, authHeaderName string, customH
 			// All clients share sharedTransport so connections to a SigNoz host
 			// are pooled/reused process-wide regardless of how many clients exist.
 			Transport: otelhttp.NewTransport(sharedTransport),
+			// The SigNoz API never redirects. Following one would carry the
+			// API key and the custom headers to a host the destination checks
+			// never saw.
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
 		},
 	}
 }
@@ -540,12 +546,16 @@ func (s *SigNoz) ListServices(ctx context.Context, start, end string) (json.RawM
 	return s.doReplaySafePost(ctx, s.baseURL+"/api/v2/services", bodyBytes, DefaultQueryTimeout)
 }
 
+// TopOperationsLimit is the most operations SigNoz returns for one service.
+// The v2 endpoint requires a limit, and the tool lists every operation.
+const TopOperationsLimit = 5000
+
 func (s *SigNoz) GetServiceTopOperations(ctx context.Context, start, end, service string, tags json.RawMessage) (json.RawMessage, error) {
-	payload := map[string]any{"start": start, "end": end, "service": service, "tags": tags}
+	payload := map[string]any{"start": start, "end": end, "service": service, "tags": tags, "limit": TopOperationsLimit}
 	bodyBytes, _ := json.Marshal(payload)
 
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching service top operations", slog.String("service", service))
-	return s.doReplaySafePost(ctx, s.baseURL+"/api/v1/service/top_operations", bodyBytes, DefaultQueryTimeout)
+	return s.doReplaySafePost(ctx, s.baseURL+"/api/v2/service/top_operations", bodyBytes, DefaultQueryTimeout)
 }
 
 func (s *SigNoz) QueryBuilderV5(ctx context.Context, body []byte) (json.RawMessage, error) {
@@ -631,7 +641,7 @@ func (s *SigNoz) DeleteView(ctx context.Context, viewID string) (json.RawMessage
 	})
 }
 
-func (s *SigNoz) GetFieldKeys(ctx context.Context, signal, metricName, searchText, fieldContext, fieldDataType, source string) (json.RawMessage, error) {
+func (s *SigNoz) GetFieldKeys(ctx context.Context, signal, metricName, searchText, fieldContext, fieldDataType, source string, limit int) (json.RawMessage, error) {
 	params := &apiclient.GetFieldsKeysParams{
 		Signal:        ptr(apitypes.TelemetrytypesSignal(signal)),
 		Source:        optEnum[apitypes.TelemetrytypesSource](source),
@@ -639,6 +649,7 @@ func (s *SigNoz) GetFieldKeys(ctx context.Context, signal, metricName, searchTex
 		FieldDataType: optEnum[apitypes.TelemetrytypesFieldDataType](fieldDataType),
 		MetricName:    optString(metricName),
 		SearchText:    optString(searchText),
+		Limit:         optInt(limit),
 	}
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching field keys",
 		slog.String("signal", signal),
@@ -648,7 +659,7 @@ func (s *SigNoz) GetFieldKeys(ctx context.Context, signal, metricName, searchTex
 	})
 }
 
-func (s *SigNoz) GetFieldValues(ctx context.Context, signal, name, metricName, searchText, fieldContext, source string) (json.RawMessage, error) {
+func (s *SigNoz) GetFieldValues(ctx context.Context, signal, name, metricName, searchText, fieldContext, source string, limit int) (json.RawMessage, error) {
 	params := &apiclient.GetFieldsValuesParams{
 		Signal:       ptr(apitypes.TelemetrytypesSignal(signal)),
 		Source:       optEnum[apitypes.TelemetrytypesSource](source),
@@ -656,6 +667,7 @@ func (s *SigNoz) GetFieldValues(ctx context.Context, signal, name, metricName, s
 		MetricName:   optString(metricName),
 		SearchText:   optString(searchText),
 		Name:         ptr(name),
+		Limit:        optInt(limit),
 	}
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching field values",
 		slog.String("signal", signal),
@@ -666,11 +678,12 @@ func (s *SigNoz) GetFieldValues(ctx context.Context, signal, name, metricName, s
 }
 
 // The AI fields endpoints always read trace fields, so they take no signal, source, or metricName.
-func (s *SigNoz) GetAIFieldKeys(ctx context.Context, searchText, fieldContext, fieldDataType string) (json.RawMessage, error) {
+func (s *SigNoz) GetAIFieldKeys(ctx context.Context, searchText, fieldContext, fieldDataType string, limit int) (json.RawMessage, error) {
 	params := &apiclient.GetAIObservabilityFieldsKeysParams{
 		FieldContext:  optEnum[apitypes.TelemetrytypesFieldContext](fieldContext),
 		FieldDataType: optEnum[apitypes.TelemetrytypesFieldDataType](fieldDataType),
 		SearchText:    optString(searchText),
+		Limit:         optInt(limit),
 	}
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching AI field keys", slog.String("searchText", searchText))
 	return s.callAPI(ctx, DefaultQueryTimeout, func(ctx context.Context, api *apiclient.Client) (*http.Response, error) {

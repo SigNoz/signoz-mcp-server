@@ -25,6 +25,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+
+## [0.18.0] - 2026-11-05
+
+### Added
+- log the requested name of an unknown tool ([#430](https://github.com/SigNoz/signoz-mcp-server/pull/430))
+
+### Fixed
+- log expected patch failures below ERROR ([#436](https://github.com/SigNoz/signoz-mcp-server/pull/436))
+- accept a caller-chosen SigNoz URL only through the allowlist ([#434](https://github.com/SigNoz/signoz-mcp-server/pull/434))
+- do not follow redirects from the SigNoz API ([#435](https://github.com/SigNoz/signoz-mcp-server/pull/435))
+- send the server-held API key only to SIGNOZ_URL ([#433](https://github.com/SigNoz/signoz-mcp-server/pull/433))
+- send each backend warning once ([#429](https://github.com/SigNoz/signoz-mcp-server/pull/429))
+- read top operations from the v2 endpoint so tag filters match ([#428](https://github.com/SigNoz/signoz-mcp-server/pull/428))
+
+### Changed
+- split aggregate_helper.go by owner ([#424](https://github.com/SigNoz/signoz-mcp-server/pull/424))
+
+### Documentation
+- add SECURITY.md with private vulnerability reporting ([#432](https://github.com/SigNoz/signoz-mcp-server/pull/432))
+
+### Other
+- bump @hono/node-server from 1.19.17 to 2.1.5 in /tools/mcp-ci ([#426](https://github.com/SigNoz/signoz-mcp-server/pull/426))
+- bump qs from 6.15.3 to 6.17.1 in /tools/mcp-ci ([#427](https://github.com/SigNoz/signoz-mcp-server/pull/427))
+- bump mcp from 2.1.1 to 2.2.0 in /tests ([#366](https://github.com/SigNoz/signoz-mcp-server/pull/366))
+- bump github.com/klauspost/compress from 1.18.0 to 1.18.7 ([#367](https://github.com/SigNoz/signoz-mcp-server/pull/367))
+- bump hono from 4.13.7 to 4.13.16 in /tools/mcp-ci ([#368](https://github.com/SigNoz/signoz-mcp-server/pull/368))
+- bump certifi from 2026.7.22 to 2026.10.18 in /tests ([#369](https://github.com/SigNoz/signoz-mcp-server/pull/369))
+- bump fast-uri from 3.1.7 to 3.1.9 in /tools/mcp-ci ([#374](https://github.com/SigNoz/signoz-mcp-server/pull/374))
+- bump opentelemetry-api from 1.44.0 to 1.45.1 in /tests ([#375](https://github.com/SigNoz/signoz-mcp-server/pull/375))
+- bump undici from 7.30.0 to 7.30.1 in /tools/mcp-ci ([#376](https://github.com/SigNoz/signoz-mcp-server/pull/376))
+
 ## [0.17.0] - 2026-10-30
 
 ### Breaking changes
@@ -526,3 +557,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [0.15.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.14.0...v0.15.0
 [0.16.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.15.0...v0.16.0
 [0.17.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.16.0...v0.17.0
+[0.18.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.17.0...v0.18.0

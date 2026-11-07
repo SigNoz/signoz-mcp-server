@@ -12,7 +12,7 @@ under the trace context, and the same keys whatever the signal.
 """
 
 from fixtures.mcpclient import MCPClient, assert_tool_ok, text_blocks
-from fixtures.results import first_block_json
+from fixtures.results import first_block_json, note_blocks
 from fixtures.telemetry import seed_traces, wait_for
 
 
@@ -71,6 +71,48 @@ def test_seeded_resource_attribute_values_discoverable(mcp_client: MCPClient, te
     assert_tool_ok(legacy)
     assert string_values(legacy) == [], f"legacy 'tag' context unexpectedly honored: {string_values(legacy)}"
     assert "Input validation notice" in text_blocks(legacy), "schema notice missing for out-of-enum fieldContext"
+
+
+def test_field_lookups_honor_limit_and_say_when_cut(mcp_client: MCPClient, test_id: str, telemetry: None) -> None:
+    """limit reaches SigNoz, and a cut list (complete=false) carries the next-steps note."""
+    services = [f"mcp-e2e-{test_id}-a", f"mcp-e2e-{test_id}-b"]
+    for service in services:
+        seed_traces(service, count=1)
+
+    def lookup_values(limit: str) -> dict:
+        return assert_tool_ok(
+            mcp_client.call_tool(
+                "signoz_get_field_values",
+                {
+                    "searchContext": "service.name values for the seeded services",
+                    "signal": "traces",
+                    "name": "service.name",
+                    "fieldContext": "resource",
+                    "searchText": f"mcp-e2e-{test_id}",
+                    "limit": limit,
+                },
+            )
+        )
+
+    wait_for(lambda: set(services) <= set(string_values(lookup_values("10"))) or None, "both seeded services listed")
+
+    cut = lookup_values("1")
+    assert len(string_values(cut)) == 1, f"limit=1 returned {string_values(cut)}"
+    assert first_block_json(cut)["data"]["complete"] is False, first_block_json(cut)
+    assert "SigNoz cut this list" in note_blocks(cut), note_blocks(cut)
+
+    full = lookup_values("10")
+    assert first_block_json(full)["data"]["complete"] is True, first_block_json(full)
+    assert "SigNoz cut this list" not in note_blocks(full), note_blocks(full)
+
+    keys = assert_tool_ok(
+        mcp_client.call_tool(
+            "signoz_get_field_keys",
+            {"searchContext": "one resource key", "signal": "traces", "fieldContext": "resource", "limit": 1},
+        )
+    )
+    assert first_block_json(keys)["data"]["complete"] is False, first_block_json(keys)
+    assert "SigNoz cut this list" in note_blocks(keys), note_blocks(keys)
 
 
 def test_field_keys_context_filter_is_honored(mcp_client: MCPClient, test_id: str, telemetry: None) -> None:

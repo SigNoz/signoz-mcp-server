@@ -322,7 +322,7 @@ The client discovers OAuth endpoints automatically, opens a browser for credenti
 
 The API key and SigNoz URL only need to be provided in **one** place: the server or the client.
 
-**Option A — Credentials on the server** (simpler client config):
+**Option A — Credentials on the server** (simpler client config). The server-held key is sent only to `SIGNOZ_URL`. A request that names another instance in `X-SigNoz-URL` must carry its own `SIGNOZ-API-KEY` or `Authorization` header, or it is refused with HTTP 401.
 
 ```bash
 SIGNOZ_URL=https://your-signoz-instance.com \
@@ -876,7 +876,7 @@ The same expressions work in log aggregations and saved-query specs.
 
 #### `signoz_get_field_keys`
 
-Discover field names available for filtering or grouping metrics, traces, or logs, including AI trace fields with `queryType: builder_ai_query`. This returns keys, not observed values; use `signoz_get_field_values` after selecting a key. A `data.complete` of `false` means SigNoz truncated the key list; narrow with `searchText` or `fieldContext`.
+Discover field names available for filtering or grouping metrics, traces, or logs, including AI trace fields with `queryType: builder_ai_query`. This returns keys, not observed values; use `signoz_get_field_values` after selecting a key. Keys come from all retained metadata; the tool takes no time range. A `data.complete` of `false` means SigNoz cut the key list, and the result then carries a note with next steps: narrow with `searchText` or `fieldContext`, or raise `limit`.
 
 - **Parameters**:
   - `signal` (required) - Signal type. Enum: `metrics`, `traces`, `logs`
@@ -886,10 +886,11 @@ Discover field names available for filtering or grouping metrics, traces, or log
   - `fieldDataType` (optional) - Restrict to a data type: `string`, `bool`, `int64`, `float64`, `number`. An array form like `[]string` is treated as its element type.
   - `source` (optional) - For metrics, use `meter` for Cost Meter fields; omit for the default metrics store
   - `queryType` (optional) - `builder_query` (default) lists the fields of `signal`. Set `builder_ai_query` for AI observability queries; it also lists the trace-level fields, such as `trace.estimated_total_cost`, and `gen_ai.*` attributes.
+  - `limit` (optional) - Maximum number of keys to return for each signal, as an integer or string. Omit it for the SigNoz default. Intrinsic and materialized fields come on top of the limit, so the list can be longer.
 
 #### `signoz_get_field_values`
 
-Get observed values for a known field key. Use `signoz_get_field_keys` when the key is unknown, and match `signal` and `fieldContext` to the query that will use the value. A `data.complete` of `false` means SigNoz truncated the value list; narrow with `searchText`.
+Get observed values for a known field key. Use `signoz_get_field_keys` when the key is unknown, and match `signal` and `fieldContext` to the query that will use the value. Values come from all retained metadata; the tool takes no time range. A `data.complete` of `false` means SigNoz cut the value list, and the result then carries a note with next steps: narrow with `searchText`, or raise `limit`.
 
 - **Parameters**:
   - `signal` (required) - Signal type. Enum: `metrics`, `traces`, `logs`
@@ -898,6 +899,7 @@ Get observed values for a known field key. Use `signoz_get_field_keys` when the 
   - `metricName` (optional) - Filter by metric name (relevant for metrics signal)
   - `fieldContext` (optional) - Restrict the lookup to a field context (`resource`, `attribute`, `scope`, `log`/`span`/`metric`, `body`) when the same key name exists in more than one. Use `attribute`, not the legacy Query Builder context `tag`; SigNoz returns no values for `tag`.
   - `source` (optional) - For metrics, use `meter` for Cost Meter values; omit for the default metrics store
+  - `limit` (optional) - Maximum number of values to return, as an integer or string. Omit it for the SigNoz default.
 
 
 #### `signoz_search_traces`
@@ -1108,7 +1110,7 @@ Runs a SigNoz Query Builder v5 request that the dedicated tools cannot express, 
 - **Validation**: apart from inserted bounds, the request reaches SigNoz verbatim and SigNoz validates it. `requestType` has no default (`raw`, `trace`, `time_series`, or `scalar`), and `start` and `end` are required Unix-millisecond timestamps.
 - **Guide routing**: read `signoz://logs/query-builder-guide` for logs, `signoz://traces/query-builder-guide` for traces, `signoz://ai/query-builder-guide` for `builder_ai_query`, `signoz://metrics-aggregation-guide` for metrics/formulas, and `signoz://promql/instructions` for PromQL.
 - **Time-series ranking caveat**: top-N groups are ranked over the entire requested window. A short-lived spike can be omitted even when it dominates one bucket; narrow the window or adjust the limit when that matters.
-- **Backend warnings**: non-fatal warnings the backend returns (e.g. ambiguous-key resolution) are surfaced as a note alongside the raw response and WARN-logged, matching the search/aggregate/query_metrics tools (previously the body was returned verbatim and warnings were dropped).
+- **Backend warnings**: non-fatal warnings the backend returns (e.g. ambiguous-key resolution) stay in the response's `data.warning` block and are WARN-logged, as in the search, aggregate, and query_metrics tools. They are not repeated in a note.
 - **Key-not-found errors**: a filter referencing a key absent from the workspace's metadata for the queried signal fails with recovery guidance in the error text plus a machine-readable `missingKeys` array in the structured error content
 - **Documentation**: See [SigNoz Query Builder v5 docs](https://signoz.io/docs/userguide/query-builder-v5/)
 
@@ -1136,7 +1138,7 @@ Runs a SigNoz Query Builder v5 request that the dedicated tools cannot express, 
 | `OAUTH_REFRESH_TOKEN_TTL_MINUTES` | Refresh token lifetime in minutes (default: 43200 / 30d)      | No                                  |
 | `OAUTH_AUTH_CODE_TTL_SECONDS` | Authorization code lifetime in seconds (default: 600 / 10min)      | No                                  |
 | `SIGNOZ_CUSTOM_HEADERS` | Extra HTTP headers added to every API request, useful when SigNoz is behind a reverse proxy requiring auth (e.g. `CF-Access-Client-Id:id.access,CF-Access-Client-Secret:secret`). Format: `Key1:Value1,Key2:Value2` | No |
-| `SIGNOZ_INSTANCE_URL_ALLOWLIST` | Multi-tenant (http) only: comma-separated allowlist of SigNoz backend hosts the server will proxy to. Entries are exact hosts (`signoz.example.com`) or wildcards (`*.us.signoz.cloud`, which matches any subdomain ending in `.us.signoz.cloud`); a scheme/port/path accidentally included in an entry is tolerated and reduced to the bare host. When set, SigNoz instance URLs that do not match are refused at every ingress: the OAuth setup form and `X-SigNoz-URL` header return HTTP 403, the OAuth token endpoint (incl. existing refresh tokens) returns `invalid_grant`, and `/mcp` requests via an OAuth token return 403. All increment a `disallowed_signoz_url`-tagged failure metric for alerting (not logged per-request, to avoid noise from misconfigured/looping clients), and the rejection message points SigNoz Cloud users to their region's MCP URL (`mcp.<region>.signoz.cloud`) with a docs link. Empty/unset allows any host. The operator's own `SIGNOZ_URL` is exempt. | No |
+| `SIGNOZ_INSTANCE_URL_ALLOWLIST` | Multi-tenant (http) only: comma-separated allowlist of SigNoz backend hosts the server will proxy to. Entries are exact hosts (`signoz.example.com`) or wildcards (`*.us.signoz.cloud`, which matches any subdomain ending in `.us.signoz.cloud`); a scheme/port/path accidentally included in an entry is tolerated and reduced to the bare host. When set, SigNoz instance URLs that do not match are refused at every ingress: the OAuth setup form and `X-SigNoz-URL` header return HTTP 403, the OAuth token endpoint (incl. existing refresh tokens) returns `invalid_grant`, and `/mcp` requests via an OAuth token return 403. All increment a `disallowed_signoz_url`-tagged failure metric for alerting (not logged per-request, to avoid noise from misconfigured/looping clients), and the rejection message points SigNoz Cloud users to their region's MCP URL (`mcp.<region>.signoz.cloud`) with a docs link. Empty/unset allows no host other than `SIGNOZ_URL`, so a server without `SIGNOZ_URL` must set it. The operator's own `SIGNOZ_URL` is always allowed. | No |
 | `ANALYTICS_ENABLED` | Enable product analytics (`true`/`false`; default: `false`) | No |
 | `SEGMENT_KEY` | Segment write key used only when analytics is enabled | No |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP gRPC endpoint for the MCP server's own traces and metrics. Internal telemetry export is disabled when no OTLP endpoint/exporter is configured. For plaintext collectors, use an `http://` endpoint such as `http://localhost:4317`. | No |

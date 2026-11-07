@@ -33,16 +33,6 @@ func extractBackendWarningMessages(response json.RawMessage) []string {
 	return messages
 }
 
-func backendWarningsNote(messages []string) string {
-	var b strings.Builder
-	b.WriteString("note: SigNoz backend returned non-fatal warnings:")
-	for _, message := range messages {
-		b.WriteString("\n- ")
-		b.WriteString(message)
-	}
-	return b.String()
-}
-
 func warnBackendWarnings(ctx context.Context, logger *slog.Logger, toolName string, messages []string) {
 	if len(messages) == 0 {
 		return
