@@ -5,6 +5,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 )
 
 func TestLoadConfig_CustomHeaders(t *testing.T) {
@@ -80,13 +82,43 @@ func TestLoadConfig_CustomHeaders(t *testing.T) {
 	}
 }
 
+func TestResolveInstanceURL(t *testing.T) {
+	cfg := &Config{URL: "https://signoz.example.com:443/signoz"}
+	require.Equal(t, "https://signoz.example.com:443/signoz", cfg.ResolveInstanceURL("https://signoz.example.com"))
+	require.Equal(t, "https://signoz.example.com:443/signoz", cfg.ResolveInstanceURL("https://SIGNOZ.example.com:443"))
+	require.Equal(t, "https://other.example.com", cfg.ResolveInstanceURL("https://other.example.com"))
+	require.Equal(t, "https://tenant.example.com", (&Config{}).ResolveInstanceURL("https://tenant.example.com"))
+}
+
 func TestValidateConfig_HTTPAllowsCredentialsFromHeaders(t *testing.T) {
 	cfg := &Config{
-		TransportMode: "http",
-		Port:          "8000",
+		TransportMode:        "http",
+		Port:                 "8000",
+		InstanceURLAllowlist: util.ParseInstanceURLAllowlist("*.us.signoz.cloud"),
 	}
 
 	require.NoError(t, cfg.ValidateConfig())
+}
+
+func TestValidateConfig_HTTPRequiresInstanceURLOrAllowlist(t *testing.T) {
+	cfg := &Config{TransportMode: "http", Port: "8000"}
+	require.ErrorContains(t, cfg.ValidateConfig(), "SIGNOZ_INSTANCE_URL_ALLOWLIST is required")
+
+	cfg.URL = "https://signoz.example.com"
+	require.NoError(t, cfg.ValidateConfig())
+}
+
+func TestAllowsInstanceURL(t *testing.T) {
+	cfg := &Config{
+		URL:                  "https://signoz.example.com",
+		InstanceURLAllowlist: util.ParseInstanceURLAllowlist("*.us.signoz.cloud"),
+	}
+	require.True(t, cfg.AllowsInstanceURL("https://signoz.example.com"))
+	require.True(t, cfg.AllowsInstanceURL("https://SIGNOZ.example.com"))
+	require.True(t, cfg.AllowsInstanceURL("https://signoz.example.com:443"))
+	require.True(t, cfg.AllowsInstanceURL("https://demo.us.signoz.cloud"))
+	require.False(t, cfg.AllowsInstanceURL("https://10.0.0.5:9000"))
+	require.False(t, (&Config{URL: "https://signoz.example.com"}).AllowsInstanceURL("http://169.254.169.254"))
 }
 
 func TestLoadConfig_HTTPHostDefaultsToAllInterfaces(t *testing.T) {

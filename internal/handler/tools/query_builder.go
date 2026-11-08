@@ -11,6 +11,7 @@ import (
 
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/SigNoz/signoz-mcp-server/pkg/querybuilder"
+	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
 
 func (h *Handler) RegisterQueryBuilderV5Handlers(s *mcp.Server) {
@@ -19,17 +20,33 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *mcp.Server) {
 	// SigNoz Query Builder v5 tool - LLM builds structured query JSON and executes it
 	executeQuery := mcp.NewTool("signoz_execute_builder_query",
 		withReadOnlyToolAnnotations(),
-		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
 		mcp.WithDescription(
 			"Use this only when dedicated log, trace, and metric tools cannot express the request, including multi-query requests, formulas, PromQL, and ClickHouse SQL. "+
 				"Use signoz_search_logs/signoz_search_traces for raw rows, signoz_aggregate_logs/signoz_aggregate_traces for grouped or top-N analysis, and signoz_query_metrics for ordinary metrics queries. "+
-				"Read the matching signoz://logs/query-builder-guide, signoz://traces/query-builder-guide, or signoz://metrics-aggregation-guide; formulas require the metrics guide, and PromQL requires signoz://promql/instructions. "+
-				"Set each input builder_query limit to 10000, the builder_formula result limit to 100, and non-empty spec.order (not dashboard orderBy) on each builder_query and builder_formula; the server normalizes omissions.",
+				"Read the matching signoz://logs/query-builder-guide, signoz://traces/query-builder-guide, signoz://ai/query-builder-guide, or signoz://metrics-aggregation-guide; formulas require the metrics guide, and PromQL requires signoz://promql/instructions. signoz://query-builder/examples holds a complete request per query type and request type. "+
+				"Leave limit unset on each builder_query a formula references, because SigNoz applies an input's limit before the formula runs and drops series from its result. Give every other builder_query and each builder_formula a positive limit (100 for results) and non-empty spec.order (not dashboard orderBy); the server fills in omitted ones.",
 		),
-		mcp.WithObject("query", mcp.Required(), mcp.Description("Complete SigNoz Query Builder v5 JSON object with schemaVersion, start, end, requestType, compositeQuery, formatOptions, and variables; SigNoz validates it. requestType has no default: use raw, trace, time_series, or scalar. For predictable bounds, explicitly supply a positive spec.limit and non-empty spec.order (not dashboard orderBy) for every builder_query and builder_formula; the server inserts signal-aware defaults when they are omitted. Missing or zero standalone and formula-result limits normalize to 100; builder queries feeding a formula normalize to 10000 because input limits apply before formula evaluation.")),
+		mcp.WithInputSchema[types.ExecuteBuilderQueryInput](),
 	)
 
 	h.addTool(s, executeQuery, h.handleExecuteBuilderQuery)
+
+	queryBuilderExamples := mcp.NewResource(
+		"signoz://query-builder/examples",
+		"Query Builder Request Examples",
+		mcp.WithResourceDescription("Read this when composing the query argument of signoz_execute_builder_query and a complete request shape is still needed after the signal's guide. It provides one query_range request from the SigNoz OpenAPI spec per query type (builder, formula, PromQL, ClickHouse SQL) and request type (raw, scalar, time_series) across logs, traces, and metrics."),
+		mcp.WithMIMEType("text/markdown"),
+		mcp.WithResourceSize(int64(len(querybuilder.Examples))),
+	)
+	h.addResource(s, queryBuilderExamples, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+		return []mcp.ResourceContents{
+			mcp.TextResourceContents{
+				URI:      req.Params.URI,
+				MIMEType: "text/markdown",
+				Text:     querybuilder.Examples,
+			},
+		}, nil
+	})
 
 	tracesQueryBuilderGuide := mcp.NewResource(
 		"signoz://traces/query-builder-guide",
@@ -45,6 +62,24 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *mcp.Server) {
 				URI:      req.Params.URI,
 				MIMEType: "text/markdown",
 				Text:     querybuilder.TracesQueryBuilderGuide,
+			},
+		}, nil
+	})
+
+	aiQueryBuilderGuide := mcp.NewResource(
+		"signoz://ai/query-builder-guide",
+		"AI Query Builder Guide",
+		mcp.WithResourceDescription("Read this before AI observability queries: LLM cost, tokens, models, or tool calls, per call or per trace. It covers queryType builder_ai_query on signoz_search_traces and signoz_aggregate_traces, the trace-level fields and where they work, how cost and token totals are computed (including cache tokens), examples for both tools, and saving a builder_ai_query as an alert. Full requests are in signoz://query-builder/examples."),
+		mcp.WithMIMEType("text/markdown"),
+		mcp.WithResourceSize(int64(len(querybuilder.AIQueryBuilderGuide))),
+	)
+
+	h.addResource(s, aiQueryBuilderGuide, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+		return []mcp.ResourceContents{
+			mcp.TextResourceContents{
+				URI:      req.Params.URI,
+				MIMEType: "text/markdown",
+				Text:     querybuilder.AIQueryBuilderGuide,
 			},
 		}, nil
 	})
@@ -110,9 +145,8 @@ func (h *Handler) handleExecuteBuilderQuery(ctx context.Context, req mcp.CallToo
 
 	h.logger.DebugContext(ctx, "Successfully executed query builder v5")
 
-	// Surface non-fatal backend warnings as a note + WARN log, matching the five
-	// sibling QueryBuilderV5 callers (search/aggregate logs & traces, query_metrics).
-	// Returning the body verbatim previously dropped them entirely.
+	// Non-fatal backend warnings stay in the payload's data.warning; they are
+	// only WARN-logged here, as in the other QueryBuilderV5 callers.
 	var notes []string
 	if len(applied) > 0 {
 		requestType, _ := queryObj["requestType"].(string)
@@ -121,9 +155,6 @@ func (h *Handler) handleExecuteBuilderQuery(ctx context.Context, req mcp.CallToo
 	warnings := extractBackendWarningMessages(data)
 	warnBackendWarnings(ctx, h.logger, "signoz_execute_builder_query", warnings)
 	warnUnparsedWarningEnvelope(ctx, h.logger, "signoz_execute_builder_query", data, len(warnings))
-	if len(warnings) > 0 {
-		notes = append(notes, backendWarningsNote(warnings))
-	}
 	return resultWithNotes(data, notes...), nil
 }
 
@@ -133,11 +164,7 @@ func queryBoundsDecisionsNote(applied []querybuilder.AppliedBounds, requestType 
 	for _, bounds := range applied {
 		var decisions []string
 		if bounds.LimitDefaulted {
-			if bounds.FormulaInput {
-				decisions = append(decisions, fmt.Sprintf("limit=%d (formula-input default; applied before formula evaluation)", bounds.Limit))
-			} else {
-				decisions = append(decisions, fmt.Sprintf("limit=%d (request-type default)", bounds.Limit))
-			}
+			decisions = append(decisions, fmt.Sprintf("limit=%d (request-type default)", bounds.Limit))
 		}
 		if bounds.OrderDefaulted {
 			decisions = append(decisions, fmt.Sprintf("order=%s (signal-safe default)", bounds.OrderText()))

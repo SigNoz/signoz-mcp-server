@@ -13,6 +13,10 @@ INCORRECT: "filter": {"op": "AND", "items": [...]}
 Operators: =  !=  >  >=  <  <=  IN  NOT IN  LIKE  NOT LIKE  ILIKE  NOT ILIKE  CONTAINS  NOT CONTAINS  REGEXP  NOT REGEXP  BETWEEN  NOT BETWEEN  EXISTS  NOT EXISTS
 Combine:   AND  OR  (use parentheses for precedence)
 
+No other operators exist: write STARTS WITH as LIKE 'prefix%', IS NULL as NOT EXISTS, IS NOT NULL
+as EXISTS, and PromQL's =~ and !~ as REGEXP and NOT REGEXP. A condition is key, operator, value; key:value is not filter syntax. A bare word or quoted
+phrase with no key is a full-text search, as with search() below.
+
 Examples:
   severity_text = 'ERROR'
   body CONTAINS 'timeout'
@@ -24,15 +28,25 @@ Examples:
 
 == FIELD NAMES AND CONTEXTS ==
 
-Unknown keys hard-error. Do not guess field names. If unsure, call:
+An unknown key may not fail: SigNoz can match guessed attribute and body spellings, return the
+warning "key <name> not found in metadata", and match no rows. Read that warning as an absent key,
+not as an empty result. Do not guess field names. If unsure, call:
   signoz_get_field_keys(signal="logs", fieldContext="resource")
   signoz_get_field_keys(signal="logs", fieldContext="attribute")
   signoz_get_field_values(signal="logs", name="<field>")
 
 Log keys are workspace-specific: logs have no spec-mandated resource attributes, so even
 service.name exists only when the log pipeline sets it. A filter on a key this workspace's
-logs never carried fails with "key ... not found"; discover valid keys as above and use
+logs never carried usually returns no rows with the "not found in metadata" warning (some
+deployments reject it with "key ... not found" instead); discover valid keys as above and use
 an existing one (e.g. k8s.deployment.name) instead of retrying the same filter.
+
+Group by and select only keys signoz_get_field_keys returns. An unknown groupBy key can come
+back as one empty group. A body field (body.<path>) filters everywhere, but group by and
+selection work only for paths signoz_get_field_keys(signal="logs", fieldContext="body") lists,
+and it lists body paths only where the workspace stores JSON log bodies. For any other body
+path SigNoz answers "can be filtered but not selected or grouped" or "field not found"; filter
+on the body field and group by an attribute instead.
 
 If a key matches BOTH the resource and attribute contexts, SigNoz defaults to the resource context (and warns). For other multi-context matches, every matching context is ORed together.
 Disambiguate explicitly in filter expressions with resource.<key> or attribute.<key> (scope.<key> also exists).
@@ -43,7 +57,10 @@ Use these directly by name in filter expressions:
 
   timestamp       datetime  - log timestamp (stored as Unix NANOSECONDS; see TIMESTAMP FORMAT)
   body            string    - rendered log body
-  severity_text   string    - recorded severity; DEBUG, INFO, WARN, ERROR, and FATAL are common examples, not an exhaustive enum
+  severity_text   string    - recorded severity, as the source wrote it; DEBUG, INFO, WARN, ERROR, and FATAL are common
+                              examples, not an exhaustive enum. = is case-sensitive, so ERROR does not match error;
+                              discover the values first, or use IN ('ERROR', 'error') when both spellings occur.
+                              The severity shortcut on the log tools matches any case and as a prefix
   severity_number number    - numeric severity when present
   trace_id        string    - linked trace identifier
   span_id         string    - linked span identifier
@@ -157,6 +174,10 @@ Every builder_query must include a positive limit and explicit order.
   raw:        limit 100; order by timestamp desc, then id desc for stable offset pagination
   scalar:     limit 100 groups; order by the primary aggregation desc unless the task needs another order
   time_series: limit 100 groups; order by the primary aggregation desc unless the task needs another order
+
+In scalar and time_series queries, order[].key.name must be one of the query's aggregation expressions
+written exactly as in aggregations (count(), count_distinct(trace_id)), an aggregation index (0 for the
+first), or a groupBy key. The query name (A), __result, and timestamp are not order keys there.
 
 For time_series queries with groupBy, the limit selects top groups using the ordering across the ENTIRE
 time range, not each time bucket. A short-lived spike can fall outside the selected groups. Use an explicit

@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -11,18 +12,47 @@ import (
 
 const logsLegacyQueryAliasError = `parameter validation failed: "query" is not accepted by log tools; use "filter" with a Query Builder filter expression (see signoz://logs/query-builder-guide)`
 
-// readLogFilterExpr reads the canonical filter parameter for log tools. The
-// legacy query alias was removed from the changed log tools, so the presence
-// of query is a correctable validation error rather than a silent fallback.
+// readLogFilterExpr reads the canonical filter parameter for log tools.
 func readLogFilterExpr(args map[string]any) (string, error) {
+	return readFilterRejectingQueryAlias(args, logsLegacyQueryAliasError)
+}
+
+// readFilterRejectingQueryAlias reads the canonical filter parameter for a
+// tool that retired the legacy query alias: any supplied query is a coded
+// validation error naming filter, never a silent fallback (CMP-2).
+func readFilterRejectingQueryAlias(args map[string]any, aliasError string) (string, error) {
 	if _, exists := args["query"]; exists {
-		return "", errors.New(logsLegacyQueryAliasError)
+		return "", errors.New(aliasError)
 	}
-	filter := stringValue(args["filter"])
-	if strings.TrimSpace(filter) == "" {
+	raw, exists := args["filter"]
+	if !exists || raw == nil {
 		return "", nil
 	}
+	filter, ok := raw.(string)
+	if !ok {
+		return "", errFilterExpressionObject()
+	}
+	trimmed := strings.TrimSpace(filter)
+	if trimmed == "" {
+		return "", nil
+	}
+	// The Query Builder wire object sent as text would reach SigNoz as a
+	// full-text search on logs and silently match nothing.
+	if strings.HasPrefix(trimmed, "{") {
+		var wire map[string]any
+		if json.Unmarshal([]byte(trimmed), &wire) == nil {
+			if _, wrapped := wire["expression"]; wrapped {
+				return "", errFilterExpressionObject()
+			}
+		}
+	}
 	return filter, nil
+}
+
+const filterExpressionObjectHint = `"filter" takes the expression text as a string, such as "service.name = 'api'", not {"expression": ...}`
+
+func errFilterExpressionObject() error {
+	return fmt.Errorf("%s %s", validationErrorPrefix, filterExpressionObjectHint)
 }
 
 // parseAggregateLogsArgs validates and parses arguments for the aggregate_logs tool.
@@ -41,11 +71,17 @@ func parseAggregateLogsArgs(args map[string]any) (*AggregateRequest, error) {
 // SearchLogsRequest holds the parsed parameters for a log search query.
 type SearchLogsRequest struct {
 	FilterExpression string
-	Limit            int
-	LimitClamped     bool
-	Offset           int
-	StartTime        int64
-	EndTime          int64
+	// SearchScopeIgnored is set when searchScope arrived without searchText;
+	// the scope only says where text matches, so the call runs without it.
+	SearchScopeIgnored bool
+	SelectFields       []querybuilder.FieldKey
+	OrderKey           string
+	OrderDir           string
+	Limit              int
+	LimitClamped       bool
+	Offset             int
+	StartTime          int64
+	EndTime            int64
 }
 
 func parseSearchLogsArgs(args map[string]any) (*SearchLogsRequest, error) {
@@ -57,7 +93,7 @@ func parseSearchLogsArgs(args map[string]any) (*SearchLogsRequest, error) {
 	severity, _ := args["severity"].(string)
 	searchText, _ := args["searchText"].(string)
 	searchScope, _ := args["searchScope"].(string)
-	if err := validateLogSearchScope(searchScope, searchText); err != nil {
+	if err := validateLogSearchScope(searchScope); err != nil {
 		return nil, err
 	}
 	filterExpr := buildLogFilterExpr(filter, service, severity, searchText, searchScope)
@@ -78,23 +114,77 @@ func parseSearchLogsArgs(args map[string]any) (*SearchLogsRequest, error) {
 		return nil, err
 	}
 
+	selectFields, err := parseLogSelectFields(args["selectFields"])
+	if err != nil {
+		return nil, err
+	}
+	var orderKey, orderDir string
+	if raw := strings.TrimSpace(stringValue(args["orderBy"])); raw != "" {
+		orderKey, orderDir = parseOrderBy(raw)
+	}
+
 	return &SearchLogsRequest{
-		FilterExpression: filterExpr,
-		Limit:            limit,
-		LimitClamped:     clamped,
-		Offset:           offset,
-		StartTime:        startTime,
-		EndTime:          endTime,
+		FilterExpression:   filterExpr,
+		SearchScopeIgnored: searchScope != "" && searchText == "",
+		SelectFields:       selectFields,
+		OrderKey:           orderKey,
+		OrderDir:           orderDir,
+		Limit:              limit,
+		LimitClamped:       clamped,
+		Offset:             offset,
+		StartTime:          startTime,
+		EndTime:            endTime,
 	}, nil
 }
 
-// quoteLogFilterLiteral escapes a literal for a single-quoted Query Builder
-// string: each backslash becomes two backslashes first, then each apostrophe
-// is backslash-escaped, matching the backend's FilterStringLiteral rules.
-func quoteLogFilterLiteral(value string) string {
-	escaped := strings.ReplaceAll(value, "\\", "\\\\")
-	escaped = strings.ReplaceAll(escaped, "'", "\\'")
-	return "'" + escaped + "'"
+// logSelectFieldContexts maps accepted name prefixes to the Query Builder
+// field context for log rows.
+var logSelectFieldContexts = []struct{ prefix, context string }{
+	{"resource.", "resource"},
+	{"attribute.", "attribute"},
+	{"log.", "log"},
+	{"body.", "body"},
+}
+
+// parseLogSelectFields returns the core log columns plus any extra fields the
+// caller named, the same contract as signoz_search_traces. It accepts an array
+// of names or a comma-separated string; a resource., attribute., log., or
+// body. prefix sets the field context, and an unprefixed name is left for
+// SigNoz to resolve.
+func parseLogSelectFields(raw any) ([]querybuilder.FieldKey, error) {
+	names, err := parseFieldNameList("selectFields", raw)
+	if err != nil {
+		return nil, err
+	}
+	fields := append([]querybuilder.FieldKey(nil), querybuilder.LogSearchCoreFields...)
+	seen := make(map[string]string, len(fields)+len(names))
+	for _, field := range fields {
+		seen[field.Name] = querybuilder.FieldContextOf(field)
+	}
+	extra := 0
+	for _, name := range names {
+		field := querybuilder.NewFieldKey(name, "logs", "", "")
+		for _, c := range logSelectFieldContexts {
+			if bare, found := strings.CutPrefix(name, c.prefix); found && bare != "" {
+				field = querybuilder.NewFieldKey(bare, "logs", c.context, "")
+				break
+			}
+		}
+		context := querybuilder.FieldContextOf(field)
+		if held, ok := seen[field.Name]; ok {
+			if err := selectFieldCollision(name, field.Name, held, context); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		seen[field.Name] = context
+		fields = append(fields, field)
+		extra++
+	}
+	if extra > maxSelectFields {
+		return nil, fmt.Errorf(`"selectFields" names %d extra fields; request at most %d per search`, extra, maxSelectFields)
+	}
+	return fields, nil
 }
 
 var logContainsPatternEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
@@ -102,7 +192,7 @@ var logContainsPatternEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `
 // quoteLogContainsLiteral first makes LIKE metacharacters literal for the
 // backend's ILIKE pattern, then escapes the result for Query Builder grammar.
 func quoteLogContainsLiteral(value string) string {
-	return quoteLogFilterLiteral(logContainsPatternEscaper.Replace(value))
+	return querybuilder.QuoteFilterLiteral(logContainsPatternEscaper.Replace(value))
 }
 
 // buildLogFilterExpr combines the caller's filter expression with the log
@@ -117,10 +207,10 @@ func buildLogFilterExpr(filter, service, severity, searchText, searchScope strin
 		parts = append(parts, "("+filter+")")
 	}
 	if service != "" {
-		parts = append(parts, "service.name = "+quoteLogFilterLiteral(service))
+		parts = append(parts, "service.name = "+querybuilder.QuoteFilterLiteral(service))
 	}
 	if severity != "" {
-		parts = append(parts, "severity_text = "+quoteLogFilterLiteral(severity))
+		parts = append(parts, severityPredicate(severity))
 	}
 	if searchText != "" {
 		parts = append(parts, logSearchTextPredicate(searchText, searchScope))
@@ -128,30 +218,37 @@ func buildLogFilterExpr(filter, service, severity, searchText, searchScope strin
 	return strings.Join(parts, " AND ")
 }
 
+// severityPredicate matches the severity shortcut in any case and as a prefix:
+// sources write one level as ERROR, error, or Error, and as WARN or WARNING.
+// LIKE metacharacters in the value stay literal.
+func severityPredicate(severity string) string {
+	return "severity_text ILIKE " + querybuilder.QuoteFilterLiteral(logContainsPatternEscaper.Replace(severity)+"%")
+}
+
 // logSearchScopes maps searchScope values to search() scopes. body keeps the
 // cheaper CONTAINS predicate; all is an unscoped search() over every field.
 var logSearchScopes = []string{"body", "attribute", "resource", "all"}
 
-func validateLogSearchScope(scope, searchText string) error {
-	if scope == "" {
+// validateLogSearchScope rejects an unknown scope. A known scope without
+// searchText is not an error: it only says where text matches, so the search
+// runs without it and the result carries searchScopeIgnoredNote.
+func validateLogSearchScope(scope string) error {
+	if scope == "" || slices.Contains(logSearchScopes, scope) {
 		return nil
 	}
-	if !slices.Contains(logSearchScopes, scope) {
-		return fmt.Errorf(`parameter validation failed: "searchScope" %q is not supported; use one of: %s`, scope, strings.Join(logSearchScopes, ", "))
-	}
-	if searchText == "" {
-		return errors.New(`parameter validation failed: "searchScope" needs "searchText"; supply the text to find, or remove searchScope`)
-	}
-	return nil
+	return fmt.Errorf(`parameter validation failed: "searchScope" %q is not supported; use one of: %s`, scope, strings.Join(logSearchScopes, ", "))
 }
+
+// searchScopeIgnoredNote explains a searchScope that had no searchText to scope.
+const searchScopeIgnoredNote = "note: searchScope was ignored because searchText is empty; pass searchText to search for text in that scope."
 
 func logSearchTextPredicate(searchText, scope string) string {
 	switch scope {
 	case "", "body":
 		return "body CONTAINS " + quoteLogContainsLiteral(searchText)
 	case "all":
-		return "search(" + quoteLogFilterLiteral(searchText) + ")"
+		return "search(" + querybuilder.QuoteFilterLiteral(searchText) + ")"
 	default:
-		return "search(" + quoteLogFilterLiteral(searchText) + ", " + scope + ")"
+		return "search(" + querybuilder.QuoteFilterLiteral(searchText) + ", " + scope + ")"
 	}
 }

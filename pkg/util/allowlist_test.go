@@ -5,17 +5,17 @@ import (
 	"testing"
 )
 
-func TestInstanceURLAllowlistUnconfiguredAllowsAll(t *testing.T) {
+func TestInstanceURLAllowlistUnconfiguredAllowsNothing(t *testing.T) {
 	al := ParseInstanceURLAllowlist("")
 	if al.Configured() {
 		t.Fatalf("empty allowlist should not be configured")
 	}
 	for _, host := range []string{"demo.us.signoz.cloud", "1.1.1.1", "signoz.example.com", ""} {
-		if !al.AllowsHost(host) {
+		if al.AllowsHost(host) {
 			t.Errorf("unconfigured allowlist should allow %q", host)
 		}
 	}
-	if !al.AllowsURL("https://anything.example.com") {
+	if al.AllowsURL("https://anything.example.com") {
 		t.Errorf("unconfigured allowlist should allow any URL")
 	}
 }

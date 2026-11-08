@@ -72,6 +72,28 @@ func TestApplyBounds_DefaultsByRequestType(t *testing.T) {
 	}
 }
 
+// SigNoz orders AI trace rows by last activity and accepts only per-trace keys
+// there, so a builder_ai_query gets a reported default limit but no inserted order.
+func TestApplyBounds_BuilderAIQueryGetsDefaultLimitAndNoOrder(t *testing.T) {
+	for _, tc := range []struct {
+		requestType string
+		spec        string
+		wantLimit   int
+	}{
+		{"trace", `{"name":"A","signal":"traces","filter":{"expression":"trace.tool_call_count > 10"}}`, DefaultRawQueryLimit},
+		{"scalar", `{"name":"A","signal":"traces","limit":"0","aggregations":[{"expression":"avg(trace.estimated_total_cost)"}]}`, DefaultAggregateQueryLimit},
+	} {
+		t.Run(tc.requestType, func(t *testing.T) {
+			request := decode(t, `{"requestType":"`+tc.requestType+`","compositeQuery":{"queries":[{"type":"builder_ai_query","spec":`+tc.spec+`}]}}`)
+			applied := ApplyBounds(request)
+			spec := querySpec(t, request, 0)
+			require.Equal(t, tc.wantLimit, spec["limit"])
+			require.NotContains(t, spec, "order", "a builder_ai_query must reach SigNoz without an inserted order")
+			require.Equal(t, []AppliedBounds{{QueryIndex: 0, QueryName: `query "A"`, Limit: tc.wantLimit, LimitDefaulted: true}}, applied)
+		})
+	}
+}
+
 func TestApplyBounds_LeavesAuthoredBoundsUntouched(t *testing.T) {
 	request := decode(t, `{"requestType":"time_series","compositeQuery":{"queries":[{"type":"builder_query","spec":{
 		"name":"A","signal":"logs","limit":42,"stepInterval":60,"aggregations":[{"expression":"count()"}],
@@ -84,7 +106,7 @@ func TestApplyBounds_LeavesAuthoredBoundsUntouched(t *testing.T) {
 	require.Empty(t, applied)
 }
 
-func TestApplyBounds_WidensFormulaInputsAndBoundsFormulaResults(t *testing.T) {
+func TestApplyBounds_LeavesFormulaInputsUnboundedAndBoundsFormulaResults(t *testing.T) {
 	request := decode(t, `{"requestType":"time_series","compositeQuery":{"queries":[
 		{"type":"builder_query","spec":{"name":"A","signal":"metrics","aggregations":[{"metricName":"errors","spaceAggregation":"sum"}]}},
 		{"type":"builder_query","spec":{"name":"B","signal":"metrics","limit":42,"order":[{"key":{"name":"__result"},"direction":"desc"}],"aggregations":[{"metricName":"requests","spaceAggregation":"sum"}]}},
@@ -94,7 +116,8 @@ func TestApplyBounds_WidensFormulaInputsAndBoundsFormulaResults(t *testing.T) {
 	]}}`)
 	applied := ApplyBounds(request)
 
-	require.Equal(t, DefaultFormulaInputQueryLimit, querySpec(t, request, 0)["limit"], "a disabled intermediate formula still widens its inputs")
+	require.NotContains(t, querySpec(t, request, 0), "limit", "a formula input keeps every series, even under a disabled intermediate formula")
+	require.NotContains(t, querySpec(t, request, 0), "order")
 	require.Equal(t, float64(42), querySpec(t, request, 1)["limit"], "an authored input limit is kept")
 	require.Equal(t, DefaultAggregateQueryLimit, querySpec(t, request, 2)["limit"], "AA is not referenced by A / B")
 	require.Equal(t, DefaultAggregateQueryLimit, querySpec(t, request, 3)["limit"])
@@ -102,8 +125,7 @@ func TestApplyBounds_WidensFormulaInputsAndBoundsFormulaResults(t *testing.T) {
 	require.Equal(t, 25, querySpec(t, request, 4)["limit"], "a numeric-string formula limit is normalized and kept")
 	requireJSONEqual(t, `[{"key":{"name":"F2"},"direction":"asc"}]`, querySpec(t, request, 4)["order"])
 
-	require.True(t, applied[0].FormulaInput)
-	require.Len(t, applied, 3)
+	require.Len(t, applied, 2)
 }
 
 // Every field other than an inserted limit or order reaches SigNoz exactly as

@@ -19,7 +19,7 @@ func (h *Handler) RegisterMetricUsageHandlers(s *mcp.Server) {
 		mcp.WithDescription(
 			"Use this when the user needs to know which dashboards and alerts reference known metric names, especially before dropping or reducing telemetry. It returns dashboards, alerts, and an error for each metric, with up to 50 unique names per call. Do not use it for ingestion ranking (signoz_get_top_metrics) or label cardinality (signoz_check_metric_cardinality). A non-empty per-metric error means that entry is partial and unreliable; never interpret it as proof that the metric is unused."),
 		mcp.WithString("searchContext",
-			mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
+			mcp.Description(searchContextParamDescription)),
 		mcp.WithArray("metricNames",
 			mcp.Required(),
 			mcp.WithStringItems(),

@@ -182,7 +182,7 @@ def mcp_server_with_global_external_url(
             "SIGNOZ_URL": backend_url,
             "SIGNOZ_API_KEY": signoz.access_token,
             "SIGNOZ_CUSTOM_HEADERS": "",
-            "SIGNOZ_INSTANCE_URL_ALLOWLIST": "",
+            "SIGNOZ_INSTANCE_URL_ALLOWLIST": "127.0.0.1",
             "OAUTH_ENABLED": "false",
             "LOG_LEVEL": "error",
             "ANALYTICS_ENABLED": "false",

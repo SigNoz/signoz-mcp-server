@@ -139,14 +139,38 @@ replay-safe requests on transport errors and 429/502/503/504, and buffers each r
   the pinned SigNoz release. It builds paths, query strings, and request bodies. Calls go through
   `callAPI`, which also rejects a 2xx HTML page (a SigNoz version without the route, or an auth
   proxy's login page) with `ErrNonJSONResponse`. Generated files are never hand-edited; regenerate
-  after bumping `SIGNOZ_SPEC_REF`, `SKAFF_VERSION`, or `skaff.yml`.
-- **Hand-written requests** (`doRequest`): for areas not yet moved to the generated client and for
-  routes missing from the spec, such as the services endpoints.
+  after bumping `SIGNOZ_SPEC_REF`, `SKAFF_VERSION`, or `skaff.yml`. The generated types carry the
+  upstream field descriptions as `jsonschema` struct tags, so a tool that registers its input with
+  `mcp.WithInputSchema[T]` over an embedded generated type (alerts, notification channels, saved
+  views) advertises those descriptions with no hand-written copy.
+- **Spec-derived files** (`tools/specgen/specgen.py`, also run by `make gen`): the dashboard input
+  schemas in `internal/handler/tools/schemas/` (raw JSON Schema, because the Perses unions need
+  `oneOf` with discriminators that struct reflection cannot express) and the
+  `pkg/*/examples.generated.md` files that the `signoz://*/examples` resources embed, rendered
+  from the request examples the spec publishes on each operation. `make gen-spec` regenerates
+  them without skaff; `make gen-check` fails when any generated file is stale.
+- **Hand-written requests** (`doRequest`): only for routes missing from the spec, today the two
+  services endpoints. It shares `callAPI`'s response path, so it rejects a 2xx HTML page too.
+  Query parameters the spec omits for a documented route, such as the Alertmanager filters of
+  `GET /api/v1/alerts`, are appended to the generated request with a request editor. Credential
+  validation builds its requests with the generated constructors but sends them outside the
+  `doer`, because a credential check must not retry.
 
 Both paths return the raw response body. Tools pass it through or parse only the fields they need,
 so fields the spec doesn't model still reach clients. Request bodies go through the generated
 `WithBody` methods with the bytes the tool built, and the generated enum `Valid()` helpers are
 never called, so SigNoz stays the only validator.
+
+### Field names in query tools
+
+SigNoz owns field metadata. The query tools send a field name the caller gives in `groupBy`,
+`selectFields`, or `orderBy` without a context or data type, and SigNoz resolves it against the
+workspace's own field metadata; a name in several contexts defaults to resource. A caller who
+writes a context prefix (`resource.`, `attribute.`, `span.`, or `log.`) gets that context. The
+server keeps no field catalog of its own, except the fixed intrinsic columns each search tool
+returns by default. Metrics are the one exception to bare names: every metrics label is sent in
+attribute context, because SigNoz keeps resource and point attributes in one labels set and a
+name with no context would read an intrinsic column instead.
 
 ## MCP Runtime and Transports
 

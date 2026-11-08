@@ -6,11 +6,13 @@ filter, values returns empty). These tests pin both halves of that teaching
 against the pinned release: taught contexts are honored (a context filter
 restricts keys to that context, span intrinsics surface under "span", a seeded
 resource attribute's observed values come back in values.stringValues), and the
-"tag" trap behaves as the descriptions say it does.
+"tag" trap behaves as the descriptions say it does. queryType=builder_ai_query
+pins what the AI field keys endpoint returns: the computed per-trace fields
+under the trace context, and the same keys whatever the signal.
 """
 
 from fixtures.mcpclient import MCPClient, assert_tool_ok, text_blocks
-from fixtures.results import first_block_json
+from fixtures.results import first_block_json, note_blocks
 from fixtures.telemetry import seed_traces, wait_for
 
 
@@ -71,6 +73,48 @@ def test_seeded_resource_attribute_values_discoverable(mcp_client: MCPClient, te
     assert "Input validation notice" in text_blocks(legacy), "schema notice missing for out-of-enum fieldContext"
 
 
+def test_field_lookups_honor_limit_and_say_when_cut(mcp_client: MCPClient, test_id: str, telemetry: None) -> None:
+    """limit reaches SigNoz, and a cut list (complete=false) carries the next-steps note."""
+    services = [f"mcp-e2e-{test_id}-a", f"mcp-e2e-{test_id}-b"]
+    for service in services:
+        seed_traces(service, count=1)
+
+    def lookup_values(limit: str) -> dict:
+        return assert_tool_ok(
+            mcp_client.call_tool(
+                "signoz_get_field_values",
+                {
+                    "searchContext": "service.name values for the seeded services",
+                    "signal": "traces",
+                    "name": "service.name",
+                    "fieldContext": "resource",
+                    "searchText": f"mcp-e2e-{test_id}",
+                    "limit": limit,
+                },
+            )
+        )
+
+    wait_for(lambda: set(services) <= set(string_values(lookup_values("10"))) or None, "both seeded services listed")
+
+    cut = lookup_values("1")
+    assert len(string_values(cut)) == 1, f"limit=1 returned {string_values(cut)}"
+    assert first_block_json(cut)["data"]["complete"] is False, first_block_json(cut)
+    assert "SigNoz cut this list" in note_blocks(cut), note_blocks(cut)
+
+    full = lookup_values("10")
+    assert first_block_json(full)["data"]["complete"] is True, first_block_json(full)
+    assert "SigNoz cut this list" not in note_blocks(full), note_blocks(full)
+
+    keys = assert_tool_ok(
+        mcp_client.call_tool(
+            "signoz_get_field_keys",
+            {"searchContext": "one resource key", "signal": "traces", "fieldContext": "resource", "limit": 1},
+        )
+    )
+    assert first_block_json(keys)["data"]["complete"] is False, first_block_json(keys)
+    assert "SigNoz cut this list" in note_blocks(keys), note_blocks(keys)
+
+
 def test_field_keys_context_filter_is_honored(mcp_client: MCPClient, test_id: str, telemetry: None) -> None:
     """A context filter restricts keys to that context: the seeded span attribute appears under "attribute" only."""
     service = f"mcp-e2e-{test_id}"
@@ -112,3 +156,75 @@ def test_span_intrinsics_discoverable_under_span_context(mcp_client: MCPClient) 
     keys = field_key_entries(result)
     entries = keys.get("duration_nano", [])
     assert any(e.get("fieldContext") == "span" for e in entries), f"duration_nano missing from span context: {keys}"
+
+
+AI_TRACE_COLUMNS = {
+    "llm_call_count",
+    "tool_call_count",
+    "distinct_tool_count",
+    "input_tokens",
+    "output_tokens",
+    "total_tokens",
+    "estimated_total_cost",
+    "max_llm_duration_nano",
+}
+
+
+def ai_key_names(signal: str, mcp_client: MCPClient) -> set:
+    """Every key name queryType=builder_ai_query lists for the given signal."""
+    result = mcp_client.call_tool(
+        "signoz_get_field_keys",
+        {"searchContext": "which AI fields exist", "signal": signal, "queryType": "builder_ai_query"},
+    )
+    assert_tool_ok(result)
+    return set(field_key_entries(result))
+
+
+def ai_trace_column_names(signal: str, mcp_client: MCPClient) -> set:
+    """Names that queryType=builder_ai_query lists under the per-trace "trace" context."""
+    result = mcp_client.call_tool(
+        "signoz_get_field_keys",
+        {
+            "searchContext": "which AI fields can I filter AI traces on, like cost and token counts",
+            "signal": signal,
+            "queryType": "builder_ai_query",
+        },
+    )
+    assert_tool_ok(result)
+    keys = field_key_entries(result)
+    return {name for name, entries in keys.items() if any(e.get("fieldContext") == "trace" for e in entries)}
+
+
+def test_ai_field_keys_list_per_trace_columns(mcp_client: MCPClient) -> None:
+    """queryType=builder_ai_query lists the per-trace cost, token and call-count columns under fieldContext trace."""
+    names = ai_trace_column_names("traces", mcp_client)
+    assert AI_TRACE_COLUMNS <= names, f"per-trace AI columns missing: {AI_TRACE_COLUMNS - names}"
+
+
+def test_ai_field_keys_ignore_signal(mcp_client: MCPClient) -> None:
+    """signal=logs with queryType=builder_ai_query still lists the AI trace fields, as the queryType description says.
+
+    The AI fields endpoint takes no signal and always reads traces, and the MCP
+    does not validate the combination; if SigNoz starts scoping AI keys by
+    signal, this pin fails and the description must change with it.
+    """
+    logs, traces = ai_key_names("logs", mcp_client), ai_key_names("traces", mcp_client)
+    assert logs == traces, f"signal=logs changed the AI keys: {sorted(logs ^ traces)}"
+
+
+def test_ai_field_keys_filter_to_trace_context(mcp_client: MCPClient) -> None:
+    """fieldContext=trace with queryType=builder_ai_query returns only the computed per-trace fields."""
+    result = mcp_client.call_tool(
+        "signoz_get_field_keys",
+        {
+            "searchContext": "which per-trace AI columns can I filter on",
+            "signal": "traces",
+            "queryType": "builder_ai_query",
+            "fieldContext": "trace",
+        },
+    )
+    assert_tool_ok(result)
+    keys = field_key_entries(result)
+    contexts = {entry.get("fieldContext") for entries in keys.values() for entry in entries}
+    assert contexts == {"trace"}, f"fieldContext=trace returned other contexts: {keys}"
+    assert AI_TRACE_COLUMNS <= set(keys), f"per-trace AI columns missing: {AI_TRACE_COLUMNS - set(keys)}"

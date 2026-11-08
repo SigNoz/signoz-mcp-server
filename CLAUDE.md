@@ -20,9 +20,12 @@ contracts.
   keeps the environment and `make test-e2e-reuse` reruns against it. See `tests/README.md`.
 - `make docs-index`: rebuild the embedded docs corpus in `internal/docs/assets/`. Diff the
   manifest and commit both files.
-- `make gen`: regenerate the SigNoz API client in `internal/apiclient/` from `skaff.yml` and the
-  pinned SigNoz release spec (`SIGNOZ_SPEC_REF`). Takes several minutes and needs a `gh` login
-  that can read SigNoz/skaff. `make gen-check` fails when the committed client is stale.
+- `make gen`: regenerate everything derived from the pinned SigNoz spec (`SIGNOZ_SPEC_REF`): the
+  API client in `internal/apiclient/` from `skaff.yml`, the dashboard input schemas in
+  `internal/handler/tools/schemas/`, and the `pkg/*/examples.generated.md` files behind the
+  `signoz://*/examples` resources (`tools/specgen/specgen.py`). Takes several minutes and needs a
+  `gh` login that can read SigNoz/skaff; `make gen-spec` regenerates only the schemas and
+  examples and needs neither. `make gen-check` fails when any committed generated file is stale.
 - `make check-repo-docs READY=1`: the plan rules CI applies once a PR leaves draft.
 
 ## Tests
@@ -151,8 +154,10 @@ copying an existing resource's shape over hand-crafting one.
   errors, so clients get a code and recovery guidance.
 - Don't silence the gate: fix the cause instead of adding `//nolint`. When one is unavoidable,
   name the linter and say why, e.g. `//nolint:errcheck // best-effort close`.
-- Generated files: rebuild the docs corpus with `make docs-index` and the SigNoz API client with
-  `make gen`. Never hand-edit `internal/docs/assets/corpus.gob.gz` or `internal/apiclient/`.
+- Generated files: rebuild the docs corpus with `make docs-index` and the SigNoz API client,
+  dashboard schemas, and examples resources with `make gen`. Never hand-edit
+  `internal/docs/assets/corpus.gob.gz`, `internal/apiclient/`,
+  `internal/handler/tools/schemas/*.json`, or `pkg/*/examples.generated.md`.
 
 ## Plans
 

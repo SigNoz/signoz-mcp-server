@@ -2,10 +2,18 @@ package tools
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/SigNoz/signoz-mcp-server/pkg/querybuilder"
 )
+
+const tracesLegacyQueryAliasError = `parameter validation failed: "query" is not accepted by trace tools; use "filter" with a Query Builder filter expression (see signoz://traces/query-builder-guide)`
+
+// readTraceFilterExpr reads the canonical filter parameter for trace tools.
+func readTraceFilterExpr(args map[string]any) (string, error) {
+	return readFilterRejectingQueryAlias(args, tracesLegacyQueryAliasError)
+}
 
 // SearchTracesRequest holds the parsed parameters for a trace search query.
 type SearchTracesRequest struct {
@@ -16,13 +24,17 @@ type SearchTracesRequest struct {
 	Offset           int
 	StartTime        int64
 	EndTime          int64
+	QueryType        string // envelope type, forwarded as given; "" means builder_query
+	RequestType      string // "trace" lists one row per trace; anything else lists spans
+	OrderExpr        string // "" keeps the query type's default order
+	OrderDir         string
 }
 
 // maxTraceSelectFields bounds how many extra columns one search can request.
-const maxTraceSelectFields = 50
+const maxTraceSelectFields = maxSelectFields
 
 func parseSearchTracesArgs(args map[string]any) (*SearchTracesRequest, error) {
-	filter, err := readFilterExpr(args)
+	filter, err := readTraceFilterExpr(args)
 	if err != nil {
 		return nil, err
 	}
@@ -32,8 +44,10 @@ func parseSearchTracesArgs(args map[string]any) (*SearchTracesRequest, error) {
 	if err != nil {
 		return nil, err
 	}
-	minDuration, _ := args["minDuration"].(string)
-	maxDuration, _ := args["maxDuration"].(string)
+	minDuration, maxDuration, err := readTraceDurations(args)
+	if err != nil {
+		return nil, err
+	}
 	filterExpr := buildTraceFilterExpr(filter, service, operation, errorFilter, errorPresent, minDuration, maxDuration)
 
 	limit, err := intArg(args, "limit", querybuilder.DefaultRawQueryLimit)
@@ -56,8 +70,19 @@ func parseSearchTracesArgs(args map[string]any) (*SearchTracesRequest, error) {
 	if err != nil {
 		return nil, err
 	}
+	var orderExpr, orderDir string
+	if raw := strings.TrimSpace(stringValue(args["orderBy"])); raw != "" {
+		orderExpr, orderDir = parseOrderBy(raw)
+	}
+
+	queryType, _ := args["queryType"].(string)
+	requestType, _ := args["requestType"].(string)
 
 	return &SearchTracesRequest{
+		QueryType:        queryType,
+		RequestType:      requestType,
+		OrderExpr:        orderExpr,
+		OrderDir:         orderDir,
 		FilterExpression: filterExpr,
 		SelectFields:     selectFields,
 		Limit:            limit,
@@ -76,83 +101,102 @@ func parseAggregateTracesArgs(args map[string]any) (*AggregateRequest, error) {
 	if err != nil {
 		return nil, err
 	}
-	minDuration, _ := args["minDuration"].(string)
-	maxDuration, _ := args["maxDuration"].(string)
-	filter, err := readFilterExpr(args)
+	minDuration, maxDuration, err := readTraceDurations(args)
+	if err != nil {
+		return nil, err
+	}
+	filter, err := readTraceFilterExpr(args)
 	if err != nil {
 		return nil, err
 	}
 	filterExpr := buildTraceFilterExpr(filter, service, operation, errorFilter, errorPresent, minDuration, maxDuration)
 
-	return parseAggregateArgs(args, "traces", filterExpr)
+	request, err := parseAggregateArgs(args, "traces", filterExpr)
+	if err != nil {
+		return nil, err
+	}
+	request.QueryType, _ = args["queryType"].(string)
+	return request, nil
 }
 
-// buildTraceFilterExpr combines free-form filter with trace-specific shortcut
-// filters. The error shortcut is applied only when errorPresent is true; an
-// invalid value is rejected upstream by parseBoolArg rather than silently
-// dropped here (which previously WIDENED results by omitting the filter).
-func buildTraceFilterExpr(query, service, operation string, errorFilter, errorPresent bool, minDuration, maxDuration string) string {
-	var parts []string
-	if query != "" {
-		parts = append(parts, query)
-	}
-	if service != "" {
-		parts = append(parts, fmt.Sprintf("service.name = '%s'", service))
-	}
-	if operation != "" {
-		parts = append(parts, fmt.Sprintf("name = '%s'", operation))
-	}
-	if errorPresent {
-		if errorFilter {
-			parts = append(parts, "has_error = true")
-		} else {
-			parts = append(parts, "has_error = false")
+// readTraceDurations reads minDuration and maxDuration as strings. A JSON
+// number is nanoseconds; dropping it would silently widen the search.
+func readTraceDurations(args map[string]any) (string, string, error) {
+	var out [2]string
+	for i, key := range []string{"minDuration", "maxDuration"} {
+		switch v := args[key].(type) {
+		case nil:
+		case string:
+			out[i] = strings.TrimSpace(v)
+		case float64:
+			out[i] = strconv.FormatFloat(v, 'f', -1, 64)
+		default:
+			return "", "", fmt.Errorf(`parameter validation failed: %q must be a duration such as "500ms" or a number of nanoseconds`, key)
 		}
 	}
+	return out[0], out[1], nil
+}
+
+// buildTraceFilterExpr combines the caller's filter with the trace shortcut
+// filters. The filter is parenthesized when shortcuts join it, because AND
+// binds tighter than OR, and shortcut values are quoted literals. The error
+// shortcut applies only when errorPresent is true.
+func buildTraceFilterExpr(filter, service, operation string, errorFilter, errorPresent bool, minDuration, maxDuration string) string {
+	var parts []string
+	if service != "" {
+		parts = append(parts, "service.name = "+querybuilder.QuoteFilterLiteral(service))
+	}
+	if operation != "" {
+		parts = append(parts, "name = "+querybuilder.QuoteFilterLiteral(operation))
+	}
+	if errorPresent {
+		parts = append(parts, fmt.Sprintf("has_error = %t", errorFilter))
+	}
+	// SigNoz reads a quoted duration_nano operand as a duration ('500ms') or
+	// as nanoseconds ('500000000'), and rejects anything else.
 	if minDuration != "" {
-		parts = append(parts, fmt.Sprintf("duration_nano >= %s", minDuration))
+		parts = append(parts, "duration_nano >= "+querybuilder.QuoteFilterLiteral(minDuration))
 	}
 	if maxDuration != "" {
-		parts = append(parts, fmt.Sprintf("duration_nano <= %s", maxDuration))
+		parts = append(parts, "duration_nano <= "+querybuilder.QuoteFilterLiteral(maxDuration))
 	}
-	return strings.Join(parts, " AND ")
+	if filter == "" {
+		return strings.Join(parts, " AND ")
+	}
+	if len(parts) == 0 {
+		return filter
+	}
+	return "(" + filter + ") AND " + strings.Join(parts, " AND ")
 }
 
 // parseTraceSelectFields returns the core search columns plus any extra fields
 // the caller named. It accepts an array of names or a comma-separated string;
 // a resource., attribute., tag., or span. prefix sets the field context.
 func parseTraceSelectFields(raw any) ([]querybuilder.FieldKey, error) {
-	var names []string
-	switch v := raw.(type) {
-	case nil:
-	case string:
-		names = strings.Split(v, ",")
-	case []any:
-		for _, item := range v {
-			name, ok := item.(string)
-			if !ok {
-				return nil, fmt.Errorf(`invalid "selectFields" item %v: each item must be a field name string, e.g. ["http.route", "db.statement"]`, item)
-			}
-			names = append(names, name)
-		}
-	case []string:
-		names = v
-	default:
-		return nil, fmt.Errorf(`invalid "selectFields" value %v: pass an array of field names or a comma-separated string, e.g. "http.route, db.statement"`, raw)
+	names, err := parseFieldNameList("selectFields", raw)
+	if err != nil {
+		return nil, err
 	}
 
 	fields := append([]querybuilder.FieldKey(nil), querybuilder.TraceSearchCoreFields...)
-	seen := make(map[string]bool, len(fields)+len(names))
+	seen := make(map[string]string, len(fields)+len(names))
 	for _, field := range fields {
-		seen[field.Name] = true
+		seen[field.Name] = querybuilder.FieldContextOf(field)
 	}
 	extra := 0
 	for _, name := range names {
-		field, ok := traceSelectField(strings.TrimSpace(name))
-		if !ok || seen[field.Name] {
+		field, ok := traceSelectField(name)
+		if !ok {
 			continue
 		}
-		seen[field.Name] = true
+		context := querybuilder.FieldContextOf(field)
+		if held, ok := seen[field.Name]; ok {
+			if err := selectFieldCollision(name, field.Name, held, context); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		seen[field.Name] = context
 		fields = append(fields, field)
 		extra++
 	}
@@ -163,23 +207,23 @@ func parseTraceSelectFields(raw any) ([]querybuilder.FieldKey, error) {
 }
 
 // traceSelectFieldContexts maps accepted name prefixes to the Query Builder
-// field context; selectFields uses "tag" for span attributes.
+// field context. "tag." is the legacy spelling of "attribute.".
 var traceSelectFieldContexts = []struct{ prefix, context string }{
 	{"resource.", "resource"},
-	{"attribute.", "tag"},
-	{"tag.", "tag"},
+	{"attribute.", "attribute"},
+	{"tag.", "attribute"},
 	{"span.", "span"},
 }
 
+// traceSelectField keeps a context prefix the caller wrote and otherwise
+// sends the bare name, which SigNoz resolves against the workspace's own
+// field metadata, type included.
 func traceSelectField(name string) (querybuilder.FieldKey, bool) {
 	if name == "" {
 		return querybuilder.FieldKey{}, false
 	}
 	for _, c := range traceSelectFieldContexts {
 		if bare, found := strings.CutPrefix(name, c.prefix); found && bare != "" {
-			if known, ok := traceGroupByFieldMetadata[bare]; ok && querybuilder.FieldContextOf(known) == c.context {
-				return known, true
-			}
 			return querybuilder.NewFieldKey(bare, "traces", c.context, ""), true
 		}
 	}

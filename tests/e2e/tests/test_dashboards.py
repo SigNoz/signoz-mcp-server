@@ -245,7 +245,12 @@ def test_dashboard_web_urls_follow_global_config_and_keep_request_backend_routin
         # Per-request routing accepts origins only; the path case uses SIGNOZ_URL.
         if not urlsplit(server.backend_url).path:
             other_backend = server.backend_url.replace("localhost", "127.0.0.1")
-            alternate = MCPClient(server.mcp_url, headers={"X-SigNoz-URL": other_backend})
+            # A caller-chosen instance needs a caller-supplied credential; the
+            # server-held key only ever goes to SIGNOZ_URL.
+            alternate = MCPClient(
+                server.mcp_url,
+                headers={"X-SigNoz-URL": other_backend, "SIGNOZ-API-KEY": signoz.access_token},
+            )
             clients.callback(alternate.close)
             routes.append(("request", alternate, server.external_url or other_backend))
         created = _data(first_json(assert_tool_ok(configured.call_tool("signoz_create_dashboard", dashboard))))
@@ -473,14 +478,16 @@ def _execution_envelopes(plugin: dict) -> list[dict]:
 
 
 def _count_query(name: str, disabled: bool = False, filter_expression: str = "") -> dict:
+    """A count query; a disabled one is a formula input, which carries no limit or order."""
     spec = {
         "signal": "traces",
         "name": name,
         "aggregations": [{"expression": "count()"}],
-        "order": [{"key": {"name": "count()"}, "direction": "desc"}],
-        "limit": 10000 if disabled else 100,
         "disabled": disabled,
     }
+    if not disabled:
+        spec["order"] = [{"key": {"name": "count()"}, "direction": "desc"}]
+        spec["limit"] = 100
     if filter_expression:
         spec["filter"] = {"expression": filter_expression}
     return spec

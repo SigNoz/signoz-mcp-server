@@ -6,26 +6,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestQuoteLogFilterLiteral(t *testing.T) {
-	tests := []struct {
-		name  string
-		value string
-		want  string
-	}{
-		{name: "plain", value: "checkout", want: "'checkout'"},
-		{name: "apostrophe", value: "it's", want: "'it\\'s'"},
-		{name: "backslash", value: "C:\\logs", want: "'C:\\\\logs'"},
-		{name: "apostrophe after backslash", value: "it\\'s", want: "'it\\\\\\'s'"},
-		{name: "double quotes are literal", value: "say \"hello\"", want: "'say \"hello\"'"},
-		{name: "unicode", value: "café", want: "'café'"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.want, quoteLogFilterLiteral(tt.value))
-		})
-	}
-}
-
 func TestQuoteLogContainsLiteralEscapesGrammarAndLIKE(t *testing.T) {
 	value := `timed out: it's C:\logs%_`
 	want := `'timed out: it\'s C:\\\\logs\\%\\_'`
@@ -35,7 +15,7 @@ func TestQuoteLogContainsLiteralEscapesGrammarAndLIKE(t *testing.T) {
 func TestBuildLogFilterExpr(t *testing.T) {
 	t.Run("individual convenience filters", func(t *testing.T) {
 		require.Equal(t, "service.name = 'checkout'", buildLogFilterExpr("", "checkout", "", "", ""))
-		require.Equal(t, "severity_text = 'ERROR'", buildLogFilterExpr("", "", "ERROR", "", ""))
+		require.Equal(t, "severity_text ILIKE 'ERROR%'", buildLogFilterExpr("", "", "ERROR", "", ""))
 		require.Equal(t, "body CONTAINS 'timeout'", buildLogFilterExpr("", "", "", "timeout", ""))
 	})
 
@@ -59,7 +39,7 @@ func TestBuildLogFilterExpr(t *testing.T) {
 	t.Run("combined filter preserves inner bytes and escapes convenience literals", func(t *testing.T) {
 		filter := `search('timeout', body) AND body CONTAINS 'raw%_ \\'`
 		got := buildLogFilterExpr(filter, "payment's%_", "WARN_%", `timed out: it's C:\logs%_`, "")
-		want := "(" + filter + `) AND service.name = 'payment\'s%_' AND severity_text = 'WARN_%' AND body CONTAINS 'timed out: it\'s C:\\\\logs\\%\\_'`
+		want := "(" + filter + `) AND service.name = 'payment\'s%_' AND severity_text ILIKE 'WARN\\_\\%%' AND body CONTAINS 'timed out: it\'s C:\\\\logs\\%\\_'`
 		require.Equal(t, want, got)
 	})
 }
@@ -121,10 +101,5 @@ func TestParseSearchLogsArgs_SearchScope(t *testing.T) {
 	t.Run("unknown scope is rejected", func(t *testing.T) {
 		_, err := parseSearchLogsArgs(map[string]any{"searchText": "x", "searchScope": "everywhere"})
 		require.ErrorContains(t, err, `parameter validation failed: "searchScope" "everywhere" is not supported; use one of: body, attribute, resource, all`)
-	})
-
-	t.Run("scope without text is rejected", func(t *testing.T) {
-		_, err := parseSearchLogsArgs(map[string]any{"searchScope": "all"})
-		require.ErrorContains(t, err, `"searchScope" needs "searchText"`)
 	})
 }

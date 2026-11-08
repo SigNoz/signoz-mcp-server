@@ -12,28 +12,7 @@ to the "Saved Views" feature in the SigNoz UI (traces, logs, metrics,
 and meter / Cost Meter explorers). The tools call the
 /api/v2/saved_views endpoints; schemaVersion is "v2".
 
-## SavedView fields
-
-| Field           | Type              | Required on create? | Notes |
-|-----------------|-------------------|---------------------|-------|
-| id              | string (UUID)     | No (server-assigned) | Path param on get/update/delete. Do not send on create/update |
-| name            | string            | Yes, unless generateName is true | DNS-1123 label (lowercase letters, digits, hyphens). Immutable after create; the display label lives in spec.displayName |
-| generateName    | bool              | No                  | When true, the server generates name from spec.displayName and name must be empty. Default: false |
-| source          | string            | Yes                 | For example "traces", "logs", "metrics", or "meter" (the Cost Meter Explorer, a distinct page). SigNoz validates the value |
-| schemaVersion   | string            | No                  | Always "v2"; the MCP server fills it in when omitted |
-| spec            | object            | Yes                 | Typed view content (see below) |
-| createdAt / createdBy, updatedAt / updatedBy | — | Server-populated | Do not send |
-
-## spec fields
-
-| Field          | Type   | Required | Notes |
-|----------------|--------|----------|-------|
-| displayName    | string | Yes      | Human label shown in the Explorer view list |
-| panelType      | string | Yes      | One of: "value", "graph", "table", "list", "trace" |
-| requestType    | string | Yes      | One of: "raw", "trace", "time_series", "scalar" (Query Builder v5) |
-| queries        | array  | Yes      | At least one query envelope (see below) |
-| selectedFields | array  | No       | Explorer column selection; each entry needs a name, plus signal/fieldContext/fieldDataType |
-| display        | object | No       | Rendering preferences: { maxLines, fontSize, format, color } |
+The tool's input schema describes the view and spec fields (name and generateName, source, panelType, requestType, selectedFields, display). The MCP server fills schemaVersion ("v2") in when omitted and strips the server-populated fields (id, createdAt, createdBy, updatedAt, updatedBy) from what it forwards. This resource covers the query envelopes inside spec.queries, which the schema shows as plain objects, and the workflow around them.
 
 ## spec.queries[] entries
 
