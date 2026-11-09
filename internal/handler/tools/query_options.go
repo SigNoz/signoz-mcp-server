@@ -23,6 +23,11 @@ const (
 
 	// maxSelectFields bounds how many columns one raw search can request.
 	maxSelectFields = 50
+
+	// defaultSearchLimit is the page size of signoz_search_logs and
+	// signoz_search_traces. Rows default to complete records of about 2 KB each,
+	// so a default page stays near 40 KB.
+	defaultSearchLimit = 20
 )
 
 // functionsProperty advertises the functions parameter: an array of the

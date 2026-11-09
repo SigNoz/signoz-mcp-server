@@ -1,7 +1,8 @@
 """Trace fields against seeded traces — port of e2e_trace_fields_test.go.
 
-Rows carry the core field set and webUrl deep links, the shortcut filters
-narrow on the canonical keys, group-bys work, and selectFields adds flat keys.
+Rows are complete span records with webUrl deep links, the shortcut filters
+narrow on the canonical keys, group-bys work, and selectFields returns only the
+named fields as flat keys.
 All read-only against seeded traces (the Go test read staging's).
 """
 
@@ -11,23 +12,8 @@ from fixtures.mcpclient import MCPClient, assert_tool_ok, text_blocks
 from fixtures.results import aggregate_columns_and_row_count, first_text_block, note_blocks, query_range_rows
 from fixtures.telemetry import seed_traces, wait_for
 
-# The default search_traces columns. A drift here changes what every caller
-# gets without naming selectFields.
-CORE_SEARCH_FIELDS = {
-    "timestamp",
-    "trace_id",
-    "span_id",
-    "parent_span_id",
-    "name",
-    "service.name",
-    "kind_string",
-    "duration_nano",
-    "has_error",
-    "status_code_string",
-    "status_message",
-    "response_status_code",
-    "http_method",
-}
+# SigNoz adds these to every explicit search_traces field list.
+ALWAYS_SELECTED_SPAN_FIELDS = {"timestamp", "trace_id", "span_id"}
 
 
 def test_trace_deep_links_shortcut_filters_and_group_by(mcp_client: MCPClient, test_id: str, telemetry: None) -> None:
@@ -124,8 +110,8 @@ def test_trace_deep_links_shortcut_filters_and_group_by(mcp_client: MCPClient, t
     assert '"webUrl"' in body and "/trace/" in body, "get_trace_details response missing trace webUrl"
 
 
-def test_search_traces_core_fields_and_select_fields(mcp_client: MCPClient, test_id: str, telemetry: None) -> None:
-    """Rows default to the flat core set; selectFields adds flat keys on top of it."""
+def test_search_traces_complete_rows_and_select_fields(mcp_client: MCPClient, test_id: str, telemetry: None) -> None:
+    """Rows default to complete span records; selectFields returns only the named fields as flat keys."""
     service = f"mcp-e2e-{test_id}"
     seed_traces(service, count=2)
 
@@ -140,8 +126,9 @@ def test_search_traces_core_fields_and_select_fields(mcp_client: MCPClient, test
 
     rows = wait_for(lambda: search({}), f"seeded traces for {service} visible")
     for row in rows:
-        assert set(row) - {"webUrl"} == CORE_SEARCH_FIELDS, f"default row keys drifted from the core set: {sorted(row)}"
-        assert row["service.name"] == service
+        assert row.get("attributes", {}).get("e2e.marker") == service, f"span attributes missing: {row}"
+        assert row.get("resource", {}).get("service.name") == service, f"span resource missing: {row}"
+        assert {"name", "duration_nano", "events", "links"} <= set(row), f"span fields missing: {sorted(row)}"
     page = assert_tool_ok(
         mcp_client.call_tool(
             "signoz_search_traces",
@@ -150,17 +137,22 @@ def test_search_traces_core_fields_and_select_fields(mcp_client: MCPClient, test
     )
     assert "hasMore" in note_blocks(page), f"expected a completeness note with hasMore: {note_blocks(page)!r}"
 
-    # The seeded span attribute e2e.marker is outside the core set; each accepted
-    # form must return it as its own flat key next to the core fields.
-    for select_fields in (["e2e.marker"], ["attribute.e2e.marker", "service.name"], "e2e.marker, name"):
+    # Each accepted form returns the seeded span attribute e2e.marker as its own
+    # flat key, next to the named fields and the ones SigNoz always adds.
+    for select_fields, named in (
+        (["e2e.marker"], {"e2e.marker"}),
+        (["attribute.e2e.marker", "service.name"], {"e2e.marker", "service.name"}),
+        ("e2e.marker, name", {"e2e.marker", "name"}),
+    ):
         rows = search({"selectFields": select_fields})
         assert rows, f"selectFields={select_fields!r} returned no rows"
         for row in rows:
             assert row.get("e2e.marker") == service, (
                 f"selectFields={select_fields!r} row lacks flat e2e.marker={service!r}; row keys: {sorted(row)}"
             )
-            assert CORE_SEARCH_FIELDS <= set(row), f"selectFields={select_fields!r} dropped core fields: {sorted(row)}"
-            assert "resource" not in row and "attributes" not in row, f"row switched to nested maps: {sorted(row)}"
+            assert set(row) - {"webUrl"} == ALWAYS_SELECTED_SPAN_FIELDS | named, (
+                f"selectFields={select_fields!r} must return only the named fields: {sorted(row)}"
+            )
 
     invalid = mcp_client.call_tool(
         "signoz_search_traces",
@@ -207,17 +199,17 @@ def test_shortcut_filters_narrow_an_or_filter(mcp_client: MCPClient, test_id: st
     # Wait until both services are visible, so the narrowed search below can fail.
     def both_visible() -> list[dict]:
         rows = search({})
-        return rows if {r.get("service.name") for r in rows} == {service, other} else []
+        return rows if {r.get("resource", {}).get("service.name") for r in rows} == {service, other} else []
 
     wait_for(both_visible, f"seeded spans for {service} and {other} visible")
     rows = search({"service": service})
     assert rows, f"the service shortcut with an OR filter returned no spans for {service}"
-    services = {r.get("service.name") for r in rows}
+    services = {r.get("resource", {}).get("service.name") for r in rows}
     assert services == {service}, f"service shortcut did not narrow the OR filter; got services {services}"
 
 
 def test_trace_details_finds_a_trace_by_id_alone(mcp_client: MCPClient, test_id: str, telemetry: None) -> None:
-    """Pins the contract the get_trace_details description teaches: no time window, and no spans for an unknown ID."""
+    """Pins the contract the get_trace_details description teaches: no time window, complete span records, and no spans for an unknown ID."""
     trace_id = seed_traces(f"mcp-e2e-{test_id}", count=1)[0]
 
     def spans() -> list[dict]:
@@ -230,6 +222,11 @@ def test_trace_details_finds_a_trace_by_id_alone(mcp_client: MCPClient, test_id:
 
     rows = wait_for(spans, f"trace {trace_id} found by ID")
     assert {r.get("trace_id") for r in rows} == {trace_id}, f"the trace lookup returned other traces: {rows}"
+    # Each span is its complete record: the seeding sets e2e.marker as a span
+    # attribute and service.name as a resource attribute.
+    span = rows[0]
+    assert span.get("attributes", {}).get("e2e.marker") == f"mcp-e2e-{test_id}", f"span attributes missing: {span}"
+    assert span.get("resource", {}).get("service.name") == f"mcp-e2e-{test_id}", f"span resource missing: {span}"
 
     unknown = assert_tool_ok(
         mcp_client.call_tool(

@@ -16,9 +16,8 @@ from fixtures.results import (
 )
 from fixtures.telemetry import seed_logs, seed_metrics, seed_traces, wait_for
 
-# The default search_logs columns. A drift here changes what every caller gets
-# without naming selectFields.
-CORE_LOG_FIELDS = {"timestamp", "id", "body", "severity_text", "trace_id", "span_id"}
+# SigNoz adds these to every explicit search_logs field list.
+ALWAYS_SELECTED_LOG_FIELDS = {"timestamp", "id"}
 
 
 def _aggregate_logs(mcp_client: MCPClient, **arguments) -> dict:
@@ -110,9 +109,10 @@ def test_aggregate_traces_functions_change_time_series_and_not_scalars(
 
 
 def test_search_logs_select_fields_and_order(mcp_client: MCPClient, test_id: str, telemetry: None) -> None:
-    """Rows default to the core log columns, selectFields adds to them, and orderBy flips the order."""
+    """Rows default to complete records, selectFields returns only the named fields, and orderBy flips the order."""
     service = f"mcp-e2e-{test_id}"
-    seed_logs(service, f"marker-{test_id}", count=3)
+    marker = f"marker-{test_id}"
+    seed_logs(service, marker, count=3)
 
     def search(**arguments) -> dict:
         return mcp_client.call_tool(
@@ -126,20 +126,22 @@ def test_search_logs_select_fields_and_order(mcp_client: MCPClient, test_id: str
 
     wait_for(all_visible, f"all three seeded logs for {service} visible")
 
-    core_rows = query_range_rows(first_text_block(assert_tool_ok(search(limit="10"))))
-    for row in core_rows:
-        assert set(row) == CORE_LOG_FIELDS, f"default row keys drifted from the core set: {sorted(row)}"
+    complete_rows = query_range_rows(first_text_block(assert_tool_ok(search(limit="10"))))
+    for row in complete_rows:
+        assert row.get("attributes_string", {}).get("e2e.marker") == marker, f"attribute map missing: {row}"
+        assert row.get("resources_string", {}).get("service.name") == service, f"resource map missing: {row}"
+        assert "body" in row and "severity_text" in row, f"log columns missing: {sorted(row)}"
 
-    added = query_range_rows(
+    selected = query_range_rows(
         first_text_block(assert_tool_ok(search(limit="10", selectFields=["service.name", "e2e.marker"])))
     )
-    for row in added:
-        assert set(row) == CORE_LOG_FIELDS | {"service.name", "e2e.marker"}, (
-            f"selectFields must add to the core set: {sorted(row)}"
+    for row in selected:
+        assert set(row) == ALWAYS_SELECTED_LOG_FIELDS | {"service.name", "e2e.marker"}, (
+            f"selectFields must return only the named fields: {sorted(row)}"
         )
         assert row["service.name"] == service
 
-    newest_first = [row["timestamp"] for row in core_rows]
+    newest_first = [row["timestamp"] for row in complete_rows]
     oldest_first = [
         row["timestamp"]
         for row in query_range_rows(first_text_block(assert_tool_ok(search(limit="10", orderBy="timestamp asc"))))

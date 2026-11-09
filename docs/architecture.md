@@ -167,10 +167,10 @@ SigNoz owns field metadata. The query tools send a field name the caller gives i
 `selectFields`, or `orderBy` without a context or data type, and SigNoz resolves it against the
 workspace's own field metadata; a name in several contexts defaults to resource. A caller who
 writes a context prefix (`resource.`, `attribute.`, `span.`, or `log.`) gets that context. The
-server keeps no field catalog of its own, except the fixed intrinsic columns each search tool
-returns by default. Metrics are the one exception to bare names: every metrics label is sent in
-attribute context, because SigNoz keeps resource and point attributes in one labels set and a
-name with no context would read an intrinsic column instead.
+server keeps no field catalog of its own: a search with no `selectFields` sends no field list,
+and SigNoz returns each row's complete record. Metrics are the one exception to bare names:
+every metrics label is sent in attribute context, because SigNoz keeps resource and point
+attributes in one labels set and a name with no context would read an intrinsic column instead.
 
 ## MCP Runtime and Transports
 

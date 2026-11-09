@@ -86,7 +86,7 @@ func TestToolHandlers_RejectInvalidArgumentsBeforeCallingSigNoz(t *testing.T) {
 		{tool: "signoz_aggregate_logs", arguments: `{"aggregations":"count()","groupBy":[{"key":"service.name"}]}`, wantText: `"groupBy"`},
 		{tool: "signoz_query_metrics", arguments: `{"metricName":"x","formulaQueries":"{\"name\":\"B\"}"}`, wantText: `"formulaQueries"`},
 		{tool: "signoz_query_metrics", arguments: `{"metricName":"x","formulaQueries":[{"name":"B","metricName":"y","metricType":"sum","isMonotonic":"tru"}]}`, wantText: `"isMonotonic"`},
-		{tool: "signoz_search_logs", arguments: `{"selectFields":["attribute.body"]}`, wantText: `"attribute.body"`},
+		{tool: "signoz_search_logs", arguments: `{"selectFields":["log.body","attribute.body"]}`, wantText: `"attribute.body"`},
 		{tool: "signoz_query_metrics", arguments: `{"metricName":"m","groupBy":[{"key":"service.name"}]}`, wantText: `"groupBy"`},
 		{tool: "signoz_aggregate_traces", arguments: `{"aggregations":"count()","groupBy":"[\"http.route\","}`, wantText: `"groupBy" value: not a valid JSON array`},
 		{tool: "signoz_aggregate_traces", arguments: `{"aggregations":"count()","groupBy":"[\"http.route\", null]"}`, wantText: `"groupBy" item`},

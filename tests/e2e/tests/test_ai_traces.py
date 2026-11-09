@@ -89,17 +89,20 @@ def test_ai_span_rows_are_the_gen_ai_spans_of_ai_traces_newest_first(mcp_client:
     assert len(rows) == LOOPING_SPAN_COUNT + CHEAP_SPAN_COUNT, f"expected the gen_ai spans of both AI traces: {rows}"
     assert PLAIN_AI_CHILD_SPAN not in {r["name"] for r in rows}, "builder_ai_query kept a span without gen_ai keys"
     assert {r["trace_id"] for r in rows} == {seeded.looping, seeded.cheap}, "builder_ai_query kept the plain trace"
+    assert all(any(key.startswith("gen_ai.") for key in r.get("attributes", {})) for r in rows), (
+        f"builder_ai_query span rows must be complete records with their gen_ai attributes: {rows}"
+    )
     timestamps = [datetime.fromisoformat(r["timestamp"]) for r in rows]
     assert timestamps == sorted(timestamps, reverse=True), "span rows are not newest first"
 
 
 def test_trace_details_show_model_tokens_and_tool_per_span(mcp_client: MCPClient, seeded: Seeded) -> None:
-    """signoz_get_trace_details returns the gen_ai.* columns, so an AI trace shows each call's model and usage."""
+    """signoz_get_trace_details returns each span's gen_ai.* attributes, so an AI trace shows each call's model and usage."""
     result = mcp_client.call_tool(
         "signoz_get_trace_details",
         {"searchContext": "show this agent trace", "traceId": seeded.looping},
     )
-    spans = query_range_rows(first_text_block(assert_tool_ok(result)))
+    spans = [span.get("attributes", {}) for span in query_range_rows(first_text_block(assert_tool_ok(result)))]
     llm_calls = [span for span in spans if span.get("gen_ai.request.model")]
     assert {span["gen_ai.request.model"] for span in llm_calls} == {"gpt-4o-mini"}, spans
     assert all(float(span["gen_ai.usage.input_tokens"]) == 1000 for span in llm_calls), llm_calls
