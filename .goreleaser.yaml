@@ -43,3 +43,20 @@ release:
   name_template: "v{{ .Version }}"
   draft: false
   prerelease: auto
+
+homebrew_casks:
+  - binaries:
+      - bin/signoz-mcp-server
+    homepage: https://github.com/SigNoz/signoz-mcp-server
+    description: MCP server for SigNoz metrics, traces, logs, alerts and dashboards
+    repository:
+      owner: SigNoz
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    skip_upload: auto
+    hooks:
+      post:
+        install_steps: |
+          on_macos do
+            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/bin/signoz-mcp-server"]
+          end
