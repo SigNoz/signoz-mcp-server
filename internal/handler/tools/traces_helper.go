@@ -18,20 +18,19 @@ func readTraceFilterExpr(args map[string]any) (string, error) {
 // SearchTracesRequest holds the parsed parameters for a trace search query.
 type SearchTracesRequest struct {
 	FilterExpression string
-	SelectFields     []querybuilder.FieldKey
-	Limit            int
-	LimitClamped     bool
-	Offset           int
-	StartTime        int64
-	EndTime          int64
-	QueryType        string // envelope type, forwarded as given; "" means builder_query
-	RequestType      string // "trace" lists one row per trace; anything else lists spans
-	OrderExpr        string // "" keeps the query type's default order
-	OrderDir         string
+	// SelectFields is nil when the caller named none, so SigNoz returns each
+	// span's complete record.
+	SelectFields []querybuilder.FieldKey
+	Limit        int
+	LimitClamped bool
+	Offset       int
+	StartTime    int64
+	EndTime      int64
+	QueryType    string // envelope type, forwarded as given; "" means builder_query
+	RequestType  string // "trace" lists one row per trace; anything else lists spans
+	OrderExpr    string // "" keeps the query type's default order
+	OrderDir     string
 }
-
-// maxTraceSelectFields bounds how many extra columns one search can request.
-const maxTraceSelectFields = maxSelectFields
 
 func parseSearchTracesArgs(args map[string]any) (*SearchTracesRequest, error) {
 	filter, err := readTraceFilterExpr(args)
@@ -50,7 +49,7 @@ func parseSearchTracesArgs(args map[string]any) (*SearchTracesRequest, error) {
 	}
 	filterExpr := buildTraceFilterExpr(filter, service, operation, errorFilter, errorPresent, minDuration, maxDuration)
 
-	limit, err := intArg(args, "limit", querybuilder.DefaultRawQueryLimit)
+	limit, err := intArg(args, "limit", defaultSearchLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -169,21 +168,17 @@ func buildTraceFilterExpr(filter, service, operation string, errorFilter, errorP
 	return "(" + filter + ") AND " + strings.Join(parts, " AND ")
 }
 
-// parseTraceSelectFields returns the core search columns plus any extra fields
-// the caller named. It accepts an array of names or a comma-separated string;
-// a resource., attribute., tag., or span. prefix sets the field context.
+// parseTraceSelectFields returns the fields the caller named. It accepts an
+// array of names or a comma-separated string; a resource., attribute., tag., or
+// span. prefix sets the field context.
 func parseTraceSelectFields(raw any) ([]querybuilder.FieldKey, error) {
 	names, err := parseFieldNameList("selectFields", raw)
 	if err != nil {
 		return nil, err
 	}
 
-	fields := append([]querybuilder.FieldKey(nil), querybuilder.TraceSearchCoreFields...)
-	seen := make(map[string]string, len(fields)+len(names))
-	for _, field := range fields {
-		seen[field.Name] = querybuilder.FieldContextOf(field)
-	}
-	extra := 0
+	var fields []querybuilder.FieldKey
+	seen := make(map[string]string, len(names))
 	for _, name := range names {
 		field, ok := traceSelectField(name)
 		if !ok {
@@ -198,10 +193,9 @@ func parseTraceSelectFields(raw any) ([]querybuilder.FieldKey, error) {
 		}
 		seen[field.Name] = context
 		fields = append(fields, field)
-		extra++
 	}
-	if extra > maxTraceSelectFields {
-		return nil, fmt.Errorf(`"selectFields" names %d extra fields; request at most %d per search`, extra, maxTraceSelectFields)
+	if len(fields) > maxSelectFields {
+		return nil, fmt.Errorf(`"selectFields" names %d fields; request at most %d per search`, len(fields), maxSelectFields)
 	}
 	return fields, nil
 }

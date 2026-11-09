@@ -6468,7 +6468,7 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user already has a known trace ID and wants that trace's spans, metadata, and hierarchy. If the ID is unknown, discover it with signoz_search_traces first. SigNoz locates the trace by its ID alone, so no time window is needed; an ID SigNoz does not know returns no spans. Do not use this for filtering many spans or aggregate analysis.",
+          "description": "Use this when the user already has a known trace ID and wants that trace's spans, metadata, and hierarchy. If the ID is unknown, discover it with signoz_search_traces first. Each span comes back as its complete record: the span fields plus its attributes and resource maps, events, and links. SigNoz locates the trace by its ID alone, so no time window is needed; an ID SigNoz does not know returns no spans. Do not use this for filtering many spans or aggregate analysis.",
           "inputSchema": {
             "properties": {
               "includeSpans": {
@@ -7579,7 +7579,7 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user wants individual log records or messages matching text, service, severity, or field filters. It returns paginated rows, not counts, trends, or grouped breakdowns; use signoz_aggregate_logs for those, and signoz_execute_builder_query only for queries this tool cannot express. Rows carry a default set of log columns; to include other attributes, such as service.name, name them in selectFields. A field missing from a row was not selected. You do not need the guide when using only searchText, service, severity, time, or pagination. Read signoz://logs/query-builder-guide before filtering on unfamiliar fields. Defaults to the last 1 hour.",
+          "description": "Use this when the user wants individual log records or messages matching text, service, severity, or field filters. It returns paginated rows, not counts, trends, or grouped breakdowns; use signoz_aggregate_logs for those, and signoz_execute_builder_query only for queries this tool cannot express. Each row is the complete log record: log columns such as body and severity_text, attributes in attributes_string, attributes_number, and attributes_bool, and resource attributes such as service.name in resources_string. Name fields in selectFields to get only those fields. You do not need the guide when using only searchText, service, severity, time, or pagination. Read signoz://logs/query-builder-guide before filtering on unfamiliar fields. Defaults to the last 1 hour.",
           "inputSchema": {
             "properties": {
               "end": {
@@ -7594,8 +7594,8 @@
                 "type": "string"
               },
               "limit": {
-                "default": "100",
-                "description": "Maximum number of logs to return (default: 100, max: 10000; higher values are clamped; paginate with offset)",
+                "default": "20",
+                "description": "Maximum number of logs to return (default: 20, max: 10000; higher values are clamped; paginate with offset)",
                 "type": [
                   "integer",
                   "string"
@@ -7632,7 +7632,7 @@
                 "type": "string"
               },
               "selectFields": {
-                "description": "Extra fields to return on each row, added to the default set: timestamp, id, body, severity_text, trace_id, span_id. Pass an array of names or a comma-separated string, at most 50. Names can be resource attributes (service.name, k8s.pod.name), log attributes (http.route), or other log columns (severity_number); a resource., attribute., log., or body. prefix picks the context. Each field comes back as its own row key. A body field (body.\u003cpath\u003e) can be selected only when signoz_get_field_keys(signal=\"logs\", fieldContext=\"body\") lists it; otherwise SigNoz rejects it with `can be filtered but not selected or grouped` or `field not found`, so filter on it instead. Discover names with signoz_get_field_keys (signal=\"logs\"). Example: [\"service.name\", \"http.route\"].",
+                "description": "Fields to return on each row instead of the complete record; SigNoz always adds timestamp and id. Pass an array of names or a comma-separated string, at most 50. Names can be log columns (body, severity_text), resource attributes (service.name, k8s.pod.name), or log attributes (http.route); a resource., attribute., log., or body. prefix picks the context. Each field comes back as its own row key. A body field (body.\u003cpath\u003e) can be selected only when signoz_get_field_keys(signal=\"logs\", fieldContext=\"body\") lists it; otherwise SigNoz rejects it with `can be filtered but not selected or grouped` or `field not found`, so filter on it instead. Discover names with signoz_get_field_keys (signal=\"logs\"). Example: [\"body\", \"severity_text\", \"service.name\"].",
                 "items": {
                   "type": "string"
                 },
@@ -7674,7 +7674,7 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user wants individual span rows matching service, operation, error, duration, or field filters, needs to discover trace IDs, or wants one row per trace (requestType=trace), such as the slowest traces or the most expensive AI traces. It returns paginated rows, not aggregate trends/groups or a full trace hierarchy; use signoz_aggregate_traces for statistics and signoz_get_trace_details for one known trace ID. Span rows carry a default set of span fields; name other fields in selectFields. A field missing from a row was not selected, so do not read it as absent from the span. Read signoz://traces/query-builder-guide before using unfamiliar workspace fields. For the user's LLM, AI agent, token, cost, model, tool-call, or prompt questions (AI observability), set queryType to builder_ai_query and read signoz://ai/query-builder-guide. Defaults to the last 1 hour.",
+          "description": "Use this when the user wants individual span rows matching service, operation, error, duration, or field filters, needs to discover trace IDs, or wants one row per trace (requestType=trace), such as the slowest traces or the most expensive AI traces. It returns paginated rows, not aggregate trends/groups or a full trace hierarchy; use signoz_aggregate_traces for statistics and signoz_get_trace_details for one known trace ID. Each span row is the span's complete record: span fields such as name and duration_nano, the attributes and resource maps (service.name is in resource), events, and links. Name fields in selectFields to get only those fields. Read signoz://traces/query-builder-guide before using unfamiliar workspace fields. For the user's LLM, AI agent, token, cost, model, tool-call, or prompt questions (AI observability), set queryType to builder_ai_query and read signoz://ai/query-builder-guide. Defaults to the last 1 hour.",
           "inputSchema": {
             "properties": {
               "end": {
@@ -7696,8 +7696,8 @@
                 "type": "string"
               },
               "limit": {
-                "default": "100",
-                "description": "Maximum number of rows to return (default: 100, max: 10000; higher values are clamped; paginate with offset).",
+                "default": "20",
+                "description": "Maximum number of rows to return (default: 20, max: 10000; higher values are clamped; paginate with offset).",
                 "type": [
                   "integer",
                   "string"
@@ -7756,7 +7756,7 @@
                 "type": "string"
               },
               "selectFields": {
-                "description": "Extra fields to return on each span row, added to the default set: timestamp, trace_id, span_id, parent_span_id, name, service.name, kind_string, duration_nano, has_error, status_code_string, status_message, response_status_code, http_method. Pass an array of names or a comma-separated string, at most 50. Names can be span columns (db_name), resource attributes (k8s.pod.name), or span attributes (http.route); a resource., attribute., or span. prefix picks the context. Each field comes back as its own row key. Discover names with signoz_get_field_keys (signal=\"traces\"). Example: [\"http.route\", \"db.statement\"].",
+                "description": "Fields to return on each span row instead of the complete record; SigNoz always adds timestamp, trace_id, and span_id. Pass an array of names or a comma-separated string, at most 50. Names can be span columns (name, duration_nano), resource attributes (service.name, k8s.pod.name), or span attributes (http.route); a resource., attribute., or span. prefix picks the context. Each field comes back as its own row key. Discover names with signoz_get_field_keys (signal=\"traces\"). Example: [\"name\", \"duration_nano\", \"http.route\"].",
                 "items": {
                   "type": "string"
                 },

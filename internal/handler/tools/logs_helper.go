@@ -74,14 +74,16 @@ type SearchLogsRequest struct {
 	// SearchScopeIgnored is set when searchScope arrived without searchText;
 	// the scope only says where text matches, so the call runs without it.
 	SearchScopeIgnored bool
-	SelectFields       []querybuilder.FieldKey
-	OrderKey           string
-	OrderDir           string
-	Limit              int
-	LimitClamped       bool
-	Offset             int
-	StartTime          int64
-	EndTime            int64
+	// SelectFields is nil when the caller named none, so SigNoz returns each
+	// row's complete record.
+	SelectFields []querybuilder.FieldKey
+	OrderKey     string
+	OrderDir     string
+	Limit        int
+	LimitClamped bool
+	Offset       int
+	StartTime    int64
+	EndTime      int64
 }
 
 func parseSearchLogsArgs(args map[string]any) (*SearchLogsRequest, error) {
@@ -98,7 +100,7 @@ func parseSearchLogsArgs(args map[string]any) (*SearchLogsRequest, error) {
 	}
 	filterExpr := buildLogFilterExpr(filter, service, severity, searchText, searchScope)
 
-	limit, err := intArg(args, "limit", querybuilder.DefaultRawQueryLimit)
+	limit, err := intArg(args, "limit", defaultSearchLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -146,22 +148,17 @@ var logSelectFieldContexts = []struct{ prefix, context string }{
 	{"body.", "body"},
 }
 
-// parseLogSelectFields returns the core log columns plus any extra fields the
-// caller named, the same contract as signoz_search_traces. It accepts an array
-// of names or a comma-separated string; a resource., attribute., log., or
-// body. prefix sets the field context, and an unprefixed name is left for
-// SigNoz to resolve.
+// parseLogSelectFields returns the fields the caller named, the same contract
+// as signoz_search_traces. It accepts an array of names or a comma-separated
+// string; a resource., attribute., log., or body. prefix sets the field
+// context, and an unprefixed name is left for SigNoz to resolve.
 func parseLogSelectFields(raw any) ([]querybuilder.FieldKey, error) {
 	names, err := parseFieldNameList("selectFields", raw)
 	if err != nil {
 		return nil, err
 	}
-	fields := append([]querybuilder.FieldKey(nil), querybuilder.LogSearchCoreFields...)
-	seen := make(map[string]string, len(fields)+len(names))
-	for _, field := range fields {
-		seen[field.Name] = querybuilder.FieldContextOf(field)
-	}
-	extra := 0
+	var fields []querybuilder.FieldKey
+	seen := make(map[string]string, len(names))
 	for _, name := range names {
 		field := querybuilder.NewFieldKey(name, "logs", "", "")
 		for _, c := range logSelectFieldContexts {
@@ -179,10 +176,9 @@ func parseLogSelectFields(raw any) ([]querybuilder.FieldKey, error) {
 		}
 		seen[field.Name] = context
 		fields = append(fields, field)
-		extra++
 	}
-	if extra > maxSelectFields {
-		return nil, fmt.Errorf(`"selectFields" names %d extra fields; request at most %d per search`, extra, maxSelectFields)
+	if len(fields) > maxSelectFields {
+		return nil, fmt.Errorf(`"selectFields" names %d fields; request at most %d per search`, len(fields), maxSelectFields)
 	}
 	return fields, nil
 }

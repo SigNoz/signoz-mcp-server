@@ -28,25 +28,13 @@ func TestLogsSearch_OrdersByTimestampThenIDForStablePagination(t *testing.T) {
 	requireJSONEqual(t, `[{"key":{"name":"severity_number"},"direction":"asc"},{"key":{"name":"id"},"direction":"asc"}]`, builtSpec(t, request, 0)["order"])
 }
 
-func TestSpanSearch_PropagatesOffsetAndSelectsNoDeprecatedFields(t *testing.T) {
-	request, err := SpanSearch(1000, 2000, TraceSearchOptions{Filter: "service.name = 'x'", Limit: 50, Offset: 25, SelectFields: TraceDetailSelectFields})
+func TestSpanSearch_PropagatesOffsetAndSendsNoFieldListByDefault(t *testing.T) {
+	request, err := SpanSearch(1000, 2000, TraceSearchOptions{Filter: "service.name = 'x'", Limit: 50, Offset: 25})
 	require.NoError(t, err)
 	spec := builtSpec(t, request, 0)
 	require.Equal(t, float64(50), spec["limit"])
 	require.Equal(t, float64(25), spec["offset"], "offset must propagate into the traces query")
-
-	fields := map[string]map[string]any{}
-	for _, raw := range spec["selectFields"].([]any) {
-		field := raw.(map[string]any)
-		fields[field["name"].(string)] = field
-	}
-	require.NotEmpty(t, fields, "the traces query must carry the selected fields")
-	for _, deprecated := range []string{
-		"traceID", "spanID", "parentSpanID", "durationNano", "hasError", "statusCode", "statusCodeString",
-		"statusMessage", "spanKind", "httpMethod", "httpUrl", "responseStatusCode", "rpcMethod",
-	} {
-		require.NotContains(t, fields, deprecated, "deprecated trace field %q must not be selected", deprecated)
-	}
+	require.NotContains(t, spec, "selectFields", "no field list, so SigNoz returns each span's complete record")
 }
 
 func TestMetricsJSON_SetsSourceOnBuilderQueriesAndAppliesBounds(t *testing.T) {

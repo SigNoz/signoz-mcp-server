@@ -120,12 +120,12 @@ AI spend by model, per call (signoz_aggregate_traces, default queryType):
    "groupBy": "gen_ai.request.model", "timeRange": "24h"}
 
 Failing tool calls (signoz_search_traces, default queryType):
-  {"filter": "gen_ai.tool.name EXISTS AND has_error = true", "selectFields": ["gen_ai.tool.name"],
-   "timeRange": "6h"}
+  {"filter": "gen_ai.tool.name EXISTS AND has_error = true",
+   "selectFields": ["name", "gen_ai.tool.name", "status_message"], "timeRange": "6h"}
 
 Slowest LLM calls (signoz_search_traces, default queryType):
   {"filter": "gen_ai.request.model EXISTS", "orderBy": "duration_nano desc",
-   "selectFields": ["gen_ai.request.model"], "timeRange": "1h"}
+   "selectFields": ["name", "duration_nano", "gen_ai.request.model"], "timeRange": "1h"}
 
 For a full query_range request (signoz_execute_builder_query, a script, an alert, or a dashboard),
 read signoz://query-builder/examples and copy the matching ai_traces_* example instead of writing one:
