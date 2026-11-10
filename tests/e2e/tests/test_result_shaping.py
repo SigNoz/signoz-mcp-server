@@ -1,10 +1,12 @@
 """Result shaping on the query tools against the pinned release.
 
 Each check teaches a claim the tool descriptions make about fields SigNoz
-accepts: several aggregations and a having clause on the aggregate tools,
-limit/orderBy/having and typed formulaQueries on query_metrics, and
-selectFields and orderBy on the raw searches.
+accepts: several aggregations, a having clause, and functions on the aggregate
+tools, limit/orderBy/having, typed formulaQueries, and functions on
+query_metrics, and selectFields and orderBy on the raw searches.
 """
+
+import time
 
 from fixtures.mcpclient import MCPClient, assert_tool_ok, text_blocks
 from fixtures.results import (
@@ -61,7 +63,7 @@ def test_aggregate_logs_several_aggregations_and_having(mcp_client: MCPClient, t
 def test_aggregate_traces_functions_change_time_series_and_not_scalars(
     mcp_client: MCPClient, test_id: str, telemetry: None
 ) -> None:
-    """clampMax caps every time_series value; on a scalar request the tool says functions did nothing."""
+    """clampMax caps every time_series value; on a scalar request the tool says SigNoz skipped it."""
     service = f"mcp-e2e-{test_id}"
     seed_traces(service, count=3)
 
@@ -103,9 +105,94 @@ def test_aggregate_traces_functions_change_time_series_and_not_scalars(
     scalar = assert_tool_ok(aggregate(functions=[{"name": "clampMax", "args": [{"value": 1}]}]))
     scalar_rows = [row for r in first_block_json(scalar)["data"]["data"]["results"] for row in r.get("data") or []]
     assert [row[-1] for row in scalar_rows] == [3], f"the scalar count must come back unchanged: {scalar_rows}"
-    assert "functions were not applied" in note_blocks(scalar), (
-        f"scalar results must say functions did nothing: {note_blocks(scalar)!r}"
+    assert "functions other than timeShift were not applied" in note_blocks(scalar), (
+        f"scalar results must say clampMax did nothing: {note_blocks(scalar)!r}"
     )
+
+
+def test_aggregate_logs_time_shift_reads_an_earlier_window(
+    mcp_client: MCPClient, test_id: str, telemetry: None
+) -> None:
+    """timeShift reads the window its argument in seconds earlier, on scalar and time_series requests alike."""
+    service = f"mcp-e2e-{test_id}"
+    # Three logs 90 minutes ago and one now: the last hour holds one, the hour before it three.
+    seed_logs(service, f"marker-{test_id}", count=3, age_seconds=5400)
+    seed_logs(service, f"marker-{test_id}", count=1)
+    shift = [{"name": "timeShift", "args": [{"value": 3600}]}]
+
+    def aggregate(**arguments) -> dict:
+        return mcp_client.call_tool(
+            "signoz_aggregate_logs",
+            {
+                "searchContext": "log count in the last hour and the hour before",
+                "service": service,
+                "aggregations": "count()",
+                "timeRange": "1h",
+                **arguments,
+            },
+        )
+
+    def scalar_count(result: dict) -> float:
+        if result.get("isError", False):
+            return -1
+        rows = [row for r in first_block_json(result)["data"]["data"]["results"] for row in r.get("data") or []]
+        return rows[0][-1] if rows else 0
+
+    wait_for(lambda: scalar_count(aggregate(timeRange="3h")) == 4, f"all four seeded logs for {service} counted")
+    assert scalar_count(assert_tool_ok(aggregate())) == 1, "the last hour must hold only the recent log"
+
+    shifted = assert_tool_ok(aggregate(functions=shift))
+    assert scalar_count(shifted) == 3, (
+        f"timeShift 3600 must count the hour before the window: {first_text_block(shifted)[:600]}"
+    )
+    assert "were not applied" not in note_blocks(shifted), f"timeShift applies to scalars: {note_blocks(shifted)!r}"
+
+    window_start_ms = time.time() * 1000 - 3600_000
+    series = assert_tool_ok(aggregate(requestType="time_series", functions=shift))
+    points = [
+        point
+        for query_result in first_block_json(series)["data"]["data"]["results"]
+        for bucket in query_result.get("aggregations") or []
+        for one in bucket.get("series") or []
+        for point in one.get("values") or []
+    ]
+    assert sum(point["value"] for point in points) == 3, f"the shifted series must hold the earlier logs: {points}"
+    # The points come back on the current window's timestamps, so they overlay an unshifted query.
+    assert all(point["timestamp"] >= window_start_ms - 60_000 for point in points), (
+        f"shifted points must land inside the requested window: {points}"
+    )
+
+
+def test_query_metrics_applies_functions_before_reduce_to(mcp_client: MCPClient, test_id: str, telemetry: None) -> None:
+    """On a scalar request, functions run on the series before reduceTo turns it into one value."""
+    metric = f"mcp_e2e_{test_id.replace('-', '_')}_gauge"
+    service = f"mcp-e2e-{test_id}"
+    seed_metrics(service, metric, value=40.0, count=2)
+    notes: list[str] = []
+
+    def value(**arguments) -> float:
+        result = mcp_client.call_tool(
+            "signoz_query_metrics",
+            {
+                "searchContext": "seeded gauge",
+                "metricName": metric,
+                "requestType": "scalar",
+                "reduceTo": "max",
+                "timeRange": "1h",
+                **arguments,
+            },
+        )
+        if result.get("isError", False):
+            return -1
+        notes.append(note_blocks(result))
+        rows = [row for r in first_block_json(result)["data"]["data"]["results"] for row in r.get("data") or []]
+        return rows[0][-1] if rows else 0
+
+    wait_for(lambda: value() > 1, f"seeded gauge {metric} visible through query_metrics")
+    assert value(functions=[{"name": "clampMax", "args": [{"value": 1}]}]) == 1, (
+        "clampMax must cap the series before reduceTo"
+    )
+    assert "not applied" not in notes[-1], f"the decisions note must not say functions were skipped: {notes[-1]!r}"
 
 
 def test_search_logs_select_fields_and_order(mcp_client: MCPClient, test_id: str, telemetry: None) -> None:

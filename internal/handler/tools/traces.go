@@ -41,7 +41,7 @@ func (h *Handler) RegisterTracesHandlers(s *mcp.Server) {
 		mcp.WithString("maxDuration", intOrStringType(), mcp.Description(maxDurationParamDescription)),
 		mcp.WithString("orderBy", mcp.Description(aggregateTracesOrderByParamDescription)),
 		mcp.WithString("limit", mcp.DefaultString(strconv.Itoa(querybuilder.DefaultAggregateQueryLimit)), intOrStringType(), mcp.Description(aggregateLimitParamDescription)),
-		functionsProperty(),
+		functionsProperty(aggregateFunctionsParamDescription),
 		mcp.WithString("timeRange", mcp.DefaultString("1h"), mcp.Description(timeRangeParamDescription("Defaults to '1h'."))),
 		mcp.WithString("start", intOrStringType(), mcp.Description(startParamDescription)),
 		mcp.WithString("end", intOrStringType(), mcp.Description(endParamDescription)),

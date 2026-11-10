@@ -53,7 +53,7 @@ func (h *Handler) RegisterMetricsHandlers(s *mcp.Server) {
 		mcp.WithString("limit", mcp.DefaultString(strconv.Itoa(querybuilder.DefaultAggregateQueryLimit)), intOrStringType(), mcp.Description(metricsLimitParamDescription)),
 		mcp.WithString("orderBy", mcp.Description(metricsOrderByParamDescription)),
 		mcp.WithString("having", mcp.Description(metricsHavingParamDescription)),
-		functionsProperty(),
+		functionsProperty(metricsFunctionsParamDescription),
 		mcp.WithString("source", mcp.Description(metricsSourceParamDescription)),
 	)
 

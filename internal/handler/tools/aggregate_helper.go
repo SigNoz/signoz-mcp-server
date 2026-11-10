@@ -117,13 +117,19 @@ func parseAggregateArgs(args map[string]any, signal string, filterExpr string) (
 }
 
 // aggregateNotes returns the advisory notes an aggregate request earns before
-// the result is read: today only that functions do nothing on scalar results.
+// the result is read: today only that functions other than timeShift do
+// nothing on scalar results.
 func aggregateNotes(reqData *AggregateRequest) []string {
-	var notes []string
-	if len(reqData.Functions) > 0 && reqData.RequestType == "scalar" {
-		notes = append(notes, functionsIgnoredOnScalarNote)
+	if reqData.RequestType != "scalar" {
+		return nil
 	}
-	return notes
+	for _, function := range reqData.Functions {
+		// The generated enum spells names in lower case; SigNoz accepts either.
+		if function.Name == nil || !strings.EqualFold(string(*function.Name), "timeShift") {
+			return []string{functionsIgnoredOnScalarNote}
+		}
+	}
+	return nil
 }
 
 // parseAggregationsArg reads aggregations: one expression string, an array of

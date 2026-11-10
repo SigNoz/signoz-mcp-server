@@ -22,10 +22,17 @@ const (
 	aggregateLimitParamDescription       = "Maximum number of groups to return (default: 100, max: 10000; higher values are clamped). For time_series queries, groups are ranked across the entire time range, so a short-lived spike can fall outside the selected top groups."
 	havingParamDescription               = "Condition on the aggregation results, in the filter syntax, applied after grouping. " +
 		"Reference an aggregation by its expression, for example \"count() > 100\" or \"p99(duration_nano) > 500000000\". SigNoz validates it."
-	functionsParamDescription = "Post-query transforms applied in order to each time_series result, as an array of {name, args} objects, or a JSON-encoded string of that array. " +
-		"SigNoz applies them to time_series results only and returns scalar results unchanged, so set requestType to time_series. " +
-		"Names are the Query Builder function names, for example cutOffMin, cutOffMax, clampMin, clampMax, absolute, runningDiff, cumulativeSum, ewma3, median5, timeShift, or fillZero; " +
-		"args carries the function's parameters, for example [{\"value\": 10}] for cutOffMin. SigNoz validates names and args."
+	// functionsParamDescription teaches the functions parameter; each tool adds
+	// what a scalar request does with it, because metrics and logs or traces differ.
+	functionsParamDescription = "Post-query transforms applied in order to each series: an array of {name, args} objects, or a JSON-encoded string of that array; each arg is {\"value\": <number>}. " +
+		"timeShift reads the window that many seconds earlier and returns its points on the current window's timestamps; 604800 gives the same window last week. " +
+		"To compare two windows, call once without timeShift and once with it. For A - B or A / B in one result, use signoz_execute_builder_query with two builder queries, the second with timeShift, and a builder_formula. " +
+		"cutOffMin and cutOffMax drop points below or above a threshold; clampMin and clampMax set them to it. runningDiff gives the change from the point before; cumulativeSum gives a running total. " +
+		"ewma3, ewma5, ewma7, median3, median5, and median7 smooth a series; fillZero adds 0 at steps with no data; absolute, log2, and log10 transform each value. SigNoz validates names and args. "
+	aggregateFunctionsParamDescription = functionsParamDescription +
+		"On a scalar request SigNoz applies only timeShift; set requestType to time_series for the others."
+	metricsFunctionsParamDescription = functionsParamDescription +
+		"On a scalar request they run on each series before reduceTo."
 )
 
 // signoz_aggregate_logs and signoz_search_logs.

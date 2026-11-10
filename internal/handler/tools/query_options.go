@@ -12,7 +12,8 @@ import (
 // Shared descriptions for the result-shaping parameters the query tools expose.
 const (
 	// functionsIgnoredOnScalarNote tells the caller why functions had no effect.
-	functionsIgnoredOnScalarNote = "note: functions were not applied: SigNoz applies them to time_series results only and returns scalar results unchanged. Set requestType to time_series to use them."
+	// timeShift is the exception: SigNoz moves a scalar request's window too.
+	functionsIgnoredOnScalarNote = "note: functions other than timeShift were not applied: SigNoz applies them to time_series results only. Set requestType to time_series to use them."
 
 	// Notes on builder_ai_query results: what the AI values mean and why a
 	// window can hide them, which agents otherwise misreport.
@@ -33,11 +34,11 @@ const (
 // functionsProperty advertises the functions parameter: an array of the
 // generated Function type, or a JSON-encoded string of that array for clients
 // that stringify nested values.
-func functionsProperty() mcp.ToolOption {
+func functionsProperty(description string) mcp.ToolOption {
 	return mcp.WithArray("functions",
 		stringOrArrayType(),
 		mcp.Items(mcp.SchemaFor[querybuilder.Function]()),
-		mcp.Description(functionsParamDescription))
+		mcp.Description(description))
 }
 
 // decodeJSONArg decodes a nested argument that arrives as JSON (an array or an

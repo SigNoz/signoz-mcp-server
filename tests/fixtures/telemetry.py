@@ -18,9 +18,12 @@ POLL_TIMEOUT = 180.0
 POLL_INTERVAL = 3.0
 
 
-def seed_logs(service_name: str, body: str, *, severity: str = "INFO", count: int = 1) -> None:
-    """Push log records carrying `body` to the cast SigNoz via OTLP/HTTP."""
-    now = time.time_ns()
+def seed_logs(service_name: str, body: str, *, severity: str = "INFO", count: int = 1, age_seconds: float = 0) -> None:
+    """Push log records carrying `body` to the cast SigNoz via OTLP/HTTP.
+
+    `age_seconds` places the records that far in the past.
+    """
+    now = time.time_ns() - int(age_seconds * 1_000_000_000)
     records = [
         {
             "timeUnixNano": str(now - i * 1_000_000),
