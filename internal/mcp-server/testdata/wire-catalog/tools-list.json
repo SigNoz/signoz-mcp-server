@@ -5532,7 +5532,9 @@
                 "type": "string"
               }
             },
-            "required": [],
+            "required": [
+              "id"
+            ],
             "type": "object"
           },
           "name": "signoz_get_log_pipeline"

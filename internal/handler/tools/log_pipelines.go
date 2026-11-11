@@ -36,7 +36,7 @@ func (h *Handler) RegisterLogPipelineHandlers(s *mcp.Server) {
 		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description(searchContextParamDescription)),
 		mcp.WithDescription("Use this when the user wants one log pipeline's complete configuration by id: its processors, filter, enabled state, and audit fields, such as when explaining why incoming logs are not parsed as expected. Use signoz_list_log_pipelines first when the id is unknown. Pipeline ids change when the configuration is saved, so an id from an older version may no longer exist. Use signoz_search_logs for the logs themselves."),
-		mcp.WithString("id", mcp.Description("Log pipeline id from signoz_list_log_pipelines. Required.")),
+		mcp.WithString("id", mcp.Required(), mcp.Description("Log pipeline id from signoz_list_log_pipelines. Required.")),
 	)
 	h.addTool(s, getTool, h.handleGetLogPipeline)
 }
