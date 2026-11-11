@@ -90,8 +90,10 @@ func (h *Handler) handleGetLogPipeline(ctx context.Context, req mcp.CallToolRequ
 	id, isString := rawID.(string)
 	switch {
 	case !present || (isString && id == ""):
+		h.logger.WarnContext(ctx, "get_log_pipeline missing id")
 		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "id" is required. Provide a log pipeline id from signoz_list_log_pipelines.`), nil
 	case !isString:
+		h.logger.WarnContext(ctx, "get_log_pipeline invalid id type", slog.Any("id", rawID))
 		return validationError("id", "must be a string; use the id from signoz_list_log_pipelines"), nil
 	}
 
