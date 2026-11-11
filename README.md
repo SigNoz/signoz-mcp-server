@@ -456,6 +456,8 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 | `signoz_delete_view` | Permanently delete a confirmed saved view by `id` |
 | `signoz_aggregate_logs` | Aggregate log statistics and grouped or top-N breakdowns |
 | `signoz_search_logs` | Return individual log records matching filters |
+| `signoz_list_log_pipelines` | List log ingestion and processing pipelines with ids and processor counts |
+| `signoz_get_log_pipeline` | Get one log pipeline's complete processors and filter by `id` |
 | `signoz_aggregate_traces` | Aggregate span or per-AI-trace statistics and grouped or top-N breakdowns |
 | `signoz_search_traces` | Return span rows or one row per trace (including AI traces), or discover trace IDs |
 | `signoz_get_trace_details` | Get one known trace with all spans and hierarchy |
@@ -873,6 +875,19 @@ predicates using AND/OR/NOT. Scopes are `body`, `attribute`, `resource`, and
 `searchScope` builds these predicates for you. Escape backslashes and apostrophes
 inside expression literals; explicit filters are passed through, not rewritten.
 The same expressions work in log aggregations and saved-query specs.
+
+#### `signoz_list_log_pipelines`
+
+List the log ingestion and processing pipelines in the latest configuration version. Use this when an agent needs to explain why incoming logs are not parsed or enriched as expected. Each summary includes `id`, `name`, `alias`, `description`, `enabled`, `orderId`, and `processorCount`; the processor configuration and filter are omitted to keep the listing small. An empty list means no user pipelines are configured.
+
+- **Parameters**: none beyond `searchContext`.
+
+#### `signoz_get_log_pipeline`
+
+Get one log pipeline's complete configuration by `id`: its processors, filter, enabled state, and audit fields. Pipeline ids are regenerated when the configuration is saved, so an id from an older version may no longer exist; use `signoz_list_log_pipelines` first when the id is unknown.
+
+- **Parameters**:
+  - `id` (required) - Log pipeline id from `signoz_list_log_pipelines`
 
 #### `signoz_get_field_keys`
 
