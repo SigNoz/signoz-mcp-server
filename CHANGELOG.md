@@ -26,6 +26,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+
+## [0.19.0] - 2026-11-12
+
+### Breaking changes
+- return complete records from get_trace_details and the search tools ([#403](https://github.com/SigNoz/signoz-mcp-server/pull/403))
+
+### Added
+- pass limit to SigNoz and say what to do when a list is cut ([#431](https://github.com/SigNoz/signoz-mcp-server/pull/431))
+
+### Fixed
+- teach timeShift window comparisons and what functions do on scalar requests ([#438](https://github.com/SigNoz/signoz-mcp-server/pull/438))
+
+### Other
+- move the SigNoz spec pin to main and drop the retired alert fields ([#440](https://github.com/SigNoz/signoz-mcp-server/pull/440))
+
 ## [0.18.0] - 2026-11-05
 
 ### Added
@@ -558,3 +573,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [0.16.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.15.0...v0.16.0
 [0.17.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.16.0...v0.17.0
 [0.18.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.17.0...v0.18.0
+[0.19.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.18.0...v0.19.0
