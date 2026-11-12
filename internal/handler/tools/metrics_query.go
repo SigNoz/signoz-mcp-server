@@ -210,9 +210,6 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 	if mqr.LimitClamped {
 		decisions = append(decisions, fmt.Sprintf("limit clamped to %d groups to bound server memory", MaxRawResultLimit))
 	}
-	if len(mqr.Functions) > 0 && mqr.RequestType == "scalar" {
-		decisions = append(decisions, "functions: not applied; SigNoz applies them to time_series results only and returns scalar results unchanged")
-	}
 	if mqr.Having != "" && mqr.Formula != "" {
 		decisions = append(decisions, fmt.Sprintf("having (on query A, before the formula; SigNoz ignores a having on the formula result): %s", mqr.Having))
 	} else if mqr.Having != "" {
