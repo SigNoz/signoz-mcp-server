@@ -208,6 +208,10 @@
     {
       "name": "signoz_delete_notification_channel",
       "description": "Permanently delete a confirmed channel by ID; resolve backend routing-policy dependency errors before retrying"
+    },
+    {
+      "name": "signoz_submit_feedback",
+      "description": "Report a problem with this MCP server to the SigNoz team: an unexplained tool error, a confusing description or result, a missing capability, or unclear documentation; mask personal and sensitive data first"
     }
   ],
   "resources": [

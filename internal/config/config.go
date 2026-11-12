@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/SigNoz/signoz-mcp-server/pkg/analytics"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 )
 
@@ -36,9 +37,7 @@ type Config struct {
 	// (multi-tenant) server will proxy to. Empty => only URL is allowed.
 	InstanceURLAllowlist util.InstanceURLAllowlist
 
-	// Analytics settings
-	AnalyticsEnabled bool
-	SegmentKey       string
+	Analytics analytics.Config
 
 	DocsRefreshInterval     time.Duration
 	DocsFullRefreshInterval time.Duration
@@ -64,9 +63,6 @@ const (
 	InstanceURLAllowlistEnv = "SIGNOZ_INSTANCE_URL_ALLOWLIST"
 	ClientCacheSize         = "CLIENT_CACHE_SIZE"
 	ClientCacheTTL          = "CLIENT_CACHE_TTL_MINUTES"
-
-	AnalyticsEnabledEnv = "ANALYTICS_ENABLED"
-	SegmentKeyEnv       = "SEGMENT_KEY"
 
 	OAuthEnabledEnv         = "OAUTH_ENABLED"
 	OAuthTokenSecretEnv     = "OAUTH_TOKEN_SECRET"
@@ -147,8 +143,7 @@ func LoadConfig() (*Config, error) {
 		ClientCacheTTL:          time.Duration(cacheTTLMinutes) * time.Minute,
 		CustomHeaders:           customHeaders,
 		InstanceURLAllowlist:    instanceURLAllowlist,
-		AnalyticsEnabled:        getEnvBool(AnalyticsEnabledEnv, false),
-		SegmentKey:              getEnv(SegmentKeyEnv, ""),
+		Analytics:               analytics.ConfigFromEnv(),
 		DocsRefreshInterval:     docsRefreshInterval,
 		DocsFullRefreshInterval: docsFullRefreshInterval,
 		DocsRefreshDisabled:     docsRefreshDisabled,

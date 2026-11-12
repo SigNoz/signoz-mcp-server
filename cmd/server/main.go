@@ -91,14 +91,13 @@ func main() {
 	}
 
 	var analyticsInstance analytics.Analytics
-	if cfg.AnalyticsEnabled && cfg.SegmentKey != "" {
-		analyticsInstance, err = segmentanalytics.New(logger, analytics.Config{
-			Enabled: true,
-			Segment: analytics.SegmentConfig{Key: cfg.SegmentKey},
-		})
+	if cfg.Analytics.Enabled {
+		analyticsInstance, err = segmentanalytics.New(logger, cfg.Analytics)
 		if err != nil {
 			logger.WarnContext(ctx, "Failed to initialize Segment analytics, continuing without analytics", logpkg.ErrAttr(err))
 			analyticsInstance = noopanalytics.New()
+		} else if cfg.Analytics.Anonymous {
+			logger.InfoContext(ctx, "Agent feedback from signoz_submit_feedback is sent anonymously to SigNoz; set ANALYTICS_ENABLED=false or DO_NOT_TRACK=1 to turn it off")
 		}
 	} else {
 		analyticsInstance = noopanalytics.New()

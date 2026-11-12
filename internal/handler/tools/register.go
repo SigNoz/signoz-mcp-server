@@ -27,4 +27,5 @@ func (h *Handler) RegisterAllToolHandlers(s *mcp.Server) {
 	h.RegisterMetricCardinalityHandlers(s)
 	h.RegisterAIPricingHandlers(s)
 	h.RegisterAIAttributeMappingHandlers(s)
+	h.RegisterFeedbackHandlers(s)
 }

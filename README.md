@@ -468,6 +468,7 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 | `signoz_create_notification_channel` | Create a notification channel |
 | `signoz_update_notification_channel` | Fully replace a fetched channel's config |
 | `signoz_delete_notification_channel` | Permanently delete a confirmed channel by ID |
+| `signoz_submit_feedback` | Report a problem with this MCP server to the SigNoz team |
 
 For detailed usage and examples, see the [full documentation](https://signoz.io/docs/ai/signoz-mcp-server/).
 
@@ -1093,6 +1094,18 @@ channel first; call directly when those steps are already complete. The backend
 may reject deletion while a routing policy references the channel. Propagate
 that dependency error and resolve references before retrying.
 
+#### `signoz_submit_feedback`
+
+Lets the agent report a problem with this MCP server to the SigNoz team: a tool error it could not explain, a confusing description, schema, or result, a missing capability, or unclear documentation. The tool description tells the agent to mask personal and sensitive data (names, email addresses, IP addresses, hostnames, IDs, credentials, telemetry values) before sending, and to tell the user in one sentence what it sent. See [Agent feedback and analytics](#agent-feedback-and-analytics) for what leaves the server and how to turn it off.
+
+- **Parameters**:
+  - `message` (required) - What the agent tried, expected, and saw. At most 2000 characters
+  - `category` (optional) - One of `tool_error`, `confusing_output`, `missing_capability`, `documentation`, `other`
+  - `toolName` (optional) - Name of the tool the report is about. At most 128 characters
+  - `searchContext` - User's original question
+- **Result**: `Feedback recorded.` on success. When feedback is turned off, a coded `UNSUPPORTED` error says so and nothing is sent. Invalid arguments return `VALIDATION_FAILED` naming the field.
+- **Annotations**: not read-only and not idempotent, because each call sends one report outside the server.
+
 #### `signoz_execute_builder_query`
 
 Runs a SigNoz Query Builder v5 request that the dedicated tools cannot express, including multi-query requests, formulas, PromQL, and ClickHouse SQL. Prefer `signoz_search_logs` / `signoz_search_traces` for rows, `signoz_aggregate_logs` / `signoz_aggregate_traces` for grouped results, and `signoz_query_metrics` for ordinary metrics.
@@ -1137,8 +1150,9 @@ Runs a SigNoz Query Builder v5 request that the dedicated tools cannot express, 
 | `OAUTH_AUTH_CODE_TTL_SECONDS` | Authorization code lifetime in seconds (default: 600 / 10min)      | No                                  |
 | `SIGNOZ_CUSTOM_HEADERS` | Extra HTTP headers added to every API request, useful when SigNoz is behind a reverse proxy requiring auth (e.g. `CF-Access-Client-Id:id.access,CF-Access-Client-Secret:secret`). Format: `Key1:Value1,Key2:Value2` | No |
 | `SIGNOZ_INSTANCE_URL_ALLOWLIST` | Multi-tenant (http) only: comma-separated allowlist of SigNoz backend hosts the server will proxy to. Entries are exact hosts (`signoz.example.com`) or wildcards (`*.us.signoz.cloud`, which matches any subdomain ending in `.us.signoz.cloud`); a scheme/port/path accidentally included in an entry is tolerated and reduced to the bare host. When set, SigNoz instance URLs that do not match are refused at every ingress: the OAuth setup form and `X-SigNoz-URL` header return HTTP 403, the OAuth token endpoint (incl. existing refresh tokens) returns `invalid_grant`, and `/mcp` requests via an OAuth token return 403. All increment a `disallowed_signoz_url`-tagged failure metric for alerting (not logged per-request, to avoid noise from misconfigured/looping clients), and the rejection message points SigNoz Cloud users to their region's MCP URL (`mcp.<region>.signoz.cloud`) with a docs link. Empty/unset allows no host other than `SIGNOZ_URL`, so a server without `SIGNOZ_URL` must set it. The operator's own `SIGNOZ_URL` is always allowed. | No |
-| `ANALYTICS_ENABLED` | Enable product analytics (`true`/`false`; default: `false`) | No |
-| `SEGMENT_KEY` | Segment write key used only when analytics is enabled | No |
+| `ANALYTICS_ENABLED` | `false` turns off everything this server sends to SigNoz or Segment. `true` together with `SEGMENT_KEY` sends product analytics to your own Segment source. Unset: release builds send anonymous agent feedback only. See [Agent feedback and analytics](#agent-feedback-and-analytics). | No |
+| `SEGMENT_KEY` | Segment write key for your own Segment source. Used only when `ANALYTICS_ENABLED=true`. | No |
+| `DO_NOT_TRACK` | `1` turns off anonymous agent feedback, following the [DO_NOT_TRACK](https://donottrack.sh/) convention. It does not turn off analytics you enabled with `ANALYTICS_ENABLED=true` and `SEGMENT_KEY`. | No |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP gRPC endpoint for the MCP server's own traces and metrics. Internal telemetry export is disabled when no OTLP endpoint/exporter is configured. For plaintext collectors, use an `http://` endpoint such as `http://localhost:4317`. | No |
 | `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | Trace-specific OTLP gRPC endpoint; overrides `OTEL_EXPORTER_OTLP_ENDPOINT` for traces. | No |
 | `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` | Metrics-specific OTLP gRPC endpoint; overrides `OTEL_EXPORTER_OTLP_ENDPOINT` for metrics. | No |
@@ -1146,6 +1160,33 @@ Runs a SigNoz Query Builder v5 request that the dedicated tools cannot express, 
 | `OTEL_METRICS_EXPORTER` | Set to `none` to disable internal metrics export and runtime metrics even when an OTLP endpoint is configured. | No |
 
 The MCP server does not run an OTLP log exporter; logs are emitted as JSON to stderr. `OTEL_LOGS_EXPORTER` is therefore not used.
+
+### Agent feedback and analytics
+
+Release binaries and Docker images send one thing to SigNoz by default: the reports an agent submits with `signoz_submit_feedback`. Nothing is sent in the background, and no usage events are sent. A build from source (`make build`, `go install`, the local `Dockerfile`) has no write key and sends nothing.
+
+Each report carries:
+
+| Property | Description |
+|---|---|
+| `feedbackMessage` | The agent's report, at most 2000 characters. The tool tells the agent to mask personal and sensitive data first |
+| `feedbackCategory`, `feedbackToolName` | The optional category and tool name the agent passed |
+| `clientName`, `clientVersion`, `protocolVersion` | The MCP client that made the call |
+| `clientSource` | Whether the call came from a user's MCP client or the SigNoz AI assistant |
+| `serverVersion` | This server's version |
+
+Reports are attributed to an HMAC-SHA256 hash of your SigNoz org ID. The hash is the same for every report from one org and cannot be turned back into the ID. No instance URL, user ID, name, email address, API key, tool arguments, or query results are sent. The server logs one line at startup when this is on.
+
+To turn it off, set either variable before the server starts:
+
+```bash
+ANALYTICS_ENABLED=false
+DO_NOT_TRACK=1
+```
+
+The tool then returns a coded `UNSUPPORTED` error and sends nothing.
+
+Setting `ANALYTICS_ENABLED=true` with your own `SEGMENT_KEY` is a different mode, used by SigNoz Cloud: every product analytics event, including feedback, goes to that Segment source with the SigNoz org, user, and instance URL attached.
 
 ### Browser links for self-hosted SigNoz
 
