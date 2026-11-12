@@ -341,7 +341,456 @@ Source: the request examples published by the SigNoz OpenAPI spec.
 }
 ```
 
-### 10. logs_raw — Raw: fetch raw log records
+### 10. function_anomaly_request_rate — anomaly: request rate scored against its daily pattern
+
+anomaly is the one function with named arguments. seasonality says which past periods predict the current value: hourly, daily or weekly, daily when absent. z_score_threshold is how many standard deviations from the prediction count as an anomaly. It has no default: a request without it gets bounds of zero width, so send it. 3 is the value the UI sends. The response carries, next to the values, a predicted series, an upper and a lower bound series and an anomaly score series. The scoring runs in the enterprise build; the community build returns the series unchanged.
+
+```json
+{
+  "compositeQuery": {
+    "queries": [
+      {
+        "spec": {
+          "aggregations": [
+            {
+              "metricName": "http.server.duration.count",
+              "spaceAggregation": "sum",
+              "timeAggregation": "rate"
+            }
+          ],
+          "functions": [
+            {
+              "args": [
+                {
+                  "name": "seasonality",
+                  "value": "daily"
+                },
+                {
+                  "name": "z_score_threshold",
+                  "value": 3
+                }
+              ],
+              "name": "anomaly"
+            }
+          ],
+          "groupBy": [
+            {
+              "fieldContext": "resource",
+              "name": "service.name"
+            }
+          ],
+          "name": "A",
+          "signal": "metrics",
+          "stepInterval": "300s"
+        },
+        "type": "builder_query"
+      }
+    ]
+  },
+  "end": 1640998800000,
+  "requestType": "time_series",
+  "schemaVersion": "v1",
+  "start": 1640995200000
+}
+```
+
+### 11. function_cumulativesum_errors_so_far — cumulativeSum: 5xx responses since the start of the window
+
+cumulativeSum replaces each point with the sum of every point up to and including it, so a per-step count becomes a running total whose first point is the first count. It takes no arguments. The total resets with the window, so a longer time range gives a larger final value; it is a view of the window, not a counter.
+
+```json
+{
+  "compositeQuery": {
+    "queries": [
+      {
+        "spec": {
+          "aggregations": [
+            {
+              "alias": "server_errors",
+              "expression": "count()"
+            }
+          ],
+          "filter": {
+            "expression": "http.response.status_code >= 500"
+          },
+          "functions": [
+            {
+              "name": "cumulativeSum"
+            }
+          ],
+          "groupBy": [
+            {
+              "fieldContext": "resource",
+              "name": "service.name"
+            }
+          ],
+          "name": "A",
+          "signal": "traces",
+          "stepInterval": "60s"
+        },
+        "type": "builder_query"
+      }
+    ]
+  },
+  "end": 1640998800000,
+  "requestType": "time_series",
+  "schemaVersion": "v1",
+  "start": 1640995200000
+}
+```
+
+### 12. function_cutoffmin_hide_idle_hosts — cutOffMin: drop hosts below 5% CPU from the chart
+
+The four threshold functions take one number. cutOffMin and cutOffMax remove the points below or above the threshold, so an idle host disappears from the chart instead of drawing a line along the bottom. clampMin and clampMax keep the points and replace the value with the threshold, which caps spikes without hiding them. system.cpu.utilization is a ratio, so 0.05 is 5%.
+
+```json
+{
+  "compositeQuery": {
+    "queries": [
+      {
+        "spec": {
+          "aggregations": [
+            {
+              "metricName": "system.cpu.utilization",
+              "spaceAggregation": "avg",
+              "timeAggregation": "avg"
+            }
+          ],
+          "functions": [
+            {
+              "args": [
+                {
+                  "value": 0.05
+                }
+              ],
+              "name": "cutOffMin"
+            }
+          ],
+          "groupBy": [
+            {
+              "fieldContext": "resource",
+              "name": "host.name"
+            }
+          ],
+          "name": "A",
+          "signal": "metrics",
+          "stepInterval": "60s"
+        },
+        "type": "builder_query"
+      }
+    ]
+  },
+  "end": 1640998800000,
+  "requestType": "time_series",
+  "schemaVersion": "v1",
+  "start": 1640995200000
+}
+```
+
+### 13. function_ewma_smoothed_latency — ewma5: smoothed p95 latency
+
+ewma3, ewma5 and ewma7 replace each point with an exponentially weighted average of the point and the points before it. The number in the name is the window the default weight is derived from: alpha = 2 / (n + 1), so 0.5, 0.333 and 0.25. One optional argument overrides alpha; a value close to 1 follows the raw series, a value close to 0 smooths harder. 0.3 here smooths a little more than ewma5's default.
+
+```json
+{
+  "compositeQuery": {
+    "queries": [
+      {
+        "spec": {
+          "aggregations": [
+            {
+              "metricName": "http.server.duration.bucket",
+              "spaceAggregation": "p95"
+            }
+          ],
+          "functions": [
+            {
+              "args": [
+                {
+                  "value": 0.3
+                }
+              ],
+              "name": "ewma5"
+            }
+          ],
+          "groupBy": [
+            {
+              "fieldContext": "resource",
+              "name": "service.name"
+            }
+          ],
+          "name": "A",
+          "signal": "metrics",
+          "stepInterval": "60s"
+        },
+        "type": "builder_query"
+      }
+    ]
+  },
+  "end": 1640998800000,
+  "requestType": "time_series",
+  "schemaVersion": "v1",
+  "start": 1640995200000
+}
+```
+
+### 14. function_fillzero_sparse_errors — fillZero: a zero at every step with no failed spans
+
+A count over sparse events returns a point only for steps that had a match, so a chart of failed spans has gaps where nothing failed. fillZero adds a zero at every missing step. With no arguments the server fills the request window at the query's step, which is the common case. The three optional arguments are start, end and step in milliseconds, for callers that want to fill a different grid.
+
+```json
+{
+  "compositeQuery": {
+    "queries": [
+      {
+        "spec": {
+          "aggregations": [
+            {
+              "alias": "failed_spans",
+              "expression": "count()"
+            }
+          ],
+          "filter": {
+            "expression": "has_error = true"
+          },
+          "functions": [
+            {
+              "name": "fillZero"
+            }
+          ],
+          "groupBy": [
+            {
+              "fieldContext": "resource",
+              "name": "service.name"
+            }
+          ],
+          "name": "A",
+          "signal": "traces",
+          "stepInterval": "60s"
+        },
+        "type": "builder_query"
+      }
+    ]
+  },
+  "end": 1640998800000,
+  "requestType": "time_series",
+  "schemaVersion": "v1",
+  "start": 1640995200000
+}
+```
+
+### 15. function_log10_network_bytes — log10: network throughput across devices that differ by orders of magnitude
+
+log2 and log10 replace each value with its logarithm, so a loopback device moving kilobytes and an uplink moving gigabytes fit on one chart. They take no arguments. Zero and negative values have no logarithm and are not drawn. absolute, also without arguments, is the usual companion for a signed series before a logarithm.
+
+```json
+{
+  "compositeQuery": {
+    "queries": [
+      {
+        "spec": {
+          "aggregations": [
+            {
+              "metricName": "system.network.io",
+              "spaceAggregation": "sum",
+              "timeAggregation": "rate"
+            }
+          ],
+          "filter": {
+            "expression": "direction = 'transmit'"
+          },
+          "functions": [
+            {
+              "name": "log10"
+            }
+          ],
+          "groupBy": [
+            {
+              "fieldContext": "attribute",
+              "name": "device"
+            }
+          ],
+          "name": "A",
+          "signal": "metrics",
+          "stepInterval": "60s"
+        },
+        "type": "builder_query"
+      }
+    ]
+  },
+  "end": 1640998800000,
+  "requestType": "time_series",
+  "schemaVersion": "v1",
+  "start": 1640995200000
+}
+```
+
+### 16. function_median_despiked_request_rate — median5: request rate without one-step spikes
+
+median3, median5 and median7 replace each point with the median of the surrounding 3, 5 or 7 points. A spike that lasts one step vanishes, a shift that lasts longer than half the window stays. The first and last half window, 2 points each for median5, have no full window and keep their values, so the newest spike stays visible; a series shorter than the window is returned unchanged. They take no arguments. Use them when the raw series is noisy and the chart is for a trend, not for catching the spike.
+
+```json
+{
+  "compositeQuery": {
+    "queries": [
+      {
+        "spec": {
+          "aggregations": [
+            {
+              "metricName": "http.server.duration.count",
+              "spaceAggregation": "sum",
+              "timeAggregation": "rate"
+            }
+          ],
+          "functions": [
+            {
+              "name": "median5"
+            }
+          ],
+          "groupBy": [
+            {
+              "fieldContext": "resource",
+              "name": "service.name"
+            }
+          ],
+          "name": "A",
+          "signal": "metrics",
+          "stepInterval": "60s"
+        },
+        "type": "builder_query"
+      }
+    ]
+  },
+  "end": 1640998800000,
+  "requestType": "time_series",
+  "schemaVersion": "v1",
+  "start": 1640995200000
+}
+```
+
+### 17. function_runningdiff_disk_growth — runningDiff then clampMin: bytes written to disk per step
+
+runningDiff turns a gauge into the change between consecutive points, so a filesystem usage gauge becomes bytes written per step. It takes no arguments and drops the first point of the window, since that point has nothing to difference against; the server reads one step before the window to keep the first interval. Functions apply in order: clampMin with 0 runs on the differences and replaces the negative value a cleanup or a volume reset produces with zero.
+
+```json
+{
+  "compositeQuery": {
+    "queries": [
+      {
+        "spec": {
+          "aggregations": [
+            {
+              "metricName": "system.filesystem.usage",
+              "spaceAggregation": "sum",
+              "timeAggregation": "latest"
+            }
+          ],
+          "filter": {
+            "expression": "state = 'used'"
+          },
+          "functions": [
+            {
+              "name": "runningDiff"
+            },
+            {
+              "args": [
+                {
+                  "value": 0
+                }
+              ],
+              "name": "clampMin"
+            }
+          ],
+          "groupBy": [
+            {
+              "fieldContext": "resource",
+              "name": "host.name"
+            }
+          ],
+          "name": "A",
+          "signal": "metrics",
+          "stepInterval": "60s"
+        },
+        "type": "builder_query"
+      }
+    ]
+  },
+  "end": 1640998800000,
+  "requestType": "time_series",
+  "schemaVersion": "v1",
+  "start": 1640995200000
+}
+```
+
+### 18. function_timeshift_week_over_week — timeShift: this week's error logs next to last week's
+
+timeShift moves every point of its query forward by the argument, in seconds, so a series read from the past lands on the current timestamps. B here reads the hour exactly seven days (604800 s) before the requested window and comes back on this week's timestamps, so it overlays A on a chart and the formula can subtract it point by point. The argument is positive; it says how far back to read.
+
+```json
+{
+  "compositeQuery": {
+    "queries": [
+      {
+        "spec": {
+          "aggregations": [
+            {
+              "alias": "errors",
+              "expression": "count()"
+            }
+          ],
+          "filter": {
+            "expression": "severity_text = 'ERROR'"
+          },
+          "name": "A",
+          "signal": "logs",
+          "stepInterval": "60s"
+        },
+        "type": "builder_query"
+      },
+      {
+        "spec": {
+          "aggregations": [
+            {
+              "alias": "errors",
+              "expression": "count()"
+            }
+          ],
+          "filter": {
+            "expression": "severity_text = 'ERROR'"
+          },
+          "functions": [
+            {
+              "args": [
+                {
+                  "value": 604800
+                }
+              ],
+              "name": "timeShift"
+            }
+          ],
+          "name": "B",
+          "signal": "logs",
+          "stepInterval": "60s"
+        },
+        "type": "builder_query"
+      },
+      {
+        "spec": {
+          "expression": "A - B",
+          "name": "F1"
+        },
+        "type": "builder_formula"
+      }
+    ]
+  },
+  "end": 1640998800000,
+  "requestType": "time_series",
+  "schemaVersion": "v1",
+  "start": 1640995200000
+}
+```
+
+### 19. logs_raw — Raw: fetch raw log records
 
 ```json
 {
@@ -393,7 +842,7 @@ Source: the request examples published by the SigNoz OpenAPI spec.
 }
 ```
 
-### 11. logs_scalar — Scalar: total error log count
+### 20. logs_scalar — Scalar: total error log count
 
 ```json
 {
@@ -424,7 +873,7 @@ Source: the request examples published by the SigNoz OpenAPI spec.
 }
 ```
 
-### 12. logs_time_series — Time series: count error logs grouped by service
+### 21. logs_time_series — Time series: count error logs grouped by service
 
 ```json
 {
@@ -471,7 +920,7 @@ Source: the request examples published by the SigNoz OpenAPI spec.
 }
 ```
 
-### 13. metrics_gauge_time_series — Time series: latest gauge value averaged across series
+### 22. metrics_gauge_time_series — Time series: latest gauge value averaged across series
 
 ```json
 {
@@ -507,7 +956,7 @@ Source: the request examples published by the SigNoz OpenAPI spec.
 }
 ```
 
-### 14. metrics_histogram_time_series — Time series: p99 latency from histogram
+### 23. metrics_histogram_time_series — Time series: p99 latency from histogram
 
 ```json
 {
@@ -542,7 +991,7 @@ Source: the request examples published by the SigNoz OpenAPI spec.
 }
 ```
 
-### 15. metrics_rate_time_series — Time series: rate of cumulative counter
+### 24. metrics_rate_time_series — Time series: rate of cumulative counter
 
 ```json
 {
@@ -578,7 +1027,7 @@ Source: the request examples published by the SigNoz OpenAPI spec.
 }
 ```
 
-### 16. metrics_scalar — Scalar: single reduced metric value
+### 25. metrics_scalar — Scalar: single reduced metric value
 
 ```json
 {
@@ -609,7 +1058,7 @@ Source: the request examples published by the SigNoz OpenAPI spec.
 }
 ```
 
-### 17. promql — PromQL: request rate with UTF-8 metric name
+### 26. promql — PromQL: request rate with UTF-8 metric name
 
 ```json
 {
@@ -632,7 +1081,7 @@ Source: the request examples published by the SigNoz OpenAPI spec.
 }
 ```
 
-### 18. traces_raw — Raw: fetch raw span records
+### 27. traces_raw — Raw: fetch raw span records
 
 ```json
 {
@@ -677,7 +1126,7 @@ Source: the request examples published by the SigNoz OpenAPI spec.
 }
 ```
 
-### 19. traces_scalar — Scalar: total span count
+### 28. traces_scalar — Scalar: total span count
 
 ```json
 {
@@ -708,7 +1157,7 @@ Source: the request examples published by the SigNoz OpenAPI spec.
 }
 ```
 
-### 20. traces_time_series — Time series: count spans grouped by service
+### 29. traces_time_series — Time series: count spans grouped by service
 
 ```json
 {

@@ -11,7 +11,7 @@ the items/total envelope the completeness note parses.
 from fixtures.mcpclient import MCPClient, assert_tool_ok
 from fixtures.results import first_block_json, first_text_block, note_blocks
 
-SERVER_POPULATED_FIELDS = ("id", "createdAt", "updatedAt", "createdBy", "updatedBy", "webUrl")
+SERVER_POPULATED_FIELDS = ("id", "state", "createdAt", "updatedAt", "createdBy", "updatedBy", "webUrl")
 
 
 def threshold_rule(name: str, *, alert_type: str = "METRIC_BASED_ALERT", channels: list | None = None) -> dict:

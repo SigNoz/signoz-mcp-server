@@ -7407,6 +7407,8 @@ type GetRuleHistoryTimelineResponse struct {
 	JSON401 *apitypes.RenderErrorResponse
 	// JSON403 the response for an HTTP 403 `application/json` response
 	JSON403 *apitypes.RenderErrorResponse
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *apitypes.RenderErrorResponse
 	// JSON500 the response for an HTTP 500 `application/json` response
 	JSON500 *apitypes.RenderErrorResponse
 }
@@ -7432,6 +7434,11 @@ func (r GetRuleHistoryTimelineResponse) GetJSON401() *apitypes.RenderErrorRespon
 // GetJSON403 returns the response for an HTTP 403 `application/json` response
 func (r GetRuleHistoryTimelineResponse) GetJSON403() *apitypes.RenderErrorResponse {
 	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetRuleHistoryTimelineResponse) GetJSON404() *apitypes.RenderErrorResponse {
+	return r.JSON404
 }
 
 // GetJSON500 returns the response for an HTTP 500 `application/json` response
@@ -8075,7 +8082,7 @@ type QueryRangeV5Response struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *struct {
-		// Data Response from the v5 query range endpoint. The data.results array contains typed results depending on the requestType: TimeSeriesData for time_series, ScalarData for scalar, or RawData for raw requests.
+		// Data Response from the v5 query range endpoint. The data.results array contains typed results depending on the requestType: TimeSeriesData for time_series and heatmap, ScalarData for scalar, RawData for raw, or DistributionData for distribution requests.
 		Data   apitypes.Querybuildertypesv5QueryRangeResponse `json:"data"`
 		Status string                                         `json:"status"`
 	}
@@ -8091,7 +8098,7 @@ type QueryRangeV5Response struct {
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
 func (r QueryRangeV5Response) GetJSON200() *struct {
-	// Data Response from the v5 query range endpoint. The data.results array contains typed results depending on the requestType: TimeSeriesData for time_series, ScalarData for scalar, or RawData for raw requests.
+	// Data Response from the v5 query range endpoint. The data.results array contains typed results depending on the requestType: TimeSeriesData for time_series and heatmap, ScalarData for scalar, RawData for raw, or DistributionData for distribution requests.
 	Data   apitypes.Querybuildertypesv5QueryRangeResponse `json:"data"`
 	Status string                                         `json:"status"`
 } {
@@ -10971,6 +10978,13 @@ func ParseGetRuleHistoryTimelineResponse(rsp *http.Response) (*GetRuleHistoryTim
 		}
 		response.JSON403 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest apitypes.RenderErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest apitypes.RenderErrorResponse
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -11469,7 +11483,7 @@ func ParseQueryRangeV5Response(rsp *http.Response) (*QueryRangeV5Response, error
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest struct {
-			// Data Response from the v5 query range endpoint. The data.results array contains typed results depending on the requestType: TimeSeriesData for time_series, ScalarData for scalar, or RawData for raw requests.
+			// Data Response from the v5 query range endpoint. The data.results array contains typed results depending on the requestType: TimeSeriesData for time_series and heatmap, ScalarData for scalar, RawData for raw, or DistributionData for distribution requests.
 			Data   apitypes.Querybuildertypesv5QueryRangeResponse `json:"data"`
 			Status string                                         `json:"status"`
 		}

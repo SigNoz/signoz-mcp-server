@@ -121,8 +121,7 @@ Two disabled log count queries (A = errors, B = total) combined via a builder_fo
     }
   },
   "ruleType": "threshold_rule",
-  "schemaVersion": "v2alpha1",
-  "version": "v5"
+  "schemaVersion": "v2alpha1"
 }
 ```
 
@@ -217,8 +216,7 @@ Counts matching log records (ERROR severity + body contains) over a rolling wind
     }
   },
   "ruleType": "threshold_rule",
-  "schemaVersion": "v2alpha1",
-  "version": "v5"
+  "schemaVersion": "v2alpha1"
 }
 ```
 
@@ -319,8 +317,7 @@ Wraps a builder query in the `anomaly` function with daily seasonality, so SigNo
     }
   },
   "ruleType": "anomaly_rule",
-  "schemaVersion": "v2alpha1",
-  "version": "v5"
+  "schemaVersion": "v2alpha1"
 }
 ```
 
@@ -393,8 +390,7 @@ PromQL expression instead of the builder. Dotted OTEL resource attributes are qu
     }
   },
   "ruleType": "promql_rule",
-  "schemaVersion": "v2alpha1",
-  "version": "v5"
+  "schemaVersion": "v2alpha1"
 }
 ```
 
@@ -529,8 +525,7 @@ Computes disk utilization as (1 - available/capacity) * 100 by combining two dis
     }
   },
   "ruleType": "threshold_rule",
-  "schemaVersion": "v2alpha1",
-  "version": "v5"
+  "schemaVersion": "v2alpha1"
 }
 ```
 
@@ -628,8 +623,7 @@ Fires when a pod consumes more than 80% of its requested CPU for the whole evalu
     }
   },
   "ruleType": "threshold_rule",
-  "schemaVersion": "v2alpha1",
-  "version": "v5"
+  "schemaVersion": "v2alpha1"
 }
 ```
 
@@ -764,8 +758,7 @@ Demonstrates the full notificationSettings surface: `groupBy` merges alerts acro
     "usePolicy": false
   },
   "ruleType": "threshold_rule",
-  "schemaVersion": "v2alpha1",
-  "version": "v5"
+  "schemaVersion": "v2alpha1"
 }
 ```
 
@@ -910,8 +903,7 @@ Two tiers (warning and critical) in a single rule, each with its own target, op,
     }
   },
   "ruleType": "threshold_rule",
-  "schemaVersion": "v2alpha1",
-  "version": "v5"
+  "schemaVersion": "v2alpha1"
 }
 ```
 
@@ -1044,8 +1036,7 @@ Two disabled trace count queries (A = error spans where hasError=true, B = total
     }
   },
   "ruleType": "threshold_rule",
-  "schemaVersion": "v2alpha1",
-  "version": "v5"
+  "schemaVersion": "v2alpha1"
 }
 ```
 
@@ -1141,7 +1132,6 @@ Builder query against the traces signal with p99(duration_nano). The series unit
     }
   },
   "ruleType": "threshold_rule",
-  "schemaVersion": "v2alpha1",
-  "version": "v5"
+  "schemaVersion": "v2alpha1"
 }
 ```

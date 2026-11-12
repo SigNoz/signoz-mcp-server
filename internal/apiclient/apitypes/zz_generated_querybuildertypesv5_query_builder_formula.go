@@ -17,8 +17,8 @@ type Querybuildertypesv5QueryBuilderFormula struct {
 	// Functions Post-processing functions applied in order to each result series.
 	Functions *[]Querybuildertypesv5Function `json:"functions,omitempty" jsonschema:"Post-processing functions applied in order to each result series."`
 
-	// Having Accepted but currently ignored; the computed values are returned unfiltered.
-	Having *Querybuildertypesv5Having `json:"having,omitempty" jsonschema:"Accepted but currently ignored; the computed values are returned unfiltered."`
+	// Having A filter on the formula values, referencing the formula by its name or as __result, for example F1 > 0. A time series keeps only the points that match and drops a series with none left; a scalar result keeps only the rows that match.
+	Having *Querybuildertypesv5Having `json:"having,omitempty" jsonschema:"A filter on the formula values, referencing the formula by its name or as __result, for example F1 > 0. A time series keeps only the points that match and drops a series with none left; a scalar result keeps only the rows that match."`
 
 	// Legend The display name template for each series; {{field}} placeholders are replaced by label values.
 	Legend *string `json:"legend,omitempty" jsonschema:"The display name template for each series; {{field}} placeholders are replaced by label values."`
@@ -28,6 +28,9 @@ type Querybuildertypesv5QueryBuilderFormula struct {
 
 	// Name The unique name of the formula, such as F1, used by selectedQueryName and by panels. Referencing a formula from another formula is not reliable.
 	Name *string `json:"name,omitempty" jsonschema:"The unique name of the formula, such as F1, used by selectedQueryName and by panels. Referencing a formula from another formula is not reliable."`
+
+	// Offset The number of ordered series or rows to skip before the page starts. Requires limit.
+	Offset *int `json:"offset,omitempty" jsonschema:"The number of ordered series or rows to skip before the page starts. Requires limit."`
 
 	// Order The sort order of the formula result.
 	Order *[]Querybuildertypesv5OrderBy `json:"order,omitempty" jsonschema:"The sort order of the formula result."`

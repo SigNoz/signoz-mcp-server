@@ -19,6 +19,7 @@ const (
 	CoretypesKindIngestionLimit          CoretypesKind = "ingestion-limit"
 	CoretypesKindIntegration             CoretypesKind = "integration"
 	CoretypesKindLicense                 CoretypesKind = "license"
+	CoretypesKindLlmPricingRule          CoretypesKind = "llm-pricing-rule"
 	CoretypesKindLogs                    CoretypesKind = "logs"
 	CoretypesKindLogsField               CoretypesKind = "logs-field"
 	CoretypesKindMeterMetrics            CoretypesKind = "meter-metrics"
@@ -76,6 +77,8 @@ func (e CoretypesKind) Valid() bool {
 	case CoretypesKindIntegration:
 		return true
 	case CoretypesKindLicense:
+		return true
+	case CoretypesKindLlmPricingRule:
 		return true
 	case CoretypesKindLogs:
 		return true

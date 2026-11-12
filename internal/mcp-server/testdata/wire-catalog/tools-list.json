@@ -465,7 +465,7 @@
             "openWorldHint": true,
             "readOnlyHint": false
           },
-          "description": "Use this when the user wants a new SigNoz alert rule; use signoz_update_alert to change an existing rule. Supports v2alpha1 threshold, PromQL, and metric anomaly alerts. Read signoz://alert/instructions and signoz://alert/examples before composing any payload, unless already read in the same prepared operation; for PromQL also read signoz://promql/instructions. For direct routing, reuse a fully paginated signoz_list_notification_channels result only from the same still-current prepared operation; otherwise call it, refreshing only if state may have changed. Use exact returned immutable routing displayName values, not machine name. If none fits, ask the user or offer signoz_create_notification_channel with settings the user provides; never guess or create automatically. SigNoz rejects a threshold tier with no channels or an unknown channel name; confirmed v2 policy routing may omit tier channels. Top-level preferredChannels plays no part in routing.",
+          "description": "Use this when the user wants a new SigNoz alert rule; use signoz_update_alert to change an existing rule. Supports v2alpha1 threshold, PromQL, and metric anomaly alerts. Read signoz://alert/instructions and signoz://alert/examples before composing any payload, unless already read in the same prepared operation; for PromQL also read signoz://promql/instructions. For direct routing, reuse a fully paginated signoz_list_notification_channels result only from the same still-current prepared operation; otherwise call it, refreshing only if state may have changed. Use exact returned immutable routing displayName values, not machine name. If none fits, ask the user or offer signoz_create_notification_channel with settings the user provides; never guess or create automatically. SigNoz rejects a threshold tier with no channels or an unknown channel name; confirmed v2 policy routing may omit tier channels.",
           "inputSchema": {
             "properties": {
               "alert": {
@@ -501,13 +501,6 @@
                     "type": [
                       "null",
                       "boolean"
-                    ]
-                  },
-                  "algorithm": {
-                    "description": "anomaly_rule only: the anomaly detection algorithm. The supported value is standard.",
-                    "type": [
-                      "null",
-                      "string"
                     ]
                   },
                   "compositeQuery": {
@@ -546,20 +539,6 @@
                     ],
                     "type": "object"
                   },
-                  "matchType": {
-                    "description": "schemaVersion v1 only: which points in the window must satisfy op. Accepted as at_least_once, all_the_times, on_average, in_total or last, their aliases avg and sum, or the legacy codes as strings, '1' to '5'. Required for v1; v2alpha1 sets matchType on each threshold.",
-                    "type": [
-                      "null",
-                      "string"
-                    ]
-                  },
-                  "op": {
-                    "description": "schemaVersion v1 only: how the value is compared with target. Accepted as above, below, equal, not_equal, above_or_equal, below_or_equal or outside_bounds, their symbols, or the legacy codes as strings, '1' to '7'. Required for v1; v2alpha1 sets op on each threshold.",
-                    "type": [
-                      "null",
-                      "string"
-                    ]
-                  },
                   "requireMinPoints": {
                     "description": "Whether a series is skipped until it has at least requiredNumPoints points in the window. Defaults to false.",
                     "type": [
@@ -584,20 +563,6 @@
                   "selectedQueryName": {
                     "description": "The name of the query whose result is evaluated, such as A or F1. Must match a query in compositeQuery.",
                     "type": "string"
-                  },
-                  "target": {
-                    "description": "schemaVersion v1 only: the value compared against, in targetUnit. Required for v1; v2alpha1 sets target on each threshold.",
-                    "type": [
-                      "null",
-                      "number"
-                    ]
-                  },
-                  "targetUnit": {
-                    "description": "schemaVersion v1 only: the unit of target, such as percent or ms. Converted to compositeQuery.unit before comparison when the two differ.",
-                    "type": [
-                      "null",
-                      "string"
-                    ]
                   },
                   "thresholds": {
                     "description": "The thresholds to evaluate, as a kind and spec.",
@@ -625,23 +590,9 @@
                   "boolean"
                 ]
               },
-              "evalWindow": {
-                "description": "The lookback window as a Go duration such as 5m. Only read when schemaVersion is v1, defaulting to 5m; v2alpha1 rules set it in evaluation.spec instead.",
-                "type": [
-                  "null",
-                  "string"
-                ]
-              },
               "evaluation": {
                 "description": "The evaluation window, as a kind and spec.",
                 "type": "object"
-              },
-              "frequency": {
-                "description": "How often the rule is evaluated, as a Go duration such as 1m. Only read when schemaVersion is v1, defaulting to 1m; v2alpha1 rules set it in evaluation.spec instead.",
-                "type": [
-                  "null",
-                  "string"
-                ]
               },
               "labels": {
                 "additionalProperties": {
@@ -716,16 +667,6 @@
                 },
                 "type": "object"
               },
-              "preferredChannels": {
-                "description": "The displayName of each notification channel to notify, for schemaVersion v1 rules. Ignored for v2alpha1, where each threshold carries its own channels.",
-                "items": {
-                  "type": "string"
-                },
-                "type": [
-                  "null",
-                  "array"
-                ]
-              },
               "ruleType": {
                 "description": "The evaluation strategy: threshold_rule compares against thresholds, promql_rule evaluates a PromQL expression, anomaly_rule scores deviation from seasonal history. Defaults to threshold_rule for builder and clickhouse_sql queries and is forced to promql_rule for promql queries.",
                 "type": "string"
@@ -737,20 +678,6 @@
               "searchContext": {
                 "description": "Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.",
                 "type": "string"
-              },
-              "source": {
-                "description": "The URL of the page the rule was created from. Informational; it is not used for evaluation.",
-                "type": [
-                  "null",
-                  "string"
-                ]
-              },
-              "version": {
-                "description": "The query payload version. Nothing reads it.",
-                "type": [
-                  "null",
-                  "string"
-                ]
               }
             },
             "required": [
@@ -864,7 +791,7 @@
                     "description": "The value axis to count this query into, as a kind-discriminated linear or log bucket spec. Read only by heatmap requests, and only from the query they draw."
                   },
                   "cursor": {
-                    "description": "The opaque nextCursor value from a previous raw result, used to fetch the next page.",
+                    "description": "The opaque nextCursor value from a previous raw result, used to fetch the next page. Honored only by raw requests whose order starts with timestamp, for logs followed by id in the same direction; every other request ignores it.",
                     "type": "string"
                   },
                   "disabled": {
@@ -912,7 +839,7 @@
                     "type": "string"
                   },
                   "limit": {
-                    "description": "The maximum number of rows for raw requests, or of series or rows for grouped aggregations, keeping the top entries by order. When 0, aggregations are unlimited while raw requests ordered by timestamp return a page of 10000 rows; follow nextCursor for the rest.",
+                    "description": "The maximum number of rows for raw and trace requests, or of series or rows for grouped scalar and time_series requests, keeping the top entries by order. When 0, scalar and time_series requests are unlimited, raw requests ordered by timestamp return a page of 10000 rows to continue with nextCursor, and other raw and trace requests return 100 rows.",
                     "type": "integer"
                   },
                   "limitBy": {
@@ -928,7 +855,7 @@
                     "type": "string"
                   },
                   "offset": {
-                    "description": "The number of rows to skip before returning results. Prefer cursor for raw requests.",
+                    "description": "The number of rows for raw and trace requests, or of ordered series or rows for scalar and time_series requests, to skip before the page starts. Requires limit. On raw requests the skip counts from where a cursor resumes, and the skipped rows are still read, so prefer cursor for paging.",
                     "type": "integer"
                   },
                   "order": {
@@ -1148,6 +1075,15 @@
                   }
                 },
                 "type": "object"
+              },
+              "DashboardtypesAxisScale": {
+                "enum": [
+                  "auto",
+                  "linear",
+                  "log",
+                  "symlog"
+                ],
+                "type": "string"
               },
               "DashboardtypesBarChartPanelSpec": {
                 "properties": {
@@ -1959,6 +1895,7 @@
                     "signoz/ListPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesListPanelSpec",
                     "signoz/NumberPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesNumberPanelSpec",
                     "signoz/PieChartPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesPieChartPanelSpec",
+                    "signoz/ScatterPlotPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesScatterPlotPanelSpec",
                     "signoz/TablePanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTablePanelSpec",
                     "signoz/TextPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTextPanelSpec",
                     "signoz/TimeSeriesPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTimeSeriesPanelSpec"
@@ -1995,6 +1932,9 @@
                   },
                   {
                     "$ref": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesHeatmapPanelSpec"
+                  },
+                  {
+                    "$ref": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesScatterPlotPanelSpec"
                   }
                 ],
                 "type": "object"
@@ -2146,6 +2086,27 @@
                 ],
                 "type": "object"
               },
+              "DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesScatterPlotPanelSpec": {
+                "properties": {
+                  "kind": {
+                    "const": "signoz/ScatterPlotPanel",
+                    "type": "string"
+                  },
+                  "spec": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesScatterPlotPanelSpec"
+                      }
+                    ],
+                    "description": "The options for this panel kind. {} accepts every default."
+                  }
+                },
+                "required": [
+                  "kind",
+                  "spec"
+                ],
+                "type": "object"
+              },
               "DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTablePanelSpec": {
                 "properties": {
                   "kind": {
@@ -2280,6 +2241,22 @@
                   }
                 },
                 "type": "object"
+              },
+              "DashboardtypesPointDiameter": {
+                "maximum": 40,
+                "minimum": 2,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "DashboardtypesPointOpacity": {
+                "maximum": 1,
+                "minimum": 0.1,
+                "type": [
+                  "number",
+                  "null"
+                ]
               },
               "DashboardtypesPrecisionOption": {
                 "enum": [
@@ -2534,6 +2511,232 @@
                 ],
                 "type": "object"
               },
+              "DashboardtypesScatterPlotAxes": {
+                "properties": {
+                  "x": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesScatterPlotAxis"
+                      }
+                    ],
+                    "description": "The axis dimensions.x is plotted along."
+                  },
+                  "y": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesScatterPlotAxis"
+                      }
+                    ],
+                    "description": "The axis dimensions.y is plotted along."
+                  }
+                },
+                "type": "object"
+              },
+              "DashboardtypesScatterPlotAxis": {
+                "properties": {
+                  "label": {
+                    "description": "Axis title. Empty draws none; the tooltip still names the column.",
+                    "type": "string"
+                  },
+                  "scale": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesAxisScale"
+                      }
+                    ],
+                    "description": "auto (default) uses log, or symlog when values include zero or negatives, when that spreads the dots clearly more than linear does; otherwise linear. log cannot place a value at or below zero and leaves that dot out; symlog is log-like but places it."
+                  },
+                  "softMax": {
+                    "description": "The highest value the axis always shows; data above it still extends the axis, as does a threshold on it. Null fits the data.",
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "softMin": {
+                    "description": "The lowest value the axis always shows; data below it still extends the axis, as does a threshold on it. Null fits the data. A log axis ignores a bound at or below zero.",
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  }
+                },
+                "type": "object"
+              },
+              "DashboardtypesScatterPlotChartAppearance": {
+                "properties": {
+                  "points": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesScatterPlotPoints"
+                      }
+                    ],
+                    "description": "Dot size and opacity."
+                  }
+                },
+                "type": "object"
+              },
+              "DashboardtypesScatterPlotDimensions": {
+                "properties": {
+                  "colorBy": {
+                    "description": "Group-by label names (e.g. k8s.namespace.name) whose combined values color the dots and drive the legend. Empty colors by every group-by label.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": [
+                      "array",
+                      "null"
+                    ]
+                  },
+                  "sizeBy": {
+                    "description": "Value column key that scales each dot's area between chartAppearance.points.minSize and maxSize. Empty draws every dot at chartAppearance.points.size, as does a dot with no value.",
+                    "type": "string"
+                  },
+                  "x": {
+                    "description": "Value column key (queryName, or queryName.expression for a multi-aggregation query) plotted on the x axis. Empty, or a key the result lacks, uses the first value column.",
+                    "type": "string"
+                  },
+                  "y": {
+                    "description": "Value column key plotted on the y axis. Empty, or a key the result lacks, uses the first value column x does not use.",
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "DashboardtypesScatterPlotPanelSpec": {
+                "properties": {
+                  "axes": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesScatterPlotAxes"
+                      }
+                    ],
+                    "description": "Title, bounds and scale of each axis."
+                  },
+                  "chartAppearance": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesScatterPlotChartAppearance"
+                      }
+                    ],
+                    "description": "Dot drawing options."
+                  },
+                  "dimensions": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesScatterPlotDimensions"
+                      }
+                    ],
+                    "description": "Which result columns place, size and color the dots. Each dot is one row of the joined scalar result: one group."
+                  },
+                  "formatting": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesTableFormatting"
+                      }
+                    ],
+                    "description": "Per-column units and decimal precision. The x and y columns' units label their axes; every bound column's unit shows in the tooltip."
+                  },
+                  "legend": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesLegend"
+                      }
+                    ],
+                    "description": "Legend placement and series colors. A series is one color group, labeled by its colorBy values joined with a comma, or All when nothing is grouped."
+                  },
+                  "thresholds": {
+                    "description": "Reference lines drawn at fixed values across the x or y axis.",
+                    "items": {
+                      "$ref": "#/$defs/DashboardtypesScatterPlotThreshold"
+                    },
+                    "type": [
+                      "array",
+                      "null"
+                    ]
+                  },
+                  "visualization": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesBasicVisualization"
+                      }
+                    ],
+                    "description": "The time range the groups are computed over."
+                  }
+                },
+                "type": "object"
+              },
+              "DashboardtypesScatterPlotPoints": {
+                "properties": {
+                  "maxSize": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesPointDiameter"
+                      }
+                    ],
+                    "description": "Diameter of the largest dot when dimensions.sizeBy is set, in CSS pixels from 2 to 40. Null means 24."
+                  },
+                  "minSize": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesPointDiameter"
+                      }
+                    ],
+                    "description": "Diameter of the smallest dot when dimensions.sizeBy is set, in CSS pixels from 2 to 40. Null means 4."
+                  },
+                  "opacity": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesPointOpacity"
+                      }
+                    ],
+                    "description": "Fill opacity of every dot, from 0.1 to 1. Null means 0.7."
+                  },
+                  "size": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesPointDiameter"
+                      }
+                    ],
+                    "description": "Diameter of every dot when dimensions.sizeBy is unset, in CSS pixels from 2 to 40. Null means 6."
+                  }
+                },
+                "type": "object"
+              },
+              "DashboardtypesScatterPlotThreshold": {
+                "properties": {
+                  "axis": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesThresholdAxis"
+                      }
+                    ],
+                    "description": "The axis the line marks: y (default) draws it horizontally, x vertically. Unit converts against that axis's column unit, and the axis extends to keep the line in view."
+                  },
+                  "color": {
+                    "description": "The CSS color of the line, for example #F1575F, which matches the SigNoz red preset; CSS named colors such as red also work.",
+                    "type": "string"
+                  },
+                  "label": {
+                    "description": "The caption shown on the line.",
+                    "type": "string"
+                  },
+                  "unit": {
+                    "description": "The unit id of value, such as ms or percent. Empty means the panel's unit, or the column's unit for a table threshold. Prefer the panel's unit; a different unit works only when it converts to it, such as s against a panel in ms.",
+                    "type": "string"
+                  },
+                  "value": {
+                    "description": "The value the line is drawn at, in unit.",
+                    "format": "double",
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "value",
+                  "color"
+                ],
+                "type": "object"
+              },
               "DashboardtypesSpanGaps": {
                 "properties": {
                   "fillLessThan": {
@@ -2757,6 +2960,13 @@
                   "name"
                 ],
                 "type": "object"
+              },
+              "DashboardtypesThresholdAxis": {
+                "enum": [
+                  "x",
+                  "y"
+                ],
+                "type": "string"
               },
               "DashboardtypesThresholdFormat": {
                 "enum": [
@@ -3649,7 +3859,7 @@
                         "$ref": "#/$defs/Querybuildertypesv5Having"
                       }
                     ],
-                    "description": "Accepted but currently ignored; the computed values are returned unfiltered."
+                    "description": "A filter on the formula values, referencing the formula by its name or as __result, for example F1 \u003e 0. A time series keeps only the points that match and drops a series with none left; a scalar result keeps only the rows that match."
                   },
                   "legend": {
                     "description": "The display name template for each series; {{field}} placeholders are replaced by label values.",
@@ -3662,6 +3872,10 @@
                   "name": {
                     "description": "The unique name of the formula, such as F1, used by selectedQueryName and by panels. Referencing a formula from another formula is not reliable.",
                     "type": "string"
+                  },
+                  "offset": {
+                    "description": "The number of ordered series or rows to skip before the page starts. Requires limit.",
+                    "type": "integer"
                   },
                   "order": {
                     "description": "The sort order of the formula result.",
@@ -3697,7 +3911,7 @@
                     "description": "The value axis to count this query into, as a kind-discriminated linear or log bucket spec. Read only by heatmap requests, and only from the query they draw."
                   },
                   "cursor": {
-                    "description": "The opaque nextCursor value from a previous raw result, used to fetch the next page.",
+                    "description": "The opaque nextCursor value from a previous raw result, used to fetch the next page. Honored only by raw requests whose order starts with timestamp, for logs followed by id in the same direction; every other request ignores it.",
                     "type": "string"
                   },
                   "disabled": {
@@ -3745,7 +3959,7 @@
                     "type": "string"
                   },
                   "limit": {
-                    "description": "The maximum number of rows for raw requests, or of series or rows for grouped aggregations, keeping the top entries by order. When 0, aggregations are unlimited while raw requests ordered by timestamp return a page of 10000 rows; follow nextCursor for the rest.",
+                    "description": "The maximum number of rows for raw and trace requests, or of series or rows for grouped scalar and time_series requests, keeping the top entries by order. When 0, scalar and time_series requests are unlimited, raw requests ordered by timestamp return a page of 10000 rows to continue with nextCursor, and other raw and trace requests return 100 rows.",
                     "type": "integer"
                   },
                   "limitBy": {
@@ -3761,7 +3975,7 @@
                     "type": "string"
                   },
                   "offset": {
-                    "description": "The number of rows to skip before returning results. Prefer cursor for raw requests.",
+                    "description": "The number of rows for raw and trace requests, or of ordered series or rows for scalar and time_series requests, to skip before the page starts. Requires limit. On raw requests the skip counts from where a cursor resumes, and the skipped rows are still read, so prefer cursor for paging.",
                     "type": "integer"
                   },
                   "order": {
@@ -3841,7 +4055,7 @@
                     "description": "The value axis to count this query into, as a kind-discriminated linear or log bucket spec. Read only by heatmap requests, and only from the query they draw."
                   },
                   "cursor": {
-                    "description": "The opaque nextCursor value from a previous raw result, used to fetch the next page.",
+                    "description": "The opaque nextCursor value from a previous raw result, used to fetch the next page. Honored only by raw requests whose order starts with timestamp, for logs followed by id in the same direction; every other request ignores it.",
                     "type": "string"
                   },
                   "disabled": {
@@ -3889,7 +4103,7 @@
                     "type": "string"
                   },
                   "limit": {
-                    "description": "The maximum number of rows for raw requests, or of series or rows for grouped aggregations, keeping the top entries by order. When 0, aggregations are unlimited while raw requests ordered by timestamp return a page of 10000 rows; follow nextCursor for the rest.",
+                    "description": "The maximum number of rows for raw and trace requests, or of series or rows for grouped scalar and time_series requests, keeping the top entries by order. When 0, scalar and time_series requests are unlimited, raw requests ordered by timestamp return a page of 10000 rows to continue with nextCursor, and other raw and trace requests return 100 rows.",
                     "type": "integer"
                   },
                   "limitBy": {
@@ -3905,7 +4119,7 @@
                     "type": "string"
                   },
                   "offset": {
-                    "description": "The number of rows to skip before returning results. Prefer cursor for raw requests.",
+                    "description": "The number of rows for raw and trace requests, or of ordered series or rows for scalar and time_series requests, to skip before the page starts. Requires limit. On raw requests the skip counts from where a cursor resumes, and the skipped rows are still read, so prefer cursor for paging.",
                     "type": "integer"
                   },
                   "order": {
@@ -3985,7 +4199,7 @@
                     "description": "The value axis to count this query into, as a kind-discriminated linear or log bucket spec. Read only by heatmap requests, and only from the query they draw."
                   },
                   "cursor": {
-                    "description": "The opaque nextCursor value from a previous raw result, used to fetch the next page.",
+                    "description": "The opaque nextCursor value from a previous raw result, used to fetch the next page. Honored only by raw requests whose order starts with timestamp, for logs followed by id in the same direction; every other request ignores it.",
                     "type": "string"
                   },
                   "disabled": {
@@ -4033,7 +4247,7 @@
                     "type": "string"
                   },
                   "limit": {
-                    "description": "The maximum number of rows for raw requests, or of series or rows for grouped aggregations, keeping the top entries by order. When 0, aggregations are unlimited while raw requests ordered by timestamp return a page of 10000 rows; follow nextCursor for the rest.",
+                    "description": "The maximum number of rows for raw and trace requests, or of series or rows for grouped scalar and time_series requests, keeping the top entries by order. When 0, scalar and time_series requests are unlimited, raw requests ordered by timestamp return a page of 10000 rows to continue with nextCursor, and other raw and trace requests return 100 rows.",
                     "type": "integer"
                   },
                   "limitBy": {
@@ -4049,7 +4263,7 @@
                     "type": "string"
                   },
                   "offset": {
-                    "description": "The number of rows to skip before returning results. Prefer cursor for raw requests.",
+                    "description": "The number of rows for raw and trace requests, or of ordered series or rows for scalar and time_series requests, to skip before the page starts. Requires limit. On raw requests the skip counts from where a cursor resumes, and the skipped rows are still read, so prefer cursor for paging.",
                     "type": "integer"
                   },
                   "order": {
@@ -4181,7 +4395,7 @@
                     "type": "string"
                   },
                   "offset": {
-                    "description": "The number of raw results to skip before returning. Aggregation requests ignore it.",
+                    "description": "The number of raw or trace rows, or of ordered series or rows for time_series and scalar requests, to skip before the page starts. Requires limit.",
                     "type": "integer"
                   },
                   "order": {
@@ -4403,7 +4617,8 @@
                   "raw",
                   "raw_stream",
                   "trace",
-                  "heatmap"
+                  "heatmap",
+                  "distribution"
                 ],
                 "type": "string"
               },
@@ -8008,7 +8223,7 @@
             "openWorldHint": true,
             "readOnlyHint": false
           },
-          "description": "Use this when the user wants to change an existing SigNoz alert rule; use signoz_create_alert for a new rule. This is a full replacement: call signoz_get_alert unless its complete result is available from the same still-current prepared operation, then preserve every unchanged field. Likewise reuse signoz://alert/instructions, signoz://alert/examples, and a fully paginated signoz_list_notification_channels result only from that operation; otherwise read/call them, refreshing only if state may have changed. Use exact returned immutable routing displayName values, not machine name. If no direct channel fits, ask the user or offer signoz_create_notification_channel with settings the user provides; never create automatically. SigNoz rejects a threshold tier with no channels or an unknown channel name; confirmed v2 policy routing may omit tier channels. Top-level preferredChannels plays no part in routing.",
+          "description": "Use this when the user wants to change an existing SigNoz alert rule; use signoz_create_alert for a new rule. This is a full replacement: call signoz_get_alert unless its complete result is available from the same still-current prepared operation, then preserve every unchanged field. Likewise reuse signoz://alert/instructions, signoz://alert/examples, and a fully paginated signoz_list_notification_channels result only from that operation; otherwise read/call them, refreshing only if state may have changed. Use exact returned immutable routing displayName values, not machine name. If no direct channel fits, ask the user or offer signoz_create_notification_channel with settings the user provides; never create automatically. SigNoz rejects a threshold tier with no channels or an unknown channel name; confirmed v2 policy routing may omit tier channels.",
           "inputSchema": {
             "properties": {
               "alert": {
@@ -8044,13 +8259,6 @@
                     "type": [
                       "null",
                       "boolean"
-                    ]
-                  },
-                  "algorithm": {
-                    "description": "anomaly_rule only: the anomaly detection algorithm. The supported value is standard.",
-                    "type": [
-                      "null",
-                      "string"
                     ]
                   },
                   "compositeQuery": {
@@ -8089,20 +8297,6 @@
                     ],
                     "type": "object"
                   },
-                  "matchType": {
-                    "description": "schemaVersion v1 only: which points in the window must satisfy op. Accepted as at_least_once, all_the_times, on_average, in_total or last, their aliases avg and sum, or the legacy codes as strings, '1' to '5'. Required for v1; v2alpha1 sets matchType on each threshold.",
-                    "type": [
-                      "null",
-                      "string"
-                    ]
-                  },
-                  "op": {
-                    "description": "schemaVersion v1 only: how the value is compared with target. Accepted as above, below, equal, not_equal, above_or_equal, below_or_equal or outside_bounds, their symbols, or the legacy codes as strings, '1' to '7'. Required for v1; v2alpha1 sets op on each threshold.",
-                    "type": [
-                      "null",
-                      "string"
-                    ]
-                  },
                   "requireMinPoints": {
                     "description": "Whether a series is skipped until it has at least requiredNumPoints points in the window. Defaults to false.",
                     "type": [
@@ -8127,20 +8321,6 @@
                   "selectedQueryName": {
                     "description": "The name of the query whose result is evaluated, such as A or F1. Must match a query in compositeQuery.",
                     "type": "string"
-                  },
-                  "target": {
-                    "description": "schemaVersion v1 only: the value compared against, in targetUnit. Required for v1; v2alpha1 sets target on each threshold.",
-                    "type": [
-                      "null",
-                      "number"
-                    ]
-                  },
-                  "targetUnit": {
-                    "description": "schemaVersion v1 only: the unit of target, such as percent or ms. Converted to compositeQuery.unit before comparison when the two differ.",
-                    "type": [
-                      "null",
-                      "string"
-                    ]
                   },
                   "thresholds": {
                     "description": "The thresholds to evaluate, as a kind and spec.",
@@ -8168,23 +8348,9 @@
                   "boolean"
                 ]
               },
-              "evalWindow": {
-                "description": "The lookback window as a Go duration such as 5m. Only read when schemaVersion is v1, defaulting to 5m; v2alpha1 rules set it in evaluation.spec instead.",
-                "type": [
-                  "null",
-                  "string"
-                ]
-              },
               "evaluation": {
                 "description": "The evaluation window, as a kind and spec.",
                 "type": "object"
-              },
-              "frequency": {
-                "description": "How often the rule is evaluated, as a Go duration such as 1m. Only read when schemaVersion is v1, defaulting to 1m; v2alpha1 rules set it in evaluation.spec instead.",
-                "type": [
-                  "null",
-                  "string"
-                ]
               },
               "id": {
                 "description": "UUIDv7 of the alert rule to update (required). Obtain it from signoz_list_alert_rules or signoz_get_alert.",
@@ -8263,16 +8429,6 @@
                 },
                 "type": "object"
               },
-              "preferredChannels": {
-                "description": "The displayName of each notification channel to notify, for schemaVersion v1 rules. Ignored for v2alpha1, where each threshold carries its own channels.",
-                "items": {
-                  "type": "string"
-                },
-                "type": [
-                  "null",
-                  "array"
-                ]
-              },
               "ruleId": {
                 "description": "Deprecated alias for 'id'.",
                 "type": "string"
@@ -8288,20 +8444,6 @@
               "searchContext": {
                 "description": "Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.",
                 "type": "string"
-              },
-              "source": {
-                "description": "The URL of the page the rule was created from. Informational; it is not used for evaluation.",
-                "type": [
-                  "null",
-                  "string"
-                ]
-              },
-              "version": {
-                "description": "The query payload version. Nothing reads it.",
-                "type": [
-                  "null",
-                  "string"
-                ]
               }
             },
             "required": [
@@ -8415,7 +8557,7 @@
                     "description": "The value axis to count this query into, as a kind-discriminated linear or log bucket spec. Read only by heatmap requests, and only from the query they draw."
                   },
                   "cursor": {
-                    "description": "The opaque nextCursor value from a previous raw result, used to fetch the next page.",
+                    "description": "The opaque nextCursor value from a previous raw result, used to fetch the next page. Honored only by raw requests whose order starts with timestamp, for logs followed by id in the same direction; every other request ignores it.",
                     "type": "string"
                   },
                   "disabled": {
@@ -8463,7 +8605,7 @@
                     "type": "string"
                   },
                   "limit": {
-                    "description": "The maximum number of rows for raw requests, or of series or rows for grouped aggregations, keeping the top entries by order. When 0, aggregations are unlimited while raw requests ordered by timestamp return a page of 10000 rows; follow nextCursor for the rest.",
+                    "description": "The maximum number of rows for raw and trace requests, or of series or rows for grouped scalar and time_series requests, keeping the top entries by order. When 0, scalar and time_series requests are unlimited, raw requests ordered by timestamp return a page of 10000 rows to continue with nextCursor, and other raw and trace requests return 100 rows.",
                     "type": "integer"
                   },
                   "limitBy": {
@@ -8479,7 +8621,7 @@
                     "type": "string"
                   },
                   "offset": {
-                    "description": "The number of rows to skip before returning results. Prefer cursor for raw requests.",
+                    "description": "The number of rows for raw and trace requests, or of ordered series or rows for scalar and time_series requests, to skip before the page starts. Requires limit. On raw requests the skip counts from where a cursor resumes, and the skipped rows are still read, so prefer cursor for paging.",
                     "type": "integer"
                   },
                   "order": {
@@ -8699,6 +8841,15 @@
                   }
                 },
                 "type": "object"
+              },
+              "DashboardtypesAxisScale": {
+                "enum": [
+                  "auto",
+                  "linear",
+                  "log",
+                  "symlog"
+                ],
+                "type": "string"
               },
               "DashboardtypesBarChartPanelSpec": {
                 "properties": {
@@ -9510,6 +9661,7 @@
                     "signoz/ListPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesListPanelSpec",
                     "signoz/NumberPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesNumberPanelSpec",
                     "signoz/PieChartPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesPieChartPanelSpec",
+                    "signoz/ScatterPlotPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesScatterPlotPanelSpec",
                     "signoz/TablePanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTablePanelSpec",
                     "signoz/TextPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTextPanelSpec",
                     "signoz/TimeSeriesPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTimeSeriesPanelSpec"
@@ -9546,6 +9698,9 @@
                   },
                   {
                     "$ref": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesHeatmapPanelSpec"
+                  },
+                  {
+                    "$ref": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesScatterPlotPanelSpec"
                   }
                 ],
                 "type": "object"
@@ -9697,6 +9852,27 @@
                 ],
                 "type": "object"
               },
+              "DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesScatterPlotPanelSpec": {
+                "properties": {
+                  "kind": {
+                    "const": "signoz/ScatterPlotPanel",
+                    "type": "string"
+                  },
+                  "spec": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesScatterPlotPanelSpec"
+                      }
+                    ],
+                    "description": "The options for this panel kind. {} accepts every default."
+                  }
+                },
+                "required": [
+                  "kind",
+                  "spec"
+                ],
+                "type": "object"
+              },
               "DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTablePanelSpec": {
                 "properties": {
                   "kind": {
@@ -9831,6 +10007,22 @@
                   }
                 },
                 "type": "object"
+              },
+              "DashboardtypesPointDiameter": {
+                "maximum": 40,
+                "minimum": 2,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "DashboardtypesPointOpacity": {
+                "maximum": 1,
+                "minimum": 0.1,
+                "type": [
+                  "number",
+                  "null"
+                ]
               },
               "DashboardtypesPrecisionOption": {
                 "enum": [
@@ -10085,6 +10277,232 @@
                 ],
                 "type": "object"
               },
+              "DashboardtypesScatterPlotAxes": {
+                "properties": {
+                  "x": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesScatterPlotAxis"
+                      }
+                    ],
+                    "description": "The axis dimensions.x is plotted along."
+                  },
+                  "y": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesScatterPlotAxis"
+                      }
+                    ],
+                    "description": "The axis dimensions.y is plotted along."
+                  }
+                },
+                "type": "object"
+              },
+              "DashboardtypesScatterPlotAxis": {
+                "properties": {
+                  "label": {
+                    "description": "Axis title. Empty draws none; the tooltip still names the column.",
+                    "type": "string"
+                  },
+                  "scale": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesAxisScale"
+                      }
+                    ],
+                    "description": "auto (default) uses log, or symlog when values include zero or negatives, when that spreads the dots clearly more than linear does; otherwise linear. log cannot place a value at or below zero and leaves that dot out; symlog is log-like but places it."
+                  },
+                  "softMax": {
+                    "description": "The highest value the axis always shows; data above it still extends the axis, as does a threshold on it. Null fits the data.",
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "softMin": {
+                    "description": "The lowest value the axis always shows; data below it still extends the axis, as does a threshold on it. Null fits the data. A log axis ignores a bound at or below zero.",
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  }
+                },
+                "type": "object"
+              },
+              "DashboardtypesScatterPlotChartAppearance": {
+                "properties": {
+                  "points": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesScatterPlotPoints"
+                      }
+                    ],
+                    "description": "Dot size and opacity."
+                  }
+                },
+                "type": "object"
+              },
+              "DashboardtypesScatterPlotDimensions": {
+                "properties": {
+                  "colorBy": {
+                    "description": "Group-by label names (e.g. k8s.namespace.name) whose combined values color the dots and drive the legend. Empty colors by every group-by label.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": [
+                      "array",
+                      "null"
+                    ]
+                  },
+                  "sizeBy": {
+                    "description": "Value column key that scales each dot's area between chartAppearance.points.minSize and maxSize. Empty draws every dot at chartAppearance.points.size, as does a dot with no value.",
+                    "type": "string"
+                  },
+                  "x": {
+                    "description": "Value column key (queryName, or queryName.expression for a multi-aggregation query) plotted on the x axis. Empty, or a key the result lacks, uses the first value column.",
+                    "type": "string"
+                  },
+                  "y": {
+                    "description": "Value column key plotted on the y axis. Empty, or a key the result lacks, uses the first value column x does not use.",
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "DashboardtypesScatterPlotPanelSpec": {
+                "properties": {
+                  "axes": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesScatterPlotAxes"
+                      }
+                    ],
+                    "description": "Title, bounds and scale of each axis."
+                  },
+                  "chartAppearance": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesScatterPlotChartAppearance"
+                      }
+                    ],
+                    "description": "Dot drawing options."
+                  },
+                  "dimensions": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesScatterPlotDimensions"
+                      }
+                    ],
+                    "description": "Which result columns place, size and color the dots. Each dot is one row of the joined scalar result: one group."
+                  },
+                  "formatting": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesTableFormatting"
+                      }
+                    ],
+                    "description": "Per-column units and decimal precision. The x and y columns' units label their axes; every bound column's unit shows in the tooltip."
+                  },
+                  "legend": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesLegend"
+                      }
+                    ],
+                    "description": "Legend placement and series colors. A series is one color group, labeled by its colorBy values joined with a comma, or All when nothing is grouped."
+                  },
+                  "thresholds": {
+                    "description": "Reference lines drawn at fixed values across the x or y axis.",
+                    "items": {
+                      "$ref": "#/$defs/DashboardtypesScatterPlotThreshold"
+                    },
+                    "type": [
+                      "array",
+                      "null"
+                    ]
+                  },
+                  "visualization": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesBasicVisualization"
+                      }
+                    ],
+                    "description": "The time range the groups are computed over."
+                  }
+                },
+                "type": "object"
+              },
+              "DashboardtypesScatterPlotPoints": {
+                "properties": {
+                  "maxSize": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesPointDiameter"
+                      }
+                    ],
+                    "description": "Diameter of the largest dot when dimensions.sizeBy is set, in CSS pixels from 2 to 40. Null means 24."
+                  },
+                  "minSize": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesPointDiameter"
+                      }
+                    ],
+                    "description": "Diameter of the smallest dot when dimensions.sizeBy is set, in CSS pixels from 2 to 40. Null means 4."
+                  },
+                  "opacity": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesPointOpacity"
+                      }
+                    ],
+                    "description": "Fill opacity of every dot, from 0.1 to 1. Null means 0.7."
+                  },
+                  "size": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesPointDiameter"
+                      }
+                    ],
+                    "description": "Diameter of every dot when dimensions.sizeBy is unset, in CSS pixels from 2 to 40. Null means 6."
+                  }
+                },
+                "type": "object"
+              },
+              "DashboardtypesScatterPlotThreshold": {
+                "properties": {
+                  "axis": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesThresholdAxis"
+                      }
+                    ],
+                    "description": "The axis the line marks: y (default) draws it horizontally, x vertically. Unit converts against that axis's column unit, and the axis extends to keep the line in view."
+                  },
+                  "color": {
+                    "description": "The CSS color of the line, for example #F1575F, which matches the SigNoz red preset; CSS named colors such as red also work.",
+                    "type": "string"
+                  },
+                  "label": {
+                    "description": "The caption shown on the line.",
+                    "type": "string"
+                  },
+                  "unit": {
+                    "description": "The unit id of value, such as ms or percent. Empty means the panel's unit, or the column's unit for a table threshold. Prefer the panel's unit; a different unit works only when it converts to it, such as s against a panel in ms.",
+                    "type": "string"
+                  },
+                  "value": {
+                    "description": "The value the line is drawn at, in unit.",
+                    "format": "double",
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "value",
+                  "color"
+                ],
+                "type": "object"
+              },
               "DashboardtypesSpanGaps": {
                 "properties": {
                   "fillLessThan": {
@@ -10308,6 +10726,13 @@
                   "name"
                 ],
                 "type": "object"
+              },
+              "DashboardtypesThresholdAxis": {
+                "enum": [
+                  "x",
+                  "y"
+                ],
+                "type": "string"
               },
               "DashboardtypesThresholdFormat": {
                 "enum": [
@@ -11200,7 +11625,7 @@
                         "$ref": "#/$defs/Querybuildertypesv5Having"
                       }
                     ],
-                    "description": "Accepted but currently ignored; the computed values are returned unfiltered."
+                    "description": "A filter on the formula values, referencing the formula by its name or as __result, for example F1 \u003e 0. A time series keeps only the points that match and drops a series with none left; a scalar result keeps only the rows that match."
                   },
                   "legend": {
                     "description": "The display name template for each series; {{field}} placeholders are replaced by label values.",
@@ -11213,6 +11638,10 @@
                   "name": {
                     "description": "The unique name of the formula, such as F1, used by selectedQueryName and by panels. Referencing a formula from another formula is not reliable.",
                     "type": "string"
+                  },
+                  "offset": {
+                    "description": "The number of ordered series or rows to skip before the page starts. Requires limit.",
+                    "type": "integer"
                   },
                   "order": {
                     "description": "The sort order of the formula result.",
@@ -11248,7 +11677,7 @@
                     "description": "The value axis to count this query into, as a kind-discriminated linear or log bucket spec. Read only by heatmap requests, and only from the query they draw."
                   },
                   "cursor": {
-                    "description": "The opaque nextCursor value from a previous raw result, used to fetch the next page.",
+                    "description": "The opaque nextCursor value from a previous raw result, used to fetch the next page. Honored only by raw requests whose order starts with timestamp, for logs followed by id in the same direction; every other request ignores it.",
                     "type": "string"
                   },
                   "disabled": {
@@ -11296,7 +11725,7 @@
                     "type": "string"
                   },
                   "limit": {
-                    "description": "The maximum number of rows for raw requests, or of series or rows for grouped aggregations, keeping the top entries by order. When 0, aggregations are unlimited while raw requests ordered by timestamp return a page of 10000 rows; follow nextCursor for the rest.",
+                    "description": "The maximum number of rows for raw and trace requests, or of series or rows for grouped scalar and time_series requests, keeping the top entries by order. When 0, scalar and time_series requests are unlimited, raw requests ordered by timestamp return a page of 10000 rows to continue with nextCursor, and other raw and trace requests return 100 rows.",
                     "type": "integer"
                   },
                   "limitBy": {
@@ -11312,7 +11741,7 @@
                     "type": "string"
                   },
                   "offset": {
-                    "description": "The number of rows to skip before returning results. Prefer cursor for raw requests.",
+                    "description": "The number of rows for raw and trace requests, or of ordered series or rows for scalar and time_series requests, to skip before the page starts. Requires limit. On raw requests the skip counts from where a cursor resumes, and the skipped rows are still read, so prefer cursor for paging.",
                     "type": "integer"
                   },
                   "order": {
@@ -11392,7 +11821,7 @@
                     "description": "The value axis to count this query into, as a kind-discriminated linear or log bucket spec. Read only by heatmap requests, and only from the query they draw."
                   },
                   "cursor": {
-                    "description": "The opaque nextCursor value from a previous raw result, used to fetch the next page.",
+                    "description": "The opaque nextCursor value from a previous raw result, used to fetch the next page. Honored only by raw requests whose order starts with timestamp, for logs followed by id in the same direction; every other request ignores it.",
                     "type": "string"
                   },
                   "disabled": {
@@ -11440,7 +11869,7 @@
                     "type": "string"
                   },
                   "limit": {
-                    "description": "The maximum number of rows for raw requests, or of series or rows for grouped aggregations, keeping the top entries by order. When 0, aggregations are unlimited while raw requests ordered by timestamp return a page of 10000 rows; follow nextCursor for the rest.",
+                    "description": "The maximum number of rows for raw and trace requests, or of series or rows for grouped scalar and time_series requests, keeping the top entries by order. When 0, scalar and time_series requests are unlimited, raw requests ordered by timestamp return a page of 10000 rows to continue with nextCursor, and other raw and trace requests return 100 rows.",
                     "type": "integer"
                   },
                   "limitBy": {
@@ -11456,7 +11885,7 @@
                     "type": "string"
                   },
                   "offset": {
-                    "description": "The number of rows to skip before returning results. Prefer cursor for raw requests.",
+                    "description": "The number of rows for raw and trace requests, or of ordered series or rows for scalar and time_series requests, to skip before the page starts. Requires limit. On raw requests the skip counts from where a cursor resumes, and the skipped rows are still read, so prefer cursor for paging.",
                     "type": "integer"
                   },
                   "order": {
@@ -11536,7 +11965,7 @@
                     "description": "The value axis to count this query into, as a kind-discriminated linear or log bucket spec. Read only by heatmap requests, and only from the query they draw."
                   },
                   "cursor": {
-                    "description": "The opaque nextCursor value from a previous raw result, used to fetch the next page.",
+                    "description": "The opaque nextCursor value from a previous raw result, used to fetch the next page. Honored only by raw requests whose order starts with timestamp, for logs followed by id in the same direction; every other request ignores it.",
                     "type": "string"
                   },
                   "disabled": {
@@ -11584,7 +12013,7 @@
                     "type": "string"
                   },
                   "limit": {
-                    "description": "The maximum number of rows for raw requests, or of series or rows for grouped aggregations, keeping the top entries by order. When 0, aggregations are unlimited while raw requests ordered by timestamp return a page of 10000 rows; follow nextCursor for the rest.",
+                    "description": "The maximum number of rows for raw and trace requests, or of series or rows for grouped scalar and time_series requests, keeping the top entries by order. When 0, scalar and time_series requests are unlimited, raw requests ordered by timestamp return a page of 10000 rows to continue with nextCursor, and other raw and trace requests return 100 rows.",
                     "type": "integer"
                   },
                   "limitBy": {
@@ -11600,7 +12029,7 @@
                     "type": "string"
                   },
                   "offset": {
-                    "description": "The number of rows to skip before returning results. Prefer cursor for raw requests.",
+                    "description": "The number of rows for raw and trace requests, or of ordered series or rows for scalar and time_series requests, to skip before the page starts. Requires limit. On raw requests the skip counts from where a cursor resumes, and the skipped rows are still read, so prefer cursor for paging.",
                     "type": "integer"
                   },
                   "order": {
@@ -11732,7 +12161,7 @@
                     "type": "string"
                   },
                   "offset": {
-                    "description": "The number of raw results to skip before returning. Aggregation requests ignore it.",
+                    "description": "The number of raw or trace rows, or of ordered series or rows for time_series and scalar requests, to skip before the page starts. Requires limit.",
                     "type": "integer"
                   },
                   "order": {
@@ -11954,7 +12383,8 @@
                   "raw",
                   "raw_stream",
                   "trace",
-                  "heatmap"
+                  "heatmap",
+                  "distribution"
                 ],
                 "type": "string"
               },

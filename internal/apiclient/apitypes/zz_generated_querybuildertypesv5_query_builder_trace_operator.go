@@ -38,8 +38,8 @@ type Querybuildertypesv5QueryBuilderTraceOperator struct {
 	// Name The unique name of the trace operator query.
 	Name *string `json:"name,omitempty" jsonschema:"The unique name of the trace operator query."`
 
-	// Offset The number of raw results to skip before returning. Aggregation requests ignore it.
-	Offset *int `json:"offset,omitempty" jsonschema:"The number of raw results to skip before returning. Aggregation requests ignore it."`
+	// Offset The number of raw or trace rows, or of ordered series or rows for time_series and scalar requests, to skip before the page starts. Requires limit.
+	Offset *int `json:"offset,omitempty" jsonschema:"The number of raw or trace rows, or of ordered series or rows for time_series and scalar requests, to skip before the page starts. Requires limit."`
 
 	// Order The sort order of the matched traces; only span_count and trace_duration may be used as keys.
 	Order *[]Querybuildertypesv5OrderBy `json:"order,omitempty" jsonschema:"The sort order of the matched traces; only span_count and trace_duration may be used as keys."`

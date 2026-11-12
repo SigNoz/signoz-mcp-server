@@ -355,6 +355,40 @@ func (t *DashboardtypesPanelPlugin) MergeDashboardtypesPanelPluginVariantGithubC
 	return err
 }
 
+// AsDashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesScatterPlotPanelSpec returns the union data inside the DashboardtypesPanelPlugin as a DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesScatterPlotPanelSpec
+func (t DashboardtypesPanelPlugin) AsDashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesScatterPlotPanelSpec() (DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesScatterPlotPanelSpec, error) {
+	var body DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesScatterPlotPanelSpec
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromDashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesScatterPlotPanelSpec overwrites any union data inside the DashboardtypesPanelPlugin as the provided DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesScatterPlotPanelSpec
+func (t *DashboardtypesPanelPlugin) FromDashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesScatterPlotPanelSpec(v DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesScatterPlotPanelSpec) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"kind":"signoz/ScatterPlotPanel"}`))
+	t.union = b
+	return err
+}
+
+// MergeDashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesScatterPlotPanelSpec performs a merge with any union data inside the DashboardtypesPanelPlugin, using the provided DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesScatterPlotPanelSpec
+func (t *DashboardtypesPanelPlugin) MergeDashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesScatterPlotPanelSpec(v DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesScatterPlotPanelSpec) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"kind":"signoz/ScatterPlotPanel"}`))
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
 func (t DashboardtypesPanelPlugin) Discriminator() (string, error) {
 	var discriminator struct {
 		Discriminator string `json:"kind"`
@@ -383,6 +417,8 @@ func (t DashboardtypesPanelPlugin) ValueByDiscriminator() (interface{}, error) {
 		return t.AsDashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesNumberPanelSpec()
 	case "signoz/PieChartPanel":
 		return t.AsDashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesPieChartPanelSpec()
+	case "signoz/ScatterPlotPanel":
+		return t.AsDashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesScatterPlotPanelSpec()
 	case "signoz/TablePanel":
 		return t.AsDashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTablePanelSpec()
 	case "signoz/TextPanel":

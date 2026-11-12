@@ -5,17 +5,17 @@ package apitypes
 
 // AlertmanagertypesChannelJiraConfig defines model for AlertmanagertypesChannelJiraConfig.
 type AlertmanagertypesChannelJiraConfig struct {
-	// ApiToken The Atlassian API token paired with email. A secret; returned by create, update and fetch by ID, never by list.
-	ApiToken string `json:"apiToken" jsonschema:"The Atlassian API token paired with email. A secret; returned by create, update and fetch by ID, never by list."`
+	// Auth The credentials: email and apiToken when deployment is cloud, pat when deployment is selfhosted.
+	Auth AlertmanagertypesChannelJiraAuth `json:"auth" jsonschema:"The credentials: email and apiToken when deployment is cloud, pat when deployment is selfhosted."`
 
 	// CustomFields Extra issue fields keyed by Jira field ID. Stored, but not currently included in the issue Jira receives.
 	CustomFields *map[string]interface{} `json:"customFields,omitempty" jsonschema:"Extra issue fields keyed by Jira field ID. Stored, but not currently included in the issue Jira receives."`
 
+	// Deployment The Jira edition: cloud for an Atlassian-hosted site, selfhosted for Jira Server or Data Center.
+	Deployment AlertmanagertypesJiraDeployment `json:"deployment" jsonschema:"The Jira edition: cloud for an Atlassian-hosted site, selfhosted for Jira Server or Data Center."`
+
 	// Description Alertmanager template for the issue description, rendered as markdown; defaults to the SigNoz Jira default.
 	Description *string `json:"description,omitempty" jsonschema:"Alertmanager template for the issue description, rendered as markdown; defaults to the SigNoz Jira default."`
-
-	// Email The Atlassian account email used for basic auth.
-	Email string `json:"email" jsonschema:"The Atlassian account email used for basic auth."`
 
 	// IssueType The issue type name, such as Bug.
 	IssueType string `json:"issueType" jsonschema:"The issue type name, such as Bug."`
@@ -41,8 +41,8 @@ type AlertmanagertypesChannelJiraConfig struct {
 	// SendResolved Also notify when the alert resolves. Defaults to false.
 	SendResolved *bool `json:"sendResolved,omitempty" jsonschema:"Also notify when the alert resolves. Defaults to false."`
 
-	// Site The base URL of the Jira Cloud site, for example https://example.atlassian.net. Only Jira Cloud is supported.
-	Site string `json:"site" jsonschema:"The base URL of the Jira Cloud site, for example https://example.atlassian.net. Only Jira Cloud is supported."`
+	// Site The base URL of the Jira site, for example https://example.atlassian.net or https://jira.example.com.
+	Site string `json:"site" jsonschema:"The base URL of the Jira site, for example https://example.atlassian.net or https://jira.example.com."`
 
 	// Summary Alertmanager template for the issue summary; defaults to the SigNoz Jira default.
 	Summary *string `json:"summary,omitempty" jsonschema:"Alertmanager template for the issue summary; defaults to the SigNoz Jira default."`
