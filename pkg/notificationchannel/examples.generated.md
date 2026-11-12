@@ -31,10 +31,13 @@ Source: the request examples published by the SigNoz OpenAPI spec.
 
 ### jira
 
-- `apiToken` string (secret) (required): The Atlassian API token paired with email. A secret; returned by create, update and fetch by ID, never by list.
+- `auth` AlertmanagertypesChannelJiraAuth (required): The credentials: email and apiToken when deployment is cloud, pat when deployment is selfhosted.
+  - `apiToken` string (secret): The Atlassian API token paired with email. Required when deployment is cloud. A secret; returned by create, update and fetch by ID, never by list.
+  - `email` string: The Atlassian account email used for basic auth. Required when deployment is cloud.
+  - `pat` string (secret): The Jira personal access token, sent as a Bearer header. Required when deployment is selfhosted. A secret; returned by create, update and fetch by ID, never by list.
 - `customFields` object: Extra issue fields keyed by Jira field ID. Stored, but not currently included in the issue Jira receives.
+- `deployment` AlertmanagertypesJiraDeployment (required): The Jira edition: cloud for an Atlassian-hosted site, selfhosted for Jira Server or Data Center.
 - `description` string: Alertmanager template for the issue description, rendered as markdown; defaults to the SigNoz Jira default.
-- `email` string (required): The Atlassian account email used for basic auth.
 - `issueType` string (required): The issue type name, such as Bug.
 - `labels` array of string: Labels added to every issue.
 - `priority` string: The priority name assigned to new issues.
@@ -43,7 +46,7 @@ Source: the request examples published by the SigNoz OpenAPI spec.
 - `reopenTransition` string: The transition applied when an alert fires again on a resolved issue.
 - `resolveTransition` string: The transition applied to the issue when the alert resolves.
 - `sendResolved` boolean: Also notify when the alert resolves. Defaults to false.
-- `site` string (required): The base URL of the Jira Cloud site, for example https://example.atlassian.net. Only Jira Cloud is supported.
+- `site` string (required): The base URL of the Jira site, for example https://example.atlassian.net or https://jira.example.com.
 - `summary` string: Alertmanager template for the issue summary; defaults to the SigNoz Jira default.
 - `wontFixResolution` string: The resolution name that stops an issue from being reopened.
 
@@ -199,15 +202,18 @@ Sends alert events to an incident.io HTTP alert source. `url` and `token` are co
 
 ### 4. jira — Jira Cloud issues
 
-Creates one Jira Cloud issue per alert group and reopens it if the alert fires again within `reopenDuration`. Authenticates with an Atlassian account email and API token.
+Creates one Jira Cloud issue per alert group and reopens it if the alert fires again within `reopenDuration`. Authenticates with an Atlassian account email and API token under `auth`.
 
 ```json
 {
   "config": {
     "kind": "jira",
     "spec": {
-      "apiToken": "XXXXXXXXXXXXXXXXXXXXXXXX",
-      "email": "oncall@example.com",
+      "auth": {
+        "apiToken": "XXXXXXXXXXXXXXXXXXXXXXXX",
+        "email": "oncall@example.com"
+      },
+      "deployment": "cloud",
       "issueType": "Bug",
       "labels": [
         "signoz",
@@ -223,7 +229,30 @@ Creates one Jira Cloud issue per alert group and reopens it if the alert fires a
 }
 ```
 
-### 5. jsmops — Jira Service Management Ops
+### 5. jira-selfhosted — Self-hosted Jira issues
+
+Creates issues on a Jira Data Center or Server site. Authenticates with a personal access token under `auth`, sent as a Bearer header.
+
+```json
+{
+  "config": {
+    "kind": "jira",
+    "spec": {
+      "auth": {
+        "pat": "XXXXXXXXXXXXXXXXXXXXXXXX"
+      },
+      "deployment": "selfhosted",
+      "issueType": "Bug",
+      "project": "OPS",
+      "site": "https://jira.example.com"
+    }
+  },
+  "displayName": "Jira Data Center",
+  "name": "jira-datacenter"
+}
+```
+
+### 6. jsmops — Jira Service Management Ops
 
 Creates JSM Ops alerts through an integration API key. JSM Ops speaks the Opsgenie alert API, so `priority` takes P1 to P5.
 
@@ -242,7 +271,7 @@ Creates JSM Ops alerts through an integration API key. JSM Ops speaks the Opsgen
 }
 ```
 
-### 6. msteams — Microsoft Teams incoming webhook
+### 7. msteams — Microsoft Teams incoming webhook
 
 Posts an adaptive card to a Teams channel through an incoming webhook.
 
@@ -259,7 +288,7 @@ Posts an adaptive card to a Teams channel through an incoming webhook.
 }
 ```
 
-### 7. opsgenie — Opsgenie API integration
+### 8. opsgenie — Opsgenie API integration
 
 Creates Opsgenie alerts through an API integration key, pinned to priority P2.
 
@@ -277,7 +306,7 @@ Creates Opsgenie alerts through an API integration key, pinned to priority P2.
 }
 ```
 
-### 8. pagerduty — PagerDuty Events API v2
+### 9. pagerduty — PagerDuty Events API v2
 
 Creates PagerDuty incidents through an Events API v2 integration key.
 
@@ -295,7 +324,7 @@ Creates PagerDuty incidents through an Events API v2 integration key.
 }
 ```
 
-### 9. slack — Slack incoming webhook
+### 10. slack — Slack incoming webhook
 
 Posts to a Slack channel through an incoming webhook. `sendResolved` is off by default for Slack, so it is turned on here.
 
@@ -314,7 +343,7 @@ Posts to a Slack channel through an incoming webhook. `sendResolved` is off by d
 }
 ```
 
-### 10. webhook_bearer — Webhook with a bearer token
+### 11. webhook_bearer — Webhook with a bearer token
 
 Delivers the Alertmanager webhook payload to an HTTP endpoint. Use either `bearerToken` or `username`/`password`, never both.
 

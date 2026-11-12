@@ -55,7 +55,7 @@ def slug(test_id: str, suffix: str) -> str:
 
 
 def channel_names(rule: dict) -> set[str]:
-    names = set(rule.get("preferredChannels") or [])
+    names: set[str] = set()
     for tier in ((rule.get("condition") or {}).get("thresholds") or {}).get("spec") or []:
         names.update(tier.get("channels") or [])
     return names

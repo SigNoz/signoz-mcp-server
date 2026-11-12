@@ -27,14 +27,14 @@
           "description": "Read this after signoz://alert/instructions only when examples are still needed. Resolve illustrative direct/anomaly names with signoz_list_notification_channels; if none fits, offer signoz_create_notification_channel. Confirmed v2 policy routing may omit direct channels.",
           "mimeType": "text/markdown",
           "name": "Alert Rule Examples",
-          "size": 33311,
+          "size": 33003,
           "uri": "signoz://alert/examples"
         },
         {
           "description": "Read this before creating or updating an alert unless its current content was already read for the same prepared operation. It explains the query envelopes, threshold tiers, and evaluation specs the input schema does not describe, anomaly scoring, and when to reuse or call signoz_list_notification_channels. Read signoz://alert/examples only when examples are still needed.",
           "mimeType": "text/markdown",
           "name": "Alert Rule Instructions",
-          "size": 21472,
+          "size": 21610,
           "uri": "signoz://alert/instructions"
         },
         {
@@ -139,7 +139,7 @@
           "description": "Read this before composing config for signoz_create_notification_channel or signoz_update_notification_channel unless already read in the same prepared operation. It lists every provider kind SigNoz accepts, each kind's config.spec fields with the required ones marked, and a worked create payload per kind plus two replacement configs.",
           "mimeType": "text/markdown",
           "name": "Notification Channel Reference and Examples",
-          "size": 15402,
+          "size": 16538,
           "uri": "signoz://notification-channel/examples"
         },
         {
@@ -160,7 +160,7 @@
           "description": "Read this when composing the query argument of signoz_execute_builder_query and a complete request shape is still needed after the signal's guide. It provides one query_range request from the SigNoz OpenAPI spec per query type (builder, formula, PromQL, ClickHouse SQL) and request type (raw, scalar, time_series) across logs, traces, and metrics.",
           "mimeType": "text/markdown",
           "name": "Query Builder Request Examples",
-          "size": 17892,
+          "size": 30939,
           "uri": "signoz://query-builder/examples"
         },
         {
