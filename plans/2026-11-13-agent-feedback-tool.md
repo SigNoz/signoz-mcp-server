@@ -2,7 +2,7 @@
 
 Status: Done
 Issue: https://github.com/SigNoz/nerve-pod/issues/636
-PR:
+PR: https://github.com/SigNoz/signoz-mcp-server/pull/442
 
 ## Context
 
