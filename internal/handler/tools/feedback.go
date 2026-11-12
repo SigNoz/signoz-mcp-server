@@ -17,7 +17,9 @@ const (
 	feedbackMessageMaxChars  = 2000
 	feedbackToolNameMaxChars = 128
 
-	feedbackRecordedMessage = "Feedback recorded."
+	// Delivery is batched after the call returns, so the result can only
+	// promise that the report was queued.
+	feedbackQueuedMessage   = "Feedback queued for delivery to the SigNoz team."
 	feedbackDisabledMessage = "Feedback is turned off on this server, so nothing was sent. Do not retry; continue with the user's task."
 )
 
@@ -46,10 +48,10 @@ func (h *Handler) RegisterFeedbackHandlers(s *mcp.Server) {
 	tool := mcp.NewTool("signoz_submit_feedback",
 		withCreateToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description(searchContextParamDescription)),
-		mcp.WithDescription("Use this to report a problem with this SigNoz MCP server to the SigNoz team: a tool error you could not explain, a confusing description, schema, or result, a missing capability, or unclear documentation. It returns a confirmation that the report was recorded. Report when you hit the problem or worked around it, without waiting for the user to ask, then continue the user's task. Do not report problems in the user's own telemetry or a mistake the error message already corrected; for product questions use signoz_search_docs. Mask personal and sensitive data before sending: replace names, email addresses, IP addresses, hostnames, IDs, credentials, and telemetry values with placeholders such as <email> or <service>. Tell the user in one sentence what you sent."),
-		mcp.WithString("message", mcp.Required(), mcp.Description(`What you tried, what you expected, and what happened, in at most 2000 characters. Name the tool and quote the error text. Describe the user's task in general terms and mask personal or sensitive data with placeholders. Example: "signoz_search_logs returned VALIDATION_FAILED for filter service.name = '<service>'; the error did not say which key was invalid."`)),
+		mcp.WithDescription("Use this to report a problem with this SigNoz MCP server to the SigNoz team: a tool error you could not explain, a confusing description, schema, or result, a missing capability, or unclear documentation. It returns a confirmation that the report was queued for delivery. Report when you hit the problem or worked around it, without waiting for the user to ask, then continue the user's task. Do not report problems in the user's own telemetry or a mistake the error message already corrected; for product questions use signoz_search_docs. Mask personal and sensitive data before sending: replace names, email addresses, IP addresses, hostnames, IDs, credentials, and telemetry values with placeholders such as <email> or <service>. Tell the user in one sentence what you sent."),
+		mcp.WithString("message", mcp.Required(), maxLength(feedbackMessageMaxChars), mcp.Description(`What you tried, what you expected, and what happened, in at most 2000 characters. Name the tool and quote the error text. Describe the user's task in general terms and mask personal or sensitive data with placeholders. Example: "signoz_search_logs returned VALIDATION_FAILED for filter service.name = '<service>'; the error did not say which key was invalid."`)),
 		mcp.WithString("category", mcp.Enum(feedbackCategories...), mcp.Description("Kind of problem. tool_error: a call failed or returned a wrong result. confusing_output: a description, schema, or result misled you. missing_capability: no tool does what the task needs. documentation: docs or signoz:// resources are wrong or unclear. other: anything else.")),
-		mcp.WithString("toolName", mcp.Description("Exact name of the SigNoz tool the report is about, for example signoz_search_logs. Omit it when the report is about no single tool.")),
+		mcp.WithString("toolName", maxLength(feedbackToolNameMaxChars), mcp.Description("Exact name of the SigNoz tool the report is about, for example signoz_search_logs. Omit it when the report is about no single tool.")),
 	)
 	h.addTool(s, tool, h.handleSubmitFeedback)
 }
@@ -84,7 +86,7 @@ func (h *Handler) handleSubmitFeedback(ctx context.Context, req mcp.CallToolRequ
 		slog.String("feedback.category", feedback.Category),
 		slog.String("feedback.tool_name", feedback.ToolName),
 		slog.Int("feedback.message.chars", utf8.RuneCountInString(feedback.Message)))
-	return mcp.NewToolResultText(feedbackRecordedMessage), nil
+	return mcp.NewToolResultText(feedbackQueuedMessage), nil
 }
 
 func parseFeedback(rawArgs any) (Feedback, *mcp.CallToolResult) {
@@ -96,12 +98,12 @@ func parseFeedback(rawArgs any) (Feedback, *mcp.CallToolResult) {
 	if errResult != nil {
 		return Feedback{}, errResult
 	}
+	if utf8.RuneCountInString(message) > feedbackMessageMaxChars {
+		return Feedback{}, validationErrorf("message", "must be at most %d characters; shorten it and send it again", feedbackMessageMaxChars)
+	}
 	message = strings.TrimSpace(message)
 	if message == "" {
 		return Feedback{}, validationError("message", "cannot be empty")
-	}
-	if utf8.RuneCountInString(message) > feedbackMessageMaxChars {
-		return Feedback{}, validationErrorf("message", "must be at most %d characters; shorten it and send it again", feedbackMessageMaxChars)
 	}
 
 	category, errResult := optionalFeedbackString(args, "category")
@@ -120,7 +122,7 @@ func parseFeedback(rawArgs any) (Feedback, *mcp.CallToolResult) {
 		return Feedback{}, validationErrorf("toolName", "must be at most %d characters; pass only the tool's name", feedbackToolNameMaxChars)
 	}
 
-	return Feedback{Message: message, Category: category, ToolName: toolName}, nil
+	return Feedback{Message: message, Category: category, ToolName: strings.TrimSpace(toolName)}, nil
 }
 
 // optionalFeedbackString treats a missing or empty value as absent and rejects
@@ -134,5 +136,9 @@ func optionalFeedbackString(args map[string]any, key string) (string, *mcp.CallT
 	if !ok {
 		return "", validationError(key, "must be a string")
 	}
-	return strings.TrimSpace(value), nil
+	return value, nil
+}
+
+func maxLength(chars int) mcp.PropertyOption {
+	return func(schema map[string]any) { schema["maxLength"] = chars }
 }

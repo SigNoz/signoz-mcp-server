@@ -1099,11 +1099,11 @@ that dependency error and resolve references before retrying.
 Lets the agent report a problem with this MCP server to the SigNoz team: a tool error it could not explain, a confusing description, schema, or result, a missing capability, or unclear documentation. The tool description tells the agent to mask personal and sensitive data (names, email addresses, IP addresses, hostnames, IDs, credentials, telemetry values) before sending, and to tell the user in one sentence what it sent. See [Agent feedback and analytics](#agent-feedback-and-analytics) for what leaves the server and how to turn it off.
 
 - **Parameters**:
-  - `message` (required) - What the agent tried, expected, and saw. At most 2000 characters
+  - `message` (required) - What the agent tried, expected, and saw. At most 2000 characters (`maxLength` in the schema)
   - `category` (optional) - One of `tool_error`, `confusing_output`, `missing_capability`, `documentation`, `other`
-  - `toolName` (optional) - Name of the tool the report is about. At most 128 characters
+  - `toolName` (optional) - Name of the tool the report is about. At most 128 characters (`maxLength` in the schema)
   - `searchContext` - User's original question
-- **Result**: `Feedback recorded.` on success. When feedback is turned off, a coded `UNSUPPORTED` error says so and nothing is sent. Invalid arguments return `VALIDATION_FAILED` naming the field.
+- **Result**: `Feedback queued for delivery to the SigNoz team.` on success. Delivery is batched after the call returns, so a report can still be lost when the server cannot reach Segment; the server logs that failure. When feedback is turned off, a coded `UNSUPPORTED` error says so and nothing is sent. Invalid arguments return `VALIDATION_FAILED` naming the field.
 - **Annotations**: not read-only and not idempotent, because each call sends one report outside the server.
 
 #### `signoz_execute_builder_query`

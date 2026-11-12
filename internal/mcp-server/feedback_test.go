@@ -42,7 +42,7 @@ func submitFeedbackOverHTTP(t *testing.T, analyticsConfig analytics.Config) []an
 	headers := modernHeaders("tools/call", "signoz_submit_feedback")
 	headers.Set("SIGNOZ-API-KEY", "test-api-key")
 	response := protocolPOST(t, server.buildHTTP(sdkServer).Handler, body, headers)
-	if response.status != http.StatusOK || !strings.Contains(string(response.body), "Feedback recorded.") {
+	if response.status != http.StatusOK || !strings.Contains(string(response.body), "Feedback queued for delivery") {
 		t.Fatalf("feedback call: status %d, body %s", response.status, response.body)
 	}
 	if err := server.WaitForAnalytics(t.Context()); err != nil {

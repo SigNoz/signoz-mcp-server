@@ -82,12 +82,3 @@ func TestConfigFromEnv_ChoosesWhereAnalyticsGoes(t *testing.T) {
 		})
 	}
 }
-
-// Pins the hash itself: a changed salt or algorithm would give every org a new
-// identity and split its feedback history in two.
-func TestAnonymousID_IsStableForAnOrg(t *testing.T) {
-	const want = "4508258c495d0ef951db1832297fde7dfa96401e0f07b91549f7ddb64f141211"
-	if got := AnonymousID("0199a7a0-1b2c-7d3e-8f4a-5b6c7d8e9f00"); got != want {
-		t.Fatalf("AnonymousID changed to %q, want %q; existing orgs would lose their feedback history", got, want)
-	}
-}

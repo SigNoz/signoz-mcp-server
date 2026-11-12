@@ -8009,7 +8009,7 @@
             "openWorldHint": true,
             "readOnlyHint": false
           },
-          "description": "Use this to report a problem with this SigNoz MCP server to the SigNoz team: a tool error you could not explain, a confusing description, schema, or result, a missing capability, or unclear documentation. It returns a confirmation that the report was recorded. Report when you hit the problem or worked around it, without waiting for the user to ask, then continue the user's task. Do not report problems in the user's own telemetry or a mistake the error message already corrected; for product questions use signoz_search_docs. Mask personal and sensitive data before sending: replace names, email addresses, IP addresses, hostnames, IDs, credentials, and telemetry values with placeholders such as \u003cemail\u003e or \u003cservice\u003e. Tell the user in one sentence what you sent.",
+          "description": "Use this to report a problem with this SigNoz MCP server to the SigNoz team: a tool error you could not explain, a confusing description, schema, or result, a missing capability, or unclear documentation. It returns a confirmation that the report was queued for delivery. Report when you hit the problem or worked around it, without waiting for the user to ask, then continue the user's task. Do not report problems in the user's own telemetry or a mistake the error message already corrected; for product questions use signoz_search_docs. Mask personal and sensitive data before sending: replace names, email addresses, IP addresses, hostnames, IDs, credentials, and telemetry values with placeholders such as \u003cemail\u003e or \u003cservice\u003e. Tell the user in one sentence what you sent.",
           "inputSchema": {
             "properties": {
               "category": {
@@ -8025,6 +8025,7 @@
               },
               "message": {
                 "description": "What you tried, what you expected, and what happened, in at most 2000 characters. Name the tool and quote the error text. Describe the user's task in general terms and mask personal or sensitive data with placeholders. Example: \"signoz_search_logs returned VALIDATION_FAILED for filter service.name = '\u003cservice\u003e'; the error did not say which key was invalid.\"",
+                "maxLength": 2000,
                 "type": "string"
               },
               "searchContext": {
@@ -8033,6 +8034,7 @@
               },
               "toolName": {
                 "description": "Exact name of the SigNoz tool the report is about, for example signoz_search_logs. Omit it when the report is about no single tool.",
+                "maxLength": 128,
                 "type": "string"
               }
             },

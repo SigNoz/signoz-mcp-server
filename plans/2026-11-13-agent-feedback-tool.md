@@ -37,8 +37,8 @@ Before this change the server sent nothing from a self-hosted install: `ANALYTIC
 - Release builds carry the Segment write key through ldflags (`pkg/analytics.key`), as SigNoz and
   foundry do. A build from source keeps `<unset>`.
 - The handler resolves the caller's org itself and hands the report to a sink the server injects, so
-  delivery is synchronous: a call that cannot resolve the org fails with a coded error, not a false
-  "recorded".
+  the hand-off is synchronous: a call that cannot resolve the org fails with a coded error. Segment
+  uploads in batches after the call returns, so the result says the report was queued, not delivered.
 
 ## Files to Modify
 
@@ -113,14 +113,15 @@ Before this change the server sent nothing from a self-hosted install: `ANALYTIC
 ## Verification
 
 - `go test ./pkg/analytics/ ./internal/handler/tools/ ./internal/mcp-server/`: the mode table, the
-  pinned anonymous ID (checked against `openssl dgst -sha256 -hmac`), the tool contract (success,
-  off, validation, rejected credentials), and the event each mode sends through the production HTTP
-  handler. The anonymous-mode test fails when identity attributes or usage events are added back.
+  tool contract (success, off, validation, rejected credentials), and the event each mode sends
+  through the production HTTP handler. `AnonymousID` was checked once by hand against
+  `openssl dgst -sha256 -hmac`; it has no pinned test, because the repo allows pins only for the wire
+  catalog, guardrail budgets, and the docs baseline. The anonymous-mode test fails when identity attributes or usage events are added back.
 - Binaries built three ways (from source, with an empty key, and with a key through the same
   single-quoted ldflags string the Docker workflow passes) and run in HTTP mode against a fake
-  SigNoz. From source and empty key: `UNSUPPORTED`. With a key: `Feedback recorded.`, the startup
+  SigNoz. From source and empty key: `UNSUPPORTED`. With a key: the report is accepted, the startup
   line, and a Segment upload attempt. With a key and `DO_NOT_TRACK=1` or `ANALYTICS_ENABLED=false`:
-  `UNSUPPORTED`. With `ANALYTICS_ENABLED=true` and `SEGMENT_KEY`: recorded, no anonymous startup line.
+  `UNSUPPORTED`. With `ANALYTICS_ENABLED=true` and `SEGMENT_KEY`: accepted, no anonymous startup line.
 - `make ci`.
 - Not run: goreleaser (the Pro distribution is not installed locally) and the primus Docker build.
   The ldflags template and the quoted flag string were checked by hand against goreleaser's `.Env`

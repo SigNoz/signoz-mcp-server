@@ -63,8 +63,8 @@ func TestSubmitFeedback_DeliversTheReportWithTheCallersOrg(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("feedback call failed: %s", textContent(t, result))
 	}
-	if got := textContent(t, result); got != "Feedback recorded." {
-		t.Fatalf("result text = %q, want %q", got, "Feedback recorded.")
+	if got := textContent(t, result); got != "Feedback queued for delivery to the SigNoz team." {
+		t.Fatalf("result text = %q, want %q", got, "Feedback queued for delivery to the SigNoz team.")
 	}
 	if len(*delivered) != 1 {
 		t.Fatalf("delivered %d reports, want 1", len(*delivered))
