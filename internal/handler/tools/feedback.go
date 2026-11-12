@@ -2,8 +2,6 @@ package tools
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"log/slog"
 	"slices"
 	"strings"
@@ -71,12 +69,6 @@ func (h *Handler) handleSubmitFeedback(ctx context.Context, req mcp.CallToolRequ
 	}
 	identity, err := client.GetAnalyticsIdentity(ctx)
 	if err != nil {
-		// The identity lookup reports rejected credentials as a sentinel, not an
-		// HTTP status error, so upstreamError alone would code it UPSTREAM_ERROR.
-		// The client already logs the rejection at WARN.
-		if errors.Is(err, signozclient.ErrUnauthorized) {
-			return errorWithCode(CodeUnauthorized, fmt.Sprintf("%s %s", upstreamErrorPrefix, err.Error())), nil
-		}
 		h.logUpstreamFailure(ctx, "Failed to resolve the org for agent feedback", err)
 		return upstreamError(err), nil
 	}

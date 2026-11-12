@@ -129,17 +129,33 @@ func TestSubmitFeedback_RejectsInvalidReportsBeforeCallingSigNoz(t *testing.T) {
 	}
 }
 
-func TestSubmitFeedback_RejectedCredentialsAreCodedUnauthorized(t *testing.T) {
-	server, delivered := newFeedbackServer(t, true, func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusUnauthorized)
-	})
-
-	result := callRegisteredTool(t, server, "signoz_submit_feedback", `{"message":"the docs for alerts are unclear"}`)
-
-	if got := resultCode(t, result); got != CodeUnauthorized {
-		t.Fatalf("code = %q, want %q so the client re-authenticates", got, CodeUnauthorized)
+func TestSubmitFeedback_SigNozAuthFailuresKeepTheirCodeAndStatus(t *testing.T) {
+	tests := []struct {
+		name     string
+		status   int
+		wantCode string
+	}{
+		{name: "rejected credentials", status: http.StatusUnauthorized, wantCode: CodeUnauthorized},
+		{name: "missing permission", status: http.StatusForbidden, wantCode: CodePermissionDenied},
 	}
-	if len(*delivered) != 0 {
-		t.Fatalf("delivered %d reports for rejected credentials, want 0", len(*delivered))
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server, delivered := newFeedbackServer(t, true, func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(tt.status)
+			})
+
+			result := callRegisteredTool(t, server, "signoz_submit_feedback", `{"message":"the docs for alerts are unclear"}`)
+
+			if got := resultCode(t, result); got != tt.wantCode {
+				t.Fatalf("code = %q, want %q", got, tt.wantCode)
+			}
+			structured, _ := result.StructuredContent.(map[string]any)
+			if got := structured["status"]; got != float64(tt.status) {
+				t.Fatalf("structured status = %v, want %d so the client can tell the failures apart", got, tt.status)
+			}
+			if len(*delivered) != 0 {
+				t.Fatalf("delivered %d reports after SigNoz refused the caller, want 0", len(*delivered))
+			}
+		})
 	}
 }

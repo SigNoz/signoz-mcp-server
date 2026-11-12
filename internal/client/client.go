@@ -274,7 +274,9 @@ func (s *SigNoz) fetchAnalyticsIdentity(ctx context.Context) (*AnalyticsIdentity
 		return nil, fmt.Errorf("failed to reach SigNoz API: %w", err)
 	}
 	if status != http.StatusOK {
-		return nil, s.evaluateValidationResponse(ctx, status, body)
+		// A typed status error, not the credential-check sentinels, so a tool
+		// can code 401 and 403 from the status.
+		return nil, newHTTPStatusError(status, body)
 	}
 
 	identity, err := parseAnalyticsIdentity(body, principal)
