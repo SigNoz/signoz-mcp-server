@@ -7,13 +7,13 @@ const Instructions = `# SigNoz Alert Rule — Instructions
 An alert rule monitors a signal (metrics, logs, traces, or exceptions) and fires when a condition is met.
 The alert is created via POST /api/v2/rules.
 
-Every rule type (threshold_rule, promql_rule, anomaly_rule) uses schemaVersion **v2alpha1**: structured thresholds + evaluation + notificationSettings. Always set schemaVersion="v2alpha1" explicitly: SigNoz treats an omitted schemaVersion as the retired v1 schema and then requires the v1 condition fields instead.
+Every rule type (threshold_rule, promql_rule, anomaly_rule) uses schemaVersion **v2alpha1**: structured thresholds + evaluation + notificationSettings. Always set schemaVersion="v2alpha1": SigNoz rejects a rule that omits it or sends another value.
 
 ## Before Creating or Updating an Alert
 1. Read signoz://alert/examples for complete payloads unless already read for the same prepared operation.
 2. Update is a full replacement. Reuse signoz_get_alert only from the same still-current prepared operation; refresh if state may have changed, then preserve unchanged fields.
 3. Use signoz_get_field_keys to discover filter/groupBy attributes, reusing results from that operation.
-4. NOTIFICATION ROUTING: Reuse a fully paginated signoz_list_notification_channels result only from the same still-current prepared operation; otherwise call it, refreshing only if state may have changed. The list is config-free, defaults to 20 rows, and accepts at most 200 per page; follow its filtered total. The immutable routing identity is displayName, not machine name. For v2 direct routing, every threshold tier needs an exact returned displayName: SigNoz rejects a tier with no channels and a channel name that does not exist. Top-level preferredChannels plays no part in v2 routing (SigNoz stores it unused), so omit it. If no direct channel fits, show the returned choices and ask; if none exists, offer signoz_create_notification_channel with settings the user provides. Never guess or create automatically. Channel create and update default test to false; set test=true only when the user asks to send a test. Confirmed v2 policy routing sets notificationSettings.usePolicy=true and may omit tier channels.
+4. NOTIFICATION ROUTING: Reuse a fully paginated signoz_list_notification_channels result only from the same still-current prepared operation; otherwise call it, refreshing only if state may have changed. The list is config-free, defaults to 20 rows, and accepts at most 200 per page; follow its filtered total. The immutable routing identity is displayName, not machine name. For v2 direct routing, every threshold tier needs an exact returned displayName: SigNoz rejects a tier with no channels and a channel name that does not exist. If no direct channel fits, show the returned choices and ask; if none exists, offer signoz_create_notification_channel with settings the user provides. Never guess or create automatically. Channel create and update default test to false; set test=true only when the user asks to send a test. Confirmed v2 policy routing sets notificationSettings.usePolicy=true and may omit tier channels.
 
 ## Quick Workflow: From User Intent to Payload
 A repeatable mental model for going from a user request ("alert me when login p99 > 2s") to a valid payload:
@@ -26,11 +26,11 @@ A repeatable mental model for going from a user request ("alert me when login p9
 7. **Evaluation.** Set evaluation explicitly (SigNoz requires it for v2alpha1): kind=rolling with evalWindow=5m and frequency=1m unless the user asked for a different window.
 8. **Notification.** Set notificationSettings.groupBy on high-cardinality queries to reduce noise.
 
-The tool's input schema describes every top-level and condition field (accepted values, defaults, which schemaVersion reads each). This resource covers the fields the schema shows as plain objects (query envelopes, threshold tiers, evaluation specs) and the workflow around them.
+The tool's input schema describes every top-level and condition field (accepted values and defaults). This resource covers the fields the schema shows as plain objects (query envelopes, threshold tiers, evaluation specs) and the workflow around them.
 
 ## Composite Query Structure
 
-condition.compositeQuery uses the v5 query format. Set panelType to "graph" for alerts; SigNoz stores an empty value when omitted.
+condition.compositeQuery uses the v5 query format. Set panelType to "graph" for alerts; SigNoz rejects a rule that omits it.
 
 ### Query envelope type (queries[].type)
 The envelope type must match compositeQuery.queryType:
@@ -177,7 +177,7 @@ condition.thresholds defines one or more routing tiers. Each tier can route to d
 - **recoveryTarget**: hysteresis value to avoid flapping (e.g. target=80%, recoveryTarget=75%). null uses the target itself as the recovery point.
 - **matchType**: canonical at_least_once, all_the_times, on_average, in_total, last. Aliases accepted: avg (=on_average), sum (=in_total).
 - **op**: canonical above, below, equal, not_equal, above_or_equal, below_or_equal, outside_bounds. Short forms accepted: eq, not_eq, above_or_eq, below_or_eq. Symbolic accepted: >, <, =, !=, >=, <=.
-- **channels**: existing notification channel displayName values for this tier. Direct v2 routing requires at least one exact returned displayName from signoz_list_notification_channels on every tier; top-level preferredChannels is not a fallback. Reuse only a same-operation, still-current list result; otherwise call the fully paginated tool, refreshing if state may have changed. With notificationSettings.usePolicy=true, tier channels may be omitted, but supplied displayName values are still validated.
+- **channels**: existing notification channel displayName values for this tier. Direct v2 routing requires at least one exact returned displayName from signoz_list_notification_channels on every tier. Reuse only a same-operation, still-current list result; otherwise call the fully paginated tool, refreshing if state may have changed. With notificationSettings.usePolicy=true, tier channels may be omitted, but supplied displayName values are still validated.
 
 ### Choosing targetUnit
 - Set targetUnit when the threshold value is in a different unit from the query series. Example: the series emits nanoseconds (compositeQuery.unit="ns") but you want to threshold at "5 seconds". Set target=5, targetUnit="s". SigNoz converts during evaluation.
@@ -263,7 +263,7 @@ Example: deployment.environment = "production" AND threshold.name = "critical"
 | notificationSettings.usePolicy | thresholds[].channels | Effective routing |
 |--------------------------------|-----------------------|-------------------|
 | false (default) | present on every tier | Send each tier to its listed channels |
-| false | absent on any tier | Invalid; preferredChannels is not a v2 fallback |
+| false | absent on any tier | Invalid; SigNoz rejects a tier with no channels |
 | true | omit (any supplied names are still validated) | Match alert labels against the org-level routing policy; send to policy-matched channels |
 
 ## Anomaly Alerts (ruleType: anomaly_rule)
@@ -273,7 +273,7 @@ Required fields:
 - alertType: METRIC_BASED_ALERT
 - ruleType: anomaly_rule
 - condition.compositeQuery: a builder metrics query with spec.functions carrying the anomaly function, e.g. [{name: "anomaly", args: [{name: "z_score_threshold", value: 2}]}]
-- condition.algorithm ("standard") and condition.seasonality.
+- condition.seasonality.
 - condition.thresholds tiers: op, matchType, and a signed target compared against the anomaly score (see Scoring). Leave targetUnit empty; a unit would rescale the score.
 - evaluation: kind=rolling, e.g. evalWindow 24h and frequency 3h.
 - condition.requireMinPoints and condition.requiredNumPoints are recommended to guard against noisy intervals.
@@ -295,13 +295,13 @@ Required fields:
 See signoz://alert/examples → "metric_anomaly" for a complete payload.
 
 ## Set These Explicitly
-The payload is forwarded to SigNoz exactly as composed, and SigNoz fills in very little (version="v5" and notificationSettings.usePolicy=false). Everything else is on the author:
-- schemaVersion: always "v2alpha1"; SigNoz treats an omitted schemaVersion as the retired v1 schema and then requires the v1 condition fields.
+The payload is forwarded to SigNoz exactly as composed, and SigNoz fills in very little (notificationSettings.usePolicy=false). Everything else is on the author:
+- schemaVersion: always "v2alpha1"; SigNoz rejects a rule that omits it.
 - evaluation and notificationSettings: SigNoz rejects a v2alpha1 rule missing either block.
-- panelType: set "graph"; SigNoz stores an empty value when omitted.
+- panelType: set "graph"; SigNoz rejects a rule that omits it.
 - selectedQueryName: set it on every rule to the query or formula the rule alerts on, even when there is only one query.
 - labels.severity and annotations: SigNoz adds no defaults; include them so routing tiers and notification text work.
-- Omit server-populated fields (createdAt, updatedAt, createdBy, updatedBy) and the injected webUrl, also when composing an update from a signoz_get_alert result.
+- Omit server-populated fields (state, createdAt, updatedAt, createdBy, updatedBy) and the injected webUrl, also when composing an update from a signoz_get_alert result. SigNoz rejects a rule that carries a key it does not define.
 
 ## Further Reading
 User-facing docs. Cite these back to the user when they want to understand a concept in depth:

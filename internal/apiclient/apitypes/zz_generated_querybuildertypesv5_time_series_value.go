@@ -14,6 +14,6 @@ type Querybuildertypesv5TimeSeriesValue struct {
 	// Value The aggregated value for the step; omitted for heatmap results, which use values.
 	Value *float64 `json:"value,omitempty" jsonschema:"The aggregated value for the step; omitted for heatmap results, which use values."`
 
-	// Values The per-band counts for heatmap results, in the order of meta.buckets plus a trailing overflow count.
-	Values *[]float64 `json:"values,omitempty" jsonschema:"The per-band counts for heatmap results, in the order of meta.buckets plus a trailing overflow count."`
+	// Values The per-bucket counts for heatmap results, in the order of meta.buckets plus a trailing overflow count.
+	Values *[]float64 `json:"values,omitempty" jsonschema:"The per-bucket counts for heatmap results, in the order of meta.buckets plus a trailing overflow count."`
 }

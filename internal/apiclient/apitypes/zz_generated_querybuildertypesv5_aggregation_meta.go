@@ -5,8 +5,8 @@ package apitypes
 
 // Querybuildertypesv5AggregationMeta defines model for Querybuildertypesv5AggregationMeta.
 type Querybuildertypesv5AggregationMeta struct {
-	// Buckets The ascending upper bounds of the value bands, set only for heatmap results; each point then carries one count per bound plus a trailing overflow count in values.
-	Buckets *[]float64 `json:"buckets,omitempty" jsonschema:"The ascending upper bounds of the value bands, set only for heatmap results; each point then carries one count per bound plus a trailing overflow count in values."`
+	// Buckets The ascending upper bounds of the value buckets, set for heatmap and distribution results; each point then carries one count per bound plus a trailing overflow count in values. The first bucket starts at -Inf when its bound is at or under zero, else at zero.
+	Buckets *[]float64 `json:"buckets,omitempty" jsonschema:"The ascending upper bounds of the value buckets, set for heatmap and distribution results; each point then carries one count per bound plus a trailing overflow count in values. The first bucket starts at -Inf when its bound is at or under zero, else at zero."`
 
 	// Unit The unit of the aggregated values, taken from metric metadata when known.
 	Unit *string `json:"unit,omitempty" jsonschema:"The unit of the aggregated values, taken from metric metadata when known."`

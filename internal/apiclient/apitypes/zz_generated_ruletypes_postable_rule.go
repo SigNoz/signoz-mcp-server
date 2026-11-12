@@ -38,14 +38,8 @@ type RuletypesPostableRule struct {
 	// Disabled Whether the rule is paused. A disabled rule is neither evaluated nor notifies. Defaults to false.
 	Disabled *bool `json:"disabled,omitempty" jsonschema:"Whether the rule is paused. A disabled rule is neither evaluated nor notifies. Defaults to false."`
 
-	// EvalWindow The lookback window as a Go duration such as 5m. Only read when schemaVersion is v1, defaulting to 5m; v2alpha1 rules set it in evaluation.spec instead.
-	EvalWindow *string `json:"evalWindow,omitempty" jsonschema:"The lookback window as a Go duration such as 5m. Only read when schemaVersion is v1, defaulting to 5m; v2alpha1 rules set it in evaluation.spec instead."`
-
 	// Evaluation The evaluation window, as a kind and spec.
 	Evaluation RuletypesEvaluationEnvelope `json:"evaluation" jsonschema:"The evaluation window, as a kind and spec."`
-
-	// Frequency How often the rule is evaluated, as a Go duration such as 1m. Only read when schemaVersion is v1, defaulting to 1m; v2alpha1 rules set it in evaluation.spec instead.
-	Frequency *string `json:"frequency,omitempty" jsonschema:"How often the rule is evaluated, as a Go duration such as 1m. Only read when schemaVersion is v1, defaulting to 1m; v2alpha1 rules set it in evaluation.spec instead."`
 
 	// Labels Labels attached to every alert the rule fires. Keys match [a-zA-Z_.][a-zA-Z0-9_.]*; values may use Go templates such as {{$labels.service_name}}. severity is the conventional routing label.
 	Labels *map[string]string `json:"labels,omitempty" jsonschema:"Labels attached to every alert the rule fires. Keys match [a-zA-Z_.][a-zA-Z0-9_.]*; values may use Go templates such as {{$labels.service_name}}. severity is the conventional routing label."`
@@ -53,22 +47,11 @@ type RuletypesPostableRule struct {
 	// NotificationSettings Grouping, re-notification and routing behaviour.
 	NotificationSettings RuletypesNotificationSettings `json:"notificationSettings" jsonschema:"Grouping, re-notification and routing behaviour."`
 
-	// PreferredChannels The displayName of each notification channel to notify, for schemaVersion v1 rules. Ignored for v2alpha1, where each threshold carries its own channels.
-	PreferredChannels *[]string `json:"preferredChannels,omitempty" jsonschema:"The displayName of each notification channel to notify, for schemaVersion v1 rules. Ignored for v2alpha1, where each threshold carries its own channels."`
-
 	// RuleType The evaluation strategy: threshold_rule compares against thresholds, promql_rule evaluates a PromQL expression, anomaly_rule scores deviation from seasonal history. Defaults to threshold_rule for builder and clickhouse_sql queries and is forced to promql_rule for promql queries.
 	RuleType RuletypesRuleType `json:"ruleType" jsonschema:"The evaluation strategy: threshold_rule compares against thresholds, promql_rule evaluates a PromQL expression, anomaly_rule scores deviation from seasonal history. Defaults to threshold_rule for builder and clickhouse_sql queries and is forced to promql_rule for promql queries."`
 
 	// SchemaVersion The rule payload schema.
 	SchemaVersion RuletypesPostableRuleSchemaVersion `json:"schemaVersion" jsonschema:"The rule payload schema."`
-
-	// Source The URL of the page the rule was created from. Informational; it is not used for evaluation.
-	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-	Source *string `json:"source,omitempty" jsonschema:"The URL of the page the rule was created from. Informational; it is not used for evaluation."`
-
-	// Version The query payload version. Nothing reads it.
-	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-	Version *string `json:"version,omitempty" jsonschema:"The query payload version. Nothing reads it."`
 }
 
 // RuletypesPostableRuleSchemaVersion The rule payload schema.

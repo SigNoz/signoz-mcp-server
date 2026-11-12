@@ -19,8 +19,8 @@ CHANNEL_SPECS: dict[str, dict] = {
         "site": "https://e2e.atlassian.net",
         "project": "E2E",
         "issueType": "Task",
-        "email": "e2e@example.invalid",
-        "apiToken": "e2e-jira-token",
+        "deployment": "cloud",
+        "auth": {"email": "e2e@example.invalid", "apiToken": "e2e-jira-token"},
     },
     "jsmops": {"apiKey": "e2e-jsm-ops-api-key"},
     "incidentio": {
@@ -45,7 +45,7 @@ UPDATE_FIELDS = {
 CREDENTIAL_FIELDS = {
     "pagerduty": ("routingKey",),
     "opsgenie": ("apiKey",),
-    "jira": ("email", "apiToken"),
+    "jira": ("auth",),
     "jsmops": ("apiKey",),
     "incidentio": ("token",),
 }

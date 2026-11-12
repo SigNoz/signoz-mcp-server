@@ -12,8 +12,8 @@ import (
 
 // Querybuildertypesv5QueryData defines model for Querybuildertypesv5QueryData.
 type Querybuildertypesv5QueryData struct {
-	// Results One result per enabled query, typed by the request type: TimeSeriesData for time_series, ScalarData for scalar and RawData for raw requests.
-	Results *[]interface{} `json:"results,omitempty" jsonschema:"One result per enabled query, typed by the request type: TimeSeriesData for time_series, ScalarData for scalar and RawData for raw requests."`
+	// Results One result per enabled query, typed by the request type: TimeSeriesData for time_series and heatmap, ScalarData for scalar, RawData for raw and DistributionData for distribution requests.
+	Results *[]interface{} `json:"results,omitempty" jsonschema:"One result per enabled query, typed by the request type: TimeSeriesData for time_series and heatmap, ScalarData for scalar, RawData for raw and DistributionData for distribution requests."`
 	union   json.RawMessage
 }
 
@@ -85,6 +85,32 @@ func (t *Querybuildertypesv5QueryData) FromQuerybuildertypesv5RawData(v Querybui
 
 // MergeQuerybuildertypesv5RawData performs a merge with any union data inside the Querybuildertypesv5QueryData, using the provided Querybuildertypesv5RawData
 func (t *Querybuildertypesv5QueryData) MergeQuerybuildertypesv5RawData(v Querybuildertypesv5RawData) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsQuerybuildertypesv5DistributionData returns the union data inside the Querybuildertypesv5QueryData as a Querybuildertypesv5DistributionData
+func (t Querybuildertypesv5QueryData) AsQuerybuildertypesv5DistributionData() (Querybuildertypesv5DistributionData, error) {
+	var body Querybuildertypesv5DistributionData
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromQuerybuildertypesv5DistributionData overwrites any union data inside the Querybuildertypesv5QueryData as the provided Querybuildertypesv5DistributionData
+func (t *Querybuildertypesv5QueryData) FromQuerybuildertypesv5DistributionData(v Querybuildertypesv5DistributionData) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeQuerybuildertypesv5DistributionData performs a merge with any union data inside the Querybuildertypesv5QueryData, using the provided Querybuildertypesv5DistributionData
+func (t *Querybuildertypesv5QueryData) MergeQuerybuildertypesv5DistributionData(v Querybuildertypesv5DistributionData) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err

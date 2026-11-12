@@ -72,5 +72,5 @@ Not in the SigNoz OpenAPI spec yet. Fires when today's total log ingestion excee
 1. Metrics signal uses the object aggregation shape ({metricName, timeAggregation, spaceAggregation}); logs and traces use the expression shape ({expression: "count()"}).
 2. selectedQueryName references the query or formula that determines the alert.
 3. Direct routing uses exact displayName values from a same-operation, still-current signoz_list_notification_channels result, or calls the fully paginated tool when absent or stale. V2 needs a displayName on every tier; confirmed policy routing may omit them.
-4. Set schemaVersion="v2alpha1" and include evaluation and notificationSettings for every rule type; SigNoz requires both and treats an omitted schemaVersion as the retired v1 schema. An anomaly_rule also sets condition.algorithm and condition.seasonality, and its tier targets are signed anomaly scores (below -2, not below 2).
+4. Set schemaVersion="v2alpha1" and include evaluation and notificationSettings for every rule type; SigNoz requires all three. An anomaly_rule also sets condition.seasonality, and its tier targets are signed anomaly scores (below -2, not below 2).
 `
