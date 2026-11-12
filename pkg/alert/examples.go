@@ -32,7 +32,6 @@ Not in the SigNoz OpenAPI spec yet. Fires when today's total log ingestion excee
   "alertType": "METRIC_BASED_ALERT",
   "ruleType": "threshold_rule",
   "schemaVersion": "v2alpha1",
-  "labels": {"severity": "critical"},
   "condition": {
     "compositeQuery": {
       "queryType": "builder",

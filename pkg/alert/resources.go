@@ -171,7 +171,7 @@ condition.thresholds defines one or more routing tiers. Each tier can route to d
 ` + "```" + `
 
 ### Threshold fields
-- **name**: tier name (critical, error, warning, or info). Acts as the routing label: alerts carry threshold.name equal to this value. Set labels.severity to match your highest tier.
+- **name**: tier name; use critical, error, warning, or info. Each alert carries threshold.name equal to this value and severity equal to it in lower case.
 - **target**: numeric threshold value (required).
 - **targetUnit**: unit of the target (e.g. ms, percent, s, bytes). Auto-converted to compositeQuery.unit during evaluation.
 - **recoveryTarget**: hysteresis value to avoid flapping (e.g. target=80%, recoveryTarget=75%). null uses the target itself as the recovery point.
@@ -181,7 +181,7 @@ condition.thresholds defines one or more routing tiers. Each tier can route to d
 
 ### Choosing targetUnit
 - Set targetUnit when the threshold value is in a different unit from the query series. Example: the series emits nanoseconds (compositeQuery.unit="ns") but you want to threshold at "5 seconds". Set target=5, targetUnit="s". SigNoz converts during evaluation.
-- If compositeQuery.unit is empty and targetUnit is set, the validator propagates targetUnit onto compositeQuery.unit, so you can omit compositeQuery.unit on single-threshold rules.
+- Set compositeQuery.unit to the unit of the query series whenever a tier sets targetUnit. SigNoz does not copy targetUnit onto compositeQuery.unit; when it is empty the target is not converted to the series unit, and the rule compares the wrong number (a 5 s target on a nanosecond series is compared as 5 ns).
 - Formulas that compute ratios (e.g. (A/B) * 100) already emit percent. Set compositeQuery.unit="percent" and give the threshold a bare numeric target (no targetUnit).
 
 ### Choosing recoveryTarget
@@ -202,7 +202,7 @@ evaluation controls how the rule is evaluated:
 - evalWindow: how long the condition must persist (e.g. 5m, 15m, 30m, 1h, 4h, 24h).
 - frequency: how often to evaluate (e.g. 1m, 5m, 15m).
 - Required by SigNoz for threshold/promql rules (schemaVersion v2alpha1); it rejects a rule without an evaluation block. Use a 5m window with 1m frequency unless asked otherwise.
-- **Format**: Go duration strings. Both "5m" and "5m0s" are accepted; stick to one style per payload. Common values: 1m, 5m, 15m, 30m, 1h, 4h, 24h, 1d.
+- **Format**: Go duration strings. Both "5m" and "5m0s" are accepted; stick to one style per payload. The largest unit is h, so write 24h, not 1d. Common values: 1m, 5m, 15m, 30m, 1h, 4h, 24h.
 - **Sizing tips**: keep evalWindow ≥ frequency. Short windows (1-5m) catch spikes; long windows (30m-1h) smooth noise. For infrequent signals (hourly batch jobs) set frequency to 5-15m to reduce evaluation cost.
 
 ### Cumulative window (daily/monthly totals)
@@ -217,7 +217,8 @@ A general evaluation kind, independent of signal/source. Use it for any period-t
 ` + "```" + `
 
 - kind "cumulative" sums since the schedule boundary (vs "rolling" sliding window); pair with threshold matchType "in_total".
-- schedule.type: "daily" (shown; minute/hour set the reset, e.g. 00:00) or "monthly". timezone e.g. "UTC".
+- schedule.type sets the reset boundary and the fields it needs: "hourly" (minute), "daily" (hour, minute; shown), "weekly" (weekday 0-6 with Sunday 0, hour, minute), "monthly" (day 1-31, hour, minute). SigNoz rejects a schedule that omits one.
+- timezone: an IANA name, e.g. "UTC".
 
 ## Notification Settings (v2alpha1)
 
@@ -238,15 +239,16 @@ Set groupBy on high-cardinality queries to reduce noise. usePolicy=false (the de
 
 ## Labels & Routing
 
-- labels.severity: MUST be one of critical, error, warning, info. When thresholds is used, threshold.name is the routing tier. Set labels.severity to the highest tier the rule carries.
+- labels.severity: do not set it. Each alert already carries severity equal to the tier that fired; a static labels.severity replaces that value on every alert, so every tier reports the same severity. The alert-rule list reads severity from this label only, so a rule without it lists with no severity.
 - Additional labels like team, service, environment enable routing policies.
 
 ### Label sources available to routing policies
 Routing policies evaluate expressions against three merged label sources:
-1. **User static labels** from the labels object on the rule (severity, team, service, environment, …).
+1. **User static labels** from the labels object on the rule (team, service, environment, …).
 2. **Platform labels** auto-injected at fire time:
    - alertname: the rule's alert field
    - threshold.name: the tier that fired (critical | error | warning | info)
+   - severity: the same tier name in lower case
    - ruleSource, ruleId: rule metadata
 3. **Dynamic labels** from groupBy fields in the query (service.name, k8s.pod.name, http.route, deployment.environment, topic, partition, …).
 
@@ -300,8 +302,8 @@ The payload is forwarded to SigNoz exactly as composed, and SigNoz fills in very
 - evaluation and notificationSettings: SigNoz rejects a v2alpha1 rule missing either block.
 - panelType: set "graph"; SigNoz rejects a rule that omits it.
 - selectedQueryName: set it on every rule to the query or formula the rule alerts on, even when there is only one query.
-- labels.severity and annotations: SigNoz adds no defaults; include them so routing tiers and notification text work.
-- Omit server-populated fields (state, createdAt, updatedAt, createdBy, updatedBy) and the injected webUrl, also when composing an update from a signoz_get_alert result. SigNoz rejects a rule that carries a key it does not define.
+- annotations: SigNoz adds no defaults; include them so notification text works.
+- Omit server-populated fields (state, createdAt, updatedAt, createdBy, updatedBy) and the injected webUrl, also when composing an update from a signoz_get_alert result. SigNoz rejects an unknown key at the top level or in condition.
 
 ## Further Reading
 User-facing docs. Cite these back to the user when they want to understand a concept in depth:
