@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -27,6 +28,10 @@ import (
 )
 
 func main() {
+	if printVersion(os.Args[1:], os.Stdout) {
+		return
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -194,4 +199,16 @@ func main() {
 		logger.ErrorContext(ctx, "Server exited with errors", logpkg.ErrAttr(errors.Join(runErr, shutdownErr)))
 		os.Exit(1)
 	}
+}
+
+// printVersion handles --version before config loading so the binary can
+// report its build without SIGNOZ_URL or SIGNOZ_API_KEY set.
+func printVersion(args []string, w io.Writer) bool {
+	for _, arg := range args {
+		if arg == "--version" || arg == "-version" {
+			_, _ = fmt.Fprintln(w, version.UserAgent())
+			return true
+		}
+	}
+	return false
 }
