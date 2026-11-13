@@ -124,6 +124,8 @@ func TestFeedback_OnlyASigNozCloudInstanceIsIdentified(t *testing.T) {
 		{name: "cloud domain in the path", signozURL: "https://example.com/acme.us.signoz.cloud"},
 		{name: "cloud domain as userinfo", signozURL: "https://acme.us.signoz.cloud@example.com"},
 		{name: "URL without a scheme", signozURL: "acme.us.signoz.cloud"},
+		{name: "IPv6 literal whose zone ends in the cloud domain", signozURL: "http://[::1%25.acme.signoz.cloud]:8080"},
+		{name: "IPv6 literal with a doubly escaped zone", signozURL: "http://[::1%2525.acme.signoz.cloud]:8080"},
 		{name: "no URL on the call", signozURL: ""},
 	}
 	for _, tt := range tests {

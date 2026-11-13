@@ -183,10 +183,26 @@ const signozCloudHostSuffix = ".signoz.cloud"
 func feedbackDeployment(ctx context.Context) string {
 	signozURL, _ := util.GetSigNozURL(ctx)
 	parsed, err := url.Parse(signozURL)
-	if err != nil || !strings.HasSuffix(strings.ToLower(parsed.Hostname()), signozCloudHostSuffix) {
+	if err != nil {
+		return analytics.DeploymentSelfHosted
+	}
+	host := strings.ToLower(parsed.Hostname())
+	if !isDNSName(host) || !strings.HasSuffix(host, signozCloudHostSuffix) {
 		return analytics.DeploymentSelfHosted
 	}
 	return analytics.DeploymentCloud
+}
+
+// isDNSName rejects IP literals. An IPv6 literal can carry a zone the caller
+// chooses, such as [::1%25.x.signoz.cloud], which would pass a suffix match
+// while the request goes to that IP.
+func isDNSName(host string) bool {
+	for _, r := range host {
+		if (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '.' && r != '-' {
+			return false
+		}
+	}
+	return host != ""
 }
 
 // recordFeedback sends one agent report to the feedback sink. A report about
