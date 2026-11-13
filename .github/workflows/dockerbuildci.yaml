@@ -2,7 +2,8 @@ name: dockerbuildci
 on:
   push:
     tags:
-      - v*
+      - "v[0-9]+.[0-9]+.[0-9]+"
+      - "v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
     branches:
       - main
 
@@ -117,11 +118,11 @@ jobs:
           ./mcp-publisher login github-oidc
           ./mcp-publisher publish
 
-  # Opens the chart bump PR on SigNoz/charts once the image is pushed, gated like
-  # publish-mcp-registry. It pushes with the app token, not GITHUB_TOKEN, so the PR's checks run.
+  # Opens the chart bump PR on SigNoz/charts once the image is pushed; chart.sh skips pre-release
+  # tags. It pushes with the app token, not GITHUB_TOKEN, so the PR's checks run.
   charts:
     needs: build
-    if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-')
+    if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
     permissions:
       contents: read

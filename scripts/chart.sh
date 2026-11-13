@@ -1,34 +1,12 @@
 #!/bin/bash
-# Opens a pull request on SigNoz/charts that bumps the signoz-mcp-server chart to
-# a release of this server.
-#
-# The chart is hand written in SigNoz/charts; only its versions follow this
-# repository. Its README is generated from the chart and is regenerated after
-# the bump, best effort. Needs git, gh and the go toolchain the chart
-# repository's docs target reaches for.
-#
-# Usage: scripts/chart.sh <version>
-#
-#   version  release tag, e.g. v0.19.0. It becomes the chart's appVersion. The
-#            chart keeps its own SemVer, bumped from its current version by the
-#            level the tag moved past the current appVersion.
-#
-# Environment:
-#   GITHUB_TOKEN  token allowed to push to CHARTS_REPO and open pull requests on
-#                 it, read from the environment to keep it out of the process list
-#   GIT_USER      name recorded as the author of the chart commit
-#   GIT_EMAIL     email recorded as the author of the chart commit
-#   CHARTS_REPO   chart repository, defaults to SigNoz/charts
-#   CHARTS_BASE   branch the pull request targets, defaults to main
-#
-# Doing nothing is a success: the script exits 0 for a pre-release tag, when the
-# release branch and its pull request already exist, or when the chart's
-# appVersion is already at or past the tag. A release branch on the remote
-# without a pull request only gets the pull request.
+# Opens a SigNoz/charts PR that bumps charts/signoz-mcp-server to a release tag.
+# The chart keeps its own SemVer, bumped by the level the tag moved past its appVersion.
+# Usage: GITHUB_TOKEN=... GIT_USER=... GIT_EMAIL=... scripts/chart.sh vX.Y.Z
 
 set -euo pipefail
 
 readonly VERSION="${1:?usage: scripts/chart.sh <version>}"
+# From the environment, so the token stays out of the process list.
 readonly TOKEN="${GITHUB_TOKEN:?GITHUB_TOKEN is required}"
 readonly AUTHOR="${GIT_USER:?GIT_USER is required}"
 readonly EMAIL="${GIT_EMAIL:?GIT_EMAIL is required}"
@@ -36,9 +14,10 @@ readonly REPO="${CHARTS_REPO:-SigNoz/charts}"
 readonly BASE="${CHARTS_BASE:-main}"
 
 # semver.org's SemVer 2.0 regex in ERE form, with an optional leading v or V.
-readonly SEMVER='^[vV]?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)'\
-'(-((0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*)(\.(0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*))*))?'\
-'(\+([0-9a-zA-Z-]+(\.[0-9a-zA-Z-]+)*))?$'
+SEMVER='^[vV]?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)'
+SEMVER+='(-((0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*)(\.(0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*))*))?'
+SEMVER+='(\+([0-9a-zA-Z-]+(\.[0-9a-zA-Z-]+)*))?$'
+readonly SEMVER
 
 # The semver_* semantics follow semver-tool's compare, diff and bump.
 
@@ -110,12 +89,12 @@ semver_bump() {
   esac
 }
 
-# The chart bump reads the tag as SemVer, and the build triggers on any v* tag.
+# The chart bump reads the tag as SemVer.
 if [[ "${VERSION}" != v* ]] || ! tag="$(semver_parse "${VERSION}")"; then
   echo "not a release version: ${VERSION}, want vMAJOR.MINOR.PATCH[-PRERELEASE]" >&2
   exit 1
 fi
-# Like the job's if, so a pre-release never reaches the chart.
+# The job runs on pre-release tags too, so a pre-release stops here.
 read -r _ _ _ tag_prerelease <<<"${tag}"
 if [[ -n "${tag_prerelease}" ]]; then
   echo ">> ${VERSION} is a pre-release, skipped"
@@ -130,7 +109,7 @@ version() {
   sed -E \
     -e "s|^version: .*|version: $2|" \
     -e "s|^appVersion: .*|appVersion: \"$3\"|" \
-    "$1" > "$1.next"
+    "$1" >"$1.next"
   mv "$1.next" "$1"
   if ! grep -qx "version: $2" "$1" ||
     ! grep -qx "appVersion: \"$3\"" "$1"; then
