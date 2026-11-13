@@ -186,19 +186,21 @@ func feedbackDeployment(ctx context.Context) string {
 	if err != nil {
 		return analytics.DeploymentSelfHosted
 	}
-	host := strings.ToLower(parsed.Hostname())
-	if !isDNSName(host) || !strings.HasSuffix(host, signozCloudHostSuffix) {
+	host := parsed.Hostname()
+	if !isASCIIDNSName(host) || !strings.HasSuffix(strings.ToLower(host), signozCloudHostSuffix) {
 		return analytics.DeploymentSelfHosted
 	}
 	return analytics.DeploymentCloud
 }
 
-// isDNSName rejects IP literals. An IPv6 literal can carry a zone the caller
-// chooses, such as [::1%25.x.signoz.cloud], which would pass a suffix match
-// while the request goes to that IP.
-func isDNSName(host string) bool {
+// isASCIIDNSName guards the suffix match against hosts that read as SigNoz
+// Cloud but connect elsewhere. An IPv6 literal can carry a zone the caller
+// chooses, such as [::1%25.x.signoz.cloud]. A non-ASCII letter can lowercase
+// to an ASCII one (U+0130 to "i") while the request goes to the punycode
+// domain. It must run on the host before lowercasing.
+func isASCIIDNSName(host string) bool {
 	for _, r := range host {
-		if (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '.' && r != '-' {
+		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '.' && r != '-' {
 			return false
 		}
 	}
