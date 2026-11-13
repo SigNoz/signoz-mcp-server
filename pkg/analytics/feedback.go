@@ -33,7 +33,8 @@ type FeedbackConfig struct {
 
 // FeedbackConfigFromEnv turns feedback on for a build that carries a key,
 // unless FEEDBACK_ENABLED is set to anything but a true value. An unreadable
-// value turns feedback off, so a mistyped opt-out still opts out.
+// value turns feedback off, so a mistyped opt-out still opts out. An empty
+// value counts as unset, like every other setting this server reads.
 func FeedbackConfigFromEnv() FeedbackConfig {
 	cfg := FeedbackConfig{Deployment: DeploymentSelfHosted}
 	if strings.EqualFold(strings.TrimSpace(os.Getenv(DeploymentEnv)), DeploymentCloud) {
