@@ -51,7 +51,9 @@ type MCPServer struct {
 	handler   *tools.Handler
 	config    *config.Config
 	analytics analytics.Analytics
-	meters    *otelpkg.Meters
+	// feedback receives agent feedback only. Nil until EnableFeedback.
+	feedback analytics.Analytics
+	meters   *otelpkg.Meters
 	// httpServer is published via atomic.Pointer so Shutdown (on the main
 	// goroutine) can safely race Run's publication (on the errgroup
 	// goroutine) when SIGTERM lands mid-startup.
@@ -154,23 +156,30 @@ func attachCallerCorrelation(ctx context.Context, props map[string]any) {
 
 const analyticsAsyncTimeout = 5 * time.Second
 
-// analyticsEnabled gates the usage events. Anonymous analytics carries agent
-// feedback only, so usage events stay off there.
 func (m *MCPServer) analyticsEnabled() bool {
-	return m.analytics != nil && m.analytics.Enabled() && !m.config.Analytics.Anonymous
+	return m.analytics != nil && m.analytics.Enabled()
 }
 
 // requestContextKey keys the in-flight tool call, so feedback delivered from
 // inside the handler can name the calling client.
 type requestContextKey struct{}
 
-// recordFeedback sends one agent report. The operator's own pipeline gets it
-// with the identity every other event carries. Anonymous analytics gets a hash
-// of the org ID and nothing that names the tenant or the user.
+// EnableFeedback turns signoz_submit_feedback on and sends its reports to
+// sink, which is separate from the usage analytics passed to NewMCPServer.
+func (m *MCPServer) EnableFeedback(sink analytics.Analytics) {
+	m.feedback = sink
+	m.handler.SetFeedbackSink(m.recordFeedback)
+}
+
+// recordFeedback sends one agent report to the feedback sink. The hosted
+// deployment attaches the identity its usage events carry. Every other
+// deployment sends a hash of the org ID and nothing that names the tenant or
+// the user.
 func (m *MCPServer) recordFeedback(ctx context.Context, identity *signozclient.AnalyticsIdentity, feedback tools.Feedback) {
 	props := map[string]any{
 		analytics.AttrFeedbackMessage: feedback.Message,
 		analytics.AttrServerVersion:   version.Version,
+		analytics.AttrDeployment:      m.config.Feedback.Deployment,
 	}
 	if feedback.Category != "" {
 		props[analytics.AttrFeedbackCategory] = feedback.Category
@@ -178,16 +187,19 @@ func (m *MCPServer) recordFeedback(ctx context.Context, identity *signozclient.A
 	if feedback.ToolName != "" {
 		props[analytics.AttrFeedbackToolName] = feedback.ToolName
 	}
+	if feedback.Model != "" {
+		props[analytics.AttrFeedbackModel] = feedback.Model
+	}
 	if request, ok := ctx.Value(requestContextKey{}).(mcp.Request); ok {
 		attachRequestAnalytics(request, props)
 	}
 
-	if m.config.Analytics.Anonymous {
+	if m.config.Feedback.Deployment != analytics.DeploymentCloud {
 		if source, ok := util.GetClientSource(ctx); ok && source != "" {
 			props[analytics.AttrClientSource] = source
 		}
 		anonymousID := analytics.AnonymousID(identity.OrgID)
-		m.analytics.TrackUser(ctx, anonymousID, anonymousID, analytics.EventFeedbackSubmitted, props)
+		m.feedback.TrackUser(ctx, anonymousID, anonymousID, analytics.EventFeedbackSubmitted, props)
 		return
 	}
 
@@ -195,7 +207,7 @@ func (m *MCPServer) recordFeedback(ctx context.Context, identity *signozclient.A
 		props[analytics.AttrTenantURL] = signozURL
 	}
 	attachCallerCorrelation(ctx, props)
-	m.analytics.TrackUser(ctx, identity.OrgID, identity.UserID, analytics.EventFeedbackSubmitted, m.mergeIdentityAttrs(identity, props))
+	m.feedback.TrackUser(ctx, identity.OrgID, identity.UserID, analytics.EventFeedbackSubmitted, m.mergeIdentityAttrs(identity, props))
 }
 
 func cloneAttrs(src map[string]any) map[string]any {
@@ -323,20 +335,16 @@ func (m *MCPServer) dispatchAnalytics(parent context.Context, fn func(context.Co
 }
 
 func NewMCPServer(log *slog.Logger, handler *tools.Handler, cfg *config.Config, a analytics.Analytics, meters *otelpkg.Meters) *MCPServer {
-	m := &MCPServer{
+	if handler != nil {
+		handler.SetMeters(meters)
+	}
+	return &MCPServer{
 		logger:    log,
 		handler:   handler,
 		config:    cfg,
 		analytics: a,
 		meters:    meters,
 	}
-	if handler != nil {
-		handler.SetMeters(meters)
-		if a != nil && a.Enabled() {
-			handler.SetFeedbackSink(m.recordFeedback)
-		}
-	}
-	return m
 }
 
 func (m *MCPServer) Run(ctx context.Context) error {

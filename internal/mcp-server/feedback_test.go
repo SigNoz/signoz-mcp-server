@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -16,8 +17,9 @@ import (
 
 // submitFeedbackOverHTTP sends one signoz_submit_feedback call through the
 // production HTTP handler against a SigNoz that knows the caller as user
-// sa-1 (ada@example.com) in org org-1, and returns what reached analytics.
-func submitFeedbackOverHTTP(t *testing.T, analyticsConfig analytics.Config) []analyticsCall {
+// sa-1 (ada@example.com) in org org-1. Usage analytics is on, so the result
+// shows what reached the usage sink and what reached the feedback sink.
+func submitFeedbackOverHTTP(t *testing.T, deployment string) (usage, feedback []analyticsCall) {
 	t.Helper()
 	signoz := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"status":"success","data":{"id":"sa-1","orgId":"org-1","name":"Ada","email":"ada@example.com"}}`))
@@ -25,9 +27,14 @@ func submitFeedbackOverHTTP(t *testing.T, analyticsConfig analytics.Config) []an
 	t.Cleanup(signoz.Close)
 
 	logger := logpkg.New("error")
-	cfg := &config.Config{TransportMode: "http", URL: signoz.URL, ClientCacheSize: 1, ClientCacheTTL: time.Minute, MaxRequestBytes: 1 << 20, Analytics: analyticsConfig}
-	spy := &spyAnalytics{enabled: true}
-	server := NewMCPServer(logger, tools.NewHandler(logger, cfg), cfg, spy, nil)
+	cfg := &config.Config{
+		TransportMode: "http", URL: signoz.URL, ClientCacheSize: 1, ClientCacheTTL: time.Minute, MaxRequestBytes: 1 << 20,
+		Feedback: analytics.FeedbackConfig{Enabled: true, Deployment: deployment},
+	}
+	usageSpy := &spyAnalytics{enabled: true}
+	feedbackSpy := &spyAnalytics{enabled: true}
+	server := NewMCPServer(logger, tools.NewHandler(logger, cfg), cfg, usageSpy, nil)
+	server.EnableFeedback(feedbackSpy)
 	sdkServer := server.newSDKServer()
 	server.registerHandlers(sdkServer)
 
@@ -37,6 +44,7 @@ func submitFeedbackOverHTTP(t *testing.T, analyticsConfig analytics.Config) []an
 			"message":  "signoz_search_logs did not say which filter key was invalid.",
 			"category": "tool_error",
 			"toolName": "signoz_search_logs",
+			"model":    "example-model-1",
 		},
 	}))
 	headers := modernHeaders("tools/call", "signoz_submit_feedback")
@@ -48,20 +56,32 @@ func submitFeedbackOverHTTP(t *testing.T, analyticsConfig analytics.Config) []an
 	if err := server.WaitForAnalytics(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	_, tracked := spy.snapshot()
-	return tracked
+	_, usage = usageSpy.snapshot()
+	_, feedback = feedbackSpy.snapshot()
+	return usage, feedback
 }
 
-func TestFeedback_AnonymousAnalyticsSendsOnlyTheReportUnderAHashedOrg(t *testing.T) {
-	tracked := submitFeedbackOverHTTP(t, analytics.Config{Enabled: true, Anonymous: true})
+// requireFeedbackKeptApartFromUsage fails unless the feedback sink got exactly
+// the report and the usage sink got its own events without the report.
+func requireFeedbackKeptApartFromUsage(t *testing.T, usage, feedback []analyticsCall) analyticsCall {
+	t.Helper()
+	if len(feedback) != 1 || feedback[0].event != "MCP Feedback: Submitted" {
+		t.Fatalf("feedback sink got %v, want only the feedback report (no usage events)", eventNames(feedback))
+	}
+	usageEvents := eventNames(usage)
+	if !slices.Contains(usageEvents, "MCP Tool: Called") {
+		t.Fatalf("usage analytics lost the tool-call event; got %v", usageEvents)
+	}
+	if slices.Contains(usageEvents, "MCP Feedback: Submitted") {
+		t.Fatalf("usage analytics got the feedback report, which belongs to the feedback sink only; got %v", usageEvents)
+	}
+	return feedback[0]
+}
 
-	if len(tracked) != 1 {
-		t.Fatalf("anonymous analytics sent %d events, want only the feedback report (no usage events)", len(tracked))
-	}
-	event := tracked[0]
-	if event.event != "MCP Feedback: Submitted" {
-		t.Fatalf("event = %q, want %q", event.event, "MCP Feedback: Submitted")
-	}
+func TestFeedback_SelfHostedSendsTheReportUnderAHashedOrg(t *testing.T) {
+	usage, feedback := submitFeedbackOverHTTP(t, analytics.DeploymentSelfHosted)
+	event := requireFeedbackKeptApartFromUsage(t, usage, feedback)
+
 	if event.userID == "" || event.userID != event.groupID {
 		t.Fatalf("user %q and group %q, want the same non-empty hashed org", event.userID, event.groupID)
 	}
@@ -72,45 +92,42 @@ func TestFeedback_AnonymousAnalyticsSendsOnlyTheReportUnderAHashedOrg(t *testing
 	payload := event.userID + " " + string(attrs)
 	for _, identifying := range []string{"org-1", "sa-1", "Ada", "ada@example.com", "127.0.0.1", "test-api-key"} {
 		if strings.Contains(payload, identifying) {
-			t.Fatalf("anonymous feedback event carried %q: %s", identifying, payload)
+			t.Fatalf("self-hosted feedback carried %q: %s", identifying, payload)
 		}
 	}
 	want := map[string]any{
 		"feedbackMessage":  "signoz_search_logs did not say which filter key was invalid.",
 		"feedbackCategory": "tool_error",
 		"feedbackToolName": "signoz_search_logs",
+		"feedbackModel":    "example-model-1",
+		"deployment":       "self_hosted",
 		"clientName":       "protocol-test",
 		"clientVersion":    "1",
 	}
 	for key, value := range want {
 		if event.attrs[key] != value {
-			t.Fatalf("anonymous feedback %s = %v, want %v", key, event.attrs[key], value)
+			t.Fatalf("self-hosted feedback %s = %v, want %v", key, event.attrs[key], value)
 		}
 	}
 }
 
-func TestFeedback_OperatorAnalyticsKeepsUsageEventsAndIdentity(t *testing.T) {
-	tracked := submitFeedbackOverHTTP(t, analytics.Config{Enabled: true})
+func TestFeedback_CloudDeploymentAttachesTheCallersIdentity(t *testing.T) {
+	usage, feedback := submitFeedbackOverHTTP(t, analytics.DeploymentCloud)
+	event := requireFeedbackKeptApartFromUsage(t, usage, feedback)
 
-	events := map[string]analyticsCall{}
-	for _, call := range tracked {
-		events[call.event] = call
+	if event.groupID != "org-1" || event.userID != "sa-1" {
+		t.Fatalf("feedback attributed to group %q user %q, want org-1 and sa-1 like the hosted usage events", event.groupID, event.userID)
 	}
-	if _, ok := events["MCP Tool: Called"]; !ok {
-		t.Fatalf("operator analytics lost the tool-call usage event; got %d events: %v", len(tracked), eventNames(tracked))
+	want := map[string]any{
+		"feedbackMessage": "signoz_search_logs did not say which filter key was invalid.",
+		"deployment":      "cloud",
+		"orgId":           "org-1",
+		"email":           "ada@example.com",
 	}
-	feedback, ok := events["MCP Feedback: Submitted"]
-	if !ok {
-		t.Fatalf("operator analytics got no feedback event; got: %v", eventNames(tracked))
-	}
-	if feedback.groupID != "org-1" || feedback.userID != "sa-1" {
-		t.Fatalf("feedback attributed to group %q user %q, want org-1 and sa-1 like every other event", feedback.groupID, feedback.userID)
-	}
-	if feedback.attrs["email"] != "ada@example.com" || feedback.attrs["orgId"] != "org-1" {
-		t.Fatalf("feedback identity attrs = %v, want the email and orgId every other event carries", feedback.attrs)
-	}
-	if feedback.attrs["feedbackMessage"] != "signoz_search_logs did not say which filter key was invalid." {
-		t.Fatalf("feedbackMessage = %v", feedback.attrs["feedbackMessage"])
+	for key, value := range want {
+		if event.attrs[key] != value {
+			t.Fatalf("cloud feedback %s = %v, want %v", key, event.attrs[key], value)
+		}
 	}
 }
 

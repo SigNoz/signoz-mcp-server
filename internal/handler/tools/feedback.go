@@ -14,6 +14,7 @@ import (
 const (
 	feedbackMessageMaxChars  = 2000
 	feedbackToolNameMaxChars = 128
+	feedbackModelMaxChars    = 128
 
 	// Delivery is batched after the call returns, so the result can only
 	// promise that the report was queued.
@@ -28,6 +29,8 @@ type Feedback struct {
 	Message  string
 	Category string
 	ToolName string
+	// Model is what the agent says it runs as. The server cannot check it.
+	Model string
 }
 
 // FeedbackSink delivers an accepted report to the SigNoz team. The identity is
@@ -50,6 +53,7 @@ func (h *Handler) RegisterFeedbackHandlers(s *mcp.Server) {
 		mcp.WithString("message", mcp.Required(), maxLength(feedbackMessageMaxChars), mcp.Description(`What you tried, what you expected, and what happened, in at most 2000 characters. Name the tool and quote the error text. Describe the user's task in general terms and mask personal or sensitive data with placeholders. Example: "signoz_search_logs returned VALIDATION_FAILED for filter service.name = '<service>'; the error did not say which key was invalid."`)),
 		mcp.WithString("category", mcp.Enum(feedbackCategories...), mcp.Description("Kind of problem. tool_error: a call failed or returned a wrong result. confusing_output: a description, schema, or result misled you. missing_capability: no tool does what the task needs. documentation: docs or signoz:// resources are wrong or unclear. other: anything else.")),
 		mcp.WithString("toolName", maxLength(feedbackToolNameMaxChars), mcp.Description("Exact name of the SigNoz tool the report is about, for example signoz_search_logs. Omit it when the report is about no single tool.")),
+		mcp.WithString("model", maxLength(feedbackModelMaxChars), mcp.Description("Name or ID of the model you are running as. Omit it when you do not know it; do not guess.")),
 	)
 	h.addTool(s, tool, h.handleSubmitFeedback)
 }
@@ -77,6 +81,7 @@ func (h *Handler) handleSubmitFeedback(ctx context.Context, req mcp.CallToolRequ
 	h.logger.InfoContext(ctx, "agent feedback submitted",
 		slog.String("feedback.category", feedback.Category),
 		slog.String("feedback.tool_name", feedback.ToolName),
+		slog.String("feedback.model", feedback.Model),
 		slog.Int("feedback.message.chars", utf8.RuneCountInString(feedback.Message)))
 	return mcp.NewToolResultText(feedbackQueuedMessage), nil
 }
@@ -114,7 +119,15 @@ func parseFeedback(rawArgs any) (Feedback, *mcp.CallToolResult) {
 		return Feedback{}, validationErrorf("toolName", "must be at most %d characters; pass only the tool's name", feedbackToolNameMaxChars)
 	}
 
-	return Feedback{Message: message, Category: category, ToolName: strings.TrimSpace(toolName)}, nil
+	model, errResult := optionalFeedbackString(args, "model")
+	if errResult != nil {
+		return Feedback{}, errResult
+	}
+	if utf8.RuneCountInString(model) > feedbackModelMaxChars {
+		return Feedback{}, validationErrorf("model", "must be at most %d characters; pass only the model's name or ID", feedbackModelMaxChars)
+	}
+
+	return Feedback{Message: message, Category: category, ToolName: strings.TrimSpace(toolName), Model: strings.TrimSpace(model)}, nil
 }
 
 // optionalFeedbackString treats a missing or empty value as absent and rejects

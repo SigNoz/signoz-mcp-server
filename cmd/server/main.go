@@ -91,13 +91,14 @@ func main() {
 	}
 
 	var analyticsInstance analytics.Analytics
-	if cfg.Analytics.Enabled {
-		analyticsInstance, err = segmentanalytics.New(logger, cfg.Analytics)
+	if cfg.AnalyticsEnabled && cfg.SegmentKey != "" {
+		analyticsInstance, err = segmentanalytics.New(logger, analytics.Config{
+			Enabled: true,
+			Segment: analytics.SegmentConfig{Key: cfg.SegmentKey},
+		})
 		if err != nil {
 			logger.WarnContext(ctx, "Failed to initialize Segment analytics, continuing without analytics", logpkg.ErrAttr(err))
 			analyticsInstance = noopanalytics.New()
-		} else if cfg.Analytics.Anonymous {
-			logger.InfoContext(ctx, "Agent feedback from signoz_submit_feedback is sent anonymously to SigNoz; set ANALYTICS_ENABLED=false or DO_NOT_TRACK=1 to turn it off")
 		}
 	} else {
 		analyticsInstance = noopanalytics.New()
@@ -108,6 +109,20 @@ func main() {
 	dashboard.InitClickhouseSchema()
 
 	srv := mcpserver.NewMCPServer(logger, handler, cfg, analyticsInstance, meters)
+
+	// Feedback has its own Segment source: the key built into the release.
+	feedbackInstance := noopanalytics.New()
+	if cfg.Feedback.Enabled {
+		feedbackInstance, err = segmentanalytics.New(logger, analytics.Config{Enabled: true, Segment: cfg.Feedback.Segment})
+		if err != nil {
+			logger.WarnContext(ctx, "Failed to initialize agent feedback delivery, continuing with feedback off", logpkg.ErrAttr(err))
+			feedbackInstance = noopanalytics.New()
+		} else {
+			srv.EnableFeedback(feedbackInstance)
+			logger.InfoContext(ctx, "Agent feedback from signoz_submit_feedback is sent to SigNoz; set FEEDBACK_ENABLED=false to turn it off",
+				slog.String("deployment", cfg.Feedback.Deployment))
+		}
+	}
 
 	runGroup, runCtx := errgroup.WithContext(ctx)
 	runGroup.Go(func() error {
@@ -174,6 +189,10 @@ func main() {
 	}
 	if err := analyticsInstance.Stop(shutCtx); err != nil {
 		logger.ErrorContext(ctx, "Failed to stop analytics", logpkg.ErrAttr(err))
+		shutdownErr = errors.Join(shutdownErr, err)
+	}
+	if err := feedbackInstance.Stop(shutCtx); err != nil {
+		logger.ErrorContext(ctx, "Failed to stop agent feedback delivery", logpkg.ErrAttr(err))
 		shutdownErr = errors.Join(shutdownErr, err)
 	}
 	if shutdownMeter != nil {

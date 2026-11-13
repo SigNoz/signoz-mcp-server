@@ -18,11 +18,11 @@ jobs:
       PRIMUS_REF: main
       GO_BUILD_CONTEXT: ./cmd/server
       GO_VERSION: 1.26
-      # RELEASE_SEGMENT_KEY is the Segment write key for anonymous agent
-      # feedback. An unset variable leaves the key empty and feedback off.
+      # FEEDBACK_SEGMENT_KEY is the Segment write key for agent feedback. An
+      # unset variable leaves the key empty and feedback off.
       GO_BUILD_FLAGS: >-
         -ldflags='-X github.com/SigNoz/signoz-mcp-server/pkg/version.Version=$($MAKE info-version)
-        -X github.com/SigNoz/signoz-mcp-server/pkg/analytics.key=${{ vars.RELEASE_SEGMENT_KEY }}'
+        -X github.com/SigNoz/signoz-mcp-server/pkg/analytics.feedbackKey=${{ vars.FEEDBACK_SEGMENT_KEY }}'
       DOCKER_BASE_IMAGES: '{"distroless":"gcr.io/distroless/base:latest"}'
       DOCKER_DOCKERFILE_PATH: Dockerfile.multi-arch
       DOCKER_MANIFEST: true

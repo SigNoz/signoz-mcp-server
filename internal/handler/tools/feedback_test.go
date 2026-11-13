@@ -57,7 +57,8 @@ func TestSubmitFeedback_DeliversTheReportWithTheCallersOrg(t *testing.T) {
 	result := callRegisteredTool(t, server, "signoz_submit_feedback", `{
 		"message": "  signoz_search_logs returned VALIDATION_FAILED without naming the invalid key.  ",
 		"category": "tool_error",
-		"toolName": "signoz_search_logs"
+		"toolName": "signoz_search_logs",
+		"model": "example-model-1"
 	}`)
 
 	if result.IsError {
@@ -74,6 +75,7 @@ func TestSubmitFeedback_DeliversTheReportWithTheCallersOrg(t *testing.T) {
 		Message:  "signoz_search_logs returned VALIDATION_FAILED without naming the invalid key.",
 		Category: "tool_error",
 		ToolName: "signoz_search_logs",
+		Model:    "example-model-1",
 	}
 	if got.feedback != want {
 		t.Fatalf("delivered feedback = %+v, want %+v", got.feedback, want)
@@ -112,6 +114,7 @@ func TestSubmitFeedback_RejectsInvalidReportsBeforeCallingSigNoz(t *testing.T) {
 		{name: "unknown category", arguments: `{"message":"x","category":"bug"}`, wantText: `"category" must be one of: tool_error, confusing_output, missing_capability, documentation, other`},
 		{name: "category of the wrong type", arguments: `{"message":"x","category":7}`, wantText: `"category" must be a string`},
 		{name: "tool name over the limit", arguments: `{"message":"x","toolName":"` + strings.Repeat("t", 129) + `"}`, wantText: `"toolName" must be at most 128 characters`},
+		{name: "model over the limit", arguments: `{"message":"x","model":"` + strings.Repeat("m", 129) + `"}`, wantText: `"model" must be at most 128 characters`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

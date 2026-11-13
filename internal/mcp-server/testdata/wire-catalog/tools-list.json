@@ -8028,6 +8028,11 @@
                 "maxLength": 2000,
                 "type": "string"
               },
+              "model": {
+                "description": "Name or ID of the model you are running as. Omit it when you do not know it; do not guess.",
+                "maxLength": 128,
+                "type": "string"
+              },
               "searchContext": {
                 "description": "Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.",
                 "type": "string"

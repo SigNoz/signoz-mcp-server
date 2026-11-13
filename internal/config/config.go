@@ -37,7 +37,13 @@ type Config struct {
 	// (multi-tenant) server will proxy to. Empty => only URL is allowed.
 	InstanceURLAllowlist util.InstanceURLAllowlist
 
-	Analytics analytics.Config
+	// Analytics settings
+	AnalyticsEnabled bool
+	SegmentKey       string
+
+	// Feedback is agent feedback from signoz_submit_feedback. It is independent
+	// of the analytics settings above.
+	Feedback analytics.FeedbackConfig
 
 	DocsRefreshInterval     time.Duration
 	DocsFullRefreshInterval time.Duration
@@ -63,6 +69,9 @@ const (
 	InstanceURLAllowlistEnv = "SIGNOZ_INSTANCE_URL_ALLOWLIST"
 	ClientCacheSize         = "CLIENT_CACHE_SIZE"
 	ClientCacheTTL          = "CLIENT_CACHE_TTL_MINUTES"
+
+	AnalyticsEnabledEnv = "ANALYTICS_ENABLED"
+	SegmentKeyEnv       = "SEGMENT_KEY"
 
 	OAuthEnabledEnv         = "OAUTH_ENABLED"
 	OAuthTokenSecretEnv     = "OAUTH_TOKEN_SECRET"
@@ -143,7 +152,9 @@ func LoadConfig() (*Config, error) {
 		ClientCacheTTL:          time.Duration(cacheTTLMinutes) * time.Minute,
 		CustomHeaders:           customHeaders,
 		InstanceURLAllowlist:    instanceURLAllowlist,
-		Analytics:               analytics.ConfigFromEnv(),
+		AnalyticsEnabled:        getEnvBool(AnalyticsEnabledEnv, false),
+		SegmentKey:              getEnv(SegmentKeyEnv, ""),
+		Feedback:                analytics.FeedbackConfigFromEnv(),
 		DocsRefreshInterval:     docsRefreshInterval,
 		DocsFullRefreshInterval: docsFullRefreshInterval,
 		DocsRefreshDisabled:     docsRefreshDisabled,
