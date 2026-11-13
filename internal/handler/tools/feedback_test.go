@@ -162,3 +162,23 @@ func TestSubmitFeedback_SigNozAuthFailuresKeepTheirCodeAndStatus(t *testing.T) {
 		})
 	}
 }
+
+func TestSubmitFeedback_SaysWhenNoSigNozAnswersAtTheInstanceURL(t *testing.T) {
+	server, delivered := newFeedbackServer(t, true, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte("<html><body>404 Not Found</body></html>"))
+	})
+
+	result := callRegisteredTool(t, server, "signoz_submit_feedback", `{"message":"the docs for alerts are unclear"}`)
+
+	if got := resultCode(t, result); got != CodeUpstreamError {
+		t.Fatalf("code = %q, want %q: an HTML 404 is a wrong instance URL, not a missing resource", got, CodeUpstreamError)
+	}
+	if got := resultText(t, result); !strings.Contains(got, "no signoz instance found at URL") {
+		t.Fatalf("text = %q, want it to say no SigNoz instance answered", got)
+	}
+	if len(*delivered) != 0 {
+		t.Fatalf("delivered %d reports without resolving the org, want 0", len(*delivered))
+	}
+}

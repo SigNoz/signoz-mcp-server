@@ -1191,7 +1191,7 @@ FEEDBACK_ENABLED=false
 
 The tool then returns a coded `UNSUPPORTED` error and sends nothing.
 
-The MCP server SigNoz hosts for SigNoz Cloud sets `MCP_DEPLOYMENT=cloud`. Its reports carry the SigNoz org, user, and instance URL, like its product analytics events.
+The MCP server SigNoz hosts for SigNoz Cloud sets `MCP_DEPLOYMENT=cloud`. Its reports carry the identity its product analytics events carry, in place of the hash: `orgId`, the user ID, `name`, `email`, `principal` (user or service account), and `tenantUrl` (the instance URL). Calls from the SigNoz AI assistant also carry `assistantThreadId` and `assistantExecutionId`.
 
 ### Browser links for self-hosted SigNoz
 

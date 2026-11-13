@@ -274,7 +274,10 @@ func (s *SigNoz) fetchAnalyticsIdentity(ctx context.Context) (*AnalyticsIdentity
 		return nil, fmt.Errorf("failed to reach SigNoz API: %w", err)
 	}
 	if status != http.StatusOK {
-		// A typed status error, not the credential-check sentinels, so a tool
+		if status == http.StatusNotFound && isHTMLBody(body) {
+			return nil, fmt.Errorf("%w: status %d", ErrInstanceNotFound, status)
+		}
+		// A typed status error, not the credential-check sentinel, so a tool
 		// can code 401 and 403 from the status.
 		return nil, newHTTPStatusError(status, body)
 	}
