@@ -92,6 +92,10 @@ Before this change the server sent nothing from a self-hosted install: `ANALYTIC
   Cloud reports are identified so the team can follow up with the customer; that was the product
   owner's call. Only SigNoz can serve a host under `signoz.cloud`, so a self-hosted SigNoz cannot
   match, and the URL needs no setting on any deployment.
+- Guard: the host must be an ASCII DNS name as written, checked before lowercasing. Review found
+  two URLs that ended in the Cloud domain but connected elsewhere: an IPv6 literal with a
+  caller-chosen zone (`[::1%25.x.signoz.cloud]`), and a non-ASCII letter that lowercases to an
+  ASCII one (U+0130 to `i`) while the request goes to the punycode domain.
 - Consequence: an MCP server a customer runs against SigNoz Cloud is identified too, not only the
   one SigNoz hosts. The identity is one SigNoz Cloud already holds, and the README says so. The
   label no longer tells the hosted MCP from a local one; `clientName` and `serverVersion` remain.
@@ -156,7 +160,8 @@ Before this change the server sent nothing from a self-hosted install: `ANALYTIC
   the report reaches the usage sink, when a usage event reaches the feedback sink, or when a
   self-hosted report carries the org, user, name, email, or API key. A table of SigNoz URLs covers
   which calls are identified: Cloud hosts are, and lookalikes (the Cloud domain as a subdomain of
-  another host, in the path, as userinfo, or without a scheme) are not. The binaries could not be
+  another host, in the path, as userinfo, without a scheme, as an IPv6 zone, or with a non-ASCII
+  letter) are not. The binaries could not be
   pointed at a `signoz.cloud` host, so that table is the proof for the identified path. `AnonymousID` was checked once
   by hand against `openssl dgst -sha256 -hmac`; it has no pinned test, because the repo allows pins
   only for the wire catalog, guardrail budgets, and the docs baseline.
