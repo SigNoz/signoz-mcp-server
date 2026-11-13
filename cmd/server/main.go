@@ -119,8 +119,7 @@ func main() {
 			feedbackInstance = noopanalytics.New()
 		} else {
 			srv.EnableFeedback(feedbackInstance)
-			logger.InfoContext(ctx, "Agent feedback from signoz_submit_feedback is sent to SigNoz; set FEEDBACK_ENABLED=false to turn it off",
-				slog.String("deployment", cfg.Feedback.Deployment))
+			logger.InfoContext(ctx, "Agent feedback from signoz_submit_feedback is sent to SigNoz; set FEEDBACK_ENABLED=false to turn it off")
 		}
 	}
 

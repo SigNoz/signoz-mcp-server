@@ -1154,7 +1154,6 @@ Runs a SigNoz Query Builder v5 request that the dedicated tools cannot express, 
 | `ANALYTICS_ENABLED` | Enable product analytics (`true`/`false`; default: `false`) | No |
 | `SEGMENT_KEY` | Segment write key used only when analytics is enabled | No |
 | `FEEDBACK_ENABLED` | `false` turns off `signoz_submit_feedback`, so the server sends no agent feedback to SigNoz (default: `true`). See [Agent feedback](#agent-feedback). | No |
-| `MCP_DEPLOYMENT` | Set to `cloud` only by the MCP server SigNoz hosts. It labels agent feedback as coming from the hosted server and attaches the SigNoz org and user to it. Leave it unset on your own deployment. | No |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP gRPC endpoint for the MCP server's own traces and metrics. Internal telemetry export is disabled when no OTLP endpoint/exporter is configured. For plaintext collectors, use an `http://` endpoint such as `http://localhost:4317`. | No |
 | `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | Trace-specific OTLP gRPC endpoint; overrides `OTEL_EXPORTER_OTLP_ENDPOINT` for traces. | No |
 | `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` | Metrics-specific OTLP gRPC endpoint; overrides `OTEL_EXPORTER_OTLP_ENDPOINT` for metrics. | No |
@@ -1179,9 +1178,14 @@ Each report carries:
 | `clientName`, `clientVersion`, `protocolVersion` | The MCP client that made the call |
 | `clientSource` | Whether the call came from a user's MCP client or the SigNoz AI assistant |
 | `serverVersion` | This server's version |
-| `deployment` | `self_hosted`, or `cloud` for the MCP server SigNoz hosts |
+| `deployment` | `cloud` when the report is about a SigNoz Cloud instance, otherwise `self_hosted` |
 
-Reports from your own deployment are attributed to an HMAC-SHA256 hash of your SigNoz org ID. The hash is the same for every report from one org and cannot be turned back into the ID. No instance URL, user ID, name, email address, API key, tool arguments, or query results are sent. The server logs one line at startup when feedback is on.
+Who a report is attributed to depends on the SigNoz instance the call targets:
+
+- **Self-hosted SigNoz**: an HMAC-SHA256 hash of your SigNoz org ID. The hash is the same for every report from one org and cannot be turned back into the ID. No instance URL, user ID, name, or email address is sent.
+- **SigNoz Cloud** (a SigNoz URL under `signoz.cloud`): the identity SigNoz Cloud already holds for the caller, in place of the hash: `orgId`, the user ID, `name`, `email`, `principal` (user or service account), and `tenantUrl` (the instance URL). Calls from the SigNoz AI assistant also carry `assistantThreadId` and `assistantExecutionId`. This applies to the MCP server SigNoz hosts and to one you run against SigNoz Cloud.
+
+No API key, tool arguments, or query results are sent in either case. The server logs one line at startup when feedback is on.
 
 To turn feedback off, set this before the server starts:
 
@@ -1190,8 +1194,6 @@ FEEDBACK_ENABLED=false
 ```
 
 The tool then returns a coded `UNSUPPORTED` error and sends nothing.
-
-The MCP server SigNoz hosts for SigNoz Cloud sets `MCP_DEPLOYMENT=cloud`. Its reports carry the identity its product analytics events carry, in place of the hash: `orgId`, the user ID, `name`, `email`, `principal` (user or service account), and `tenantUrl` (the instance URL). Calls from the SigNoz AI assistant also carry `assistantThreadId` and `assistantExecutionId`.
 
 ### Browser links for self-hosted SigNoz
 

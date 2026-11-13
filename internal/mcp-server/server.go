@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -171,15 +172,33 @@ func (m *MCPServer) EnableFeedback(sink analytics.Analytics) {
 	m.handler.SetFeedbackSink(m.recordFeedback)
 }
 
-// recordFeedback sends one agent report to the feedback sink. The hosted
-// deployment attaches the identity its usage events carry. Every other
-// deployment sends a hash of the org ID and nothing that names the tenant or
-// the user.
+// signozCloudHostSuffix is the domain every SigNoz Cloud instance is served
+// under. Only SigNoz can host under it, so a match cannot be a self-hosted
+// SigNoz.
+const signozCloudHostSuffix = ".signoz.cloud"
+
+// feedbackDeployment says whether the call targets a SigNoz Cloud instance.
+// A URL that is missing or does not parse is self-hosted: the side that sends
+// no identity.
+func feedbackDeployment(ctx context.Context) string {
+	signozURL, _ := util.GetSigNozURL(ctx)
+	parsed, err := url.Parse(signozURL)
+	if err != nil || !strings.HasSuffix(strings.ToLower(parsed.Hostname()), signozCloudHostSuffix) {
+		return analytics.DeploymentSelfHosted
+	}
+	return analytics.DeploymentCloud
+}
+
+// recordFeedback sends one agent report to the feedback sink. A report about
+// a SigNoz Cloud instance carries the identity the hosted usage events carry.
+// Every other report sends a hash of the org ID and nothing that names the
+// tenant or the user.
 func (m *MCPServer) recordFeedback(ctx context.Context, identity *signozclient.AnalyticsIdentity, feedback tools.Feedback) {
+	deployment := feedbackDeployment(ctx)
 	props := map[string]any{
 		analytics.AttrFeedbackMessage: feedback.Message,
 		analytics.AttrServerVersion:   version.Version,
-		analytics.AttrDeployment:      m.config.Feedback.Deployment,
+		analytics.AttrDeployment:      deployment,
 	}
 	if feedback.Category != "" {
 		props[analytics.AttrFeedbackCategory] = feedback.Category
@@ -194,7 +213,7 @@ func (m *MCPServer) recordFeedback(ctx context.Context, identity *signozclient.A
 		attachRequestAnalytics(request, props)
 	}
 
-	if m.config.Feedback.Deployment != analytics.DeploymentCloud {
+	if deployment != analytics.DeploymentCloud {
 		if source, ok := util.GetClientSource(ctx); ok && source != "" {
 			props[analytics.AttrClientSource] = source
 		}

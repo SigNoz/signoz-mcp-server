@@ -37,10 +37,10 @@ Before this change the server sent nothing from a self-hosted install: `ANALYTIC
 - `ANALYTICS_ENABLED` and `SEGMENT_KEY` are untouched: `pkg/analytics/config.go`, the usage events,
   and their gate are the same as before this change. Feedback never goes to the usage analytics
   source, and usage events never go to the feedback source.
-- Every report carries a `deployment` property. The MCP server SigNoz hosts sets
-  `MCP_DEPLOYMENT=cloud`; its reports carry the org, user, and instance URL its usage events carry.
-  Every other deployment is `self_hosted`, and its reports are attributed to an HMAC-SHA256 of the
-  SigNoz org ID, with no instance URL, user, name, or email.
+- Every report carries a `deployment` property, derived from the SigNoz instance the call targets.
+  A URL under `signoz.cloud` is `cloud`, and the report carries the org, user, and instance URL the
+  hosted usage events carry. Any other URL is `self_hosted`, and the report is attributed to an
+  HMAC-SHA256 of the SigNoz org ID, with no instance URL, user, name, or email.
 - The handler resolves the caller's org itself and hands the report to a sink the server injects, so
   the hand-off is synchronous: a call that cannot resolve the org fails with a coded error. Segment
   uploads in batches after the call returns, so the result says the report was queued, not delivered.
@@ -83,16 +83,22 @@ Before this change the server sent nothing from a self-hosted install: `ANALYTIC
 - Rationale: data leaves a self-hosted install only on an explicit tool call the user can see.
   Background usage reporting from every self-hosted install is a separate policy decision.
 
-### 2026-11-13 — the hosted deployment is identified, and says so with a label
+### 2026-11-13 — reports about a SigNoz Cloud instance are identified, decided from the URL
 
-- Decision: `MCP_DEPLOYMENT=cloud` labels reports from the MCP server SigNoz hosts and attaches the
-  org, user, and instance URL. Unset or any other value means `self_hosted` and a hashed org.
-- Rationale: both deployments share one feedback source, so the event must say where it came from,
-  and no existing setting names the hosted deployment. Cloud reports are identified so the team can
-  follow up with the customer; that was the product owner's call. The safe side is the default: a
-  deployment that sets nothing is never identified.
-- Alternatives rejected: identity whenever usage analytics is on, which ties feedback back to the
-  analytics settings; a hashed org everywhere.
+- Decision: a call whose SigNoz URL host ends in `.signoz.cloud` sends the org, user, and instance
+  URL and is labeled `cloud`. Every other call, including one with a missing or unparseable URL, is
+  labeled `self_hosted` and sends a hashed org.
+- Rationale: both kinds of report share one feedback source, so the event must say which it is.
+  Cloud reports are identified so the team can follow up with the customer; that was the product
+  owner's call. Only SigNoz can serve a host under `signoz.cloud`, so a self-hosted SigNoz cannot
+  match, and the URL needs no setting on any deployment.
+- Consequence: an MCP server a customer runs against SigNoz Cloud is identified too, not only the
+  one SigNoz hosts. The identity is one SigNoz Cloud already holds, and the README says so. The
+  label no longer tells the hosted MCP from a local one; `clientName` and `serverVersion` remain.
+- Alternatives rejected: an `MCP_DEPLOYMENT=cloud` variable set on the hosted deployment, which
+  was the first cut and needed a change to the Cloud environment; identity whenever usage analytics
+  is on, which would send a self-hoster's users to SigNoz if they run their own Segment pipeline;
+  a hashed org everywhere.
 
 ### 2026-11-13 — an unreadable `FEEDBACK_ENABLED` turns feedback off
 
@@ -148,19 +154,22 @@ Before this change the server sent nothing from a self-hosted install: `ANALYTIC
   tool contract (success, off, validation, rejected credentials), and what each deployment sends
   through the production HTTP handler, with usage analytics on beside it. The server tests fail when
   the report reaches the usage sink, when a usage event reaches the feedback sink, or when a
-  self-hosted report carries the org, user, name, email, or API key. `AnonymousID` was checked once
+  self-hosted report carries the org, user, name, email, or API key. A table of SigNoz URLs covers
+  which calls are identified: Cloud hosts are, and lookalikes (the Cloud domain as a subdomain of
+  another host, in the path, as userinfo, or without a scheme) are not. The binaries could not be
+  pointed at a `signoz.cloud` host, so that table is the proof for the identified path. `AnonymousID` was checked once
   by hand against `openssl dgst -sha256 -hmac`; it has no pinned test, because the repo allows pins
   only for the wire catalog, guardrail budgets, and the docs baseline.
 - Binaries built three ways (from source, with an empty key, and with a key through the same
   single-quoted ldflags string the Docker workflow passes) and run in HTTP mode against a fake
   SigNoz:
   - from source, and with an empty key: `UNSUPPORTED`;
-  - with a key and no settings: the report is queued, the startup line says `self_hosted`, and the
-    server attempts a Segment upload;
+  - with a key and no settings: the report is queued, the startup line is logged, and the server
+    attempts a Segment upload;
   - with a key and `FEEDBACK_ENABLED=false`: `UNSUPPORTED`, no startup line, no upload attempt;
   - with a key and `ANALYTICS_ENABLED=false`: queued, because feedback does not read that setting;
-  - with a key, `MCP_DEPLOYMENT=cloud`, `ANALYTICS_ENABLED=true`, and `SEGMENT_KEY`: queued, the
-    startup line says `cloud`, and both Segment clients attempt an upload;
+  - with a key, `ANALYTICS_ENABLED=true`, and `SEGMENT_KEY`: queued, and both Segment clients
+    attempt an upload;
   - the same with `FEEDBACK_ENABLED=false`: `UNSUPPORTED`, and only the usage client uploads.
 - `make ci`.
 - Not run: goreleaser (the Pro distribution is not installed locally) and the primus Docker build.
@@ -172,9 +181,7 @@ Before this change the server sent nothing from a self-hosted install: `ANALYTIC
 ## Outcome
 
 Shipped with feedback separated from analytics, after a first version that resolved both from the
-analytics settings proved confusing in review. Two things must be set outside this repo before
-feedback flows: the `FEEDBACK_SEGMENT_KEY` repository variable, because an empty key resolves to off,
-and `MCP_DEPLOYMENT=cloud` on the hosted deployment, because without it hosted reports are labeled
-`self_hosted` and carry a hashed org. Deferred: nudges in server instructions and upstream error
-text, a triage loop for the reports, and whether `SigNoz/agent-skills` should teach when to call the
-tool; all tracked in the issue above.
+analytics settings proved confusing in review. One thing must be set outside this repo before
+feedback flows: the `FEEDBACK_SEGMENT_KEY` repository variable, because an empty key resolves to off.
+Deferred: nudges in server instructions and upstream error text, a triage loop for the reports, and
+whether `SigNoz/agent-skills` should teach when to call the tool; all tracked in the issue above.
