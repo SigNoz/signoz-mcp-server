@@ -20,6 +20,7 @@ func (h *Handler) RegisterAllToolHandlers(s *mcp.Server) {
 	h.RegisterServiceHandlers(s)
 	h.RegisterQueryBuilderV5Handlers(s)
 	h.RegisterLogsHandlers(s)
+	h.RegisterLogPipelineHandlers(s)
 	h.RegisterViewHandlers(s)
 	h.RegisterDocsHandlers(s)
 	h.RegisterTracesHandlers(s)
