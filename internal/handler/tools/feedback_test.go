@@ -1,7 +1,9 @@
 package tools
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -111,7 +113,7 @@ func TestSubmitFeedback_RejectsInvalidReportsBeforeCallingSigNoz(t *testing.T) {
 		{name: "missing message", arguments: `{"category":"tool_error"}`, wantText: `"message" cannot be empty`},
 		{name: "blank message", arguments: `{"message":"   "}`, wantText: `"message" cannot be empty`},
 		{name: "message over the limit", arguments: `{"message":"` + strings.Repeat("a", 2001) + `"}`, wantText: `"message" must be at most 2000 characters`},
-		{name: "unknown category", arguments: `{"message":"x","category":"bug"}`, wantText: `"category" must be one of: tool_error, confusing_output, missing_capability, documentation, other`},
+		{name: "unknown category", arguments: `{"message":"x","category":"bug"}`, wantText: `"category" must be one of: tool_error, `},
 		{name: "category of the wrong type", arguments: `{"message":"x","category":7}`, wantText: `"category" must be a string`},
 		{name: "tool name over the limit", arguments: `{"message":"x","toolName":"` + strings.Repeat("t", 129) + `"}`, wantText: `"toolName" must be at most 128 characters`},
 		{name: "model over the limit", arguments: `{"message":"x","model":"` + strings.Repeat("m", 129) + `"}`, wantText: `"model" must be at most 128 characters`},
@@ -180,5 +182,33 @@ func TestSubmitFeedback_SaysWhenNoSigNozAnswersAtTheInstanceURL(t *testing.T) {
 	}
 	if len(*delivered) != 0 {
 		t.Fatalf("delivered %d reports without resolving the org, want 0", len(*delivered))
+	}
+}
+
+func TestSubmitFeedback_LogsTheFullReportEvenWhenDeliveryFails(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	t.Cleanup(upstream.Close)
+	var logs bytes.Buffer
+	h := &Handler{
+		logger:         slog.New(slog.NewJSONHandler(&logs, nil)),
+		clientOverride: signozclient.NewClient(logpkg.New("error"), upstream.URL, "test-api-key", "SIGNOZ-API-KEY", nil),
+	}
+	h.SetFeedbackSink(func(context.Context, *signozclient.AnalyticsIdentity, Feedback) {
+		t.Error("report was delivered although the org lookup failed")
+	})
+	server := newMCPTestServer()
+	h.RegisterAllToolHandlers(server)
+
+	result := callRegisteredTool(t, server, "signoz_submit_feedback", `{"message":"the alert docs skip anomaly rules","category":"documentation","model":"example-model-1"}`)
+
+	if !result.IsError {
+		t.Fatalf("call succeeded although the org lookup failed: %s", textContent(t, result))
+	}
+	for _, want := range []string{`"mcp.feedback.message":"the alert docs skip anomaly rules"`, `"mcp.feedback.category":"documentation"`, `"mcp.feedback.model":"example-model-1"`} {
+		if !strings.Contains(logs.String(), want) {
+			t.Errorf("log is missing %s:\n%s", want, logs.String())
+		}
 	}
 }

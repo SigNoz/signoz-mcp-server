@@ -27,8 +27,9 @@ Before this change the server sent nothing from a self-hosted install: `ANALYTIC
 ## Approach
 
 - One tool, `signoz_submit_feedback`, with a required `message` and optional `category`, `toolName`,
-  and `model`. Its description asks the agent to mask personal and sensitive data before sending and
-  to tell the user what it sent.
+  and `model`. The agent sends a report in two cases: it hit a problem with this server, or the user
+  has feedback about SigNoz. Its description asks the agent to mask personal and sensitive data
+  before sending.
 - Feedback goes to `SEGMENT_KEY` when the operator set one, and otherwise to a Segment source of
   its own. Release builds carry that source's write key through ldflags
   (`pkg/analytics.feedbackKey`), as SigNoz and foundry do. A build from source keeps `<unset>` and
@@ -139,13 +140,31 @@ Before this change the server sent nothing from a self-hosted install: `ANALYTIC
 - Decision: `withCreateToolAnnotations`.
 - Rationale: each call sends one report outside the server, and a repeat sends a duplicate (SUR-7).
 
-### 2026-11-13 — the agent reports its model; nothing about reasoning effort
+### 2026-11-14 — the tool also carries the user's feedback about SigNoz
 
-- Decision: an optional `model` string the agent fills in only when it knows it.
+- Decision: the description tells the agent to send feedback when the user has some about SigNoz,
+  such as a bug, a request, or praise, and not only when the agent hit a problem with this server.
+  A new `user_feedback` category marks those reports.
+- Rationale: the product owner's call in review. The agent is where the user already is when they
+  say what is wrong or missing, and the same event reaches the same team.
+
+### 2026-11-14 — the full report goes to the server's log and trace span
+
+- Decision: the handler logs the whole report (`agent feedback received`) and sets it on the tool
+  call's span as `mcp.feedback.*`, right after validation and before the org lookup.
+- Rationale: the product owner asked for it. The operator can read reports in their own telemetry,
+  and a report whose delivery fails is not lost. The message is capped at 2000 characters, and the
+  agent is told to mask it, as for the copy sent to Segment.
+- Not recorded when feedback is off: the tool returns `UNSUPPORTED` before it reads the arguments.
+
+### 2026-11-13 — the agent reports its model, and its effort when it knows it
+
+- Decision: an optional `model` string the agent fills in only when it knows it. The product owner
+  later widened its description to take the effort or thinking level in the same string.
 - Rationale: MCP gives the server the client's name and version, not the model, so the agent is the
   only source. The model separates "this model misread the schema" from "the schema is wrong". It is
-  self-reported and unchecked, and the README says so. Reasoning effort is left out: most agents
-  cannot see their own setting, so the field would be mostly empty or guessed.
+  self-reported and unchecked, and the README says so. Effort has no field of its own: most agents
+  cannot see their own setting, so a separate field would be mostly empty or guessed.
 
 ### 2026-11-13 — no server-instruction rule and no error-text hint yet
 

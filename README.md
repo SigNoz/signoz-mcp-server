@@ -468,7 +468,7 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 | `signoz_create_notification_channel` | Create a notification channel |
 | `signoz_update_notification_channel` | Fully replace a fetched channel's config |
 | `signoz_delete_notification_channel` | Permanently delete a confirmed channel by ID |
-| `signoz_submit_feedback` | Report a problem with this MCP server to the SigNoz team |
+| `signoz_submit_feedback` | Send feedback to the SigNoz team: a problem with this MCP server, or the user's feedback about SigNoz |
 
 For detailed usage and examples, see the [full documentation](https://signoz.io/docs/ai/signoz-mcp-server/).
 
@@ -1096,13 +1096,13 @@ that dependency error and resolve references before retrying.
 
 #### `signoz_submit_feedback`
 
-Lets the agent report a problem with this MCP server to the SigNoz team: a tool error it could not explain, a confusing description, schema, or result, a missing capability, or unclear documentation. The tool description tells the agent to mask personal and sensitive data (names, email addresses, IP addresses, hostnames, IDs, credentials, telemetry values) before sending, and to tell the user in one sentence what it sent. See [Agent feedback](#agent-feedback) for what leaves the server and how to turn it off.
+Lets the agent send feedback to the SigNoz team in two cases. The agent hit a problem with this MCP server: a tool error it could not explain, a confusing description, schema, or result, a missing capability, or unclear documentation. Or the user has feedback about SigNoz, such as a bug, a request, or praise. The tool description tells the agent to mask personal and sensitive data (names, email addresses, IP addresses, hostnames, IDs, credentials, telemetry values) before sending. See [Agent feedback](#agent-feedback) for what leaves the server and how to turn it off.
 
 - **Parameters**:
-  - `message` (required) - What the agent tried, expected, and saw. At most 2000 characters (`maxLength` in the schema)
-  - `category` (optional) - One of `tool_error`, `confusing_output`, `missing_capability`, `documentation`, `other`
+  - `message` (required) - What the agent tried, expected, and saw, or what the user said about SigNoz. At most 2000 characters (`maxLength` in the schema)
+  - `category` (optional) - One of `tool_error`, `confusing_output`, `missing_capability`, `documentation`, `user_feedback`, `other`
   - `toolName` (optional) - Name of the tool the report is about. At most 128 characters (`maxLength` in the schema)
-  - `model` (optional) - Name or ID of the model the agent runs as, when it knows it. At most 128 characters (`maxLength` in the schema)
+  - `model` (optional) - Name or ID of the model the agent runs as, with its effort or thinking level, when it knows them. At most 128 characters (`maxLength` in the schema)
   - `searchContext` - User's original question
 - **Result**: `Feedback queued for delivery to the SigNoz team.` on success. Delivery is batched after the call returns, so a report can still be lost when the server cannot reach Segment; the server logs that failure. When feedback is turned off, a coded `UNSUPPORTED` error says so and nothing is sent. Invalid arguments return `VALIDATION_FAILED` naming the field.
 - **Annotations**: not read-only and not idempotent, because each call sends one report outside the server.
@@ -1164,20 +1164,15 @@ The MCP server does not run an OTLP log exporter; logs are emitted as JSON to st
 
 ### Agent feedback
 
-Release binaries and Docker images send one thing to SigNoz by default: the reports an agent submits with `signoz_submit_feedback`. A report leaves the server only when the agent calls that tool. Nothing is sent in the background, and no usage events are sent. A build from source (`make build`, `go install`, the local `Dockerfile`) has no write key and sends nothing unless you set `SEGMENT_KEY`.
-
-Feedback is separate from product analytics. It has its own switch and does not read `ANALYTICS_ENABLED`. Where a report goes depends on `SEGMENT_KEY`:
-
-- **`SEGMENT_KEY` not set**: SigNoz's feedback source in Segment, whose write key is built into the release.
-- **`SEGMENT_KEY` set**: that Segment source, in place of the built-in one, whether or not `ANALYTICS_ENABLED` is `true`. The MCP server SigNoz hosts runs this way, so its feedback arrives beside its usage events.
+Release binaries and Docker images send one thing to SigNoz by default: the reports an agent submits with `signoz_submit_feedback`, about a problem it hit with this server or on behalf of a user who has feedback about SigNoz. A report leaves the server only when the agent calls that tool. Nothing is sent in the background, and no usage events are sent.
 
 Each report carries:
 
 | Property | Description |
 |---|---|
-| `feedbackMessage` | The agent's report, at most 2000 characters. The tool tells the agent to mask personal and sensitive data first |
+| `feedbackMessage` | The report, at most 2000 characters. The tool tells the agent to mask personal and sensitive data first |
 | `feedbackCategory`, `feedbackToolName` | The optional category and tool name the agent passed |
-| `feedbackModel` | The model the agent says it runs as, when it passed one. The server cannot check it |
+| `feedbackModel` | The model, and effort or thinking level, the agent says it runs as, when it passed one. The server cannot check it |
 | `clientName`, `clientVersion`, `protocolVersion` | The MCP client that made the call |
 | `clientSource` | Whether the call came from a user's MCP client or the SigNoz AI assistant |
 | `serverVersion` | This server's version |
@@ -1186,9 +1181,11 @@ Each report carries:
 Who a report is attributed to depends on the SigNoz instance the call targets:
 
 - **Self-hosted SigNoz**: an HMAC-SHA256 hash of your SigNoz org ID. The hash is the same for every report from one org and cannot be turned back into the ID. No instance URL, user ID, name, or email address is sent.
-- **SigNoz Cloud** (a SigNoz URL under `signoz.cloud`): the identity SigNoz Cloud already holds for the caller, in place of the hash: `orgId`, the user ID, `name`, `email`, `principal` (user or service account), and `tenantUrl` (the instance URL). Calls from the SigNoz AI assistant also carry `assistantThreadId` and `assistantExecutionId`. This applies to the MCP server SigNoz hosts and to one you run against SigNoz Cloud.
+- **SigNoz Cloud** (a SigNoz URL under `signoz.cloud`): the identity SigNoz Cloud already holds for the caller, in place of the hash: `orgId`.
 
 No API key, tool arguments, or query results are sent in either case. The server logs one line at startup when feedback is on.
+
+The server also records each report it accepts in its own telemetry, before delivery: an `agent feedback received` log line, and the tool call's trace span when an OTLP endpoint is configured. Both carry `mcp.feedback.message` (the full report), `mcp.feedback.category`, `mcp.feedback.tool_name`, and `mcp.feedback.model`. They go where your logs and traces already go, and a report that could not be delivered is still there.
 
 To turn feedback off, set this before the server starts:
 

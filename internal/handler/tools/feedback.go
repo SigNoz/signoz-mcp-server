@@ -7,8 +7,11 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"go.opentelemetry.io/otel/trace"
+
 	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
+	otelpkg "github.com/SigNoz/signoz-mcp-server/pkg/otel"
 )
 
 const (
@@ -22,14 +25,16 @@ const (
 	feedbackDisabledMessage = "Feedback is turned off on this server, so nothing was sent. Do not retry; continue with the user's task."
 )
 
-var feedbackCategories = []string{"tool_error", "confusing_output", "missing_capability", "documentation", "other"}
+var feedbackCategories = []string{"tool_error", "confusing_output", "missing_capability", "documentation", "user_feedback", "other"}
 
-// Feedback is one agent report about this server, after validation.
+// Feedback is one report, after validation: a problem the agent hit with
+// this server, or the user's own feedback about SigNoz.
 type Feedback struct {
 	Message  string
 	Category string
 	ToolName string
-	// Model is what the agent says it runs as. The server cannot check it.
+	// Model is the model, and effort when known, the agent says it runs as.
+	// The server cannot check it.
 	Model string
 }
 
@@ -49,11 +54,11 @@ func (h *Handler) RegisterFeedbackHandlers(s *mcp.Server) {
 	tool := mcp.NewTool("signoz_submit_feedback",
 		withCreateToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description(searchContextParamDescription)),
-		mcp.WithDescription("Use this to report a problem with this SigNoz MCP server to the SigNoz team: a tool error you could not explain, a confusing description, schema, or result, a missing capability, or unclear documentation. It returns a confirmation that the report was queued for delivery. Report when you hit the problem or worked around it, without waiting for the user to ask, then continue the user's task. Do not report problems in the user's own telemetry or a mistake the error message already corrected; for product questions use signoz_search_docs. Mask personal and sensitive data before sending: replace names, email addresses, IP addresses, hostnames, IDs, credentials, and telemetry values with placeholders such as <email> or <service>. Tell the user in one sentence what you sent."),
-		mcp.WithString("message", mcp.Required(), maxLength(feedbackMessageMaxChars), mcp.Description(`What you tried, what you expected, and what happened, in at most 2000 characters. Name the tool and quote the error text. Describe the user's task in general terms and mask personal or sensitive data with placeholders. Example: "signoz_search_logs returned VALIDATION_FAILED for filter service.name = '<service>'; the error did not say which key was invalid."`)),
-		mcp.WithString("category", mcp.Enum(feedbackCategories...), mcp.Description("Kind of problem. tool_error: a call failed or returned a wrong result. confusing_output: a description, schema, or result misled you. missing_capability: no tool does what the task needs. documentation: docs or signoz:// resources are wrong or unclear. other: anything else.")),
+		mcp.WithDescription("Use this to send feedback to the SigNoz team when it would help SigNoz improve. Send it when you hit a problem with this SigNoz MCP server: a tool error you could not explain, a confusing description, schema, or result, a missing capability, or unclear documentation. Report the problem when you hit it or worked around it, without waiting for the user to ask, then continue the user's task. Also send it when the user has feedback about SigNoz, such as a bug, a request, or praise. Mask personal and sensitive data before sending: replace names, email addresses, IP addresses, hostnames, IDs, credentials, and telemetry values with placeholders such as <email> or <service>."),
+		mcp.WithString("message", mcp.Required(), maxLength(feedbackMessageMaxChars), mcp.Description(`The feedback, in at most 2000 characters. For a problem you hit: what you tried, what you expected, and what happened; name the tool and quote the error text. For the user's feedback: what they said about SigNoz, close to their own words. Describe the user's task in general terms and mask personal or sensitive data with placeholders. Example: "signoz_search_logs returned VALIDATION_FAILED for filter service.name = '<service>'; the error did not say which key was invalid."`)),
+		mcp.WithString("category", mcp.Enum(feedbackCategories...), mcp.Description("Kind of feedback. tool_error: a call failed or returned a wrong result. confusing_output: a description, schema, or result misled you. missing_capability: no tool does what the task needs. documentation: docs or signoz:// resources are wrong or unclear. user_feedback: the user's own feedback about SigNoz, such as a bug, a request, or praise. other: anything else.")),
 		mcp.WithString("toolName", maxLength(feedbackToolNameMaxChars), mcp.Description("Exact name of the SigNoz tool the report is about, for example signoz_search_logs. Omit it when the report is about no single tool.")),
-		mcp.WithString("model", maxLength(feedbackModelMaxChars), mcp.Description("Name or ID of the model you are running as. Omit it when you do not know it; do not guess.")),
+		mcp.WithString("model", maxLength(feedbackModelMaxChars), mcp.Description("Name or ID of the model you are running as and effort/thinking level. Omit it when you do not know it; do not guess.")),
 	)
 	h.addTool(s, tool, h.handleSubmitFeedback)
 }
@@ -66,6 +71,17 @@ func (h *Handler) handleSubmitFeedback(ctx context.Context, req mcp.CallToolRequ
 	if errResult != nil {
 		return errResult, nil
 	}
+	// Recorded before delivery, so the report survives a failed org lookup.
+	h.logger.InfoContext(ctx, "agent feedback received",
+		slog.String(string(otelpkg.MCPFeedbackMessageKey), feedback.Message),
+		slog.String(string(otelpkg.MCPFeedbackCategoryKey), feedback.Category),
+		slog.String(string(otelpkg.MCPFeedbackToolNameKey), feedback.ToolName),
+		slog.String(string(otelpkg.MCPFeedbackModelKey), feedback.Model))
+	trace.SpanFromContext(ctx).SetAttributes(
+		otelpkg.MCPFeedbackMessageKey.String(feedback.Message),
+		otelpkg.MCPFeedbackCategoryKey.String(feedback.Category),
+		otelpkg.MCPFeedbackToolNameKey.String(feedback.ToolName),
+		otelpkg.MCPFeedbackModelKey.String(feedback.Model))
 
 	client, err := h.GetClient(ctx)
 	if err != nil {
@@ -78,11 +94,6 @@ func (h *Handler) handleSubmitFeedback(ctx context.Context, req mcp.CallToolRequ
 	}
 
 	h.feedbackSink(ctx, identity, feedback)
-	h.logger.InfoContext(ctx, "agent feedback submitted",
-		slog.String("feedback.category", feedback.Category),
-		slog.String("feedback.tool_name", feedback.ToolName),
-		slog.String("feedback.model", feedback.Model),
-		slog.Int("feedback.message.chars", utf8.RuneCountInString(feedback.Message)))
 	return mcp.NewToolResultText(feedbackQueuedMessage), nil
 }
 

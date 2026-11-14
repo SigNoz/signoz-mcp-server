@@ -211,7 +211,7 @@
     },
     {
       "name": "signoz_submit_feedback",
-      "description": "Report a problem with this MCP server to the SigNoz team: an unexplained tool error, a confusing description or result, a missing capability, or unclear documentation; mask personal and sensitive data first"
+      "description": "Send feedback to the SigNoz team: a problem with this MCP server (an unexplained tool error, a confusing description or result, a missing capability, unclear documentation) or the user's feedback about SigNoz (a bug, a request, praise); mask personal and sensitive data first"
     }
   ],
   "resources": [
