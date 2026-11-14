@@ -1100,7 +1100,7 @@ Lets the agent send feedback to the SigNoz team in two cases. The agent hit a pr
 
 - **Parameters**:
   - `message` (required) - What the agent tried, expected, and saw, or what the user said about SigNoz. At most 2000 characters (`maxLength` in the schema)
-  - `category` (optional) - One of `tool_error`, `confusing_output`, `missing_capability`, `documentation`, `user_feedback`, `other`
+  - `category` (optional) - One of `tool_error`, `confusing_output`, `missing_capability`, `documentation`, `user_feedback`, `user_frustration`, `other`
   - `toolName` (optional) - Name of the tool the report is about. At most 128 characters (`maxLength` in the schema)
   - `model` (optional) - Name or ID of the model the agent runs as, with its effort or thinking level, when it knows them. At most 128 characters (`maxLength` in the schema)
   - `searchContext` - User's original question

@@ -148,6 +148,17 @@ Before this change the server sent nothing from a self-hosted install: `ANALYTIC
 - Rationale: the product owner's call in review. The agent is where the user already is when they
   say what is wrong or missing, and the same event reaches the same team.
 
+### 2026-11-14 — `user_frustration` is accepted but not described
+
+- Decision: `category` accepts `user_frustration`. The value is in the schema's enum, so a call
+  that uses it validates, but no description, README text, or manifest text says what it is for.
+- Rationale: the product owner's call. The SigNoz AI assistant sends it when a user is frustrated
+  with SigNoz; its own prompt tells it when. Other agents should not send it for frustration with
+  themselves, so the server does not teach it.
+- Alternative rejected: accepting the value without listing it in the enum. The server checks
+  arguments against the advertised schema and would append an input validation notice to every
+  such call.
+
 ### 2026-11-14 — the full report goes to the server's log and trace span
 
 - Decision: the handler logs the whole report (`agent feedback received`) and sets it on the tool

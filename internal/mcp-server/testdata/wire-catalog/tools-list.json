@@ -8020,6 +8020,7 @@
                   "missing_capability",
                   "documentation",
                   "user_feedback",
+                  "user_frustration",
                   "other"
                 ],
                 "type": "string"

@@ -25,7 +25,7 @@ const (
 	feedbackDisabledMessage = "Feedback is turned off on this server, so nothing was sent. Do not retry; continue with the user's task."
 )
 
-var feedbackCategories = []string{"tool_error", "confusing_output", "missing_capability", "documentation", "user_feedback", "other"}
+var feedbackCategories = []string{"tool_error", "confusing_output", "missing_capability", "documentation", "user_feedback", "user_frustration", "other"}
 
 // Feedback is one report, after validation: a problem the agent hit with
 // this server, or the user's own feedback about SigNoz.
