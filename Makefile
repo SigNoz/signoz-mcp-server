@@ -132,10 +132,9 @@ docs-index:
 ##@ Generated SigNoz API client
 
 # Bump SIGNOZ_SPEC_REF with each SigNoz release, then run `make gen` and commit the result.
-# Pinned to a main commit after v0.149.0: it carries the rules API that accepts only v2alpha1.
-# Move to the v0.150.0 release commit when it ships.
+# Pinned to the v0.150.0 release commit.
 SKAFF_VERSION ?= v0.0.9
-SIGNOZ_SPEC_REF ?= 3acfb0c8c0b2eb684c08342e26361c65351ed104
+SIGNOZ_SPEC_REF ?= 0f598c49adc2d2a635291b70e9c99178e6299776
 SIGNOZ_SPEC_URL := https://raw.githubusercontent.com/SigNoz/signoz/$(SIGNOZ_SPEC_REF)/docs/api/openapi.yml
 SKAFF := bin/skaff-$(SKAFF_VERSION)
 APICLIENT_DIR := internal/apiclient
