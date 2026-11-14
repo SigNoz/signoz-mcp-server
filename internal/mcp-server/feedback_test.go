@@ -18,9 +18,8 @@ import (
 )
 
 // submitFeedbackOverHTTP sends one signoz_submit_feedback call through the
-// production HTTP handler against a SigNoz that knows the caller as user
-// sa-1 (ada@example.com) in org org-1. Usage analytics is on, so the result
-// shows what reached the usage sink and what reached the feedback sink.
+// production HTTP handler; SigNoz knows the caller as user sa-1
+// (ada@example.com) in org org-1. Usage analytics is on beside feedback.
 func submitFeedbackOverHTTP(t *testing.T) (usage, feedback []analyticsCall) {
 	t.Helper()
 	signoz := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

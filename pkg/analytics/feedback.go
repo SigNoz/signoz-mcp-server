@@ -29,12 +29,9 @@ type FeedbackConfig struct {
 	Segment SegmentConfig
 }
 
-// FeedbackConfigFromEnv sends feedback to segmentKey, the operator's
-// SEGMENT_KEY, and to the key built into the release when that is empty. With
-// neither, feedback is off. FEEDBACK_ENABLED set to anything but a true value
-// also turns it off: an unreadable value counts as off, so a mistyped opt-out
-// still opts out, and an empty value counts as unset, like every other setting
-// this server reads.
+// FeedbackConfigFromEnv sends feedback to segmentKey (SEGMENT_KEY), else to the
+// key built into the release; with neither it is off. FEEDBACK_ENABLED turns it
+// off unless it is empty or a true value, so a mistyped opt-out still opts out.
 func FeedbackConfigFromEnv(segmentKey string) FeedbackConfig {
 	key := segmentKey
 	if key == "" && feedbackKey != "<unset>" {

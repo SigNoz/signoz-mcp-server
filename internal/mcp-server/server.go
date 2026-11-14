@@ -193,11 +193,9 @@ func feedbackDeployment(ctx context.Context) string {
 	return analytics.DeploymentCloud
 }
 
-// isASCIIDNSName guards the suffix match against hosts that read as SigNoz
-// Cloud but connect elsewhere. An IPv6 literal can carry a zone the caller
-// chooses, such as [::1%25.x.signoz.cloud]. A non-ASCII letter can lowercase
-// to an ASCII one (U+0130 to "i") while the request goes to the punycode
-// domain. It must run on the host before lowercasing.
+// isASCIIDNSName must run before lowercasing. It rejects hosts that end in the
+// Cloud suffix but connect elsewhere: an IPv6 literal with a caller-chosen zone
+// ([::1%25.x.signoz.cloud]), or a letter like U+0130 that lowercases to ASCII.
 func isASCIIDNSName(host string) bool {
 	for _, r := range host {
 		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '.' && r != '-' {
@@ -207,10 +205,9 @@ func isASCIIDNSName(host string) bool {
 	return host != ""
 }
 
-// recordFeedback sends one agent report to the feedback sink. A report about
-// a SigNoz Cloud instance carries the identity the hosted usage events carry.
-// Every other report sends a hash of the org ID and nothing that names the
-// tenant or the user.
+// recordFeedback sends one report to the feedback sink. A report about SigNoz
+// Cloud carries the identity the hosted usage events carry; every other report
+// sends a hash of the org ID and nothing that names the tenant or the user.
 func (m *MCPServer) recordFeedback(ctx context.Context, identity *signozclient.AnalyticsIdentity, feedback tools.Feedback) {
 	deployment := feedbackDeployment(ctx)
 	props := map[string]any{
