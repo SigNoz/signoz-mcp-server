@@ -30,3 +30,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
+          FEEDBACK_SEGMENT_KEY: ${{ vars.FEEDBACK_SEGMENT_KEY }}

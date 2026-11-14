@@ -10,6 +10,7 @@ const (
 	EventResourceFetched             = "MCP Resource: Fetched"
 	EventOAuthAuthorizationSubmitted = "MCP OAuth: Authorization submitted"
 	EventOAuthTokenIssued            = "MCP OAuth: Token issued"
+	EventFeedbackSubmitted           = "MCP Feedback: Submitted"
 )
 
 // camelCase for analytics destinations. OTel span attrs use the dotted
@@ -33,4 +34,10 @@ const (
 	AttrClientSource         = "clientSource"
 	AttrAssistantThreadID    = "assistantThreadId"
 	AttrAssistantExecutionID = "assistantExecutionId"
+	AttrFeedbackMessage      = "feedbackMessage"
+	AttrFeedbackCategory     = "feedbackCategory"
+	AttrFeedbackToolName     = "feedbackToolName"
+	AttrFeedbackModel        = "feedbackModel"
+	AttrServerVersion        = "serverVersion"
+	AttrDeployment           = "deployment"
 )

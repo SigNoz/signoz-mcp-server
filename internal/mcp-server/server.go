@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -51,7 +52,9 @@ type MCPServer struct {
 	handler   *tools.Handler
 	config    *config.Config
 	analytics analytics.Analytics
-	meters    *otelpkg.Meters
+	// feedback receives agent feedback only. Nil until EnableFeedback.
+	feedback analytics.Analytics
+	meters   *otelpkg.Meters
 	// httpServer is published via atomic.Pointer so Shutdown (on the main
 	// goroutine) can safely race Run's publication (on the errgroup
 	// goroutine) when SIGTERM lands mid-startup.
@@ -156,6 +159,89 @@ const analyticsAsyncTimeout = 5 * time.Second
 
 func (m *MCPServer) analyticsEnabled() bool {
 	return m.analytics != nil && m.analytics.Enabled()
+}
+
+// requestContextKey keys the in-flight tool call, so feedback delivered from
+// inside the handler can name the calling client.
+type requestContextKey struct{}
+
+// EnableFeedback turns signoz_submit_feedback on and sends its reports to
+// sink, which is separate from the usage analytics passed to NewMCPServer.
+func (m *MCPServer) EnableFeedback(sink analytics.Analytics) {
+	m.feedback = sink
+	m.handler.SetFeedbackSink(m.recordFeedback)
+}
+
+// signozCloudHostSuffix is the domain every SigNoz Cloud instance is served
+// under. Only SigNoz can host under it, so a match cannot be a self-hosted
+// SigNoz.
+const signozCloudHostSuffix = ".signoz.cloud"
+
+// feedbackDeployment says whether the call targets a SigNoz Cloud instance.
+// A URL that is missing or does not parse is self-hosted: the side that sends
+// no identity.
+func feedbackDeployment(ctx context.Context) string {
+	signozURL, _ := util.GetSigNozURL(ctx)
+	parsed, err := url.Parse(signozURL)
+	if err != nil {
+		return analytics.DeploymentSelfHosted
+	}
+	host := parsed.Hostname()
+	if !isASCIIDNSName(host) || !strings.HasSuffix(strings.ToLower(host), signozCloudHostSuffix) {
+		return analytics.DeploymentSelfHosted
+	}
+	return analytics.DeploymentCloud
+}
+
+// isASCIIDNSName must run before lowercasing. It rejects hosts that end in the
+// Cloud suffix but connect elsewhere: an IPv6 literal with a caller-chosen zone
+// ([::1%25.x.signoz.cloud]), or a letter like U+0130 that lowercases to ASCII.
+func isASCIIDNSName(host string) bool {
+	for _, r := range host {
+		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '.' && r != '-' {
+			return false
+		}
+	}
+	return host != ""
+}
+
+// recordFeedback sends one report to the feedback sink. A report about SigNoz
+// Cloud carries the identity the hosted usage events carry; every other report
+// sends a hash of the org ID and nothing that names the tenant or the user.
+func (m *MCPServer) recordFeedback(ctx context.Context, identity *signozclient.AnalyticsIdentity, feedback tools.Feedback) {
+	deployment := feedbackDeployment(ctx)
+	props := map[string]any{
+		analytics.AttrFeedbackMessage: feedback.Message,
+		analytics.AttrServerVersion:   version.Version,
+		analytics.AttrDeployment:      deployment,
+	}
+	if feedback.Category != "" {
+		props[analytics.AttrFeedbackCategory] = feedback.Category
+	}
+	if feedback.ToolName != "" {
+		props[analytics.AttrFeedbackToolName] = feedback.ToolName
+	}
+	if feedback.Model != "" {
+		props[analytics.AttrFeedbackModel] = feedback.Model
+	}
+	if request, ok := ctx.Value(requestContextKey{}).(mcp.Request); ok {
+		attachRequestAnalytics(request, props)
+	}
+
+	if deployment != analytics.DeploymentCloud {
+		if source, ok := util.GetClientSource(ctx); ok && source != "" {
+			props[analytics.AttrClientSource] = source
+		}
+		anonymousID := analytics.AnonymousID(identity.OrgID)
+		m.feedback.TrackUser(ctx, anonymousID, anonymousID, analytics.EventFeedbackSubmitted, props)
+		return
+	}
+
+	if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
+		props[analytics.AttrTenantURL] = signozURL
+	}
+	attachCallerCorrelation(ctx, props)
+	m.feedback.TrackUser(ctx, identity.OrgID, identity.UserID, analytics.EventFeedbackSubmitted, m.mergeIdentityAttrs(identity, props))
 }
 
 func cloneAttrs(src map[string]any) map[string]any {
@@ -548,6 +634,7 @@ func (m *MCPServer) receivingMiddleware(isRegisteredTool func(string) bool) mcp.
 			if method == "tools/call" {
 				toolName = observedToolName(request, isRegisteredTool)
 				ctx = util.SetToolName(ctx, toolName)
+				ctx = context.WithValue(ctx, requestContextKey{}, request)
 			}
 			if req, ok := request.(*mcp.CallToolRequest); ok && req.Params != nil {
 				var arguments any

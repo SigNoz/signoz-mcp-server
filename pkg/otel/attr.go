@@ -42,6 +42,10 @@ const (
 	MCPDocsResultCountKey        = attribute.Key("mcp.docs.result_count")
 	MCPDocsTopScoreKey           = attribute.Key("mcp.docs.top_score")
 	MCPDocsQueryStringDroppedKey = attribute.Key("mcp.docs.query_string_dropped")
+	MCPFeedbackMessageKey        = attribute.Key("mcp.feedback.message")
+	MCPFeedbackCategoryKey       = attribute.Key("mcp.feedback.category")
+	MCPFeedbackToolNameKey       = attribute.Key("mcp.feedback.tool_name")
+	MCPFeedbackModelKey          = attribute.Key("mcp.feedback.model")
 	// MCPToolResultBytes approximates the size, in bytes, of the text content
 	// returned by a tool call — sum of `len(Text)` across TextContent entries.
 	// Non-standard (the registry has no equivalent today); scoped under the

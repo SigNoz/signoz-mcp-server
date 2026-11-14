@@ -110,6 +110,23 @@ func main() {
 
 	srv := mcpserver.NewMCPServer(logger, handler, cfg, analyticsInstance, meters)
 
+	// Feedback has its own client, so it is delivered with usage analytics off.
+	feedbackInstance := noopanalytics.New()
+	if cfg.Feedback.Enabled {
+		feedbackInstance, err = segmentanalytics.New(logger, analytics.Config{Enabled: true, Segment: cfg.Feedback.Segment})
+		if err != nil {
+			logger.WarnContext(ctx, "Failed to initialize agent feedback delivery, continuing with feedback off", logpkg.ErrAttr(err))
+			feedbackInstance = noopanalytics.New()
+		} else {
+			srv.EnableFeedback(feedbackInstance)
+			destination := "SigNoz"
+			if cfg.SegmentKey != "" {
+				destination = "the SEGMENT_KEY source"
+			}
+			logger.InfoContext(ctx, "Agent feedback from signoz_submit_feedback is on; set FEEDBACK_ENABLED=false to turn it off", slog.String("destination", destination))
+		}
+	}
+
 	runGroup, runCtx := errgroup.WithContext(ctx)
 	runGroup.Go(func() error {
 		return srv.Run(runCtx)
@@ -175,6 +192,10 @@ func main() {
 	}
 	if err := analyticsInstance.Stop(shutCtx); err != nil {
 		logger.ErrorContext(ctx, "Failed to stop analytics", logpkg.ErrAttr(err))
+		shutdownErr = errors.Join(shutdownErr, err)
+	}
+	if err := feedbackInstance.Stop(shutCtx); err != nil {
+		logger.ErrorContext(ctx, "Failed to stop agent feedback delivery", logpkg.ErrAttr(err))
 		shutdownErr = errors.Join(shutdownErr, err)
 	}
 	if shutdownMeter != nil {
