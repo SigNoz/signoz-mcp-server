@@ -1152,8 +1152,8 @@ Runs a SigNoz Query Builder v5 request that the dedicated tools cannot express, 
 | `SIGNOZ_CUSTOM_HEADERS` | Extra HTTP headers added to every API request, useful when SigNoz is behind a reverse proxy requiring auth (e.g. `CF-Access-Client-Id:id.access,CF-Access-Client-Secret:secret`). Format: `Key1:Value1,Key2:Value2` | No |
 | `SIGNOZ_INSTANCE_URL_ALLOWLIST` | Multi-tenant (http) only: comma-separated allowlist of SigNoz backend hosts the server will proxy to. Entries are exact hosts (`signoz.example.com`) or wildcards (`*.us.signoz.cloud`, which matches any subdomain ending in `.us.signoz.cloud`); a scheme/port/path accidentally included in an entry is tolerated and reduced to the bare host. When set, SigNoz instance URLs that do not match are refused at every ingress: the OAuth setup form and `X-SigNoz-URL` header return HTTP 403, the OAuth token endpoint (incl. existing refresh tokens) returns `invalid_grant`, and `/mcp` requests via an OAuth token return 403. All increment a `disallowed_signoz_url`-tagged failure metric for alerting (not logged per-request, to avoid noise from misconfigured/looping clients), and the rejection message points SigNoz Cloud users to their region's MCP URL (`mcp.<region>.signoz.cloud`) with a docs link. Empty/unset allows no host other than `SIGNOZ_URL`, so a server without `SIGNOZ_URL` must set it. The operator's own `SIGNOZ_URL` is always allowed. | No |
 | `ANALYTICS_ENABLED` | Enable product analytics (`true`/`false`; default: `false`) | No |
-| `SEGMENT_KEY` | Segment write key used only when analytics is enabled | No |
-| `FEEDBACK_ENABLED` | `false` turns off `signoz_submit_feedback`, so the server sends no agent feedback to SigNoz (default: `true`). See [Agent feedback](#agent-feedback). | No |
+| `SEGMENT_KEY` | Segment write key. Product analytics uses it only when `ANALYTICS_ENABLED` is `true`. [Agent feedback](#agent-feedback) goes to it whenever it is set. | No |
+| `FEEDBACK_ENABLED` | `false` turns off `signoz_submit_feedback`, so the server sends no agent feedback (default: `true`). See [Agent feedback](#agent-feedback). | No |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP gRPC endpoint for the MCP server's own traces and metrics. Internal telemetry export is disabled when no OTLP endpoint/exporter is configured. For plaintext collectors, use an `http://` endpoint such as `http://localhost:4317`. | No |
 | `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | Trace-specific OTLP gRPC endpoint; overrides `OTEL_EXPORTER_OTLP_ENDPOINT` for traces. | No |
 | `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` | Metrics-specific OTLP gRPC endpoint; overrides `OTEL_EXPORTER_OTLP_ENDPOINT` for metrics. | No |
@@ -1164,9 +1164,12 @@ The MCP server does not run an OTLP log exporter; logs are emitted as JSON to st
 
 ### Agent feedback
 
-Release binaries and Docker images send one thing to SigNoz by default: the reports an agent submits with `signoz_submit_feedback`. A report leaves the server only when the agent calls that tool. Nothing is sent in the background, and no usage events are sent. A build from source (`make build`, `go install`, the local `Dockerfile`) has no write key and sends nothing.
+Release binaries and Docker images send one thing to SigNoz by default: the reports an agent submits with `signoz_submit_feedback`. A report leaves the server only when the agent calls that tool. Nothing is sent in the background, and no usage events are sent. A build from source (`make build`, `go install`, the local `Dockerfile`) has no write key and sends nothing unless you set `SEGMENT_KEY`.
 
-Feedback is separate from product analytics. It has its own Segment source, whose write key is built into the release, and its own switch. It does not read `ANALYTICS_ENABLED` or `SEGMENT_KEY`, and those settings do not send feedback anywhere.
+Feedback is separate from product analytics. It has its own switch and does not read `ANALYTICS_ENABLED`. Where a report goes depends on `SEGMENT_KEY`:
+
+- **`SEGMENT_KEY` not set**: SigNoz's feedback source in Segment, whose write key is built into the release.
+- **`SEGMENT_KEY` set**: that Segment source, in place of the built-in one, whether or not `ANALYTICS_ENABLED` is `true`. The MCP server SigNoz hosts runs this way, so its feedback arrives beside its usage events.
 
 Each report carries:
 

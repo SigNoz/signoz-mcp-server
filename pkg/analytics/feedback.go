@@ -17,23 +17,30 @@ const (
 	DeploymentSelfHosted = "self_hosted"
 )
 
-// feedbackKey is the Segment write key for agent feedback. Release builds set
-// it through ldflags; a build from source keeps "<unset>" and sends nothing.
+// feedbackKey is the Segment write key for agent feedback when the operator
+// set no SEGMENT_KEY. Release builds set it through ldflags; a build from
+// source keeps "<unset>".
 var feedbackKey = "<unset>"
 
 // FeedbackConfig is separate from Config on purpose: agent feedback has its own
-// Segment source and switch, and never reads ANALYTICS_ENABLED or SEGMENT_KEY.
+// switch and never reads ANALYTICS_ENABLED.
 type FeedbackConfig struct {
 	Enabled bool
 	Segment SegmentConfig
 }
 
-// FeedbackConfigFromEnv turns feedback on for a build that carries a key,
-// unless FEEDBACK_ENABLED is set to anything but a true value. An unreadable
-// value turns feedback off, so a mistyped opt-out still opts out. An empty
-// value counts as unset, like every other setting this server reads.
-func FeedbackConfigFromEnv() FeedbackConfig {
-	if feedbackKey == "" || feedbackKey == "<unset>" {
+// FeedbackConfigFromEnv sends feedback to segmentKey, the operator's
+// SEGMENT_KEY, and to the key built into the release when that is empty. With
+// neither, feedback is off. FEEDBACK_ENABLED set to anything but a true value
+// also turns it off: an unreadable value counts as off, so a mistyped opt-out
+// still opts out, and an empty value counts as unset, like every other setting
+// this server reads.
+func FeedbackConfigFromEnv(segmentKey string) FeedbackConfig {
+	key := segmentKey
+	if key == "" && feedbackKey != "<unset>" {
+		key = feedbackKey
+	}
+	if key == "" {
 		return FeedbackConfig{}
 	}
 	if value := strings.TrimSpace(os.Getenv(FeedbackEnabledEnv)); value != "" {
@@ -41,7 +48,7 @@ func FeedbackConfigFromEnv() FeedbackConfig {
 			return FeedbackConfig{}
 		}
 	}
-	return FeedbackConfig{Enabled: true, Segment: SegmentConfig{Key: feedbackKey}}
+	return FeedbackConfig{Enabled: true, Segment: SegmentConfig{Key: key}}
 }
 
 // anonymousIDSalt scopes the hash to this server, so it cannot be matched

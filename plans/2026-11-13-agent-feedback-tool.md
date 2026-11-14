@@ -18,8 +18,8 @@ Three constraints came with the request:
   Grafana MCP, ClickStack, Executor, and SigNoz itself all report by default with an opt-out.
 - SigNoz Cloud sets `ANALYTICS_ENABLED=true` and `SEGMENT_KEY`. That flow must keep its events, key,
   and identity unchanged.
-- Feedback is not analytics. It gets its own key and its own switch, and the analytics settings keep
-  the single meaning they have today.
+- Feedback is not analytics. It gets its own switch, a key of its own for installs that set none,
+  and `ANALYTICS_ENABLED` keeps the single meaning it has today.
 
 Before this change the server sent nothing from a self-hosted install: `ANALYTICS_ENABLED` defaulted to
 `false` and no release carried a Segment key.
@@ -29,14 +29,15 @@ Before this change the server sent nothing from a self-hosted install: `ANALYTIC
 - One tool, `signoz_submit_feedback`, with a required `message` and optional `category`, `toolName`,
   and `model`. Its description asks the agent to mask personal and sensitive data before sending and
   to tell the user what it sent.
-- Feedback has its own Segment source. Release builds carry that source's write key through ldflags
+- Feedback goes to `SEGMENT_KEY` when the operator set one, and otherwise to a Segment source of
+  its own. Release builds carry that source's write key through ldflags
   (`pkg/analytics.feedbackKey`), as SigNoz and foundry do. A build from source keeps `<unset>` and
-  sends nothing.
+  sends nothing unless `SEGMENT_KEY` is set.
 - One switch, `FEEDBACK_ENABLED` (default `true`). With it off, or without a key, the tool returns a
   coded `UNSUPPORTED` error and sends nothing.
-- `ANALYTICS_ENABLED` and `SEGMENT_KEY` are untouched: `pkg/analytics/config.go`, the usage events,
-  and their gate are the same as before this change. Feedback never goes to the usage analytics
-  source, and usage events never go to the feedback source.
+- Usage analytics is untouched: `pkg/analytics/config.go`, the usage events, and their gate
+  (`ANALYTICS_ENABLED` and `SEGMENT_KEY`) are the same as before this change. Usage events never go
+  to the built-in feedback source.
 - Every report carries a `deployment` property, derived from the SigNoz instance the call targets.
   A URL under `signoz.cloud` is `cloud`, and the report carries the org, user, and instance URL the
   hosted usage events carry. Any other URL is `self_hosted`, and the report is attributed to an
@@ -67,14 +68,30 @@ Before this change the server sent nothing from a self-hosted install: `ANALYTIC
 
 ### 2026-11-13 — feedback is separate from analytics
 
-- Decision: feedback has its own Segment source, build-time key, and switch (`FEEDBACK_ENABLED`). It
-  does not read `ANALYTICS_ENABLED`, `SEGMENT_KEY`, or `DO_NOT_TRACK`.
+- Decision: feedback has its own switch (`FEEDBACK_ENABLED`), delivery client, and build-time key.
+  It does not read `ANALYTICS_ENABLED` or `DO_NOT_TRACK`. `SEGMENT_KEY` only picks its destination
+  (next decision).
 - Rationale: the first version resolved the three variables into operator, anonymous, and off modes.
   Each variable then picked both the destination and how much identity was attached, and
   `DO_NOT_TRACK` turned off one mode but not the other. With a separate path each setting has one
   job, and the Cloud analytics code is the same as before the change.
 - Alternatives rejected: the three-mode resolver; `DO_NOT_TRACK`, which is a switch against
   background tracking, while a report leaves only on an explicit tool call the user can see.
+
+### 2026-11-14 — `SEGMENT_KEY` takes the feedback when it is set
+
+- Decision: feedback goes to `SEGMENT_KEY` when the operator set one, and to the build-time key
+  otherwise. `ANALYTICS_ENABLED` does not enter into it.
+- Rationale: the build-time key is the source for self-hosted installs. SigNoz Cloud already sets
+  `SEGMENT_KEY`, and its feedback belongs beside its usage events, in the source the team already
+  reads. This was the product owner's call in review.
+- Consequence: a self-hoster who sets their own `SEGMENT_KEY` receives the feedback in their own
+  Segment source and SigNoz receives none, also from a build from source. Who a report is
+  attributed to still comes from the SigNoz URL, not from the key.
+- Feedback keeps a Segment client of its own even when both use `SEGMENT_KEY`, so it is delivered
+  when `ANALYTICS_ENABLED` is `false` and the usage client does not exist.
+- Alternative rejected: `SEGMENT_KEY` only when `ANALYTICS_ENABLED` is `true`, which would tie the
+  feedback destination to the analytics switch again.
 
 ### 2026-11-13 — a self-hosted install sends feedback only, not usage events
 
@@ -88,7 +105,7 @@ Before this change the server sent nothing from a self-hosted install: `ANALYTIC
 - Decision: a call whose SigNoz URL host ends in `.signoz.cloud` sends the org, user, and instance
   URL and is labeled `cloud`. Every other call, including one with a missing or unparseable URL, is
   labeled `self_hosted` and sends a hashed org.
-- Rationale: both kinds of report share one feedback source, so the event must say which it is.
+- Rationale: one event name covers both kinds of report, so the event must say which it is.
   Cloud reports are identified so the team can follow up with the customer; that was the product
   owner's call. Only SigNoz can serve a host under `signoz.cloud`, so a self-hosted SigNoz cannot
   match, and the URL needs no setting on any deployment.
@@ -176,6 +193,16 @@ Before this change the server sent nothing from a self-hosted install: `ANALYTIC
   - with a key, `ANALYTICS_ENABLED=true`, and `SEGMENT_KEY`: queued, and both Segment clients
     attempt an upload;
   - the same with `FEEDBACK_ENABLED=false`: `UNSUPPORTED`, and only the usage client uploads.
+- After `SEGMENT_KEY` became the feedback destination, binaries run in stdio mode against a fake
+  SigNoz:
+  - from source with `SEGMENT_KEY`: queued, the startup line names the `SEGMENT_KEY` source, and
+    the server attempts a Segment upload;
+  - the same with `FEEDBACK_ENABLED=false`: `UNSUPPORTED`, no startup line, no upload attempt;
+  - with a key and no settings: queued, and the startup line names SigNoz;
+  - with a key, `SEGMENT_KEY`, and `ANALYTICS_ENABLED=true`: queued, the startup line names the
+    `SEGMENT_KEY` source, and both clients attempt an upload.
+  The upload is encrypted, so which key a client used is proven by the settings table, not by
+  these runs.
 - `make ci`.
 - Not run: goreleaser (the Pro distribution is not installed locally) and the primus Docker build.
   The ldflags template and the quoted flag string were checked by hand against goreleaser's `.Env`
@@ -186,7 +213,8 @@ Before this change the server sent nothing from a self-hosted install: `ANALYTIC
 ## Outcome
 
 Shipped with feedback separated from analytics, after a first version that resolved both from the
-analytics settings proved confusing in review. One thing must be set outside this repo before
-feedback flows: the `FEEDBACK_SEGMENT_KEY` repository variable, because an empty key resolves to off.
+analytics settings proved confusing in review. Feedback goes to `SEGMENT_KEY` where one is set, so
+SigNoz Cloud needs no change. One thing must be set outside this repo before feedback flows from
+other installs: the `FEEDBACK_SEGMENT_KEY` repository variable, because an empty key resolves to off.
 Deferred: nudges in server instructions and upstream error text, a triage loop for the reports, and
 whether `SigNoz/agent-skills` should teach when to call the tool; all tracked in the issue above.

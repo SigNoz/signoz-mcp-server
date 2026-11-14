@@ -110,7 +110,7 @@ func main() {
 
 	srv := mcpserver.NewMCPServer(logger, handler, cfg, analyticsInstance, meters)
 
-	// Feedback has its own Segment source: the key built into the release.
+	// Feedback has its own client, so it is delivered with usage analytics off.
 	feedbackInstance := noopanalytics.New()
 	if cfg.Feedback.Enabled {
 		feedbackInstance, err = segmentanalytics.New(logger, analytics.Config{Enabled: true, Segment: cfg.Feedback.Segment})
@@ -119,7 +119,11 @@ func main() {
 			feedbackInstance = noopanalytics.New()
 		} else {
 			srv.EnableFeedback(feedbackInstance)
-			logger.InfoContext(ctx, "Agent feedback from signoz_submit_feedback is sent to SigNoz; set FEEDBACK_ENABLED=false to turn it off")
+			destination := "SigNoz"
+			if cfg.SegmentKey != "" {
+				destination = "the SEGMENT_KEY source"
+			}
+			logger.InfoContext(ctx, "Agent feedback from signoz_submit_feedback is on; set FEEDBACK_ENABLED=false to turn it off", slog.String("destination", destination))
 		}
 	}
 

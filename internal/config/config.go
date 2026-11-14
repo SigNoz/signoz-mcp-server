@@ -41,8 +41,8 @@ type Config struct {
 	AnalyticsEnabled bool
 	SegmentKey       string
 
-	// Feedback is agent feedback from signoz_submit_feedback. It is independent
-	// of the analytics settings above.
+	// Feedback is agent feedback from signoz_submit_feedback. It goes to
+	// SegmentKey when that is set, and does not depend on AnalyticsEnabled.
 	Feedback analytics.FeedbackConfig
 
 	DocsRefreshInterval     time.Duration
@@ -154,7 +154,7 @@ func LoadConfig() (*Config, error) {
 		InstanceURLAllowlist:    instanceURLAllowlist,
 		AnalyticsEnabled:        getEnvBool(AnalyticsEnabledEnv, false),
 		SegmentKey:              getEnv(SegmentKeyEnv, ""),
-		Feedback:                analytics.FeedbackConfigFromEnv(),
+		Feedback:                analytics.FeedbackConfigFromEnv(getEnv(SegmentKeyEnv, "")),
 		DocsRefreshInterval:     docsRefreshInterval,
 		DocsFullRefreshInterval: docsFullRefreshInterval,
 		DocsRefreshDisabled:     docsRefreshDisabled,
