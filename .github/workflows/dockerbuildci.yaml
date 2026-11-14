@@ -2,7 +2,8 @@ name: dockerbuildci
 on:
   push:
     tags:
-      - v*
+      - "v[0-9]+.[0-9]+.[0-9]+"
+      - "v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
     branches:
       - main
 
@@ -116,3 +117,33 @@ jobs:
           ./mcp-publisher validate
           ./mcp-publisher login github-oidc
           ./mcp-publisher publish
+
+  # Opens the chart bump PR on SigNoz/charts once the image is pushed; chart.sh skips pre-release
+  # tags. It pushes with the app token, not GITHUB_TOKEN, so the PR's checks run.
+  charts:
+    needs: build
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: self-checkout
+        uses: actions/checkout@v4
+      - name: go-install
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+      - id: token
+        name: github-token-gen
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.PRIMUS_APP_ID }}
+          private-key: ${{ secrets.PRIMUS_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: charts
+      - name: chart
+        env:
+          GITHUB_TOKEN: ${{ steps.token.outputs.token }}
+          GIT_USER: primus-bot[bot]
+          GIT_EMAIL: 171087277+primus-bot[bot]@users.noreply.github.com
+        run: ./scripts/chart.sh "${GITHUB_REF_NAME}"
