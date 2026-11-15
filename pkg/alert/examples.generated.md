@@ -233,7 +233,6 @@ Wraps a builder query in the `anomaly` function with daily seasonality, so SigNo
     "summary": "Span ingestion anomaly"
   },
   "condition": {
-    "algorithm": "standard",
     "compositeQuery": {
       "panelType": "graph",
       "queries": [
