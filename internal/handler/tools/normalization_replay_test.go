@@ -71,8 +71,10 @@ func TestAdvertisedSchemasAdmitEveryArgumentFormHandlersRead(t *testing.T) {
 			if !called {
 				t.Fatalf("raw-wire call did not reach the handler: %s", encoded)
 			}
-			if strings.Contains(string(encoded), inputValidationNoticePrefix) {
-				t.Fatalf("accepted advertised form must not trigger a validation notice: %s", encoded)
+			// The stub handler drops the registration's alias policy, so check only
+			// the schema-mismatch notice, not the ignored-arguments one.
+			if strings.Contains(string(encoded), inputValidationNoticeAdvice) {
+				t.Fatalf("accepted advertised form must not trigger a schema-mismatch notice: %s", encoded)
 			}
 		})
 	}

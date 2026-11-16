@@ -9,10 +9,12 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"reflect"
 	"strings"
 	"time"
 	"unicode/utf8"
 
+	"github.com/SigNoz/signoz-mcp-server/internal/apiclient/apitypes"
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 
 	"github.com/SigNoz/signoz-mcp-server/pkg/dashboard"
@@ -168,6 +170,20 @@ func updatableFieldsFromSchema(schemaJSON []byte) map[string]struct{} {
 	return fields
 }
 
+// fetchedDashboardFields lists the top-level fields of a signoz_get_dashboard
+// body. signoz_update_dashboard takes that body as-is and keeps only
+// updatableDashboardFields, so the rest are accepted, not ignored.
+func fetchedDashboardFields() []string {
+	fields := []string{"webUrl"} // added by util.InjectWebURL
+	gettable := reflect.TypeFor[apitypes.DashboardtypesGettableDashboardV2]()
+	for i := range gettable.NumField() {
+		if name, _, _ := strings.Cut(gettable.Field(i).Tag.Get("json"), ","); name != "" && name != "-" {
+			fields = append(fields, name)
+		}
+	}
+	return fields
+}
+
 // rawInputSchema replaces the default object schema with a pre-built schema.
 func rawInputSchema(schema []byte) mcp.ToolOption {
 	return func(t *mcp.Tool) {
@@ -227,7 +243,7 @@ func (h *Handler) RegisterDashboardHandlers(s *mcp.Server) {
 		rawInputSchema(createDashboardSchema),
 	)
 
-	h.addTool(s, createDashboardTool, h.handleCreateDashboard)
+	h.addTool(s, createDashboardTool, h.handleCreateDashboard, forwardsArguments())
 
 	updateDashboardTool := mcp.NewTool(
 		"signoz_update_dashboard",
@@ -239,7 +255,7 @@ func (h *Handler) RegisterDashboardHandlers(s *mcp.Server) {
 		rawInputSchema(updateDashboardSchema),
 	)
 
-	h.addTool(s, updateDashboardTool, h.handleUpdateDashboard)
+	h.addTool(s, updateDashboardTool, h.handleUpdateDashboard, acceptsUndeclaredArguments(fetchedDashboardFields()...))
 
 	patchDashboardTool := mcp.NewTool(
 		"signoz_patch_dashboard",

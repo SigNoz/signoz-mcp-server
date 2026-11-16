@@ -14,6 +14,10 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/pkg/views"
 )
 
+// legacyViewIDArgument is the saved-view id alias the handlers still read; the
+// input schemas advertise only "id".
+const legacyViewIDArgument = "viewId"
+
 // RegisterViewHandlers registers the saved-views CRUD tools plus the
 // signoz://view/instructions and signoz://view/examples resources.
 func (h *Handler) RegisterViewHandlers(s *mcp.Server) {
@@ -38,7 +42,7 @@ func (h *Handler) RegisterViewHandlers(s *mcp.Server) {
 		// for schema-aware clients. The handler validates id/viewId presence.
 		mcp.WithString("id", mcp.Description("Saved view UUID. Use signoz_list_views to discover IDs. Required.")),
 	)
-	h.addTool(s, getTool, h.handleGetView)
+	h.addTool(s, getTool, h.handleGetView, acceptsUndeclaredArguments(legacyViewIDArgument))
 
 	createTool := mcp.NewTool("signoz_create_view",
 		withCreateToolAnnotations(),
@@ -47,7 +51,7 @@ func (h *Handler) RegisterViewHandlers(s *mcp.Server) {
 		),
 		mcp.WithInputSchema[types.CreateViewInput](),
 	)
-	h.addTool(s, createTool, h.handleCreateView)
+	h.addTool(s, createTool, h.handleCreateView, forwardsArguments())
 
 	updateTool := mcp.NewTool("signoz_update_view",
 		withUpdateToolAnnotations(),
@@ -56,7 +60,7 @@ func (h *Handler) RegisterViewHandlers(s *mcp.Server) {
 		),
 		mcp.WithInputSchema[types.UpdateViewInput](),
 	)
-	h.addTool(s, updateTool, h.handleUpdateView)
+	h.addTool(s, updateTool, h.handleUpdateView, acceptsUndeclaredArguments(legacyViewIDArgument))
 
 	deleteTool := mcp.NewTool("signoz_delete_view",
 		withDeleteToolAnnotations(),
@@ -64,7 +68,7 @@ func (h *Handler) RegisterViewHandlers(s *mcp.Server) {
 		mcp.WithDescription("Use this when the user has confirmed they want to permanently delete one saved view. The deletion is irreversible. Use signoz_list_views to discover the UUID when needed; do not use this for dashboards; delete those with signoz_delete_dashboard."),
 		mcp.WithString("id", mcp.Description("UUID of the saved view to delete. Required; use signoz_list_views to discover it.")),
 	)
-	h.addTool(s, deleteTool, h.handleDeleteView)
+	h.addTool(s, deleteTool, h.handleDeleteView, acceptsUndeclaredArguments(legacyViewIDArgument))
 
 	viewInstructions := mcp.NewResource(
 		"signoz://view/instructions",
@@ -113,7 +117,7 @@ var serverPopulatedViewFields = []string{
 // clean request body.
 func stripNonBodyFields(m map[string]any) {
 	delete(m, "searchContext")
-	delete(m, "viewId")
+	delete(m, legacyViewIDArgument)
 	for _, k := range serverPopulatedViewFields {
 		delete(m, k)
 	}
@@ -152,8 +156,8 @@ func unwrapViewEnvelope(args map[string]any) {
 	if v, ok := args["searchContext"]; ok {
 		preserved["searchContext"] = v
 	}
-	if v, ok := args["viewId"]; ok {
-		preserved["viewId"] = v
+	if v, ok := args[legacyViewIDArgument]; ok {
+		preserved[legacyViewIDArgument] = v
 	}
 	for k := range args {
 		delete(args, k)
@@ -222,7 +226,7 @@ func (h *Handler) handleGetView(ctx context.Context, req mcp.CallToolRequest) (*
 	if !ok {
 		return notAJSONObjectError(), nil
 	}
-	viewID := readResourceID(args, "viewId")
+	viewID := readResourceID(args, legacyViewIDArgument)
 	if viewID == "" {
 		h.logger.WarnContext(ctx, "get_view missing id")
 		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "id" is required. Provide a valid saved view UUID. Use signoz_list_views to see available views.`), nil
@@ -281,7 +285,7 @@ func (h *Handler) handleUpdateView(ctx context.Context, req mcp.CallToolRequest)
 		return notAConfigObjectError(), nil
 	}
 
-	viewID := readResourceID(args, "viewId")
+	viewID := readResourceID(args, legacyViewIDArgument)
 	if viewID == "" {
 		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "id" is required. Use signoz_list_views to find the UUID.`), nil
 	}
@@ -345,7 +349,7 @@ func (h *Handler) handleDeleteView(ctx context.Context, req mcp.CallToolRequest)
 	if !ok {
 		return notAJSONObjectError(), nil
 	}
-	viewID := readResourceID(args, "viewId")
+	viewID := readResourceID(args, legacyViewIDArgument)
 	if viewID == "" {
 		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "id" is required. Use signoz_list_views to find the UUID.`), nil
 	}

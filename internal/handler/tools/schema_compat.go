@@ -31,7 +31,55 @@ const (
 	undeclaredArgumentConstraint = "undeclared_argument"
 	validationLogInterval        = time.Minute
 	inputValidationNoticeAdvice  = " The call still ran best-effort: mismatched values may have been ignored or replaced with defaults. Adjust the flagged parameter(s) and re-call if the results look off."
+
+	// Bounds on the client-chosen key names an ignored-arguments notice repeats.
+	maxReflectedArgumentNames  = 10
+	maxReflectedArgumentLength = 64
 )
+
+// toolOption records how one tool's handler treats top-level arguments its
+// input schema does not declare.
+type toolOption func(*undeclaredArgumentPolicy)
+
+type undeclaredArgumentPolicy struct {
+	accepted map[string]struct{}
+	forwards bool
+}
+
+// acceptsUndeclaredArguments names undeclared keys the handler takes on
+// purpose (a legacy alias it still reads, or a fetched body's read-only field
+// it drops by design), so the ignored-arguments notice leaves them out.
+func acceptsUndeclaredArguments(names ...string) toolOption {
+	return func(policy *undeclaredArgumentPolicy) {
+		if policy.accepted == nil {
+			policy.accepted = make(map[string]struct{}, len(names))
+		}
+		for _, name := range names {
+			policy.accepted[name] = struct{}{}
+		}
+	}
+}
+
+// forwardsArguments marks a tool whose handler sends its whole argument object
+// to SigNoz as a resource body, so SigNoz, not this server, decides what an
+// undeclared key means.
+func forwardsArguments() toolOption {
+	return func(policy *undeclaredArgumentPolicy) { policy.forwards = true }
+}
+
+// ignored returns the undeclared keys the handler drops without reading.
+func (policy undeclaredArgumentPolicy) ignored(undeclared []string) []string {
+	if policy.forwards {
+		return nil
+	}
+	var ignored []string
+	for _, name := range undeclared {
+		if _, accepted := policy.accepted[name]; !accepted {
+			ignored = append(ignored, name)
+		}
+	}
+	return ignored
+}
 
 type validationLogState struct {
 	nextAllowedUnixNano atomic.Int64
@@ -79,7 +127,11 @@ var schemaArrayFields = map[string]struct{}{
 	"prefixItems": {},
 }
 
-func (h *Handler) addTool(s *mcp.Server, tool mcp.Tool, handler mcp.ToolHandlerFunc) {
+func (h *Handler) addTool(s *mcp.Server, tool mcp.Tool, handler mcp.ToolHandlerFunc, options ...toolOption) {
+	var policy undeclaredArgumentPolicy
+	for _, option := range options {
+		option(&policy)
+	}
 	tool = cloneTool(tool)
 	normalizeToolSchemas(&tool)
 
@@ -93,7 +145,7 @@ func (h *Handler) addTool(s *mcp.Server, tool mcp.Tool, handler mcp.ToolHandlerF
 	}
 
 	if input != nil || output != nil {
-		handler = h.validationDecorator(tool.Name, input, output, handler)
+		handler = h.validationDecorator(tool.Name, input, output, policy, handler)
 	}
 	handler = h.errorCodeDecorator(tool.Name, handler)
 	handler = h.toolInvocationDecorator(tool.Name, handler)
@@ -229,22 +281,25 @@ func compileToolSchema(toolName, direction string, raw json.RawMessage) (*compil
 }
 
 // validationDecorator owns schema validation and never rejects a call.
-// Input mismatches are served best-effort with an in-band notice appended to
-// the successful result, so agents that read errors can self-correct while
-// agents that don't still get a usable answer. Output mismatches and missing
-// structured content are telemetry-only (fail open, never silent) — they are
-// our defects, not the caller's.
-func (h *Handler) validationDecorator(toolName string, input, output *compiledToolSchema, next mcp.ToolHandlerFunc) mcp.ToolHandlerFunc {
+// Input mismatches and arguments the handler ignores are served best-effort
+// with an in-band notice appended to the successful result, so agents that
+// read results can self-correct while agents that don't still get a usable
+// answer. Output mismatches and missing structured content are telemetry-only
+// (fail open, never silent): they are our defects, not the caller's.
+func (h *Handler) validationDecorator(toolName string, input, output *compiledToolSchema, policy undeclaredArgumentPolicy, next mcp.ToolHandlerFunc) mcp.ToolHandlerFunc {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		var notice string
+		var notices []string
 		if input != nil {
-			if undeclared := undeclaredArguments(input, req.Params.Arguments); len(undeclared) > 0 {
-				h.recordUndeclaredArguments(ctx, req, toolName, undeclared)
-			}
 			if err := validateArguments(input.validator, req); err != nil {
 				mismatch := diagnoseValidationMismatch(input, req.Params.Arguments, true)
 				h.recordValidationMismatch(ctx, req, toolName, "input", mismatch.path, mismatch.constraint)
-				notice = inputValidationNotice(mismatch)
+				notices = append(notices, inputValidationNotice(mismatch))
+			}
+			if undeclared := undeclaredArguments(input, req.Params.Arguments); len(undeclared) > 0 {
+				h.recordUndeclaredArguments(ctx, req, toolName, undeclared)
+				if ignored := policy.ignored(undeclared); len(ignored) > 0 {
+					notices = append(notices, ignoredArgumentsNotice(ignored))
+				}
 			}
 		}
 
@@ -252,8 +307,10 @@ func (h *Handler) validationDecorator(toolName string, input, output *compiledTo
 		if err != nil || result == nil {
 			return result, err
 		}
-		if notice != "" && !result.IsError {
-			result.Content = append(result.Content, mcp.NewTextContent(notice))
+		if !result.IsError {
+			for _, notice := range notices {
+				result.Content = append(result.Content, mcp.NewTextContent(notice))
+			}
 		}
 		if result.IsError || output == nil {
 			return result, nil
@@ -396,15 +453,80 @@ func inputValidationNotice(mismatch validationMismatch) string {
 	return inputValidationNoticePrefix + detail + inputValidationNoticeAdvice
 }
 
+// ignoredArgumentsNotice is appended to a successful result whose arguments
+// included keys the handler dropped without reading. The keys are the
+// caller's own, but only short identifier-like names are repeated back; any
+// other name is only counted.
+func ignoredArgumentsNotice(names []string) string {
+	var listed []string
+	for _, name := range names {
+		if len(listed) < maxReflectedArgumentNames && reflectableArgumentName(name) {
+			listed = append(listed, name)
+		}
+	}
+	unlisted := len(names) - len(listed)
+
+	var subject string
+	switch {
+	case len(listed) == 0:
+		subject = countedNoun(unlisted, "argument", "arguments")
+	case len(listed) == 1 && unlisted == 0:
+		subject = fmt.Sprintf("the argument %q", listed[0])
+	case unlisted == 0:
+		subject = "the arguments " + quotedParameterList(listed)
+	default:
+		subject = "the arguments " + joinList(append(quoteEach(listed), countedNoun(unlisted, "other", "others")))
+	}
+	it, they, was := "them", "they", "were"
+	if len(names) == 1 {
+		it, they, was = "it", "it", "was"
+	}
+	return fmt.Sprintf("%s this tool ignored %s because its input schema does not declare %s, so the call ran without %s. If %s %s meant to change the result, re-call using the parameters this tool declares.",
+		inputValidationNoticePrefix, subject, it, it, they, was)
+}
+
+func countedNoun(count int, singular, plural string) string {
+	if count == 1 {
+		return "1 " + singular
+	}
+	return fmt.Sprintf("%d %s", count, plural)
+}
+
+func reflectableArgumentName(name string) bool {
+	if name == "" || len(name) > maxReflectedArgumentLength {
+		return false
+	}
+	for i, r := range name {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r == '_':
+		case i > 0 && (r >= '0' && r <= '9' || r == '.' || r == '-'):
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 func quotedParameterList(parameters []string) string {
-	quoted := make([]string, len(parameters))
-	for i, parameter := range parameters {
-		quoted[i] = fmt.Sprintf("%q", parameter)
+	return joinList(quoteEach(parameters))
+}
+
+func quoteEach(values []string) []string {
+	quoted := make([]string, len(values))
+	for i, value := range values {
+		quoted[i] = fmt.Sprintf("%q", value)
 	}
-	if len(quoted) == 2 {
-		return quoted[0] + " and " + quoted[1]
+	return quoted
+}
+
+func joinList(items []string) string {
+	switch len(items) {
+	case 1:
+		return items[0]
+	case 2:
+		return items[0] + " and " + items[1]
 	}
-	return strings.Join(quoted[:len(quoted)-1], ", ") + ", and " + quoted[len(quoted)-1]
+	return strings.Join(items[:len(items)-1], ", ") + ", and " + items[len(items)-1]
 }
 
 func boundedMetadata(value string) string {
@@ -440,7 +562,7 @@ func (h *Handler) recordValidationMismatch(ctx context.Context, req mcp.CallTool
 
 // undeclaredArguments lists the top-level argument keys the tool's input
 // schema does not declare. Input schemas are opened, so the validator never
-// flags them and handlers silently ignore any they don't read.
+// flags them; ignoredArgumentsNotice reports the ones the handler doesn't read.
 func undeclaredArguments(schema *compiledToolSchema, arguments any) []string {
 	object, ok := arguments.(map[string]any)
 	if !ok {
@@ -456,9 +578,9 @@ func undeclaredArguments(schema *compiledToolSchema, arguments any) []string {
 	return undeclared
 }
 
-// recordUndeclaredArguments sizes how often clients send arguments a tool
-// ignores before anything rejects them. The key names are client-chosen, so
-// they go only into the log, never into metric dimensions or limiter keys.
+// recordUndeclaredArguments counts every undeclared key, including the aliases
+// a handler still reads. The key names are client-chosen, so they go only into
+// the log, never into metric dimensions or limiter keys.
 func (h *Handler) recordUndeclaredArguments(ctx context.Context, req mcp.CallToolRequest, toolName string, names []string) {
 	if h.logger.Enabled(ctx, slog.LevelWarn) && h.shouldLogValidationRequest(toolName, "input", undeclaredArgumentPath, undeclaredArgumentConstraint) {
 		h.logger.WarnContext(ctx, "tool called with arguments its input schema does not declare (repeats rate-limited; see mcp.tool.validation.mismatches)",

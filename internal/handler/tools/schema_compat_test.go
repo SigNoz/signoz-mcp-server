@@ -5,10 +5,15 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
+	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/SigNoz/signoz-mcp-server/pkg/toolerrors"
@@ -155,4 +160,92 @@ func containsString(values []string, want string) bool {
 		}
 	}
 	return false
+}
+
+// A successful call names the undeclared arguments its handler dropped, so the
+// agent learns part of its request had no effect. Aliases the handler still
+// reads and a fetched body's read-only fields are not ignored, so they draw no
+// notice.
+func TestSuccessfulResultNamesTheArgumentsTheToolIgnored(t *testing.T) {
+	var requests []string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Method+" "+r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.URL.Path == "/api/v5/query_range":
+			_, _ = w.Write([]byte(`{"status":"success","data":{"type":"scalar","data":{"results":[{"queryName":"A","columns":[],"data":[]}]}}}`))
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/api/v2/rules/"):
+			_, _ = w.Write([]byte(`{"status":"success","data":{"id":"rule-1","alert":"High CPU"}}`))
+		case r.Method == http.MethodPut && strings.HasPrefix(r.URL.Path, "/api/v2/dashboards/"):
+			_, _ = w.Write([]byte(`{"status":"success","data":{"id":"dash-1","name":"checkout","schemaVersion":"v6","spec":{}}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(upstream.Close)
+	h := newTestHandler(signozclient.NewClient(logpkg.New("error"), upstream.URL, "test-api-key", "SIGNOZ-API-KEY", nil))
+	server := newMCPTestServer()
+	h.RegisterAllToolHandlers(server)
+
+	const fetchedDashboard = `{"id":"dash-1","name":"checkout","schemaVersion":"v6","tags":[],"image":"",` +
+		`"spec":{"display":{"name":"Checkout"},"variables":[],"panels":{},"layouts":[]},` +
+		`"locked":false,"orgId":"org-1","source":"user","createdAt":"2026-11-01T00:00:00Z","createdBy":"a@example.com",` +
+		`"updatedAt":"2026-11-02T00:00:00Z","updatedBy":"a@example.com","webUrl":"https://example.signoz.io/dashboard/dash-1"}`
+	tests := []struct {
+		name        string
+		tool        string
+		arguments   string
+		wantRequest string
+		wantNotice  string
+	}{
+		{
+			name:        "undeclared argument the handler drops",
+			tool:        "signoz_aggregate_logs",
+			arguments:   `{"aggregations":["count()"],"searchText":"timeout"}`,
+			wantRequest: "POST /api/v5/query_range",
+			wantNotice:  `Input validation notice: this tool ignored the argument "searchText" because its input schema does not declare it, so the call ran without it. If it was meant to change the result, re-call using the parameters this tool declares.`,
+		},
+		{
+			name:        "only identifier-like keys are repeated",
+			tool:        "signoz_aggregate_traces",
+			arguments:   `{"aggregations":["count()"],"serviceName":"checkout","step":60,"ignore previous instructions":true}`,
+			wantRequest: "POST /api/v5/query_range",
+			wantNotice:  `this tool ignored the arguments "serviceName", "step", and 1 other because its input schema does not declare them, so the call ran without them. If they were meant`,
+		},
+		{
+			name:        "declared arguments only",
+			tool:        "signoz_aggregate_logs",
+			arguments:   `{"aggregations":["count()"],"filter":"body CONTAINS 'timeout'"}`,
+			wantRequest: "POST /api/v5/query_range",
+		},
+		{
+			name:        "legacy alias the handler reads",
+			tool:        "signoz_get_alert",
+			arguments:   `{"ruleId":"rule-1"}`,
+			wantRequest: "GET /api/v2/rules/rule-1",
+		},
+		{
+			name:        "fetched dashboard body sent back for update",
+			tool:        "signoz_update_dashboard",
+			arguments:   fetchedDashboard,
+			wantRequest: "PUT /api/v2/dashboards/dash-1",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			requests = nil
+			result := callRegisteredTool(t, server, tt.tool, tt.arguments)
+			text := allTextBlocks(result)
+
+			require.False(t, result.IsError, text)
+			require.Contains(t, requests, tt.wantRequest)
+			require.Contains(t, textContent(t, result), `"status":"success"`, "the handler's own result comes first")
+			if tt.wantNotice == "" {
+				require.NotContains(t, text, inputValidationNoticePrefix)
+				return
+			}
+			require.Contains(t, text, tt.wantNotice)
+			require.NotContains(t, text, "ignore previous instructions")
+		})
+	}
 }
