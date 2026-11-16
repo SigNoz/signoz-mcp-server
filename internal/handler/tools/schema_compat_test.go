@@ -163,12 +163,12 @@ func containsString(values []string, want string) bool {
 }
 
 // A successful call names the undeclared arguments its handler dropped, so the
-// agent learns part of its request had no effect. Aliases the handler still
-// reads and a fetched body's read-only fields are not ignored, so they draw no
-// notice; a failed call carries only its error.
+// agent learns part of its request had no effect. Aliases the handler reads,
+// fields it forwards to SigNoz, and a fetched body's read-only copies are not
+// ignored, so they draw no notice; a failed call carries only its error.
 func TestSuccessfulResultNamesTheArgumentsTheToolIgnored(t *testing.T) {
 	var requests []string
-	var putBody map[string]any
+	var putBody, postBody map[string]any
 	putStatus := http.StatusOK
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests = append(requests, r.Method+" "+r.URL.Path)
@@ -178,6 +178,9 @@ func TestSuccessfulResultNamesTheArgumentsTheToolIgnored(t *testing.T) {
 			_, _ = w.Write([]byte(`{"status":"success","data":{"type":"scalar","data":{"results":[{"queryName":"A","columns":[{"name":"count()","queryName":"A","aggregationIndex":0,"columnType":"aggregation"}],"data":[[4217]]}]}}}`))
 		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/api/v2/rules/"):
 			_, _ = w.Write([]byte(`{"status":"success","data":{"id":"rule-1","alert":"High CPU"}}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v2/dashboards":
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&postBody))
+			_, _ = w.Write([]byte(`{"status":"success","data":{"id":"dash-2","name":"payments","schemaVersion":"v6","spec":{"display":{"name":"Payments (created)"}}}}`))
 		case r.Method == http.MethodPut && strings.HasPrefix(r.URL.Path, "/api/v2/dashboards/"):
 			require.NoError(t, json.NewDecoder(r.Body).Decode(&putBody))
 			w.WriteHeader(putStatus)
@@ -241,6 +244,13 @@ func TestSuccessfulResultNamesTheArgumentsTheToolIgnored(t *testing.T) {
 			wantResult: "High CPU",
 		},
 		{
+			name:       "undeclared field forwarded to SigNoz",
+			tool:       "signoz_create_dashboard",
+			arguments:  `{"schemaVersion":"v6","tags":[],"spec":{"display":{"name":"Payments"},"variables":[],"panels":{},"layouts":[]},"description":"Payments overview"}`,
+			wantSent:   "POST /api/v2/dashboards",
+			wantResult: "Payments (created)",
+		},
+		{
 			name:       "fetched dashboard body sent back for update",
 			tool:       "signoz_update_dashboard",
 			arguments:  fetchedDashboard,
@@ -266,7 +276,7 @@ func TestSuccessfulResultNamesTheArgumentsTheToolIgnored(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			requests, putBody, putStatus = nil, nil, http.StatusOK
+			requests, putBody, postBody, putStatus = nil, nil, nil, http.StatusOK
 			if tt.putStatus != 0 {
 				putStatus = tt.putStatus
 			}
@@ -280,6 +290,9 @@ func TestSuccessfulResultNamesTheArgumentsTheToolIgnored(t *testing.T) {
 				for _, field := range []string{"locked", "orgId", "createdAt", "webUrl"} {
 					require.NotContains(t, putBody, field, "response-only field %q must be stripped before the PUT", field)
 				}
+			}
+			if tt.tool == "signoz_create_dashboard" {
+				require.Equal(t, "Payments overview", postBody["description"], "a forwarded field must reach SigNoz")
 			}
 			if tt.wantCode != "" {
 				require.True(t, result.IsError, text)

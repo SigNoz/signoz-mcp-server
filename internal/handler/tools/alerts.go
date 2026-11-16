@@ -22,13 +22,6 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 )
 
-// Legacy argument names the alert handlers still read. The input schemas don't
-// advertise them, so registration accepts them as undeclared arguments.
-const (
-	legacyRuleIDArgument             = "ruleId"
-	legacyAlertHistoryFilterArgument = "filterExpression"
-)
-
 type alertListOutput struct {
 	Data       []types.Alert     `json:"data"`
 	Pagination paginate.Metadata `json:"pagination"`
@@ -81,7 +74,7 @@ func (h *Handler) RegisterAlertsHandlers(s *mcp.Server) {
 		// present. See readResourceID.
 		mcp.WithString("id", mcp.Description("Alert rule ID (UUIDv7 on v2 servers). Required; obtain it from signoz_list_alert_rules.")),
 	)
-	h.addTool(s, getAlertTool, h.handleGetAlert, acceptsUndeclaredArguments(legacyRuleIDArgument))
+	h.addTool(s, getAlertTool, h.handleGetAlert)
 
 	alertHistoryTool := mcp.NewTool("signoz_get_alert_history",
 		withReadOnlyToolAnnotations(),
@@ -97,7 +90,7 @@ func (h *Handler) RegisterAlertsHandlers(s *mcp.Server) {
 		mcp.WithString("limit", mcp.DefaultString("20"), intOrStringType(), mcp.Description("Rows per page. Default: 20; max: 10000 (higher values are clamped).")),
 		mcp.WithString("order", mcp.DefaultString("asc"), mcp.Enum("asc", "desc"), mcp.Description("Sort order: 'asc' or 'desc' (default: 'asc')")),
 	)
-	h.addTool(s, alertHistoryTool, h.handleGetAlertHistory, acceptsUndeclaredArguments(legacyRuleIDArgument, legacyAlertHistoryFilterArgument))
+	h.addTool(s, alertHistoryTool, h.handleGetAlertHistory)
 
 	createAlertTool := mcp.NewTool(
 		"signoz_create_alert",
@@ -109,7 +102,7 @@ func (h *Handler) RegisterAlertsHandlers(s *mcp.Server) {
 		),
 		mcp.WithInputSchema[types.CreateAlertInput](),
 	)
-	h.addTool(s, createAlertTool, h.handleCreateAlert, forwardsArguments())
+	h.addTool(s, createAlertTool, h.handleCreateAlert)
 
 	updateAlertTool := mcp.NewTool(
 		"signoz_update_alert",
@@ -119,7 +112,7 @@ func (h *Handler) RegisterAlertsHandlers(s *mcp.Server) {
 		),
 		mcp.WithInputSchema[types.UpdateAlertInput](),
 	)
-	h.addTool(s, updateAlertTool, h.handleUpdateAlert, forwardsArguments())
+	h.addTool(s, updateAlertTool, h.handleUpdateAlert)
 
 	deleteAlertTool := mcp.NewTool(
 		"signoz_delete_alert",
@@ -128,7 +121,7 @@ func (h *Handler) RegisterAlertsHandlers(s *mcp.Server) {
 		mcp.WithString("id", mcp.Description("Alert rule UUIDv7. Required; obtain it from signoz_list_alert_rules.")),
 		mcp.WithDescription("Use this when the user explicitly wants to permanently delete a configured alert rule. Resolve its ID with signoz_list_alert_rules and confirm the exact rule first. If both steps are already complete, call this tool directly without repeating list/get preflight. Do not use it to disable a rule or clear a firing instance."),
 	)
-	h.addTool(s, deleteAlertTool, h.handleDeleteAlert, acceptsUndeclaredArguments(legacyRuleIDArgument))
+	h.addTool(s, deleteAlertTool, h.handleDeleteAlert)
 
 	// Register alert resources for create alert
 	h.registerAlertResources(s)
@@ -327,7 +320,7 @@ func (h *Handler) handleGetAlert(ctx context.Context, req mcp.CallToolRequest) (
 	if errResult != nil {
 		return errResult, nil
 	}
-	ruleID := readResourceID(args, legacyRuleIDArgument)
+	ruleID := readResourceID(ctx, args, "ruleId")
 	if ruleID == "" {
 		h.logger.WarnContext(ctx, "Empty id parameter")
 		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "id" is required. Provide a valid alert rule ID (UUID format). Example: {"id": "0196634d-5d66-75c4-b778-e317f49dab7a"}`), nil
@@ -361,9 +354,9 @@ func (h *Handler) handleGetAlertHistory(ctx context.Context, req mcp.CallToolReq
 		return errResult, nil
 	}
 
-	ruleID := readResourceID(args, legacyRuleIDArgument)
+	ruleID := readResourceID(ctx, args, "ruleId")
 	if ruleID == "" {
-		h.logger.WarnContext(ctx, "Invalid or empty id parameter", slog.Any("id", args["id"]), slog.Any("ruleId", args[legacyRuleIDArgument]))
+		h.logger.WarnContext(ctx, "Invalid or empty id parameter", slog.Any("id", args["id"]), slog.Any("ruleId", args["ruleId"]))
 		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "id" is required. Example: {"id": "0196634d-5d66-75c4-b778-e317f49dab7a", "timeRange": "24h"}`), nil
 	}
 
@@ -417,7 +410,8 @@ func (h *Handler) handleGetAlertHistory(ctx context.Context, req mcp.CallToolReq
 
 	filterExpression := strings.TrimSpace(stringArg(args, "filter"))
 	if filterExpression == "" {
-		filterExpression = strings.TrimSpace(stringArg(args, legacyAlertHistoryFilterArgument))
+		filterExpression = strings.TrimSpace(stringArg(args, "filterExpression"))
+		markArgumentsHandled(ctx, "filterExpression")
 	}
 
 	// Optional parameters stay off the query string when empty so SigNoz
@@ -486,7 +480,7 @@ func (h *Handler) handleCreateAlert(ctx context.Context, req mcp.CallToolRequest
 		return notAConfigObjectError(), nil
 	}
 
-	payload, errResult := alertPayloadJSON(rawConfig)
+	payload, errResult := alertPayloadJSON(ctx, rawConfig)
 	if errResult != nil {
 		return errResult, nil
 	}
@@ -513,14 +507,14 @@ func (h *Handler) handleUpdateAlert(ctx context.Context, req mcp.CallToolRequest
 		return notAConfigObjectError(), nil
 	}
 
-	ruleID := readResourceID(rawConfig, legacyRuleIDArgument)
+	ruleID := readResourceID(ctx, rawConfig, "ruleId")
 	if ruleID == "" {
 		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "id" is required. Provide the UUIDv7 of the rule to update.`), nil
 	}
 	delete(rawConfig, "id")
-	delete(rawConfig, legacyRuleIDArgument)
+	delete(rawConfig, "ruleId")
 
-	payload, errResult := alertPayloadJSON(rawConfig)
+	payload, errResult := alertPayloadJSON(ctx, rawConfig)
 	if errResult != nil {
 		return errResult, nil
 	}
@@ -544,7 +538,7 @@ func (h *Handler) handleDeleteAlert(ctx context.Context, req mcp.CallToolRequest
 	if errResult != nil {
 		return errResult, nil
 	}
-	ruleID := readResourceID(args, legacyRuleIDArgument)
+	ruleID := readResourceID(ctx, args, "ruleId")
 	if ruleID == "" {
 		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "id" is required.`), nil
 	}
@@ -566,8 +560,9 @@ func (h *Handler) handleDeleteAlert(ctx context.Context, req mcp.CallToolRequest
 // alertPayloadJSON strips the MCP-only searchContext envelope field and
 // serializes the remaining arguments verbatim. SigNoz is the only validator of
 // alert-rule payloads; its coded errors surface through upstreamError.
-func alertPayloadJSON(rawConfig map[string]any) ([]byte, *mcp.CallToolResult) {
+func alertPayloadJSON(ctx context.Context, rawConfig map[string]any) ([]byte, *mcp.CallToolResult) {
 	delete(rawConfig, "searchContext")
+	markForwardedArguments(ctx, rawConfig)
 	payload, err := json.Marshal(rawConfig)
 	if err != nil {
 		return nil, InternalErrorResult("failed to marshal alert payload: " + err.Error())

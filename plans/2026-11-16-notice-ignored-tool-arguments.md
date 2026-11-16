@@ -18,25 +18,40 @@ logs, and `aggregation` or `step` on `signoz_query_metrics` run the defaults.
 - `validationDecorator` appends an `Input validation notice:` text block to a successful result
   that names the undeclared arguments the handler ignored. Calls are not rejected, so clients that
   send extra keys keep working (CMP-1).
-- Registration declares the exceptions next to each handler through `addTool` options:
-  `acceptsUndeclaredArguments` for legacy aliases a handler still reads (`ruleId`, `viewId`,
-  `filterExpression`, the docs `query`) and for a fetched dashboard's read-only fields, and
-  `forwardsArguments` for tools that send the whole argument object to SigNoz as a resource body.
+- When a call has undeclared keys, the decorator puts a per-call tracker in the context. The code
+  that takes an undeclared key marks it where it does so: `readResourceID` and the docs `query` and
+  alert-history `filterExpression` fallbacks mark an alias when they use it, the alert, dashboard,
+  and view body builders mark every field they send to SigNoz, and the dashboard update filter marks
+  the fetched body's read-only copies. Unmarked keys are reported.
 - The notice repeats only short identifier-like key names (at most 10, 64 bytes each); any other
   name is counted, so a client-chosen string can't inject arbitrary text into a server notice.
 - Telemetry is unchanged: every undeclared key, alias or not, is still logged and counted.
 
 ## Files to Modify
 
-- `internal/handler/tools/schema_compat.go`: tool options, the ignored-arguments notice.
-- `internal/handler/tools/alerts.go`, `views.go`, `docs.go`, `dashboards.go`: alias constants shared
-  by the handler read and the registration; pass-through and fetched-body options.
+- `internal/handler/tools/argument_use.go`: the per-call tracker and its marking helpers.
+- `internal/handler/tools/schema_compat.go`: the tracker in the decorator, the ignored-arguments
+  notice.
+- `internal/handler/tools/params.go`, `alerts.go`, `views.go`, `docs.go`, `dashboards.go`: mark
+  aliases where they are read and bodies where they are serialized; the dashboard update filter.
 - `internal/handler/tools/schema_compat_test.go`: handler tests through the registered tools.
-- `internal/handler/tools/normalization_replay_test.go`: checks the schema-mismatch notice only,
-  because its stub registration drops the alias policy.
+- `internal/handler/tools/normalization_replay_test.go`: validates argument forms against the
+  advertised schemas directly.
 - `README.md`: the input-validation note.
 
 ## Key Decisions
+
+### 2026-11-16 — Handlers mark what they take; registration declares nothing
+
+- Decision: replace the registration-time options (`acceptsUndeclaredArguments`,
+  `forwardsArguments`) with marks placed where a handler reads, forwards, or tolerates a key.
+- Rationale: suggested in a side-chat review of how the design scales to new tools. Registration
+  options were a second copy of handler behavior: a handler that started filtering a forwarded body
+  kept its option and dropped fields silently again, and nothing failed. A mark sits on the line
+  that does the work, so changing the behavior changes the notice. It is also more precise: an alias
+  overridden by `id` is now reported, and `signoz_create_view` reports the server-populated fields
+  it strips, which its description says not to send. A forgotten mark still yields a visible false
+  notice rather than a silent drop.
 
 ### 2026-11-16 — Pass-through tools draw no notice
 
@@ -56,7 +71,8 @@ logs, and `aggregation` or `step` on `signoz_query_metrics` run the defaults.
 
 ### 2026-11-16 — Report `locked: true` on dashboard update
 
-- Decision: `handleUpdateDashboard` appends a notice when the request carries `locked: true`.
+- Decision: the update filter tolerates `locked` only when it is false, so `locked: true` gets the
+  standard ignored-arguments notice.
 - Rationale: an independent review (GPT-6 Astra) confirmed that exempting the fetched fields also
   hid an attempt to lock a dashboard: the handler strips `locked` before the PUT. SigNoz rejects
   updating a locked dashboard, so after a successful update a copied `locked: false` is a no-op and
@@ -79,13 +95,15 @@ logs, and `aggregation` or `step` on `signoz_query_metrics` run the defaults.
   `httptest` SigNoz. It checks that the handler's own data stays the first block and that a notice
   is the last block, carries the prefix, and names the ignored arguments, without pinning its
   sentences. Cases: `searchText` on `signoz_aggregate_logs`; a non-identifier key that is not
-  repeated; declared arguments only; `ruleId` on `signoz_get_alert` (the request uses it); a
-  fetched dashboard sent back to `signoz_update_dashboard` (the edit reaches the PUT, response-only
+  repeated; declared arguments only; `ruleId` on `signoz_get_alert` (the request uses it); an
+  undeclared field on `signoz_create_dashboard` (it reaches the POST, no notice); a fetched
+  dashboard sent back to `signoz_update_dashboard` (the edit reaches the PUT, response-only
   fields don't); the same body with `locked: true` (notice); and that body failing with a 403 (the
   coded error and upstream reason survive, with no notices).
-- Mutations, each failing the case meant to catch it: drop the lock notice, the `ruleId` alias,
-  the identifier filter, or the read-only field strip; append notices to error results; flag
-  aliased and fetched fields.
+- The table passed unchanged when the registration options were replaced by marks, which shows the
+  refactor kept behavior. Mutations, each failing the case meant to catch it: drop the alias mark,
+  the forwarded-body mark, or the fetched-field mark; tolerate `locked: true`; send read-only fields
+  in the PUT; append notices to error results; repeat non-identifier keys.
 - `TestAdvertisedSchemasAdmitEveryArgumentFormHandlersRead` now validates each argument form
   against the schema `tools/list` advertises, instead of re-registering a stub (which dropped the
   alias policy) and scanning the result for notice text. Removing `intOrStringType` from the docs
@@ -96,7 +114,8 @@ logs, and `aggregation` or `step` on `signoz_query_metrics` run the defaults.
 
 ## Outcome
 
-Shipped as planned. Successful calls name the undeclared arguments the tool ignored; aliases,
-fetched dashboard fields, and pass-through tools draw no notice, except a dropped `locked: true` on
-dashboard update; telemetry is unchanged. No
-SigNoz/agent-skills change: the notice is additive and changes no tool, parameter, or payload.
+Shipped with handler-side marks instead of the registration options first planned. Successful
+calls name the undeclared arguments the handler did not take; aliases it reads, fields it forwards to
+SigNoz, and a fetched dashboard's read-only copies draw no notice, except `locked: true` on dashboard
+update. Telemetry is unchanged. No SigNoz/agent-skills change: the notice is additive and changes no
+tool, parameter, or payload.

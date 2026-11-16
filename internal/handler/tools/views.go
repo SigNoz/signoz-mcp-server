@@ -14,10 +14,6 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/pkg/views"
 )
 
-// legacyViewIDArgument is the saved-view id alias the handlers still read; the
-// input schemas advertise only "id".
-const legacyViewIDArgument = "viewId"
-
 // RegisterViewHandlers registers the saved-views CRUD tools plus the
 // signoz://view/instructions and signoz://view/examples resources.
 func (h *Handler) RegisterViewHandlers(s *mcp.Server) {
@@ -42,7 +38,7 @@ func (h *Handler) RegisterViewHandlers(s *mcp.Server) {
 		// for schema-aware clients. The handler validates id/viewId presence.
 		mcp.WithString("id", mcp.Description("Saved view UUID. Use signoz_list_views to discover IDs. Required.")),
 	)
-	h.addTool(s, getTool, h.handleGetView, acceptsUndeclaredArguments(legacyViewIDArgument))
+	h.addTool(s, getTool, h.handleGetView)
 
 	createTool := mcp.NewTool("signoz_create_view",
 		withCreateToolAnnotations(),
@@ -51,7 +47,7 @@ func (h *Handler) RegisterViewHandlers(s *mcp.Server) {
 		),
 		mcp.WithInputSchema[types.CreateViewInput](),
 	)
-	h.addTool(s, createTool, h.handleCreateView, forwardsArguments())
+	h.addTool(s, createTool, h.handleCreateView)
 
 	updateTool := mcp.NewTool("signoz_update_view",
 		withUpdateToolAnnotations(),
@@ -60,7 +56,7 @@ func (h *Handler) RegisterViewHandlers(s *mcp.Server) {
 		),
 		mcp.WithInputSchema[types.UpdateViewInput](),
 	)
-	h.addTool(s, updateTool, h.handleUpdateView, acceptsUndeclaredArguments(legacyViewIDArgument))
+	h.addTool(s, updateTool, h.handleUpdateView)
 
 	deleteTool := mcp.NewTool("signoz_delete_view",
 		withDeleteToolAnnotations(),
@@ -68,7 +64,7 @@ func (h *Handler) RegisterViewHandlers(s *mcp.Server) {
 		mcp.WithDescription("Use this when the user has confirmed they want to permanently delete one saved view. The deletion is irreversible. Use signoz_list_views to discover the UUID when needed; do not use this for dashboards; delete those with signoz_delete_dashboard."),
 		mcp.WithString("id", mcp.Description("UUID of the saved view to delete. Required; use signoz_list_views to discover it.")),
 	)
-	h.addTool(s, deleteTool, h.handleDeleteView, acceptsUndeclaredArguments(legacyViewIDArgument))
+	h.addTool(s, deleteTool, h.handleDeleteView)
 
 	viewInstructions := mcp.NewResource(
 		"signoz://view/instructions",
@@ -117,7 +113,7 @@ var serverPopulatedViewFields = []string{
 // clean request body.
 func stripNonBodyFields(m map[string]any) {
 	delete(m, "searchContext")
-	delete(m, legacyViewIDArgument)
+	delete(m, "viewId")
 	for _, k := range serverPopulatedViewFields {
 		delete(m, k)
 	}
@@ -125,8 +121,9 @@ func stripNonBodyFields(m map[string]any) {
 
 // marshalViewBody strips non-body fields and marshals the remainder as a
 // SavedView body.
-func marshalViewBody(args map[string]any) ([]byte, error) {
+func marshalViewBody(ctx context.Context, args map[string]any) ([]byte, error) {
 	stripNonBodyFields(args)
+	markForwardedArguments(ctx, args)
 	return json.Marshal(args)
 }
 
@@ -134,30 +131,30 @@ func marshalViewBody(args map[string]any) ([]byte, error) {
 // signoz_get_view (shape: {"status":"success","data":{...}}) straight
 // into signoz_create_view / signoz_update_view. If the args look like
 // that envelope — a `data` field holding an object, and no top-level
-// `source` / `name` — replace args' contents with data's. The
+// `source` / `name` — replace args' contents with data's and report true. The
 // tool descriptions explicitly instruct this flow, so supporting it
 // avoids a misleading "name is required" validation error.
-func unwrapViewEnvelope(args map[string]any) {
+func unwrapViewEnvelope(args map[string]any) bool {
 	data, ok := args["data"].(map[string]any)
 	if !ok {
-		return
+		return false
 	}
 	// Only unwrap when the outer object lacks the SavedView identity
 	// fields; otherwise the caller is legitimately sending a view that
 	// happens to have a `data` subfield.
 	if _, hasName := args["name"]; hasName {
-		return
+		return false
 	}
 	if _, hasSource := args["source"]; hasSource {
-		return
+		return false
 	}
 	// Preserve searchContext and viewId (MCP-level fields) across the swap.
 	preserved := map[string]any{}
 	if v, ok := args["searchContext"]; ok {
 		preserved["searchContext"] = v
 	}
-	if v, ok := args[legacyViewIDArgument]; ok {
-		preserved[legacyViewIDArgument] = v
+	if v, ok := args["viewId"]; ok {
+		preserved["viewId"] = v
 	}
 	for k := range args {
 		delete(args, k)
@@ -168,6 +165,7 @@ func unwrapViewEnvelope(args map[string]any) {
 	for k, v := range preserved {
 		args[k] = v
 	}
+	return true
 }
 
 func (h *Handler) handleListViews(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -226,7 +224,7 @@ func (h *Handler) handleGetView(ctx context.Context, req mcp.CallToolRequest) (*
 	if !ok {
 		return notAJSONObjectError(), nil
 	}
-	viewID := readResourceID(args, legacyViewIDArgument)
+	viewID := readResourceID(ctx, args, "viewId")
 	if viewID == "" {
 		h.logger.WarnContext(ctx, "get_view missing id")
 		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "id" is required. Provide a valid saved view UUID. Use signoz_list_views to see available views.`), nil
@@ -250,7 +248,9 @@ func (h *Handler) handleCreateView(ctx context.Context, req mcp.CallToolRequest)
 	if !ok || len(args) == 0 {
 		return notAConfigObjectError(), nil
 	}
-	unwrapViewEnvelope(args)
+	if unwrapViewEnvelope(args) {
+		markArgumentsHandled(ctx, "status", "data")
+	}
 
 	// SigNoz is the only validator of the view body (name/generateName,
 	// source, spec); its rejection comes back as a coded VALIDATION_FAILED
@@ -260,7 +260,7 @@ func (h *Handler) handleCreateView(ctx context.Context, req mcp.CallToolRequest)
 	// schemaVersion is not a supported input; force "v2" so a caller-supplied
 	// value can never reach upstream.
 	args["schemaVersion"] = "v2"
-	body, err := marshalViewBody(args)
+	body, err := marshalViewBody(ctx, args)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to marshal view body", logpkg.ErrAttr(err))
 		return InternalErrorResult("failed to build request body: " + err.Error()), nil
@@ -285,7 +285,7 @@ func (h *Handler) handleUpdateView(ctx context.Context, req mcp.CallToolRequest)
 		return notAConfigObjectError(), nil
 	}
 
-	viewID := readResourceID(args, legacyViewIDArgument)
+	viewID := readResourceID(ctx, args, "viewId")
 	if viewID == "" {
 		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "id" is required. Use signoz_list_views to find the UUID.`), nil
 	}
@@ -349,7 +349,7 @@ func (h *Handler) handleDeleteView(ctx context.Context, req mcp.CallToolRequest)
 	if !ok {
 		return notAJSONObjectError(), nil
 	}
-	viewID := readResourceID(args, legacyViewIDArgument)
+	viewID := readResourceID(ctx, args, "viewId")
 	if viewID == "" {
 		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "id" is required. Use signoz_list_views to find the UUID.`), nil
 	}

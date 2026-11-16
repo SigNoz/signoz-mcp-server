@@ -42,6 +42,19 @@ var patchDashboardSchema []byte
 // GET-only fields like createdAt/orgId/webUrl must be dropped or v2 rejects them.
 var updatableDashboardFields = updatableFieldsFromSchema(updateDashboardSchema)
 
+// fetchedDashboardFields are the top-level fields of a signoz_get_dashboard
+// body, read from the generated response type, plus the webUrl this server adds.
+var fetchedDashboardFields = func() map[string]struct{} {
+	fields := map[string]struct{}{"webUrl": {}}
+	gettable := reflect.TypeFor[apitypes.DashboardtypesGettableDashboardV2]()
+	for i := range gettable.NumField() {
+		if name, _, _ := strings.Cut(gettable.Field(i).Tag.Get("json"), ","); name != "" && name != "-" {
+			fields[name] = struct{}{}
+		}
+	}
+	return fields
+}()
+
 // textPanelKind is the queryless static Markdown panel added in SigNoz
 // v0.142.0. Its panel spec still requires a queries array, which must be an
 // empty [] (never null) so the strict v2 decoder accepts it.
@@ -170,21 +183,6 @@ func updatableFieldsFromSchema(schemaJSON []byte) map[string]struct{} {
 	return fields
 }
 
-// fetchedDashboardFields lists the top-level fields of a signoz_get_dashboard
-// body. signoz_update_dashboard is told to send that body back and strips the
-// response-only fields before the PUT, so they draw no ignored-arguments
-// notice; handleUpdateDashboard reports locked=true, the one that signals intent.
-func fetchedDashboardFields() []string {
-	fields := []string{"webUrl"} // added by util.InjectWebURL
-	gettable := reflect.TypeFor[apitypes.DashboardtypesGettableDashboardV2]()
-	for i := range gettable.NumField() {
-		if name, _, _ := strings.Cut(gettable.Field(i).Tag.Get("json"), ","); name != "" && name != "-" {
-			fields = append(fields, name)
-		}
-	}
-	return fields
-}
-
 // rawInputSchema replaces the default object schema with a pre-built schema.
 func rawInputSchema(schema []byte) mcp.ToolOption {
 	return func(t *mcp.Tool) {
@@ -244,7 +242,7 @@ func (h *Handler) RegisterDashboardHandlers(s *mcp.Server) {
 		rawInputSchema(createDashboardSchema),
 	)
 
-	h.addTool(s, createDashboardTool, h.handleCreateDashboard, forwardsArguments())
+	h.addTool(s, createDashboardTool, h.handleCreateDashboard)
 
 	updateDashboardTool := mcp.NewTool(
 		"signoz_update_dashboard",
@@ -256,7 +254,7 @@ func (h *Handler) RegisterDashboardHandlers(s *mcp.Server) {
 		rawInputSchema(updateDashboardSchema),
 	)
 
-	h.addTool(s, updateDashboardTool, h.handleUpdateDashboard, acceptsUndeclaredArguments(fetchedDashboardFields()...))
+	h.addTool(s, updateDashboardTool, h.handleUpdateDashboard)
 
 	patchDashboardTool := mcp.NewTool(
 		"signoz_patch_dashboard",
@@ -438,6 +436,7 @@ func (h *Handler) handleCreateDashboard(ctx context.Context, req mcp.CallToolReq
 
 	// Pass-through: the v2 API is the validator. Marshal the model's object and
 	// forward it to POST /api/v2/dashboards verbatim.
+	markForwardedArguments(ctx, rawConfig)
 	cleanJSON, err := json.Marshal(rawConfig)
 	if err != nil {
 		h.logger.WarnContext(ctx, "Failed to encode dashboard payload", logpkg.ErrAttr(err))
@@ -599,13 +598,7 @@ func (h *Handler) handleUpdateDashboard(ctx context.Context, req mcp.CallToolReq
 		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "id" is required. Use signoz_list_dashboards to find dashboard ids.`), nil
 	}
 
-	// Keep only updatable body fields so a fetched dashboard's read-only fields don't trip the v2 decoder.
-	updatable := make(map[string]any, len(rawConfig))
-	for k, v := range rawConfig {
-		if _, ok := updatableDashboardFields[k]; ok {
-			updatable[k] = v
-		}
-	}
+	updatable := updatableDashboardBody(ctx, rawConfig)
 	normalizeTextPanelQueries(updatable)
 
 	body, err := json.Marshal(updatable)
@@ -627,15 +620,33 @@ func (h *Handler) handleUpdateDashboard(ctx context.Context, req mcp.CallToolReq
 
 	data = normalizeDashboardResponse(data)
 	data = h.enrichDashboardWebURL(ctx, base, data, id)
-	// SigNoz rejects updating a locked dashboard, so after a successful update a
-	// copied locked=false is a no-op and locked=true is a lock request we dropped.
-	if locked, _, _ := parseBoolArg(rawConfig, "locked"); locked {
-		return structuredResultWithNotes(data, lockNotAppliedNotice), nil
-	}
 	return structuredResult(data), nil
 }
 
-const lockNotAppliedNotice = inputValidationNoticePrefix + ` this tool ignored "locked": true because signoz_update_dashboard cannot lock a dashboard, so the update ran and the dashboard stays unlocked.`
+// updatableDashboardBody keeps the fields the v2 PUT accepts, so a fetched
+// dashboard's read-only fields don't trip its decoder. The description tells
+// agents to send the fetched body back, so those fields are expected copies,
+// not ignored input, except locked=true: SigNoz rejects updating a locked
+// dashboard, so after a successful update it can only be a lock request.
+func updatableDashboardBody(ctx context.Context, rawConfig map[string]any) map[string]any {
+	updatable := make(map[string]any, len(rawConfig))
+	for k, v := range rawConfig {
+		if _, ok := updatableDashboardFields[k]; ok {
+			updatable[k] = v
+			continue
+		}
+		if _, fetched := fetchedDashboardFields[k]; !fetched {
+			continue
+		}
+		if k == "locked" {
+			if locked, _, err := parseBoolArg(rawConfig, k); locked || err != nil {
+				continue
+			}
+		}
+		markArgumentsHandled(ctx, k)
+	}
+	return updatable
+}
 
 func (h *Handler) handlePatchDashboard(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	rawConfig, ok := req.Params.Arguments.(map[string]any)

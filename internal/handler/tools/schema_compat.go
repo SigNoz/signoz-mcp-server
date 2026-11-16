@@ -37,50 +37,6 @@ const (
 	maxReflectedArgumentLength = 64
 )
 
-// toolOption records how one tool's handler treats top-level arguments its
-// input schema does not declare.
-type toolOption func(*undeclaredArgumentPolicy)
-
-type undeclaredArgumentPolicy struct {
-	accepted map[string]struct{}
-	forwards bool
-}
-
-// acceptsUndeclaredArguments names undeclared keys the handler takes on
-// purpose (a legacy alias it still reads, or a fetched body's read-only field
-// it drops by design), so the ignored-arguments notice leaves them out.
-func acceptsUndeclaredArguments(names ...string) toolOption {
-	return func(policy *undeclaredArgumentPolicy) {
-		if policy.accepted == nil {
-			policy.accepted = make(map[string]struct{}, len(names))
-		}
-		for _, name := range names {
-			policy.accepted[name] = struct{}{}
-		}
-	}
-}
-
-// forwardsArguments marks a tool whose handler sends its whole argument object
-// to SigNoz as a resource body, so SigNoz, not this server, decides what an
-// undeclared key means.
-func forwardsArguments() toolOption {
-	return func(policy *undeclaredArgumentPolicy) { policy.forwards = true }
-}
-
-// ignored returns the undeclared keys the handler drops without reading.
-func (policy undeclaredArgumentPolicy) ignored(undeclared []string) []string {
-	if policy.forwards {
-		return nil
-	}
-	var ignored []string
-	for _, name := range undeclared {
-		if _, accepted := policy.accepted[name]; !accepted {
-			ignored = append(ignored, name)
-		}
-	}
-	return ignored
-}
-
 type validationLogState struct {
 	nextAllowedUnixNano atomic.Int64
 }
@@ -127,11 +83,7 @@ var schemaArrayFields = map[string]struct{}{
 	"prefixItems": {},
 }
 
-func (h *Handler) addTool(s *mcp.Server, tool mcp.Tool, handler mcp.ToolHandlerFunc, options ...toolOption) {
-	var policy undeclaredArgumentPolicy
-	for _, option := range options {
-		option(&policy)
-	}
+func (h *Handler) addTool(s *mcp.Server, tool mcp.Tool, handler mcp.ToolHandlerFunc) {
 	tool = cloneTool(tool)
 	normalizeToolSchemas(&tool)
 
@@ -145,7 +97,7 @@ func (h *Handler) addTool(s *mcp.Server, tool mcp.Tool, handler mcp.ToolHandlerF
 	}
 
 	if input != nil || output != nil {
-		handler = h.validationDecorator(tool.Name, input, output, policy, handler)
+		handler = h.validationDecorator(tool.Name, input, output, handler)
 	}
 	handler = h.errorCodeDecorator(tool.Name, handler)
 	handler = h.toolInvocationDecorator(tool.Name, handler)
@@ -281,26 +233,28 @@ func compileToolSchema(toolName, direction string, raw json.RawMessage) (*compil
 }
 
 // validationDecorator owns schema validation and never rejects a call.
-// Input mismatches and arguments the handler ignores are served best-effort
-// with an in-band notice appended to the successful result, so agents that
-// read results can self-correct while agents that don't still get a usable
-// answer. Output mismatches and missing structured content are telemetry-only
-// (fail open, never silent): they are our defects, not the caller's.
-func (h *Handler) validationDecorator(toolName string, input, output *compiledToolSchema, policy undeclaredArgumentPolicy, next mcp.ToolHandlerFunc) mcp.ToolHandlerFunc {
+// Input mismatches and undeclared arguments the handler did not take are
+// served best-effort with an in-band notice appended to the successful result,
+// so agents that read results can self-correct while agents that don't still
+// get a usable answer. Output mismatches and missing structured content are
+// telemetry-only (fail open, never silent): they are our defects, not the
+// caller's.
+func (h *Handler) validationDecorator(toolName string, input, output *compiledToolSchema, next mcp.ToolHandlerFunc) mcp.ToolHandlerFunc {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		var notices []string
+		var notices, undeclared []string
 		if input != nil {
 			if err := validateArguments(input.validator, req); err != nil {
 				mismatch := diagnoseValidationMismatch(input, req.Params.Arguments, true)
 				h.recordValidationMismatch(ctx, req, toolName, "input", mismatch.path, mismatch.constraint)
 				notices = append(notices, inputValidationNotice(mismatch))
 			}
-			if undeclared := undeclaredArguments(input, req.Params.Arguments); len(undeclared) > 0 {
+			if undeclared = undeclaredArguments(input, req.Params.Arguments); len(undeclared) > 0 {
 				h.recordUndeclaredArguments(ctx, req, toolName, undeclared)
-				if ignored := policy.ignored(undeclared); len(ignored) > 0 {
-					notices = append(notices, ignoredArgumentsNotice(ignored))
-				}
 			}
+		}
+		var use *argumentUse
+		if len(undeclared) > 0 {
+			ctx, use = withArgumentUse(ctx)
 		}
 
 		result, err := next(ctx, req)
@@ -308,6 +262,9 @@ func (h *Handler) validationDecorator(toolName string, input, output *compiledTo
 			return result, err
 		}
 		if !result.IsError {
+			if ignored := use.unhandled(undeclared); len(ignored) > 0 {
+				notices = append(notices, ignoredArgumentsNotice(ignored))
+			}
 			for _, notice := range notices {
 				result.Content = append(result.Content, mcp.NewTextContent(notice))
 			}
@@ -454,7 +411,7 @@ func inputValidationNotice(mismatch validationMismatch) string {
 }
 
 // ignoredArgumentsNotice is appended to a successful result whose arguments
-// included keys the handler dropped without reading. The keys are the
+// included undeclared keys the handler did not mark as handled. The keys are the
 // caller's own, but only short identifier-like names are repeated back; any
 // other name is only counted.
 func ignoredArgumentsNotice(names []string) string {
@@ -562,7 +519,7 @@ func (h *Handler) recordValidationMismatch(ctx context.Context, req mcp.CallTool
 
 // undeclaredArguments lists the top-level argument keys the tool's input
 // schema does not declare. Input schemas are opened, so the validator never
-// flags them; ignoredArgumentsNotice reports the ones the handler doesn't read.
+// flags them; ignoredArgumentsNotice reports the ones the handler doesn't take.
 func undeclaredArguments(schema *compiledToolSchema, arguments any) []string {
 	object, ok := arguments.(map[string]any)
 	if !ok {

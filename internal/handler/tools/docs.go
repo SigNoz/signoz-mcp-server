@@ -17,10 +17,6 @@ import (
 	docsindex "github.com/SigNoz/signoz-mcp-server/internal/docs"
 )
 
-// legacyDocsQueryArgument is the signoz_search_docs alias for "searchText"
-// (#367); the input schema advertises only the canonical name.
-const legacyDocsQueryArgument = "query"
-
 func (h *Handler) RegisterDocsHandlers(s *mcp.Server) {
 	h.logger.Debug("Registering docs handlers")
 
@@ -39,7 +35,7 @@ func (h *Handler) RegisterDocsHandlers(s *mcp.Server) {
 		mcp.WithString("limit", mcp.DefaultString("10"), intOrStringType(), mcp.Description("Maximum results to return. Default: 10, max: 25 (capped to bound the docs index's memory footprint).")),
 		mcp.WithString("section_slug", mcp.Description(`Optional exact top-level docs section filter, for example "setup", "logs-management", "apm-distributed-tracing", "metrics", "alerts", "dashboards", "signoz-apis", "querying", or "collection-agents". Reuse the section_slug from an earlier result when narrowing; an unknown slug returns zero results.`)),
 	)
-	h.addTool(s, searchTool, h.handleSearchDocs, acceptsUndeclaredArguments(legacyDocsQueryArgument))
+	h.addTool(s, searchTool, h.handleSearchDocs)
 
 	fetchTool := mcp.NewTool("signoz_fetch_doc",
 		mcp.WithOutputSchema[docsindex.FetchResult](),
@@ -72,7 +68,8 @@ func (h *Handler) handleSearchDocs(ctx context.Context, req mcp.CallToolRequest)
 	// Read the canonical key first, then fall back to the alias.
 	query, _ := args["searchText"].(string)
 	if query == "" {
-		query, _ = args[legacyDocsQueryArgument].(string)
+		query, _ = args["query"].(string)
+		markArgumentsHandled(ctx, "query")
 	}
 	if query == "" {
 		return validationError("searchText", "is required"), nil
