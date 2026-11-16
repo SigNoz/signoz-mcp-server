@@ -37,7 +37,7 @@ logs, and `aggregation` or `step` on `signoz_query_metrics` run the defaults.
 - `internal/handler/tools/schema_compat_test.go`: handler tests through the registered tools.
 - `internal/handler/tools/normalization_replay_test.go`: validates argument forms against the
   advertised schemas directly.
-- `README.md`: the input-validation note.
+- `README.md`: the input-validation note. `CLAUDE.md`: a one-line rule to mark taken keys.
 
 ## Key Decisions
 
