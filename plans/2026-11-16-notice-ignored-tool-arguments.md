@@ -54,6 +54,14 @@ logs, and `aggregation` or `step` on `signoz_query_metrics` run the defaults.
   drops read-only fields by design. Deriving the list from the generated type keeps it current after
   `make gen`; a misspelled top-level field still draws the notice.
 
+### 2026-11-16 — Report `locked: true` on dashboard update
+
+- Decision: `handleUpdateDashboard` appends a notice when the request carries `locked: true`.
+- Rationale: an independent review (GPT-6 Astra) confirmed that exempting the fetched fields also
+  hid an attempt to lock a dashboard: the handler strips `locked` before the PUT. SigNoz rejects
+  updating a locked dashboard, so after a successful update a copied `locked: false` is a no-op and
+  `locked: true` is always a dropped lock request. Routine audit fields stay quiet.
+
 ### 2026-11-16 — Same notice prefix as schema mismatches
 
 - Decision: the new notice starts with `Input validation notice:`.
@@ -69,8 +77,9 @@ logs, and `aggregation` or `step` on `signoz_query_metrics` run the defaults.
 
 - `go test ./internal/handler/tools -run TestSuccessfulResultNamesTheArgumentsTheToolIgnored`
   covers `searchText` on `signoz_aggregate_logs`, declared-only arguments, `ruleId` on
-  `signoz_get_alert`, a fetched dashboard sent to `signoz_update_dashboard`, and a non-identifier
-  key that is counted but not repeated. Removing the `ruleId` alias or the dashboard field list
+  `signoz_get_alert`, a fetched dashboard sent to `signoz_update_dashboard` (the PUT carries only
+  the updatable fields), the same body with `locked: true` (notice), and a non-identifier key that
+  is counted but not repeated. Removing the `ruleId` alias or the dashboard field list
   fails the test.
 - `GOTOOLCHAIN=go1.26.0 make ci` in a clean worktree: every step passes except `lint`, which
   fails the same way on `main` locally (staticcheck SA5011 in untouched test files) and is left to
@@ -80,5 +89,6 @@ logs, and `aggregation` or `step` on `signoz_query_metrics` run the defaults.
 ## Outcome
 
 Shipped as planned. Successful calls name the undeclared arguments the tool ignored; aliases,
-fetched dashboard fields, and pass-through tools draw no notice; telemetry is unchanged. No
+fetched dashboard fields, and pass-through tools draw no notice, except a dropped `locked: true` on
+dashboard update; telemetry is unchanged. No
 SigNoz/agent-skills change: the notice is additive and changes no tool, parameter, or payload.

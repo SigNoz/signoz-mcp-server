@@ -171,8 +171,9 @@ func updatableFieldsFromSchema(schemaJSON []byte) map[string]struct{} {
 }
 
 // fetchedDashboardFields lists the top-level fields of a signoz_get_dashboard
-// body. signoz_update_dashboard takes that body as-is and keeps only
-// updatableDashboardFields, so the rest are accepted, not ignored.
+// body. signoz_update_dashboard is told to send that body back and strips the
+// response-only fields before the PUT, so they draw no ignored-arguments
+// notice; handleUpdateDashboard reports locked=true, the one that signals intent.
 func fetchedDashboardFields() []string {
 	fields := []string{"webUrl"} // added by util.InjectWebURL
 	gettable := reflect.TypeFor[apitypes.DashboardtypesGettableDashboardV2]()
@@ -626,8 +627,15 @@ func (h *Handler) handleUpdateDashboard(ctx context.Context, req mcp.CallToolReq
 
 	data = normalizeDashboardResponse(data)
 	data = h.enrichDashboardWebURL(ctx, base, data, id)
+	// SigNoz rejects updating a locked dashboard, so after a successful update a
+	// copied locked=false is a no-op and locked=true is a lock request we dropped.
+	if locked, _, _ := parseBoolArg(rawConfig, "locked"); locked {
+		return structuredResultWithNotes(data, lockNotAppliedNotice), nil
+	}
 	return structuredResult(data), nil
 }
+
+const lockNotAppliedNotice = inputValidationNoticePrefix + ` this tool ignored "locked": true because signoz_update_dashboard cannot lock a dashboard, so the update ran and the dashboard stays unlocked.`
 
 func (h *Handler) handlePatchDashboard(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	rawConfig, ok := req.Params.Arguments.(map[string]any)

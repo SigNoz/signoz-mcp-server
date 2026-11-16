@@ -5,9 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -168,8 +170,12 @@ func containsString(values []string, want string) bool {
 // notice.
 func TestSuccessfulResultNamesTheArgumentsTheToolIgnored(t *testing.T) {
 	var requests []string
+	var putBody map[string]any
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests = append(requests, r.Method+" "+r.URL.Path)
+		if r.Method == http.MethodPut {
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&putBody))
+		}
 		w.Header().Set("Content-Type", "application/json")
 		switch {
 		case r.URL.Path == "/api/v5/query_range":
@@ -187,15 +193,18 @@ func TestSuccessfulResultNamesTheArgumentsTheToolIgnored(t *testing.T) {
 	server := newMCPTestServer()
 	h.RegisterAllToolHandlers(server)
 
-	const fetchedDashboard = `{"id":"dash-1","name":"checkout","schemaVersion":"v6","tags":[],"image":"",` +
-		`"spec":{"display":{"name":"Checkout"},"variables":[],"panels":{},"layouts":[]},` +
-		`"locked":false,"orgId":"org-1","source":"user","createdAt":"2026-11-01T00:00:00Z","createdBy":"a@example.com",` +
-		`"updatedAt":"2026-11-02T00:00:00Z","updatedBy":"a@example.com","webUrl":"https://example.signoz.io/dashboard/dash-1"}`
+	fetchedDashboard := func(locked string) string {
+		return `{"id":"dash-1","name":"checkout","schemaVersion":"v6","tags":[],"image":"",` +
+			`"spec":{"display":{"name":"Checkout"},"variables":[],"panels":{},"layouts":[]},` +
+			`"locked":` + locked + `,"orgId":"org-1","source":"user","createdAt":"2026-11-01T00:00:00Z","createdBy":"a@example.com",` +
+			`"updatedAt":"2026-11-02T00:00:00Z","updatedBy":"a@example.com","webUrl":"https://example.signoz.io/dashboard/dash-1"}`
+	}
 	tests := []struct {
 		name        string
 		tool        string
 		arguments   string
 		wantRequest string
+		wantPutKeys []string
 		wantNotice  string
 	}{
 		{
@@ -227,18 +236,30 @@ func TestSuccessfulResultNamesTheArgumentsTheToolIgnored(t *testing.T) {
 		{
 			name:        "fetched dashboard body sent back for update",
 			tool:        "signoz_update_dashboard",
-			arguments:   fetchedDashboard,
+			arguments:   fetchedDashboard("false"),
 			wantRequest: "PUT /api/v2/dashboards/dash-1",
+			wantPutKeys: []string{"image", "name", "schemaVersion", "spec", "tags"},
+		},
+		{
+			name:        "update asking to lock the dashboard",
+			tool:        "signoz_update_dashboard",
+			arguments:   fetchedDashboard("true"),
+			wantRequest: "PUT /api/v2/dashboards/dash-1",
+			wantPutKeys: []string{"image", "name", "schemaVersion", "spec", "tags"},
+			wantNotice:  `Input validation notice: this tool ignored "locked": true because signoz_update_dashboard cannot lock a dashboard, so the update ran and the dashboard stays unlocked.`,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			requests = nil
+			requests, putBody = nil, nil
 			result := callRegisteredTool(t, server, tt.tool, tt.arguments)
 			text := allTextBlocks(result)
 
 			require.False(t, result.IsError, text)
 			require.Contains(t, requests, tt.wantRequest)
+			if tt.wantPutKeys != nil {
+				require.ElementsMatch(t, tt.wantPutKeys, slices.Collect(maps.Keys(putBody)), "response-only fields must not reach SigNoz")
+			}
 			require.Contains(t, textContent(t, result), `"status":"success"`, "the handler's own result comes first")
 			if tt.wantNotice == "" {
 				require.NotContains(t, text, inputValidationNoticePrefix)
