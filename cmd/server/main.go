@@ -205,6 +205,9 @@ func main() {
 // report its build without SIGNOZ_URL or SIGNOZ_API_KEY set.
 func printVersion(args []string, w io.Writer) bool {
 	for _, arg := range args {
+		if arg == "--" {
+			return false
+		}
 		if arg == "--version" || arg == "-version" {
 			_, _ = fmt.Fprintln(w, version.UserAgent())
 			return true
