@@ -410,8 +410,10 @@ func (h *Handler) handleGetAlertHistory(ctx context.Context, req mcp.CallToolReq
 
 	filterExpression := strings.TrimSpace(stringArg(args, "filter"))
 	if filterExpression == "" {
-		filterExpression = strings.TrimSpace(stringArg(args, "filterExpression"))
-		markArgumentsHandled(ctx, "filterExpression")
+		if legacy := strings.TrimSpace(stringArg(args, "filterExpression")); legacy != "" {
+			filterExpression = legacy
+			markArgumentsHandled(ctx, "filterExpression")
+		}
 	}
 
 	// Optional parameters stay off the query string when empty so SigNoz

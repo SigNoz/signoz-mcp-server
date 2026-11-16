@@ -95,7 +95,8 @@ logs, and `aggregation` or `step` on `signoz_query_metrics` run the defaults.
   `httptest` SigNoz. It checks that the handler's own data stays the first block and that a notice
   is the last block, carries the prefix, and names the ignored arguments, without pinning its
   sentences. Cases: `searchText` on `signoz_aggregate_logs`; a non-identifier key that is not
-  repeated; declared arguments only; `ruleId` on `signoz_get_alert` (the request uses it); an
+  repeated; declared arguments only; `ruleId` on `signoz_get_alert` (the request uses it); a non-string
+  `filterExpression` that the handler can't use (named); an
   undeclared field on `signoz_create_dashboard` (it reaches the POST, no notice); a fetched
   dashboard sent back to `signoz_update_dashboard` (the edit reaches the PUT, response-only
   fields don't); the same body with `locked: true` (notice); and that body failing with a 403 (the

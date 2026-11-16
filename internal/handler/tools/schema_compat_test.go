@@ -244,6 +244,14 @@ func TestSuccessfulResultNamesTheArgumentsTheToolIgnored(t *testing.T) {
 			wantResult: "High CPU",
 		},
 		{
+			name:       "legacy alias with an unusable value",
+			tool:       "signoz_get_alert_history",
+			arguments:  `{"id":"rule-1","filterExpression":42}`,
+			wantSent:   "GET /api/v2/rules/rule-1/history/timeline",
+			wantResult: "High CPU",
+			wantNamed:  []string{"filterExpression"},
+		},
+		{
 			name:       "undeclared field forwarded to SigNoz",
 			tool:       "signoz_create_dashboard",
 			arguments:  `{"schemaVersion":"v6","tags":[],"spec":{"display":{"name":"Payments"},"variables":[],"panels":{},"layouts":[]},"description":"Payments overview"}`,
