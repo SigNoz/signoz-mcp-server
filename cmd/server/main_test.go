@@ -3,77 +3,42 @@ package main
 import (
 	"bytes"
 	"errors"
-	"flag"
 	"os"
 	"os/exec"
 	"strings"
 	"testing"
-
-	"github.com/SigNoz/signoz-mcp-server/pkg/version"
 )
 
 const runMainEnv = "SIGNOZ_MCP_TEST_RUN_MAIN"
 
-// TestRunMain is not a test on its own: TestVersionFlag re-executes the test
-// binary with runMainEnv set so main() runs in a child process with real
-// argv, stdout, stderr, and exit code.
-func TestRunMain(t *testing.T) {
-	if os.Getenv(runMainEnv) != "1" {
-		t.Skip("helper process for TestVersionFlag")
+// runMain re-executes this test binary with runMainEnv set, which runs main
+// instead of the tests, with real argv, stdout, stderr, and exit code.
+func TestMain(m *testing.M) {
+	if os.Getenv(runMainEnv) == "1" {
+		main()
+		os.Exit(0)
 	}
-	os.Args = append([]string{"signoz-mcp-server"}, flag.Args()...)
-	main()
-	os.Exit(0)
+	os.Exit(m.Run())
 }
 
-func TestVersionFlag(t *testing.T) {
-	tests := []struct {
-		name       string
-		args       []string
-		wantCode   int
-		wantStdout string
-		wantStderr string
-	}{
-		{name: "double dash prints version without config", args: []string{"--version"}, wantStdout: version.UserAgent() + "\n"},
-		{name: "single dash prints version without config", args: []string{"-version"}, wantStdout: version.UserAgent() + "\n"},
-		{name: "no args still requires config", args: nil, wantCode: 1, wantStderr: "Configuration validation failed"},
-		{name: "version after end of options is not a flag", args: []string{"--", "--version"}, wantCode: 1, wantStderr: "Configuration validation failed"},
+// runMain runs main in a child process with no server configuration in its
+// environment, as on a fresh install.
+func runMain(t *testing.T, args ...string) (code int, stdout, stderr string) {
+	t.Helper()
+	cmd := exec.Command(os.Args[0], args...)
+	cmd.Env = append(envWithoutServerConfig(), runMainEnv+"=1")
+	var out, errOut bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &out, &errOut
+	if err := cmd.Run(); err != nil {
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) {
+			t.Fatalf("run main %v: %v", args, err)
+		}
+		code = exitErr.ExitCode()
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cmd := exec.Command(os.Args[0], append([]string{"-test.run=^TestRunMain$", "--"}, tt.args...)...)
-			cmd.Env = append(envWithoutServerConfig(), runMainEnv+"=1")
-			var stdout, stderr bytes.Buffer
-			cmd.Stdout, cmd.Stderr = &stdout, &stderr
-
-			code := 0
-			if err := cmd.Run(); err != nil {
-				var exitErr *exec.ExitError
-				if !errors.As(err, &exitErr) {
-					t.Fatalf("run main: %v", err)
-				}
-				code = exitErr.ExitCode()
-			}
-
-			if code != tt.wantCode {
-				t.Fatalf("exit code = %d, want %d; stderr: %s", code, tt.wantCode, stderr.String())
-			}
-			if stdout.String() != tt.wantStdout {
-				t.Fatalf("stdout = %q, want %q", stdout.String(), tt.wantStdout)
-			}
-			if tt.wantStderr == "" && stderr.Len() != 0 {
-				t.Fatalf("stderr = %q, want empty", stderr.String())
-			}
-			if !strings.Contains(stderr.String(), tt.wantStderr) {
-				t.Fatalf("stderr = %q, want it to contain %q", stderr.String(), tt.wantStderr)
-			}
-		})
-	}
+	return code, out.String(), errOut.String()
 }
 
-// envWithoutServerConfig drops server configuration so the child behaves as a
-// fresh install regardless of the developer's or CI's environment.
 func envWithoutServerConfig() []string {
 	var env []string
 	for _, kv := range os.Environ() {
@@ -84,4 +49,31 @@ func envWithoutServerConfig() []string {
 		env = append(env, kv)
 	}
 	return env
+}
+
+func TestVersionFlag_PrintsVersionAndExitsWithoutConfig(t *testing.T) {
+	// Test binaries are built without the release ldflags, so the version is "dev".
+	for _, arg := range []string{"--version", "-version"} {
+		t.Run(arg, func(t *testing.T) {
+			code, stdout, stderr := runMain(t, arg)
+
+			if code != 0 || stdout != "signoz-mcp-server/dev\n" || stderr != "" {
+				t.Fatalf("%s must print the version to stdout and exit 0 before loading config;\n"+
+					"got exit %d, stdout %q, stderr %q.\n"+
+					"Check that main calls printVersion before config.LoadConfig.",
+					arg, code, stdout, stderr)
+			}
+		})
+	}
+}
+
+func TestVersionFlag_AfterEndOfOptionsStartsServerNormally(t *testing.T) {
+	code, stdout, stderr := runMain(t, "--", "--version")
+
+	if code == 0 || strings.Contains(stdout, "signoz-mcp-server/") {
+		t.Fatalf("--version after \"--\" is an operand, not the flag, so startup must continue and fail on missing config;\n"+
+			"got exit %d, stdout %q, stderr %q.\n"+
+			"Check that printVersion stops scanning at \"--\".",
+			code, stdout, stderr)
+	}
 }
