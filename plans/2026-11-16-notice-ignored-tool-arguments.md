@@ -75,15 +75,23 @@ logs, and `aggregation` or `step` on `signoz_query_metrics` run the defaults.
 
 ## Verification
 
-- `go test ./internal/handler/tools -run TestSuccessfulResultNamesTheArgumentsTheToolIgnored`
-  covers `searchText` on `signoz_aggregate_logs`, declared-only arguments, `ruleId` on
-  `signoz_get_alert`, a fetched dashboard sent to `signoz_update_dashboard` (the PUT carries only
-  the updatable fields), the same body with `locked: true` (notice), and a non-identifier key that
-  is counted but not repeated. Removing the `ruleId` alias or the dashboard field list
-  fails the test.
+- `TestSuccessfulResultNamesTheArgumentsTheToolIgnored` calls the registered tools against an
+  `httptest` SigNoz. It checks that the handler's own data stays the first block and that a notice
+  is the last block, carries the prefix, and names the ignored arguments, without pinning its
+  sentences. Cases: `searchText` on `signoz_aggregate_logs`; a non-identifier key that is not
+  repeated; declared arguments only; `ruleId` on `signoz_get_alert` (the request uses it); a
+  fetched dashboard sent back to `signoz_update_dashboard` (the edit reaches the PUT, response-only
+  fields don't); the same body with `locked: true` (notice); and that body failing with a 403 (the
+  coded error and upstream reason survive, with no notices).
+- Mutations, each failing the case meant to catch it: drop the lock notice, the `ruleId` alias,
+  the identifier filter, or the read-only field strip; append notices to error results; flag
+  aliased and fetched fields.
+- `TestAdvertisedSchemasAdmitEveryArgumentFormHandlersRead` now validates each argument form
+  against the schema `tools/list` advertises, instead of re-registering a stub (which dropped the
+  alias policy) and scanning the result for notice text. Removing `intOrStringType` from the docs
+  `limit` fails it.
 - `GOTOOLCHAIN=go1.26.0 make ci` in a clean worktree: every step passes except `lint`, which
-  fails the same way on `main` locally (staticcheck SA5011 in untouched test files) and is left to
-  the CI lint job.
+  fails the same way on `main` locally (staticcheck SA5011 in untouched test files); CI lint passes.
 - No e2e test: the notice is decided by this server, not SigNoz.
 
 ## Outcome
