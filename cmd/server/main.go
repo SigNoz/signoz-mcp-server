@@ -4,13 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"github.com/spf13/cobra"
 	otelruntime "go.opentelemetry.io/contrib/instrumentation/runtime"
 	"go.opentelemetry.io/otel"
 	"golang.org/x/sync/errgroup"
@@ -28,10 +28,33 @@ import (
 )
 
 func main() {
-	if printVersion(os.Args[1:], os.Stdout) {
-		return
+	if err := newRootCmd().Execute(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
+}
 
+func newRootCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "signoz-mcp-server",
+		Short: "Model Context Protocol server for SigNoz",
+		Long:  "Model Context Protocol server for SigNoz. Configuration comes from environment variables; see the README.",
+		// Cobra handles --version and --help before Run, so neither needs config.
+		Version: version.Version,
+		// MCP client configs and the Docker image start the server with no
+		// subcommand, and args were ignored before cobra, so keep ignoring them.
+		Args:               cobra.ArbitraryArgs,
+		FParseErrWhitelist: cobra.FParseErrWhitelist{UnknownFlags: true},
+		SilenceUsage:       true,
+		SilenceErrors:      true,
+		CompletionOptions:  cobra.CompletionOptions{DisableDefaultCmd: true},
+		Run: func(*cobra.Command, []string) {
+			runServer()
+		},
+	}
+}
+
+func runServer() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -199,19 +222,4 @@ func main() {
 		logger.ErrorContext(ctx, "Server exited with errors", logpkg.ErrAttr(errors.Join(runErr, shutdownErr)))
 		os.Exit(1)
 	}
-}
-
-// printVersion handles --version before config loading so the binary can
-// report its build without SIGNOZ_URL or SIGNOZ_API_KEY set.
-func printVersion(args []string, w io.Writer) bool {
-	for _, arg := range args {
-		if arg == "--" {
-			return false
-		}
-		if arg == "--version" || arg == "-version" {
-			_, _ = fmt.Fprintln(w, version.UserAgent())
-			return true
-		}
-	}
-	return false
 }

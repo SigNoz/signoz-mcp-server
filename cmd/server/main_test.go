@@ -53,27 +53,37 @@ func envWithoutServerConfig() []string {
 
 func TestVersionFlag_PrintsVersionAndExitsWithoutConfig(t *testing.T) {
 	// Test binaries are built without the release ldflags, so the version is "dev".
-	for _, arg := range []string{"--version", "-version"} {
+	for _, arg := range []string{"--version", "-v"} {
 		t.Run(arg, func(t *testing.T) {
 			code, stdout, stderr := runMain(t, arg)
 
-			if code != 0 || stdout != "signoz-mcp-server/dev\n" || stderr != "" {
+			if code != 0 || stdout != "signoz-mcp-server version dev\n" || stderr != "" {
 				t.Fatalf("%s must print the version to stdout and exit 0 before loading config;\n"+
 					"got exit %d, stdout %q, stderr %q.\n"+
-					"Check that main calls printVersion before config.LoadConfig.",
+					"Check that the root command sets Version and only Run loads config.",
 					arg, code, stdout, stderr)
 			}
 		})
 	}
 }
 
-func TestVersionFlag_AfterEndOfOptionsStartsServerNormally(t *testing.T) {
-	code, stdout, stderr := runMain(t, "--", "--version")
+func TestUnrecognizedArgs_StartServerAsBefore(t *testing.T) {
+	// Before cobra the binary ignored every argument, and MCP client configs
+	// may still pass some, so they must reach normal startup, not a usage error.
+	for _, args := range [][]string{
+		{"--", "--version"},
+		{"--unknown-flag"},
+		{"serve"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			code, stdout, stderr := runMain(t, args...)
 
-	if code == 0 || strings.Contains(stdout, "signoz-mcp-server/") {
-		t.Fatalf("--version after \"--\" is an operand, not the flag, so startup must continue and fail on missing config;\n"+
-			"got exit %d, stdout %q, stderr %q.\n"+
-			"Check that printVersion stops scanning at \"--\".",
-			code, stdout, stderr)
+			if code == 0 || stdout != "" || !strings.Contains(stderr, "Configuration validation failed") {
+				t.Fatalf("%q must be ignored so startup reaches config validation and fails on missing config;\n"+
+					"got exit %d, stdout %q, stderr %q.\n"+
+					"Check the root command's Args and FParseErrWhitelist.",
+					args, code, stdout, stderr)
+			}
+		})
 	}
 }
