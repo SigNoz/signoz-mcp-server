@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"sort"
 
@@ -41,6 +42,7 @@ func (h *Handler) RegisterServiceHandlers(s *mcp.Server) {
 		mcp.WithString("start", intOrStringType(), mcp.Description("Start time in unix milliseconds (optional, defaults to 6 hours ago).")),
 		mcp.WithString("end", intOrStringType(), mcp.Description("End time in unix milliseconds (optional, defaults to now).")),
 		mcp.WithString("tags", mcp.Description("JSON-encoded TagQueryParam array; omit for no tag filter. Example: [{\"key\":\"http.method\",\"tagType\":\"SpanAttribute\",\"operator\":\"In\",\"stringValues\":[\"GET\"]}]. Pass the array as a string, not as a JSON array value.")),
+		mcp.WithString("limit", mcp.DefaultString("50"), intOrStringType(), mcp.Description("Maximum operations to return, slowest p99 first. Default: 50; max: 5000 (higher values are clamped). A note says how many operations were omitted.")),
 	)
 
 	h.addTool(s, getOpsTool, h.handleGetServiceTopOperations)
@@ -135,6 +137,15 @@ func (h *Handler) handleGetServiceTopOperations(ctx context.Context, req mcp.Cal
 
 	start, end := timeutil.GetTimestampsWithDefaults(args, timeutil.UnitNanos)
 
+	limit, err := intArg(args, "limit", topOperationsDefaultLimit)
+	if err != nil {
+		return errorWithCode(CodeValidationFailed, "Parameter validation failed: "+err.Error()+`. Pass "limit" as a positive integer, for example 50 or "50".`), nil
+	}
+	limitClamped := limit > signozclient.TopOperationsLimit
+	if limitClamped {
+		limit = signozclient.TopOperationsLimit
+	}
+
 	// tags is passed through to SigNoz verbatim as its tag filter array; an
 	// absent or non-string value means no tag filter.
 	var tags json.RawMessage
@@ -175,12 +186,43 @@ func (h *Handler) handleGetServiceTopOperations(ctx context.Context, req mcp.Cal
 		h.logger.WarnContext(ctx, "Top operations response is not a data array", logpkg.ErrAttr(err), slog.String("response", logpkg.TruncBody(result)))
 		return upstreamResponseError("top operations response has no data array"), nil
 	}
+	// SigNoz returns the rows slowest p99 first, so the cut keeps the slowest.
+	// The client always asks for TopOperationsLimit rows so the note can count what was cut.
+	total := len(operations)
+	if total > limit {
+		operations = operations[:limit]
+	}
 	payload, err := json.Marshal(operations)
 	if err != nil {
 		return InternalErrorResult("failed to marshal response: " + err.Error()), nil
 	}
-	if len(operations) >= signozclient.TopOperationsLimit {
-		return resultWithNotes(payload, limitOnlyCompletenessNote(len(operations), signozclient.TopOperationsLimit, true, "a shorter time range or tags")), nil
+	return resultWithNotes(payload, topOperationsNotes(len(operations), total, limitClamped)...), nil
+}
+
+// topOperationsDefaultLimit keeps a busy service's table inside common MCP
+// client output limits; signoz_list_services uses the same default page size.
+const topOperationsDefaultLimit = 50
+
+// topOperationsNotes says when the table was cut at the caller's limit and how
+// many rows were omitted. When SigNoz itself returned TopOperationsLimit rows,
+// the total is only a lower bound.
+func topOperationsNotes(returned, total int, limitClamped bool) []string {
+	var notes []string
+	if limitClamped {
+		notes = append(notes, fmt.Sprintf("note: limit clamped to %d, the most operations SigNoz returns in one call.", signozclient.TopOperationsLimit))
 	}
-	return mcp.NewToolResultText(string(payload)), nil
+	upstreamFull := total >= signozclient.TopOperationsLimit
+	switch {
+	case returned < total && upstreamFull:
+		notes = append(notes, fmt.Sprintf(
+			"note: returned the %d slowest operations by p99; at least %d more were omitted (hasMore=true). Raise limit (max %d) or use a shorter time range or tags to see them.",
+			returned, total-returned, signozclient.TopOperationsLimit))
+	case returned < total:
+		notes = append(notes, fmt.Sprintf(
+			"note: returned the %d slowest operations by p99 of %d; %d were omitted (hasMore=true). Raise limit (max %d) or use a shorter time range or tags to see them.",
+			returned, total, total-returned, signozclient.TopOperationsLimit))
+	case upstreamFull:
+		notes = append(notes, limitOnlyCompletenessNote(returned, signozclient.TopOperationsLimit, true, "a shorter time range or tags"))
+	}
+	return notes
 }

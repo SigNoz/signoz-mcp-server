@@ -6605,6 +6605,14 @@
                   "string"
                 ]
               },
+              "limit": {
+                "default": "50",
+                "description": "Maximum operations to return, slowest p99 first. Default: 50; max: 5000 (higher values are clamped). A note says how many operations were omitted.",
+                "type": [
+                  "integer",
+                  "string"
+                ]
+              },
               "searchContext": {
                 "description": "Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.",
                 "type": "string"

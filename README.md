@@ -727,6 +727,7 @@ Gets the built-in operation table for one traced service, ranked by p99 latency 
   - `start` (optional) - Start time in unix milliseconds (defaults to 6 hours ago).
   - `end` (optional) - End time in unix milliseconds (defaults to now)
   - `tags` (optional) - JSON-encoded `TagQueryParam` array passed as a string, for example `[{"key":"http.method","tagType":"SpanAttribute","operator":"In","stringValues":["GET"]}]`; omit for no tag filter
+  - `limit` (optional) - Maximum operations to return, slowest p99 first (default: 50, max: 5000; higher values are clamped). When rows are cut, a note says how many were omitted
 
 #### `signoz_get_alert_history`
 
