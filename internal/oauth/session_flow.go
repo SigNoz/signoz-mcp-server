@@ -32,7 +32,12 @@ const (
 	authFailureSignInRejected     = "signin_rejected"
 	authFailureSSOCallbackInvalid = "sso_callback_invalid"
 	authFailureSessionRejected    = "session_rejected"
+	authFailureSSORequestTooLarge = "sso_request_too_large"
 )
+
+// maxSSOCookieBytes keeps the pending-authorization cookie under the ~4096
+// bytes browsers allow for a cookie's name and value.
+const maxSSOCookieBytes = 3800
 
 type orgView struct {
 	ID       string
@@ -106,7 +111,7 @@ func (h *Handler) renderSignIn(w http.ResponseWriter, r *http.Request, status in
 		return
 	}
 
-	data.Orgs = make([]orgView, 0, len(sessionContext.Orgs))
+	views := make([]orgView, 0, len(sessionContext.Orgs))
 	hasSSO := false
 	for _, org := range sessionContext.Orgs {
 		view := orgView{ID: org.ID, Name: org.Name, Password: org.Password}
@@ -120,15 +125,10 @@ func (h *Handler) renderSignIn(w http.ResponseWriter, r *http.Request, status in
 			view.Warning = "This SigNoz instance doesn't allow single sign-on from " + h.issuerHost() + ". Sign in with your password, or ask your SigNoz admin to add " + h.issuerHost() + " to the instance's allowed origins."
 		}
 		hasSSO = hasSSO || len(view.SSO) > 0
-		if view.Password || len(view.SSO) > 0 {
-			data.Orgs = append(data.Orgs, view)
-		}
-	}
-	if len(data.Orgs) == 0 {
-		h.renderAuthorizeError(w, r, http.StatusNotFound, data, "This SigNoz instance offers no sign-in method for that email. Check the instance URL, or use an API key.", "invalid_request", authFailureSignInRejected)
-		return
+		views = append(views, view)
 	}
 
+	ssoUnavailable := ""
 	if hasSSO {
 		pending, err := EncryptPendingAuthorization(PendingAuthorization{
 			Nonce:               nonce,
@@ -145,15 +145,47 @@ func (h *Handler) renderSignIn(w http.ResponseWriter, r *http.Request, status in
 			h.writeOAuthError(r, w, http.StatusInternalServerError, "server_error", "failed to start sign-in")
 			return
 		}
-		http.SetCookie(w, &http.Cookie{
-			Name:     ssoCookiePrefix + nonce,
-			Value:    pending,
-			Path:     h.basePath() + ssoCallbackPath + nonce,
-			HttpOnly: true,
-			SameSite: http.SameSiteLaxMode,
-			Secure:   h.isSecure(),
-			MaxAge:   int(h.config.AuthCodeTTL.Seconds()),
-		})
+		cookieName := ssoCookiePrefix + nonce
+		if len(cookieName)+1+len(pending) > maxSSOCookieBytes {
+			// A browser silently drops an oversized cookie, which would fail
+			// the callback after the user already signed in at the IdP.
+			ssoUnavailable = ssoTooLargeMessage(data.State)
+			h.recordOAuthFailure(r.Context(), r, http.StatusRequestEntityTooLarge, "invalid_request", ssoUnavailable,
+				failureReasonAttrs(authFailureSSORequestTooLarge)...)
+			for i := range views {
+				views[i].SSO = nil
+			}
+		} else {
+			http.SetCookie(w, &http.Cookie{
+				Name:     cookieName,
+				Value:    pending,
+				Path:     h.basePath() + ssoCallbackPath + nonce,
+				HttpOnly: true,
+				SameSite: http.SameSiteLaxMode,
+				Secure:   h.isSecure(),
+				MaxAge:   int(h.config.AuthCodeTTL.Seconds()),
+			})
+		}
+	}
+
+	data.Orgs = make([]orgView, 0, len(views))
+	for _, view := range views {
+		if view.Password || len(view.SSO) > 0 {
+			data.Orgs = append(data.Orgs, view)
+		}
+	}
+	if len(data.Orgs) == 0 {
+		message := "This SigNoz instance offers no sign-in method for that email. Check the instance URL, or use an API key."
+		if ssoUnavailable != "" {
+			message = ssoUnavailable
+		}
+		h.renderAuthorizeError(w, r, http.StatusNotFound, data, message, "invalid_request", authFailureSignInRejected)
+		return
+	}
+	if errorMessage == "" && ssoUnavailable != "" {
+		// Password sign-in still works, so the page renders normally with the
+		// reason SSO is missing; the failure was recorded above.
+		data.ErrorMessage = ssoUnavailable
 	}
 
 	data.Step = stepSignIn
@@ -314,6 +346,17 @@ func (h *Handler) renderInstanceError(w http.ResponseWriter, r *http.Request, da
 	default:
 		h.renderAuthorizeError(w, r, http.StatusBadGateway, data, "We couldn't reach that SigNoz instance. Check the URL and try again.", "temporarily_unavailable", authFailureInstanceUnreachable)
 	}
+}
+
+// ssoTooLargeMessage explains why SSO is missing. The state parameter is the
+// usual cause; otherwise the client's registration (redirect URIs and name,
+// carried in its client_id) is.
+func ssoTooLargeMessage(state string) string {
+	if len(state) > maxSSOCookieBytes/4 {
+		return "Single sign-on isn't available for this request: the MCP client's state parameter is too long (" +
+			strconv.Itoa(len(state)) + " characters). Sign in with your password, or ask the client's maintainers to send a shorter state."
+	}
+	return "Single sign-on isn't available for this request: the MCP client's registration (its redirect URIs and name) is too large. Sign in with your password, or register the client with fewer redirect URIs."
 }
 
 func sessionFromToken(signozURL string, token *client.SessionToken) Session {

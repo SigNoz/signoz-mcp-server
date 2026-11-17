@@ -395,3 +395,20 @@ func TestRevokeNeverDialsANonASCIIInstanceHost(t *testing.T) {
 	require.Equal(t, http.StatusOK, rr.Code, "an unusable token is a no-op revocation, not an upstream call: %s", rr.Body.String())
 	require.Empty(t, f.instance.deletedAuth)
 }
+
+func TestSSOIsWithheldWhenThePendingCookieWouldBeTooLarge(t *testing.T) {
+	f := newSessionFlow(t)
+	f.instance.ssoEnabled = true
+	longState := strings.Repeat("s", 3000)
+
+	page := f.submit(url.Values{"step": {"discover"}, "signoz_url": {f.instance.URL}, "email": {testEmail}, "state": {longState}})
+
+	require.Equal(t, http.StatusOK, page.Code, "password sign-in still works, so the page renders")
+	body := html.UnescapeString(page.Body.String())
+	require.Contains(t, body, "the MCP client's state parameter is too long (3000 characters)")
+	require.NotContains(t, body, "https://idp.example.com/authorize", "an SSO button would fail after the IdP sign-in")
+	require.Contains(t, body, `name="password"`)
+	for _, c := range page.Result().Cookies() {
+		require.False(t, strings.HasPrefix(c.Name, ssoCookiePrefix), "a browser would drop the oversized cookie")
+	}
+}
