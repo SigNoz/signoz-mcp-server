@@ -16,7 +16,7 @@ import (
 
 const sessionRequestTimeout = 15 * time.Second
 
-// SessionClient calls a deployment's session API (/api/v2/sessions). It
+// SessionClient calls a SigNoz instance's session API (/api/v2/sessions). It
 // holds no credential: sign-in calls are unauthenticated and the rest take
 // the SigNoz access token per call.
 type SessionClient struct {

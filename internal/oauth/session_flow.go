@@ -56,9 +56,9 @@ func (h *Handler) sessionClient(signozURL string) *client.SessionClient {
 	return client.NewSessionClient(h.logger, signozURL, headers)
 }
 
-// normalizeDeployment validates the deployment field and the allowlist. It
+// normalizeInstanceURL validates the instance field and the allowlist. It
 // renders the error page itself and returns ok=false when the request ends.
-func (h *Handler) normalizeDeployment(w http.ResponseWriter, r *http.Request, data authorizeTemplateData, raw string) (*http.Request, string, bool) {
+func (h *Handler) normalizeInstanceURL(w http.ResponseWriter, r *http.Request, data authorizeTemplateData, raw string) (*http.Request, string, bool) {
 	normalized, err := util.NormalizeSigNozURLFormInput(raw)
 	if err != nil {
 		data.SignozURL = raw
@@ -82,7 +82,7 @@ func (h *Handler) handleDiscoverSubmit(w http.ResponseWriter, r *http.Request, p
 		h.renderAuthorizeError(w, r, http.StatusBadRequest, data, "Enter the email you sign in to SigNoz with.", "invalid_request", "")
 		return
 	}
-	r, signozURL, ok := h.normalizeDeployment(w, r, data, r.FormValue("signoz_url"))
+	r, signozURL, ok := h.normalizeInstanceURL(w, r, data, r.FormValue("signoz_url"))
 	if !ok {
 		return
 	}
@@ -90,7 +90,7 @@ func (h *Handler) handleDiscoverSubmit(w http.ResponseWriter, r *http.Request, p
 	h.renderSignIn(w, r, http.StatusOK, data, "", "")
 }
 
-// renderSignIn asks the deployment how this email signs in and renders the
+// renderSignIn asks the instance how this email signs in and renders the
 // password and SSO options. Each render starts a fresh SSO correlation.
 func (h *Handler) renderSignIn(w http.ResponseWriter, r *http.Request, status int, data authorizeTemplateData, errorMessage, failureReason string) {
 	nonce, err := randomURLSafeString(16)
@@ -102,7 +102,7 @@ func (h *Handler) renderSignIn(w http.ResponseWriter, r *http.Request, status in
 
 	sessionContext, err := h.sessionClient(data.SignozURL).GetSessionContext(r.Context(), data.Email, ref)
 	if err != nil {
-		h.renderDeploymentError(w, r, data, err)
+		h.renderInstanceError(w, r, data, err)
 		return
 	}
 
@@ -117,7 +117,7 @@ func (h *Handler) renderSignIn(w http.ResponseWriter, r *http.Request, status in
 			view.SSO = append(view.SSO, ssoView{Label: ssoLabel(sso.Provider), URL: sso.URL})
 		}
 		if org.WarningCode == "origin_not_allowed" {
-			view.Warning = "This deployment doesn't allow single sign-on from " + h.issuerHost() + ". Sign in with your password, or ask your SigNoz admin to add " + h.issuerHost() + " to the deployment's allowed origins."
+			view.Warning = "This SigNoz instance doesn't allow single sign-on from " + h.issuerHost() + ". Sign in with your password, or ask your SigNoz admin to add " + h.issuerHost() + " to the instance's allowed origins."
 		}
 		hasSSO = hasSSO || len(view.SSO) > 0
 		if view.Password || len(view.SSO) > 0 {
@@ -125,7 +125,7 @@ func (h *Handler) renderSignIn(w http.ResponseWriter, r *http.Request, status in
 		}
 	}
 	if len(data.Orgs) == 0 {
-		h.renderAuthorizeError(w, r, http.StatusNotFound, data, "This deployment offers no sign-in method for that email. Check the deployment URL, or use an API key.", "invalid_request", authFailureSignInRejected)
+		h.renderAuthorizeError(w, r, http.StatusNotFound, data, "This SigNoz instance offers no sign-in method for that email. Check the instance URL, or use an API key.", "invalid_request", authFailureSignInRejected)
 		return
 	}
 
@@ -157,7 +157,7 @@ func (h *Handler) renderSignIn(w http.ResponseWriter, r *http.Request, status in
 	}
 
 	data.Step = stepSignIn
-	data.DeploymentHost = hostOf(data.SignozURL)
+	data.InstanceHost = hostOf(data.SignozURL)
 	if errorMessage != "" {
 		h.renderAuthorizeError(w, r, status, data, errorMessage, "access_denied", failureReason)
 		return
@@ -171,7 +171,7 @@ func (h *Handler) handlePasswordSubmit(w http.ResponseWriter, r *http.Request, p
 	password := r.FormValue("password")
 	orgID := strings.TrimSpace(r.FormValue("org_id"))
 
-	r, signozURL, ok := h.normalizeDeployment(w, r, data, r.FormValue("signoz_url"))
+	r, signozURL, ok := h.normalizeInstanceURL(w, r, data, r.FormValue("signoz_url"))
 	if !ok {
 		return
 	}
@@ -188,10 +188,10 @@ func (h *Handler) handlePasswordSubmit(w http.ResponseWriter, r *http.Request, p
 	token, err := h.sessionClient(signozURL).CreateSessionByPassword(r.Context(), data.Email, password, orgID)
 	if err != nil {
 		if errors.Is(err, client.ErrUnauthorized) || isClientError(err) {
-			h.renderSignIn(w, r, http.StatusUnauthorized, data, "That email and password didn't work for this deployment.", authFailureSignInRejected)
+			h.renderSignIn(w, r, http.StatusUnauthorized, data, "That email and password didn't work for this SigNoz instance.", authFailureSignInRejected)
 			return
 		}
-		h.renderDeploymentError(w, r, data, err)
+		h.renderInstanceError(w, r, data, err)
 		return
 	}
 
@@ -305,14 +305,14 @@ func (h *Handler) writeCallbackError(w http.ResponseWriter, r *http.Request, sta
 	_, _ = w.Write([]byte(message + "\n"))
 }
 
-// renderDeploymentError maps a failure to reach the deployment's session API.
-func (h *Handler) renderDeploymentError(w http.ResponseWriter, r *http.Request, data authorizeTemplateData, err error) {
+// renderInstanceError maps a failure to reach the instance's session API.
+func (h *Handler) renderInstanceError(w http.ResponseWriter, r *http.Request, data authorizeTemplateData, err error) {
 	data.Step = ""
 	switch {
 	case errors.Is(err, client.ErrInstanceNotFound):
 		h.renderAuthorizeError(w, r, http.StatusNotFound, data, "We couldn't find a SigNoz workspace at that URL. If your trial or subscription has ended, the workspace may have been deactivated. Check your workspace status or contact SigNoz support.", "invalid_request", authFailureInstanceNotFound)
 	default:
-		h.renderAuthorizeError(w, r, http.StatusBadGateway, data, "We couldn't reach that SigNoz deployment. Check the URL and try again.", "temporarily_unavailable", authFailureInstanceUnreachable)
+		h.renderAuthorizeError(w, r, http.StatusBadGateway, data, "We couldn't reach that SigNoz instance. Check the URL and try again.", "temporarily_unavailable", authFailureInstanceUnreachable)
 	}
 }
 

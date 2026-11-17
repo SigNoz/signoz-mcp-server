@@ -36,9 +36,9 @@ func runAuth(t *testing.T, server *MCPServer, headers map[string]string) (*httpt
 	return rr, seen
 }
 
-func TestSessionBearerForwardsSigNozSessionToItsDeployment(t *testing.T) {
+func TestSessionBearerForwardsSigNozSessionToItsInstance(t *testing.T) {
 	var meCalls atomic.Int32
-	deployment := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	instance := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v2/users/me" {
 			http.NotFound(w, r)
 			return
@@ -51,7 +51,7 @@ func TestSessionBearerForwardsSigNozSessionToItsDeployment(t *testing.T) {
 		}
 		_, _ = w.Write([]byte(`{"status":"success","data":{"id":"u1","orgId":"o1"}}`))
 	}))
-	defer deployment.Close()
+	defer instance.Close()
 
 	cfg := &config.Config{
 		OAuthEnabled:         true,
@@ -61,19 +61,19 @@ func TestSessionBearerForwardsSigNozSessionToItsDeployment(t *testing.T) {
 	}
 	server := &MCPServer{logger: logpkg.New("error"), config: cfg, analytics: noopanalytics.New()}
 
-	live := oauth.FormatSessionAccessToken(deployment.URL, "live-access")
+	live := oauth.FormatSessionAccessToken(instance.URL, "live-access")
 	for range 3 {
 		rr, seen := runAuth(t, server, map[string]string{
 			"Authorization": "Bearer " + live,
-			// The token's deployment wins over a header naming another.
+			// The token's instance wins over a header naming another.
 			"X-SigNoz-URL": "https://other.example.com",
 		})
 		require.Equal(t, http.StatusOK, rr.Code, rr.Body.String())
-		require.Equal(t, &seenCredential{header: "Authorization", value: "Bearer live-access", signozURL: deployment.URL}, seen)
+		require.Equal(t, &seenCredential{header: "Authorization", value: "Bearer live-access", signozURL: instance.URL}, seen)
 	}
 	require.EqualValues(t, 1, meCalls.Load(), "validation is cached across a burst of requests")
 
-	rr, seen := runAuth(t, server, map[string]string{"Authorization": "Bearer " + oauth.FormatSessionAccessToken(deployment.URL, "ended-access")})
+	rr, seen := runAuth(t, server, map[string]string{"Authorization": "Bearer " + oauth.FormatSessionAccessToken(instance.URL, "ended-access")})
 	require.Nil(t, seen)
 	require.Equal(t, http.StatusUnauthorized, rr.Code)
 	require.Contains(t, rr.Header().Get("WWW-Authenticate"), `error="invalid_token"`, "a rejected session makes the client refresh")
@@ -82,7 +82,7 @@ func TestSessionBearerForwardsSigNozSessionToItsDeployment(t *testing.T) {
 	rr, seen = runAuth(t, server, map[string]string{"Authorization": "Bearer " + oauth.FormatSessionAccessToken("https://evil.example.com", "live-access")})
 	require.Nil(t, seen)
 	require.Equal(t, http.StatusForbidden, rr.Code)
-	require.Equal(t, before, meCalls.Load(), "a disallowed deployment is never dialed")
+	require.Equal(t, before, meCalls.Load(), "a disallowed instance is never dialed")
 }
 
 func TestCredentialPathsResolveSideBySide(t *testing.T) {

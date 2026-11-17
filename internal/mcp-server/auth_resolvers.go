@@ -30,7 +30,7 @@ const (
 )
 
 // authResolution is the credential a request carries. signozURL is set when
-// the credential names its own deployment (OAuth tokens); otherwise the
+// the credential names its own instance (OAuth tokens); otherwise the
 // X-SigNoz-URL header or SIGNOZ_URL decides.
 type authResolution struct {
 	cred      util.Credential
@@ -124,8 +124,8 @@ func (m *MCPServer) resolveOAuthBearer(ctx context.Context, r *http.Request) (*a
 	}
 }
 
-// resolveSessionToken routes a session token to its deployment and checks
-// that SigNoz still accepts it. The deployment comes from the token's
+// resolveSessionToken routes a session token to its instance and checks
+// that SigNoz still accepts it. The instance comes from the token's
 // readable prefix, so it is allowlisted before any request is sent.
 func (m *MCPServer) resolveSessionToken(ctx context.Context, rawURL, accessToken string) (*authResolution, *authFailure) {
 	invalid := &authFailure{
@@ -133,7 +133,7 @@ func (m *MCPServer) resolveSessionToken(ctx context.Context, rawURL, accessToken
 		reason:     authFailureInvalidOAuthToken,
 		mode:       authModeOAuthSession,
 		message:    "OAuth access token is invalid",
-		logMessage: "OAuth session token names an invalid deployment",
+		logMessage: "OAuth session token names an invalid instance",
 		challenge:  `error="invalid_token", error_description="access token is invalid"`,
 	}
 	signozURL, err := util.NormalizeSigNozURL(rawURL)
@@ -169,7 +169,7 @@ func (m *MCPServer) resolveSessionToken(ctx context.Context, rawURL, accessToken
 			status:     http.StatusBadGateway,
 			reason:     authFailureInstanceUnreachable,
 			mode:       authModeOAuthSession,
-			message:    "Couldn't reach the SigNoz deployment to check the access token",
+			message:    "Couldn't reach the SigNoz instance to check the access token",
 			logMessage: "SigNoz session validation failed",
 			signozURL:  signozURL,
 		}

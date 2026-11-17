@@ -84,13 +84,13 @@ type authorizeTemplateData struct {
 	CSRFToken           string
 	SignozURL           string
 	// RedirectHost is shown next to the self-asserted client name.
-	RedirectHost   string
-	Step           string
-	Email          string
-	DeploymentHost string
-	Orgs           []orgView
-	ErrorMessage   string
-	ErrorCode      string
+	RedirectHost string
+	Step         string
+	Email        string
+	InstanceHost string
+	Orgs         []orgView
+	ErrorMessage string
+	ErrorCode    string
 	// FailureReason, when set, is emitted as mcp.auth.failure_reason on the
 	// OAuth failure telemetry (it is not rendered in the HTML page).
 	FailureReason string
@@ -237,7 +237,7 @@ func (h *Handler) handleAPIKeySubmit(w http.ResponseWriter, r *http.Request, par
 	}
 	// Seed the SigNoz URL (mcp.tenant_url) and reject disallowed backends
 	// before probing them, so the server never dials a host it will not serve.
-	r, normalizedURL, ok := h.normalizeDeployment(w, r, data, r.FormValue("signoz_url"))
+	r, normalizedURL, ok := h.normalizeInstanceURL(w, r, data, r.FormValue("signoz_url"))
 	if !ok {
 		return
 	}
@@ -247,7 +247,7 @@ func (h *Handler) handleAPIKeySubmit(w http.ResponseWriter, r *http.Request, par
 		case errors.Is(err, client.ErrUnauthorized):
 			h.renderAuthorizeError(w, r, http.StatusUnauthorized, data, "We couldn't sign in to that SigNoz instance. Check the URL and API key, then try again.", "access_denied", "")
 		default:
-			h.renderDeploymentError(w, r, data, err)
+			h.renderInstanceError(w, r, data, err)
 		}
 		return
 	}

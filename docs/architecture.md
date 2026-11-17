@@ -39,7 +39,7 @@ subgraph HTTPPath["HTTP Transport — Multi Tenant"]
 
     AUTH --> CHAIN{"Resolver chain<br/>(first match wins)"}
     CHAIN -->|SIGNOZ-API-KEY header| APIKEYHDR["Forward as SIGNOZ-API-KEY"]
-    CHAIN -->|Bearer sz1.* + OAuth enabled| SESSION["Session token: decode deployment,<br/>allowlist, GET /api/v2/users/me (cached 30s)"]
+    CHAIN -->|Bearer sz1.* + OAuth enabled| SESSION["Session token: decode instance URL,<br/>allowlist, GET /api/v2/users/me (cached 30s)"]
     SESSION -->|rejected| EXPIRED["401 + WWW-Authenticate invalid_token"]
     CHAIN -->|Bearer encrypted token + OAuth enabled| OAUTHCTX["Decrypt → apiKey + signozURL"]
     CHAIN -->|other Bearer| RAWKEY["Forward as Authorization: Bearer"]
@@ -47,7 +47,7 @@ subgraph HTTPPath["HTTP Transport — Multi Tenant"]
     CHAIN -->|none| CHALLENGE["401 + WWW-Authenticate<br/>resource_metadata URL"]
 
     AUTH --> URLCHECK{"SigNoz URL source?"}
-    URLCHECK -->|OAuth token| FROMTOKEN["Deployment named by the token"]
+    URLCHECK -->|OAuth token| FROMTOKEN["Instance URL named by the token"]
     URLCHECK -->|X-SigNoz-URL header| NORMALIZE["normalizeSigNozURL"]
     URLCHECK -->|env set| ENVURL["Use config.URL"]
     URLCHECK -->|none| NOURL["400 Bad Request"]
@@ -78,7 +78,7 @@ subgraph OAuthFlow["OAuth 2.1 Flow (Stateless)"]
     REGCLIENT --> ENCID["client_id = encrypt(redirect_uris, name)"]
     ENCID --> AUTHPAGE["GET /oauth/authorize<br/>Browser opens, user sees form"]
     AUTHPAGE --> CHOOSE{"User picks"}
-    CHOOSE -->|SigNoz sign-in| DISCOVER["POST step=discover: deployment + email<br/>→ GET /api/v2/sessions/context?email&ref"]
+    CHOOSE -->|SigNoz sign-in| DISCOVER["POST step=discover: instance URL + email<br/>→ GET /api/v2/sessions/context?email&ref"]
     DISCOVER --> SIGNIN["Consent page: password form and/or SSO buttons<br/>SSO sets cookie signoz_mcp_sso_&lt;nonce&gt; = encrypt(pending authorization)"]
     SIGNIN -->|password| PWD["POST step=password<br/>→ POST /api/v2/sessions/email_password"]
     SIGNIN -->|SSO| IDP["Browser → IdP → SigNoz /api/v1/complete/*<br/>→ GET /oauth/sso-callback/&lt;nonce&gt;?accessToken&refreshToken&expiresIn"]
@@ -91,7 +91,7 @@ subgraph OAuthFlow["OAuth 2.1 Flow (Stateless)"]
     ENCCODE --> REDIRECT
     REDIRECT --> EXCHANGE["POST /oauth/token<br/>{code, code_verifier}"]
     EXCHANGE --> VERIFY["Decrypt code, verify PKCE,<br/>verify client_id + redirect_uri match"]
-    VERIFY --> ISSUE["Session: access_token = sz1.&lt;b64url(deployment)&gt;.&lt;SigNoz access token&gt;<br/>refresh_token = encrypt(SigNoz session)<br/>API key: both encrypt(api_key, signoz_url)"]
+    VERIFY --> ISSUE["Session: access_token = sz1.&lt;b64url(instance URL)&gt;.&lt;SigNoz access token&gt;<br/>refresh_token = encrypt(SigNoz session)<br/>API key: both encrypt(api_key, signoz_url)"]
     ISSUE --> USE["Client uses access_token on /mcp"]
 
     REFRESH["POST /oauth/token<br/>{grant_type: refresh_token}"]
@@ -248,25 +248,25 @@ Each blob is prefixed with a type byte to prevent cross-type confusion:
 
 The refresh blob carries both SigNoz tokens because SigNoz rotation needs the access token as
 well as the refresh token. A session access token is not encrypted:
-`sz1.<base64url(deployment URL)>.<SigNoz access token>`. `/mcp` routes on the deployment,
+`sz1.<base64url(instance URL)>.<SigNoz access token>`. `/mcp` routes on the instance URL,
 re-checks it against `SIGNOZ_INSTANCE_URL_ALLOWLIST`, and validates the token with
 `GET /api/v2/users/me`. `expires_in` is the shorter of SigNoz's `expiresIn` and
 `OAUTH_ACCESS_TOKEN_TTL_MINUTES`.
 
 ### Sign in with SigNoz
 
-The authorize page offers SigNoz sign-in (password or SSO, using the deployment's existing
+The authorize page offers SigNoz sign-in (password or SSO, using the instance's existing
 `/api/v2/sessions/*` endpoints) and a service-account API key. For SSO, `ref` is
 `<issuer>/oauth/sso-callback/<nonce>`. SigNoz keeps only `ref`'s scheme, host and path and
 replaces its query with the token, so the nonce correlates the callback, and an HttpOnly,
 SameSite=Lax cookie scoped to that path holds the encrypted pending authorization. A callback
 without the cookie for its nonce is rejected. SigNoz offers SSO for `ref` only when the issuer
-origin passes the deployment's `global.allowed_origins`; otherwise the page says so and offers
+origin passes the instance's `global.allowed_origins`; otherwise the page says so and offers
 the password.
 
 Session tokens are ordinary SigNoz UI sessions: SigNoz doesn't know which MCP client holds
 them, they count toward the per-user session cap (the oldest is evicted, which can sign the
-user out of the browser), and they share the deployment's session lifetimes.
+user out of the browser), and they share the instance's session lifetimes.
 
 ### Multi-Instance Deployment
 

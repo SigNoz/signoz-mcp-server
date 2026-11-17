@@ -101,13 +101,13 @@ class _Authorization:
         )
 
     @property
-    def deployment(self) -> str:
+    def instance(self) -> str:
         # Sign-in forms reject literal localhost, so users reach this SigNoz through the allowlisted 127.0.0.1.
         return self.server.backend_url.replace("localhost", "127.0.0.1")
 
     def discover(self) -> requests.Response:
         start = self.open()
-        return self.submit(_form_with_step(start.text, "discover"), signoz_url=self.deployment, email=ROOT_EMAIL)
+        return self.submit(_form_with_step(start.text, "discover"), signoz_url=self.instance, email=ROOT_EMAIL)
 
     def token(self, **fields: str) -> requests.Response:
         return requests.post(f"{self.server.base_url}/oauth/token", data=fields, timeout=30)
@@ -123,7 +123,7 @@ def _banner(response: requests.Response) -> str:
     return match.group(1).strip() if match else response.text[:200]
 
 
-def _assert_session_token(token: dict, deployment: str) -> None:
+def _assert_session_token(token: dict, instance: str) -> None:
     assert token.get("token_type") == "Bearer", f"token_type is {token.get('token_type')!r}"
     assert isinstance(token.get("expires_in"), int) and token["expires_in"] > 0, (
         f"expires_in must be a positive integer, got {token.get('expires_in')!r}"
@@ -131,7 +131,7 @@ def _assert_session_token(token: dict, deployment: str) -> None:
     assert token.get("refresh_token"), "token response carried no refresh_token"
     prefix, encoded, signoz_token = token["access_token"].split(".", 2)
     assert prefix == "sz1", "access token is not a session token"
-    assert base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)).decode() == deployment
+    assert base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)).decode() == instance
     assert signoz_token, "access token carried no SigNoz session token"
 
 
@@ -191,14 +191,14 @@ def test_password_sign_in_issues_a_session_that_refreshes_and_revokes(mcp_server
     token = exchanged.json()
     latest_refresh = token["refresh_token"]
     try:
-        _assert_session_token(token, flow.deployment)
+        _assert_session_token(token, flow.instance)
         _assert_mcp_tool_works(server, token["access_token"])
 
         refreshed = flow.token(grant_type="refresh_token", client_id=flow.client_id, refresh_token=latest_refresh)
         assert refreshed.status_code == 200, f"refresh returned HTTP {refreshed.status_code}: {refreshed.text}"
         rotated = refreshed.json()
         latest_refresh = rotated["refresh_token"]
-        _assert_session_token(rotated, flow.deployment)
+        _assert_session_token(rotated, flow.instance)
         assert rotated["access_token"] != token["access_token"], "SigNoz rotation returned the same access token"
         _assert_mcp_tool_works(server, rotated["access_token"])
 

@@ -29,9 +29,9 @@ const (
 	testEmail       = "ada@example.com"
 )
 
-// fakeDeployment is a SigNoz deployment's session API. It records what the
+// fakeInstance is a SigNoz instance's session API. It records what the
 // MCP server sends so tests assert the upstream contract.
-type fakeDeployment struct {
+type fakeInstance struct {
 	*httptest.Server
 
 	mu            sync.Mutex
@@ -45,15 +45,15 @@ type fakeDeployment struct {
 	rotateRejects bool
 }
 
-func newFakeDeployment(t *testing.T) *fakeDeployment {
+func newFakeInstance(t *testing.T) *fakeInstance {
 	t.Helper()
-	d := &fakeDeployment{}
+	d := &fakeInstance{}
 	d.Server = httptest.NewServer(http.HandlerFunc(d.serve))
 	t.Cleanup(d.Close)
 	return d
 }
 
-func (d *fakeDeployment) serve(w http.ResponseWriter, r *http.Request) {
+func (d *fakeInstance) serve(w http.ResponseWriter, r *http.Request) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	writeData := func(data any) {
@@ -107,7 +107,7 @@ type sessionFlow struct {
 	t          *testing.T
 	cfg        *config.Config
 	mux        *http.ServeMux
-	deployment *fakeDeployment
+	instance   *fakeInstance
 	clientID   string
 	challenge  string
 	csrfCookie *http.Cookie
@@ -116,7 +116,7 @@ type sessionFlow struct {
 
 func newSessionFlow(t *testing.T) *sessionFlow {
 	t.Helper()
-	deployment := newFakeDeployment(t)
+	instance := newFakeInstance(t)
 	cfg := &config.Config{
 		OAuthEnabled:         true,
 		OAuthTokenSecret:     "0123456789abcdef0123456789abcdef",
@@ -139,7 +139,7 @@ func newSessionFlow(t *testing.T) *sessionFlow {
 	require.NoError(t, err)
 	sum := sha256.Sum256([]byte(testVerifier))
 	f := &sessionFlow{
-		t: t, cfg: cfg, mux: mux, deployment: deployment, clientID: clientID,
+		t: t, cfg: cfg, mux: mux, instance: instance, clientID: clientID,
 		challenge: base64.RawURLEncoding.EncodeToString(sum[:]),
 	}
 	f.openAuthorizePage()
@@ -193,7 +193,7 @@ func (f *sessionFlow) submit(fields url.Values) *httptest.ResponseRecorder {
 }
 
 func (f *sessionFlow) discover() *httptest.ResponseRecorder {
-	return f.submit(url.Values{"step": {"discover"}, "signoz_url": {f.deployment.URL}, "email": {testEmail}})
+	return f.submit(url.Values{"step": {"discover"}, "signoz_url": {f.instance.URL}, "email": {testEmail}})
 }
 
 func (f *sessionFlow) exchange(code, verifier string) *httptest.ResponseRecorder {
@@ -246,20 +246,20 @@ func TestPasswordSignInIssuesSessionTokens(t *testing.T) {
 	require.Contains(t, page.Body.String(), `name="password"`)
 	require.Contains(t, page.Body.String(), "127.0.0.1")
 
-	wrong := f.submit(url.Values{"step": {"password"}, "signoz_url": {f.deployment.URL}, "email": {testEmail}, "org_id": {testOrgID}, "password": {"nope"}})
+	wrong := f.submit(url.Values{"step": {"password"}, "signoz_url": {f.instance.URL}, "email": {testEmail}, "org_id": {testOrgID}, "password": {"nope"}})
 	require.Equal(t, http.StatusUnauthorized, wrong.Code)
 	require.Contains(t, html.UnescapeString(wrong.Body.String()), "That email and password didn't work")
 
-	ok := f.submit(url.Values{"step": {"password"}, "signoz_url": {f.deployment.URL}, "email": {testEmail}, "org_id": {testOrgID}, "password": {"correct horse"}})
+	ok := f.submit(url.Values{"step": {"password"}, "signoz_url": {f.instance.URL}, "email": {testEmail}, "org_id": {testOrgID}, "password": {"correct horse"}})
 	code := codeFromRedirect(t, ok)
-	require.Equal(t, map[string]string{"email": testEmail, "password": "correct horse", "orgId": testOrgID}, f.deployment.passwordBody)
+	require.Equal(t, map[string]string{"email": testEmail, "password": "correct horse", "orgId": testOrgID}, f.instance.passwordBody)
 
 	require.Equal(t, http.StatusBadRequest, f.exchange(code, strings.Repeat("x", 43)).Code, "a wrong PKCE verifier must fail")
 
 	tokens := decodeTokens(t, f.exchange(code, testVerifier))
 	signozURL, access, parsed := ParseSessionAccessToken(tokens.AccessToken)
 	require.True(t, parsed, tokens.AccessToken)
-	require.Equal(t, f.deployment.URL, signozURL)
+	require.Equal(t, f.instance.URL, signozURL)
 	require.Equal(t, "access-1", access)
 	require.InDelta(t, 1800, tokens.ExpiresIn, 5, "expires_in follows SigNoz's expiresIn when it is under the cap")
 
@@ -272,14 +272,14 @@ func TestPasswordSignInIssuesSessionTokens(t *testing.T) {
 func TestSessionRefreshRotatesAndRevokeEndsSession(t *testing.T) {
 	f := newSessionFlow(t)
 	f.discover()
-	code := codeFromRedirect(t, f.submit(url.Values{"step": {"password"}, "signoz_url": {f.deployment.URL}, "email": {testEmail}, "org_id": {testOrgID}, "password": {"correct horse"}}))
+	code := codeFromRedirect(t, f.submit(url.Values{"step": {"password"}, "signoz_url": {f.instance.URL}, "email": {testEmail}, "org_id": {testOrgID}, "password": {"correct horse"}}))
 	first := decodeTokens(t, f.exchange(code, testVerifier))
 
 	refreshed := decodeTokens(t, f.postForm("/oauth/token", url.Values{
 		"grant_type": {"refresh_token"}, "client_id": {f.clientID}, "refresh_token": {first.RefreshToken},
 	}))
-	require.Equal(t, "Bearer access-1", f.deployment.rotateAuth, "rotate needs the access token as bearer")
-	require.Equal(t, map[string]string{"refreshToken": "refresh-1"}, f.deployment.rotateBody)
+	require.Equal(t, "Bearer access-1", f.instance.rotateAuth, "rotate needs the access token as bearer")
+	require.Equal(t, map[string]string{"refreshToken": "refresh-1"}, f.instance.rotateBody)
 	_, access, _ := ParseSessionAccessToken(refreshed.AccessToken)
 	require.Equal(t, "access-2", access)
 	require.Equal(t, 3600, refreshed.ExpiresIn, "expires_in is capped at the configured access TTL")
@@ -291,9 +291,9 @@ func TestSessionRefreshRotatesAndRevokeEndsSession(t *testing.T) {
 
 	revoke := f.postForm("/oauth/revoke", url.Values{"token": {refreshed.RefreshToken}, "client_id": {f.clientID}})
 	require.Equal(t, http.StatusOK, revoke.Code, revoke.Body.String())
-	require.Equal(t, []string{"Bearer access-2"}, f.deployment.deletedAuth)
+	require.Equal(t, []string{"Bearer access-2"}, f.instance.deletedAuth)
 
-	f.deployment.rotateRejects = true
+	f.instance.rotateRejects = true
 	ended := f.postForm("/oauth/token", url.Values{"grant_type": {"refresh_token"}, "refresh_token": {refreshed.RefreshToken}})
 	require.Equal(t, http.StatusBadRequest, ended.Code)
 	require.Contains(t, ended.Body.String(), "invalid_grant", "an ended SigNoz session sends the client back to sign-in")
@@ -301,12 +301,12 @@ func TestSessionRefreshRotatesAndRevokeEndsSession(t *testing.T) {
 
 func TestSSOCallbackCorrelatesPendingAuthorization(t *testing.T) {
 	f := newSessionFlow(t)
-	f.deployment.ssoEnabled = true
+	f.instance.ssoEnabled = true
 	page := f.discover()
 	require.Equal(t, http.StatusOK, page.Code, page.Body.String())
 	require.Contains(t, html.UnescapeString(page.Body.String()), "https://idp.example.com/authorize")
 
-	ref, err := url.Parse(f.deployment.contextRef)
+	ref, err := url.Parse(f.instance.contextRef)
 	require.NoError(t, err)
 	require.Equal(t, "mcp.example.com", ref.Host)
 	require.True(t, strings.HasPrefix(ref.Path, ssoCallbackPath))
@@ -346,9 +346,9 @@ func TestSSOCallbackCorrelatesPendingAuthorization(t *testing.T) {
 
 func TestSSOCallbackWithoutTokensReturnsErrorToClient(t *testing.T) {
 	f := newSessionFlow(t)
-	f.deployment.ssoEnabled = true
+	f.instance.ssoEnabled = true
 	page := f.discover()
-	ref, _ := url.Parse(f.deployment.contextRef)
+	ref, _ := url.Parse(f.instance.contextRef)
 	nonce := strings.TrimPrefix(ref.Path, ssoCallbackPath)
 	req := httptest.NewRequest(http.MethodGet, ref.Path, nil)
 	for _, c := range page.Result().Cookies() {
@@ -365,7 +365,7 @@ func TestSSOCallbackWithoutTokensReturnsErrorToClient(t *testing.T) {
 
 func TestSignInExplainsSSOBlockedByAllowedOrigins(t *testing.T) {
 	f := newSessionFlow(t)
-	f.deployment.ssoWarning = "origin_not_allowed"
+	f.instance.ssoWarning = "origin_not_allowed"
 	page := f.discover()
 	require.Equal(t, http.StatusOK, page.Code)
 	body := html.UnescapeString(page.Body.String())
@@ -375,7 +375,7 @@ func TestSignInExplainsSSOBlockedByAllowedOrigins(t *testing.T) {
 
 func TestAuthorizationCodeWithAPIKeyStillExchanges(t *testing.T) {
 	f := newSessionFlow(t)
-	code, err := EncryptAuthorizationCode("snz-api-key", f.deployment.URL, f.clientID, testRedirectURI, f.challenge, "S256", time.Now().Add(time.Minute), []byte(f.cfg.OAuthTokenSecret))
+	code, err := EncryptAuthorizationCode("snz-api-key", f.instance.URL, f.clientID, testRedirectURI, f.challenge, "S256", time.Now().Add(time.Minute), []byte(f.cfg.OAuthTokenSecret))
 	require.NoError(t, err)
 	tokens := decodeTokens(t, f.exchange(code, testVerifier))
 	apiKey, _, _, _, err := DecryptToken(tokens.AccessToken, []byte(f.cfg.OAuthTokenSecret))

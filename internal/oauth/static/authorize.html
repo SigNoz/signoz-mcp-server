@@ -468,10 +468,10 @@
     </div>
     {{if eq .Step "signin"}}
     <h1>Sign in to SigNoz</h1>
-    <p class="subtitle">Sign in to <strong>{{.DeploymentHost}}</strong> as <strong>{{.Email}}</strong> to finish connecting.</p>
+    <p class="subtitle">Sign in to <strong>{{.InstanceHost}}</strong> as <strong>{{.Email}}</strong> to finish connecting.</p>
     {{else}}
     <h1>Authorize access</h1>
-    <p class="subtitle">Enter your SigNoz deployment and the email you sign in with.</p>
+    <p class="subtitle">Enter your SigNoz instance URL and the email you sign in with.</p>
     {{end}}
 
     <div class="card">
@@ -489,7 +489,7 @@
       {{end}}
 
       {{if eq .Step "signin"}}
-      <p class="consent">{{.ClientName}} wants to act as you on <strong>{{.DeploymentHost}}</strong>. It can read
+      <p class="consent">{{.ClientName}} wants to act as you on <strong>{{.InstanceHost}}</strong>. It can read
         and change what your SigNoz role allows. Sign in only if you started this connection.</p>
 
       {{range .Orgs}}
@@ -521,12 +521,12 @@
         <input type="hidden" name="email" value="{{.Email}}">
         <input type="hidden" name="signoz_url" value="{{.SignozURL}}">
         {{template "oauthFields" .}}
-        <button type="submit" class="link-button">Use a different deployment or email</button>
+        <button type="submit" class="link-button">Use a different instance URL or email</button>
       </form>
       {{else}}
       <form method="post" action="{{.AuthorizePath}}">
         <div class="field">
-          <label for="signoz_url">SigNoz deployment URL</label>
+          <label for="signoz_url">SigNoz instance URL</label>
           <input id="signoz_url" name="signoz_url" type="text" value="{{.SignozURL}}"
             placeholder="signoz.example.com" required>
           <div class="input-note">The address you use to open SigNoz in a browser.</div>
@@ -554,7 +554,7 @@
 
       <form method="post" action="{{.AuthorizePath}}">
         <div class="field">
-          <label for="apikey_signoz_url">SigNoz deployment URL</label>
+          <label for="apikey_signoz_url">SigNoz instance URL</label>
           <input id="apikey_signoz_url" name="signoz_url" type="text" value="{{.SignozURL}}"
             placeholder="signoz.example.com" required>
         </div>
@@ -584,9 +584,9 @@
           d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
       </svg>
       {{if eq .Step "signin"}}
-      <p>The MCP server passes your password to your SigNoz deployment and doesn't store it. The MCP client receives a token for your account.</p>
+      <p>The MCP server passes your password to your SigNoz instance and doesn't store it. The MCP client receives a token for your account.</p>
       {{else}}
-      <p>The MCP server passes your password or API key to your SigNoz deployment and doesn't store it. The MCP client receives a token for your account or for the service account.</p>
+      <p>The MCP server passes your password or API key to your SigNoz instance and doesn't store it. The MCP client receives a token for your account or for the service account.</p>
       {{end}}
     </div>
 

@@ -1159,7 +1159,7 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 		}
 
 		// Header URL for direct credentials. A server-issued OAuth token's
-		// deployment remains authoritative.
+		// instance URL remains authoritative.
 		customURL := r.Header.Get("X-SigNoz-URL")
 
 		res, fail := m.resolveCredential(ctx, r)

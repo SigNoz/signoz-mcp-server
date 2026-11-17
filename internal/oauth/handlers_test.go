@@ -232,7 +232,7 @@ func TestAuthorizeSubmitInstanceFailureGuidance(t *testing.T) {
 			status:     http.StatusNotFound,
 			body:       `{"status":"error","message":"not found"}`,
 			wantStatus: http.StatusBadGateway,
-			wantBody:   "We couldn&#39;t reach that SigNoz deployment. Check the URL and try again.",
+			wantBody:   "We couldn&#39;t reach that SigNoz instance. Check the URL and try again.",
 		},
 		{
 			name:       "transient 503",

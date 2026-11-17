@@ -7,7 +7,7 @@ import (
 )
 
 // Session is a SigNoz UI session obtained by password or SSO sign-in on one
-// deployment.
+// instance.
 type Session struct {
 	SignozURL       string    `json:"signoz_url"`
 	AccessToken     string    `json:"access_token"`
@@ -34,7 +34,7 @@ type sessionRefreshTokenPayload struct {
 }
 
 // PendingAuthorization is an authorization request parked while the browser
-// signs in through the deployment's SSO provider.
+// signs in through the instance's SSO provider.
 type PendingAuthorization struct {
 	Nonce               string    `json:"nonce"`
 	ClientID            string    `json:"client_id"`
@@ -106,7 +106,7 @@ func DecryptPendingAuthorization(value string, secret []byte) (PendingAuthorizat
 const sessionAccessTokenPrefix = "sz1"
 
 // FormatSessionAccessToken returns the MCP access token for a SigNoz session:
-// "sz1.<base64url(deployment URL)>.<SigNoz access token>". The deployment is
+// "sz1.<base64url(instance URL)>.<SigNoz access token>". The instance is
 // readable so /mcp can route without decryption; it is not trusted and is
 // re-checked against the allowlist on every request.
 func FormatSessionAccessToken(signozURL, accessToken string) string {

@@ -54,7 +54,7 @@ func (h *Handler) handleSessionRefreshGrant(w http.ResponseWriter, r *http.Reque
 				attribute.String("mcp.auth.failure_reason", authFailureSessionRejected))
 			return
 		}
-		h.writeOAuthError(r, w, http.StatusServiceUnavailable, "temporarily_unavailable", "couldn't reach the SigNoz deployment to refresh the session",
+		h.writeOAuthError(r, w, http.StatusServiceUnavailable, "temporarily_unavailable", "couldn't reach the SigNoz instance to refresh the session",
 			attribute.String("mcp.auth.failure_reason", authFailureInstanceUnreachable))
 		return
 	}
@@ -118,7 +118,7 @@ func (h *Handler) HandleRevoke(w http.ResponseWriter, r *http.Request) {
 	if accessToken != "" && h.config.AllowsInstanceURL(signozURL) {
 		ctx := util.SetSigNozURL(r.Context(), signozURL)
 		if err := h.sessionClient(signozURL).DeleteSession(ctx, accessToken); err != nil && !errors.Is(err, client.ErrUnauthorized) {
-			h.writeOAuthError(r, w, http.StatusServiceUnavailable, "temporarily_unavailable", "couldn't reach the SigNoz deployment to end the session")
+			h.writeOAuthError(r, w, http.StatusServiceUnavailable, "temporarily_unavailable", "couldn't reach the SigNoz instance to end the session")
 			return
 		}
 	}
