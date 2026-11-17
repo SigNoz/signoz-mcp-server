@@ -382,3 +382,16 @@ func TestAuthorizationCodeWithAPIKeyStillExchanges(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "snz-api-key", apiKey)
 }
+
+func TestRevokeNeverDialsANonASCIIInstanceHost(t *testing.T) {
+	f := newSessionFlow(t)
+	// The wildcard matches the lowercased host, but net/http would dial its
+	// different punycode form, so the token must be rejected before any dial.
+	f.cfg.InstanceURLAllowlist = util.ParseInstanceURLAllowlist("127.0.0.1,*.example.com")
+	token := FormatSessionAccessToken("https://a.sİgnoz.example.com", "forged-access")
+
+	rr := f.postForm("/oauth/revoke", url.Values{"token": {token}})
+
+	require.Equal(t, http.StatusOK, rr.Code, "an unusable token is a no-op revocation, not an upstream call: %s", rr.Body.String())
+	require.Empty(t, f.instance.deletedAuth)
+}

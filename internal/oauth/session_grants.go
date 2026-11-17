@@ -115,6 +115,9 @@ func (h *Handler) HandleRevoke(w http.ResponseWriter, r *http.Request) {
 		signozURL, accessToken = session.SignozURL, session.AccessToken
 	}
 
+	if accessToken != "" {
+		signozURL = h.config.ResolveInstanceURL(signozURL)
+	}
 	if accessToken != "" && h.config.AllowsInstanceURL(signozURL) {
 		ctx := util.SetSigNozURL(r.Context(), signozURL)
 		if err := h.sessionClient(signozURL).DeleteSession(ctx, accessToken); err != nil && !errors.Is(err, client.ErrUnauthorized) {

@@ -83,6 +83,12 @@ func TestSessionBearerForwardsSigNozSessionToItsInstance(t *testing.T) {
 	require.Nil(t, seen)
 	require.Equal(t, http.StatusForbidden, rr.Code)
 	require.Equal(t, before, meCalls.Load(), "a disallowed instance is never dialed")
+
+	cfg.InstanceURLAllowlist = util.ParseInstanceURLAllowlist("127.0.0.1,*.example.com")
+	rr, seen = runAuth(t, server, map[string]string{"Authorization": "Bearer " + oauth.FormatSessionAccessToken("https://a.s\u0130gnoz.example.com", "live-access")})
+	require.Nil(t, seen, "a malformed session token must not fall through to another credential path")
+	require.Equal(t, http.StatusUnauthorized, rr.Code)
+	require.Contains(t, rr.Header().Get("WWW-Authenticate"), `error="invalid_token"`)
 }
 
 func TestCredentialPathsResolveSideBySide(t *testing.T) {

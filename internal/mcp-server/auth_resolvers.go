@@ -100,8 +100,9 @@ func (m *MCPServer) resolveOAuthBearer(ctx context.Context, r *http.Request) (*a
 	}
 	token := stripBearerPrefix(header)
 
-	if signozURL, accessToken, ok := oauth.ParseSessionAccessToken(token); ok {
-		return m.resolveSessionToken(ctx, signozURL, accessToken)
+	if oauth.IsSessionAccessToken(token) {
+		signozURL, accessToken, ok := oauth.ParseSessionAccessToken(token)
+		return m.resolveSessionToken(ctx, signozURL, accessToken, ok)
 	}
 
 	apiKey, signozURL, _, _, err := oauth.DecryptToken(token, []byte(m.config.OAuthTokenSecret))
@@ -127,7 +128,7 @@ func (m *MCPServer) resolveOAuthBearer(ctx context.Context, r *http.Request) (*a
 // resolveSessionToken routes a session token to its instance and checks
 // that SigNoz still accepts it. The instance comes from the token's
 // readable prefix, so it is allowlisted before any request is sent.
-func (m *MCPServer) resolveSessionToken(ctx context.Context, rawURL, accessToken string) (*authResolution, *authFailure) {
+func (m *MCPServer) resolveSessionToken(ctx context.Context, signozURL, accessToken string, parsed bool) (*authResolution, *authFailure) {
 	invalid := &authFailure{
 		status:     http.StatusUnauthorized,
 		reason:     authFailureInvalidOAuthToken,
@@ -136,8 +137,7 @@ func (m *MCPServer) resolveSessionToken(ctx context.Context, rawURL, accessToken
 		logMessage: "OAuth session token names an invalid instance",
 		challenge:  `error="invalid_token", error_description="access token is invalid"`,
 	}
-	signozURL, err := util.NormalizeSigNozURL(rawURL)
-	if err != nil {
+	if !parsed {
 		return nil, invalid
 	}
 	signozURL = m.config.ResolveInstanceURL(signozURL)

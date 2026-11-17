@@ -4,6 +4,8 @@ import (
 	"encoding/base64"
 	"strings"
 	"time"
+
+	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 )
 
 // Session is a SigNoz UI session obtained by password or SSO sign-in on one
@@ -114,8 +116,17 @@ func FormatSessionAccessToken(signozURL, accessToken string) string {
 		base64.RawURLEncoding.EncodeToString([]byte(signozURL)) + "." + accessToken
 }
 
-// ParseSessionAccessToken splits a session access token. ok is false for any
-// other token shape, including JWTs and legacy encrypted tokens.
+// IsSessionAccessToken reports whether token claims the session token shape,
+// so a malformed one is rejected rather than treated as another credential.
+func IsSessionAccessToken(token string) bool {
+	return strings.HasPrefix(token, sessionAccessTokenPrefix+".")
+}
+
+// ParseSessionAccessToken splits a session access token and returns its
+// instance URL in normalized form. The URL is client-supplied, so it is
+// normalized here (which rejects non-ASCII hosts whose lowercase and dialed
+// forms differ) before any caller can allowlist-check or dial it. ok is false
+// for any other token shape and for an invalid instance URL.
 func ParseSessionAccessToken(token string) (signozURL, accessToken string, ok bool) {
 	parts := strings.SplitN(token, ".", 3)
 	if len(parts) != 3 || parts[0] != sessionAccessTokenPrefix || parts[2] == "" {
@@ -125,5 +136,9 @@ func ParseSessionAccessToken(token string) (signozURL, accessToken string, ok bo
 	if err != nil || len(decoded) == 0 {
 		return "", "", false
 	}
-	return string(decoded), parts[2], true
+	normalized, err := util.NormalizeSigNozURL(string(decoded))
+	if err != nil {
+		return "", "", false
+	}
+	return normalized, parts[2], true
 }
