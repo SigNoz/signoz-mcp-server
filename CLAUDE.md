@@ -13,7 +13,7 @@ contracts.
   `test-race`, `check-guardrails`, `check-protocol`, `check-conformance`, `check-e2e-style`, and
   `check-repo-docs`. Each step is also its own target. Needs Node, uv, goimports
   (`make install-goimports`), and GNU `timeout` (on macOS, `brew install coreutils`). CI uses
-  Go 1.26; with a newer local Go, run `GOTOOLCHAIN=go1.26.0 make ci` to match it.
+  Go 1.26; run `GOTOOLCHAIN=go1.26.11 make ci` locally to use the minimum patched toolchain.
 - `make test`: all Go tests, verbose. One test: `go test ./internal/handler/tools -run TestName -count=1`.
 - `make fmt goimports`: rewrite formatting and imports. `make build` runs both first.
 - `make test-e2e`: e2e suite against an ephemeral SigNoz cast by foundry. `make setup-e2e-env`
