@@ -69,6 +69,7 @@ func (h *Handler) handleSearchDocs(ctx context.Context, req mcp.CallToolRequest)
 	query, _ := args["searchText"].(string)
 	if query == "" {
 		query, _ = args["query"].(string)
+		markArgumentsHandled(ctx, "query")
 	}
 	if query == "" {
 		return validationError("searchText", "is required"), nil
