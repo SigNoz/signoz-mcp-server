@@ -1,0 +1,160 @@
+package tools
+
+import (
+	"context"
+	"log/slog"
+	"slices"
+	"strings"
+	"unicode/utf8"
+
+	"go.opentelemetry.io/otel/trace"
+
+	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
+	otelpkg "github.com/SigNoz/signoz-mcp-server/pkg/otel"
+)
+
+const (
+	feedbackMessageMaxChars  = 2000
+	feedbackToolNameMaxChars = 128
+	feedbackModelMaxChars    = 128
+
+	// Delivery is batched after the call returns, so the result can only
+	// promise that the report was queued.
+	feedbackQueuedMessage   = "Feedback queued for delivery to the SigNoz team."
+	feedbackDisabledMessage = "Feedback is turned off on this server, so nothing was sent. Do not retry; continue with the user's task."
+)
+
+var feedbackCategories = []string{"tool_error", "confusing_output", "missing_capability", "documentation", "user_feedback", "user_frustration", "other"}
+
+// Feedback is one report, after validation: a problem the agent hit with
+// this server, or the user's own feedback about SigNoz.
+type Feedback struct {
+	Message  string
+	Category string
+	ToolName string
+	// Model is the model, and effort when known, the agent says it runs as.
+	// The server cannot check it.
+	Model string
+}
+
+// FeedbackSink delivers an accepted report to the SigNoz team. The identity is
+// the caller's, so the sink can attribute the report without another lookup.
+type FeedbackSink func(ctx context.Context, identity *signozclient.AnalyticsIdentity, feedback Feedback)
+
+// SetFeedbackSink turns signoz_submit_feedback on. Without a sink the tool
+// reports that feedback is off and sends nothing.
+func (h *Handler) SetFeedbackSink(sink FeedbackSink) {
+	h.feedbackSink = sink
+}
+
+func (h *Handler) RegisterFeedbackHandlers(s *mcp.Server) {
+	h.logger.Debug("Registering feedback handlers")
+
+	tool := mcp.NewTool("signoz_submit_feedback",
+		withCreateToolAnnotations(),
+		mcp.WithString("searchContext", mcp.Description(searchContextParamDescription)),
+		mcp.WithDescription("Use this to send feedback to the SigNoz team when it would help SigNoz improve. Send it when you hit a problem with this SigNoz MCP server: a tool error you could not explain, a confusing description, schema, or result, a missing capability, or unclear documentation. Report the problem when you hit it or worked around it, without waiting for the user to ask, then continue the user's task. Also send it when the user has feedback about SigNoz, such as a bug, a request, or praise. Mask personal and sensitive data before sending: replace names, email addresses, IP addresses, hostnames, IDs, credentials, and telemetry values with placeholders such as <email> or <service>."),
+		mcp.WithString("message", mcp.Required(), maxLength(feedbackMessageMaxChars), mcp.Description(`The feedback, in at most 2000 characters. For a problem you hit: what you tried, what you expected, and what happened; name the tool and quote the error text. For the user's feedback: what they said about SigNoz, close to their own words. Describe the user's task in general terms and mask personal or sensitive data with placeholders. Example: "signoz_search_logs returned VALIDATION_FAILED for filter service.name = '<service>'; the error did not say which key was invalid."`)),
+		mcp.WithString("category", mcp.Enum(feedbackCategories...), mcp.Description("Kind of feedback. tool_error: a call failed or returned a wrong result. confusing_output: a description, schema, or result misled you. missing_capability: no tool does what the task needs. documentation: docs or signoz:// resources are wrong or unclear. user_feedback: the user's own feedback about SigNoz, such as a bug, a request, or praise. other: anything else.")),
+		mcp.WithString("toolName", maxLength(feedbackToolNameMaxChars), mcp.Description("Exact name of the SigNoz tool the report is about, for example signoz_search_logs. Omit it when the report is about no single tool.")),
+		mcp.WithString("model", maxLength(feedbackModelMaxChars), mcp.Description("Name or ID of the model you are running as and effort/thinking level. Omit it when you do not know it; do not guess.")),
+	)
+	h.addTool(s, tool, h.handleSubmitFeedback)
+}
+
+func (h *Handler) handleSubmitFeedback(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if h.feedbackSink == nil {
+		return errorWithCode(CodeUnsupported, feedbackDisabledMessage), nil
+	}
+	feedback, errResult := parseFeedback(req.Params.Arguments)
+	if errResult != nil {
+		return errResult, nil
+	}
+	// Recorded before delivery, so the report survives a failed org lookup.
+	h.logger.InfoContext(ctx, "agent feedback received",
+		slog.String(string(otelpkg.MCPFeedbackMessageKey), feedback.Message),
+		slog.String(string(otelpkg.MCPFeedbackCategoryKey), feedback.Category),
+		slog.String(string(otelpkg.MCPFeedbackToolNameKey), feedback.ToolName),
+		slog.String(string(otelpkg.MCPFeedbackModelKey), feedback.Model))
+	trace.SpanFromContext(ctx).SetAttributes(
+		otelpkg.MCPFeedbackMessageKey.String(feedback.Message),
+		otelpkg.MCPFeedbackCategoryKey.String(feedback.Category),
+		otelpkg.MCPFeedbackToolNameKey.String(feedback.ToolName),
+		otelpkg.MCPFeedbackModelKey.String(feedback.Model))
+
+	client, err := h.GetClient(ctx)
+	if err != nil {
+		return clientError(err), nil
+	}
+	identity, err := client.GetAnalyticsIdentity(ctx)
+	if err != nil {
+		h.logUpstreamFailure(ctx, "Failed to resolve the org for agent feedback", err)
+		return upstreamError(err), nil
+	}
+
+	h.feedbackSink(ctx, identity, feedback)
+	return mcp.NewToolResultText(feedbackQueuedMessage), nil
+}
+
+func parseFeedback(rawArgs any) (Feedback, *mcp.CallToolResult) {
+	args, errResult := requireArgsMap(rawArgs)
+	if errResult != nil {
+		return Feedback{}, errResult
+	}
+	message, errResult := requireStringArg(args, "message")
+	if errResult != nil {
+		return Feedback{}, errResult
+	}
+	if utf8.RuneCountInString(message) > feedbackMessageMaxChars {
+		return Feedback{}, validationErrorf("message", "must be at most %d characters; shorten it and send it again", feedbackMessageMaxChars)
+	}
+	message = strings.TrimSpace(message)
+	if message == "" {
+		return Feedback{}, validationError("message", "cannot be empty")
+	}
+
+	category, errResult := optionalFeedbackString(args, "category")
+	if errResult != nil {
+		return Feedback{}, errResult
+	}
+	if category != "" && !slices.Contains(feedbackCategories, category) {
+		return Feedback{}, validationErrorf("category", "must be one of: %s", strings.Join(feedbackCategories, ", "))
+	}
+
+	toolName, errResult := optionalFeedbackString(args, "toolName")
+	if errResult != nil {
+		return Feedback{}, errResult
+	}
+	if utf8.RuneCountInString(toolName) > feedbackToolNameMaxChars {
+		return Feedback{}, validationErrorf("toolName", "must be at most %d characters; pass only the tool's name", feedbackToolNameMaxChars)
+	}
+
+	model, errResult := optionalFeedbackString(args, "model")
+	if errResult != nil {
+		return Feedback{}, errResult
+	}
+	if utf8.RuneCountInString(model) > feedbackModelMaxChars {
+		return Feedback{}, validationErrorf("model", "must be at most %d characters; pass only the model's name or ID", feedbackModelMaxChars)
+	}
+
+	return Feedback{Message: message, Category: category, ToolName: strings.TrimSpace(toolName), Model: strings.TrimSpace(model)}, nil
+}
+
+// optionalFeedbackString treats a missing or empty value as absent and rejects
+// any other type, so a wrong-typed value is never dropped silently.
+func optionalFeedbackString(args map[string]any, key string) (string, *mcp.CallToolResult) {
+	raw, present := args[key]
+	if !present || raw == nil {
+		return "", nil
+	}
+	value, ok := raw.(string)
+	if !ok {
+		return "", validationError(key, "must be a string")
+	}
+	return value, nil
+}
+
+func maxLength(chars int) mcp.PropertyOption {
+	return func(schema map[string]any) { schema["maxLength"] = chars }
+}

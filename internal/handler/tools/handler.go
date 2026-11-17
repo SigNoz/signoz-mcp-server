@@ -23,6 +23,8 @@ type Handler struct {
 	customHeaders map[string]string
 	meters        *otelpkg.Meters
 	docsIndex     *docsindex.IndexRegistry
+	// feedbackSink is nil when this server sends no analytics.
+	feedbackSink FeedbackSink
 	// validationLogs rate-limits representative validation request WARNs per
 	// bounded tool/direction/path/constraint tuple; counters remain exact.
 	validationLogs sync.Map

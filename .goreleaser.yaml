@@ -14,6 +14,7 @@ builds:
     main: ./cmd/server/
     ldflags:
       - -s -w -X github.com/SigNoz/signoz-mcp-server/pkg/version.Version={{.Tag}}
+      - -X github.com/SigNoz/signoz-mcp-server/pkg/analytics.feedbackKey={{ if index .Env "FEEDBACK_SEGMENT_KEY" }}{{ .Env.FEEDBACK_SEGMENT_KEY }}{{ end }}
     goos:
       - linux
       - darwin
