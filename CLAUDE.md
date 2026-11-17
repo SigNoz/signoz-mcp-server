@@ -82,6 +82,7 @@ the PR. Budgets and CI mechanics live in `guardrails/README.md`. In the same PR:
 - Top-level integer and boolean parameters also accept their string forms (`intOrStringType` and
   `boolOrStringType`, or `intOrString` and `boolOrString` fields in typed argument structs),
   because some clients send every scalar as a string.
+- Mark undeclared keys a handler reads or forwards upstream where it takes them (`argument_use.go`).
 - Each server release targets the latest SigNoz release. Don't name SigNoz versions in tool or
   parameter descriptions, `signoz://` resources, or README tool sections.
 - Only expose features the SigNoz UI can render. An agent can save a query into a dashboard or

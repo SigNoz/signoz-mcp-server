@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -175,11 +176,13 @@ func validateRequestType(requestType string) error {
 // readResourceID reads the canonical "id" param for a stored-resource handle,
 // falling back to a legacy alias key (e.g. "ruleId", "uuid", "viewId") that the
 // MCP server accepts forever for backward compatibility. The canonical "id"
-// takes precedence when both are present and non-empty.
-func readResourceID(args map[string]any, legacyKey string) string {
+// takes precedence when both are present and non-empty; an alias it overrides
+// is reported as ignored.
+func readResourceID(ctx context.Context, args map[string]any, legacyKey string) string {
 	if v, ok := args["id"].(string); ok && v != "" {
 		return v
 	}
+	markArgumentsHandled(ctx, legacyKey)
 	if v, ok := args[legacyKey].(string); ok {
 		return v
 	}

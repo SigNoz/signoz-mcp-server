@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
-	"strings"
 	"testing"
 
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
@@ -57,22 +56,16 @@ func TestAdvertisedSchemasAdmitEveryArgumentFormHandlersRead(t *testing.T) {
 			if entry == nil {
 				t.Fatalf("tool %s is not registered", tt.tool)
 			}
-			called := false
-			h := &Handler{logger: logpkg.New("error")}
-			s := newMCPTestServer()
-			h.addTool(s, entry.Tool, func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-				called = true
-				return mcp.NewToolResultText("ok"), nil
-			})
-
-			raw := fmt.Sprintf(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":%q,"arguments":%s}}`, tt.tool, tt.arguments)
-			response := callTestToolFromJSONRPC(context.Background(), t, s, json.RawMessage(raw))
-			encoded, _ := json.Marshal(response)
-			if !called {
-				t.Fatalf("raw-wire call did not reach the handler: %s", encoded)
+			advertised, err := compileToolSchema(tt.tool, "input", inputSchemaJSON(entry.Tool))
+			if err != nil {
+				t.Fatalf("compile %s advertised input schema: %v", tt.tool, err)
 			}
-			if strings.Contains(string(encoded), inputValidationNoticePrefix) {
-				t.Fatalf("accepted advertised form must not trigger a validation notice: %s", encoded)
+			var arguments any
+			if err := json.Unmarshal([]byte(tt.arguments), &arguments); err != nil {
+				t.Fatalf("test arguments are not JSON: %v", err)
+			}
+			if err := validateSchemaValue(advertised.validator, arguments, true); err != nil {
+				t.Fatalf("%s advertises an input schema that rejects %s, a form its handler reads, so a schema-validating client never sends it. Widen the schema to admit that form (intOrStringType admits an integer and its string form): %v", tt.tool, tt.arguments, err)
 			}
 		})
 	}

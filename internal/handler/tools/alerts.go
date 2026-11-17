@@ -320,7 +320,7 @@ func (h *Handler) handleGetAlert(ctx context.Context, req mcp.CallToolRequest) (
 	if errResult != nil {
 		return errResult, nil
 	}
-	ruleID := readResourceID(args, "ruleId")
+	ruleID := readResourceID(ctx, args, "ruleId")
 	if ruleID == "" {
 		h.logger.WarnContext(ctx, "Empty id parameter")
 		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "id" is required. Provide a valid alert rule ID (UUID format). Example: {"id": "0196634d-5d66-75c4-b778-e317f49dab7a"}`), nil
@@ -354,7 +354,7 @@ func (h *Handler) handleGetAlertHistory(ctx context.Context, req mcp.CallToolReq
 		return errResult, nil
 	}
 
-	ruleID := readResourceID(args, "ruleId")
+	ruleID := readResourceID(ctx, args, "ruleId")
 	if ruleID == "" {
 		h.logger.WarnContext(ctx, "Invalid or empty id parameter", slog.Any("id", args["id"]), slog.Any("ruleId", args["ruleId"]))
 		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "id" is required. Example: {"id": "0196634d-5d66-75c4-b778-e317f49dab7a", "timeRange": "24h"}`), nil
@@ -410,7 +410,10 @@ func (h *Handler) handleGetAlertHistory(ctx context.Context, req mcp.CallToolReq
 
 	filterExpression := strings.TrimSpace(stringArg(args, "filter"))
 	if filterExpression == "" {
-		filterExpression = strings.TrimSpace(stringArg(args, "filterExpression"))
+		if legacy := strings.TrimSpace(stringArg(args, "filterExpression")); legacy != "" {
+			filterExpression = legacy
+			markArgumentsHandled(ctx, "filterExpression")
+		}
 	}
 
 	// Optional parameters stay off the query string when empty so SigNoz
@@ -479,7 +482,7 @@ func (h *Handler) handleCreateAlert(ctx context.Context, req mcp.CallToolRequest
 		return notAConfigObjectError(), nil
 	}
 
-	payload, errResult := alertPayloadJSON(rawConfig)
+	payload, errResult := alertPayloadJSON(ctx, rawConfig)
 	if errResult != nil {
 		return errResult, nil
 	}
@@ -506,14 +509,14 @@ func (h *Handler) handleUpdateAlert(ctx context.Context, req mcp.CallToolRequest
 		return notAConfigObjectError(), nil
 	}
 
-	ruleID := readResourceID(rawConfig, "ruleId")
+	ruleID := readResourceID(ctx, rawConfig, "ruleId")
 	if ruleID == "" {
 		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "id" is required. Provide the UUIDv7 of the rule to update.`), nil
 	}
 	delete(rawConfig, "id")
 	delete(rawConfig, "ruleId")
 
-	payload, errResult := alertPayloadJSON(rawConfig)
+	payload, errResult := alertPayloadJSON(ctx, rawConfig)
 	if errResult != nil {
 		return errResult, nil
 	}
@@ -537,7 +540,7 @@ func (h *Handler) handleDeleteAlert(ctx context.Context, req mcp.CallToolRequest
 	if errResult != nil {
 		return errResult, nil
 	}
-	ruleID := readResourceID(args, "ruleId")
+	ruleID := readResourceID(ctx, args, "ruleId")
 	if ruleID == "" {
 		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "id" is required.`), nil
 	}
@@ -559,8 +562,9 @@ func (h *Handler) handleDeleteAlert(ctx context.Context, req mcp.CallToolRequest
 // alertPayloadJSON strips the MCP-only searchContext envelope field and
 // serializes the remaining arguments verbatim. SigNoz is the only validator of
 // alert-rule payloads; its coded errors surface through upstreamError.
-func alertPayloadJSON(rawConfig map[string]any) ([]byte, *mcp.CallToolResult) {
+func alertPayloadJSON(ctx context.Context, rawConfig map[string]any) ([]byte, *mcp.CallToolResult) {
 	delete(rawConfig, "searchContext")
+	markForwardedArguments(ctx, rawConfig)
 	payload, err := json.Marshal(rawConfig)
 	if err != nil {
 		return nil, InternalErrorResult("failed to marshal alert payload: " + err.Error())
