@@ -2,7 +2,7 @@
 
 Status: Done
 Issue:
-PR:
+PR: https://github.com/SigNoz/signoz-mcp-server/pull/456
 
 ## Context
 
