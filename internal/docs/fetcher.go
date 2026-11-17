@@ -15,13 +15,18 @@ import (
 	"golang.org/x/time/rate"
 )
 
+// The manifest is on-demand ISR, so the first request after a site deploy
+// renders every doc; that takes far longer than a page fetch.
+const manifestTimeout = 2 * time.Minute
+
 type Fetcher struct {
-	client     *http.Client
-	userAgent  string
-	timeout    time.Duration
-	limiter    *rate.Limiter
-	concurrent chan struct{}
-	sleep      func(context.Context, time.Duration) error
+	client         *http.Client
+	manifestClient *http.Client
+	userAgent      string
+	timeout        time.Duration
+	limiter        *rate.Limiter
+	concurrent     chan struct{}
+	sleep          func(context.Context, time.Duration) error
 }
 
 type FetcherConfig struct {
@@ -64,12 +69,15 @@ func NewFetcher(cfg FetcherConfig) *Fetcher {
 		}
 		return nil
 	}
+	manifestClient := *client
+	manifestClient.Timeout = max(cfg.Timeout, manifestTimeout)
 	return &Fetcher{
-		client:     client,
-		userAgent:  cfg.UserAgent,
-		timeout:    cfg.Timeout,
-		limiter:    rate.NewLimiter(rate.Limit(cfg.RequestsPerSec), burst),
-		concurrent: make(chan struct{}, cfg.MaxConcurrency),
+		client:         client,
+		manifestClient: &manifestClient,
+		userAgent:      cfg.UserAgent,
+		timeout:        cfg.Timeout,
+		limiter:        rate.NewLimiter(rate.Limit(cfg.RequestsPerSec), burst),
+		concurrent:     make(chan struct{}, cfg.MaxConcurrency),
 		sleep: func(ctx context.Context, d time.Duration) error {
 			timer := time.NewTimer(d)
 			defer timer.Stop()
@@ -91,6 +99,14 @@ func (f *Fetcher) Fetch(ctx context.Context, rawURL string) PageFetch {
 // non-empty. A 304 response yields FetchStatusNotModified with no body; the
 // caller is expected to reuse the record the etag came from.
 func (f *Fetcher) FetchConditional(ctx context.Context, rawURL, etag string) PageFetch {
+	return f.fetch(ctx, f.client, rawURL, etag, "text/markdown")
+}
+
+func (f *Fetcher) FetchManifest(ctx context.Context, rawURL, etag string) PageFetch {
+	return f.fetch(ctx, f.manifestClient, rawURL, etag, "application/json")
+}
+
+func (f *Fetcher) fetch(ctx context.Context, client *http.Client, rawURL, etag, accept string) PageFetch {
 	canonical, ok := CanonicalDocURL(rawURL)
 	if !ok {
 		return PageFetch{Status: FetchStatusOutOfScope, URL: rawURL, Err: fmt.Errorf("out of scope URL")}
@@ -110,12 +126,12 @@ func (f *Fetcher) FetchConditional(ctx context.Context, rawURL, etag string) Pag
 		if err != nil {
 			return PageFetch{Status: FetchStatusError, URL: canonical, Err: err}
 		}
-		req.Header.Set("Accept", "text/markdown")
+		req.Header.Set("Accept", accept)
 		req.Header.Set("User-Agent", f.userAgent)
 		if etag != "" {
 			req.Header.Set("If-None-Match", etag)
 		}
-		resp, err := f.client.Do(req)
+		resp, err := client.Do(req)
 		if err != nil {
 			lastErr = err
 			if ctx.Err() != nil {
