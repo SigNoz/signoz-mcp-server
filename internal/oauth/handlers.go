@@ -27,10 +27,10 @@ import (
 
 const csrfCookieName = "signoz_mcp_oauth_csrf"
 
-// AnalyticsEmitter publishes OAuth flow events. apiKey and signozURL are
-// the validated tenant credentials the emitter needs to resolve identity
-// (orgId) for the event. Nil disables OAuth analytics.
-type AnalyticsEmitter func(ctx context.Context, event, apiKey, signozURL string, props map[string]any)
+// AnalyticsEmitter publishes OAuth flow events. cred and signozURL are the
+// validated credentials the emitter needs to resolve identity (orgId) for the
+// event. Nil disables OAuth analytics.
+type AnalyticsEmitter func(ctx context.Context, event string, cred util.Credential, signozURL string, props map[string]any)
 
 //go:embed static/authorize.html
 var authorizeTemplateFS embed.FS
@@ -83,8 +83,14 @@ type authorizeTemplateData struct {
 	Scope               string
 	CSRFToken           string
 	SignozURL           string
-	ErrorMessage        string
-	ErrorCode           string
+	// RedirectHost is shown next to the self-asserted client name.
+	RedirectHost   string
+	Step           string
+	Email          string
+	DeploymentHost string
+	Orgs           []orgView
+	ErrorMessage   string
+	ErrorCode      string
 	// FailureReason, when set, is emitted as mcp.auth.failure_reason on the
 	// OAuth failure telemetry (it is not rendered in the HTML page).
 	FailureReason string
@@ -108,11 +114,11 @@ func NewHandler(logger *slog.Logger, cfg *config.Config, emitEvent AnalyticsEmit
 	}
 }
 
-func (h *Handler) emit(ctx context.Context, event, apiKey, signozURL string, props map[string]any) {
+func (h *Handler) emit(ctx context.Context, event string, cred util.Credential, signozURL string, props map[string]any) {
 	if h.emitEvent == nil {
 		return
 	}
-	h.emitEvent(ctx, event, apiKey, signozURL, props)
+	h.emitEvent(ctx, event, cred, signozURL, props)
 }
 
 func (h *Handler) HandleProtectedResourceMetadata(w http.ResponseWriter, r *http.Request) {
@@ -128,6 +134,7 @@ func (h *Handler) HandleAuthorizationServerMetadata(w http.ResponseWriter, r *ht
 		"issuer":                                h.issuerURL(),
 		"authorization_endpoint":                h.issuerURL() + "/oauth/authorize",
 		"token_endpoint":                        h.issuerURL() + "/oauth/token",
+		"revocation_endpoint":                   h.issuerURL() + "/oauth/revoke",
 		"registration_endpoint":                 h.issuerURL() + "/oauth/register",
 		"response_types_supported":              []string{"code"},
 		"grant_types_supported":                 []string{"authorization_code", "refresh_token"},
@@ -205,104 +212,42 @@ func (h *Handler) HandleAuthorizeSubmit(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	switch r.FormValue("step") {
+	case stepStart:
+		params.SignozURL = strings.TrimSpace(r.FormValue("signoz_url"))
+		params.Email = strings.TrimSpace(r.FormValue("email"))
+		h.renderAuthorizePage(w, r, http.StatusOK, params)
+	case stepDiscover:
+		h.handleDiscoverSubmit(w, r, params)
+	case stepPassword:
+		h.handlePasswordSubmit(w, r, params)
+	default:
+		// stepAPIKey, and pages rendered before sign-in existed.
+		h.handleAPIKeySubmit(w, r, params)
+	}
+}
+
+func (h *Handler) handleAPIKeySubmit(w http.ResponseWriter, r *http.Request, params authorizeTemplateData) {
 	apiKey := strings.TrimSpace(r.FormValue("api_key"))
-	signozURL := strings.TrimSpace(r.FormValue("signoz_url"))
+	data := params
 	if apiKey == "" {
-		h.renderAuthorizePage(w, r, http.StatusBadRequest, authorizeTemplateData{
-			ClientID:            params.ClientID,
-			ClientName:          params.ClientName,
-			RedirectURI:         params.RedirectURI,
-			State:               params.State,
-			CodeChallenge:       params.CodeChallenge,
-			CodeChallengeMethod: params.CodeChallengeMethod,
-			Scope:               params.Scope,
-			SignozURL:           signozURL,
-			ErrorMessage:        "Enter your SigNoz API key to continue.",
-			ErrorCode:           "invalid_request",
-		})
+		data.SignozURL = strings.TrimSpace(r.FormValue("signoz_url"))
+		h.renderAuthorizeError(w, r, http.StatusBadRequest, data, "Enter your SigNoz API key to continue.", "invalid_request", "")
 		return
 	}
-	normalizedURL, err := util.NormalizeSigNozURLFormInput(signozURL)
-	if err != nil {
-		h.renderAuthorizePage(w, r, http.StatusBadRequest, authorizeTemplateData{
-			ClientID:            params.ClientID,
-			ClientName:          params.ClientName,
-			RedirectURI:         params.RedirectURI,
-			State:               params.State,
-			CodeChallenge:       params.CodeChallenge,
-			CodeChallengeMethod: params.CodeChallengeMethod,
-			Scope:               params.Scope,
-			SignozURL:           signozURL,
-			ErrorMessage:        "Enter a valid SigNoz URL, for example your-instance.signoz.cloud.",
-			ErrorCode:           "invalid_request",
-		})
+	// Seed the SigNoz URL (mcp.tenant_url) and reject disallowed backends
+	// before probing them, so the server never dials a host it will not serve.
+	r, normalizedURL, ok := h.normalizeDeployment(w, r, data, r.FormValue("signoz_url"))
+	if !ok {
 		return
 	}
-	// Seed the SigNoz URL (mcp.tenant_url) so every failure from here on —
-	// allowlist rejection, bad credentials, unreachable or missing instance —
-	// is attributed to the tenant in mcp.oauth.failures.
-	r = r.WithContext(util.SetSigNozURL(r.Context(), normalizedURL))
-	// Reject disallowed backends before probing them, so the server never
-	// dials — or issues a token for — a host it will not serve.
-	if !h.config.AllowsInstanceURL(normalizedURL) {
-		h.renderAuthorizePage(w, r, http.StatusForbidden, authorizeTemplateData{
-			ClientID:            params.ClientID,
-			ClientName:          params.ClientName,
-			RedirectURI:         params.RedirectURI,
-			State:               params.State,
-			CodeChallenge:       params.CodeChallenge,
-			CodeChallengeMethod: params.CodeChallengeMethod,
-			Scope:               params.Scope,
-			SignozURL:           normalizedURL,
-			ErrorMessage:        util.InstanceURLNotPermittedMessage(),
-			ErrorCode:           "access_denied",
-			FailureReason:       authFailureDisallowedSignozURL,
-		})
-		return
-	}
+	data.SignozURL = normalizedURL
 	if err := h.validateSigNozCredentials(r.Context(), normalizedURL, apiKey); err != nil {
 		switch {
 		case errors.Is(err, client.ErrUnauthorized):
-			h.renderAuthorizePage(w, r, http.StatusUnauthorized, authorizeTemplateData{
-				ClientID:            params.ClientID,
-				ClientName:          params.ClientName,
-				RedirectURI:         params.RedirectURI,
-				State:               params.State,
-				CodeChallenge:       params.CodeChallenge,
-				CodeChallengeMethod: params.CodeChallengeMethod,
-				Scope:               params.Scope,
-				SignozURL:           normalizedURL,
-				ErrorMessage:        "We couldn't sign in to that SigNoz instance. Check the URL and API key, then try again.",
-				ErrorCode:           "access_denied",
-			})
-		case errors.Is(err, client.ErrInstanceNotFound):
-			h.renderAuthorizePage(w, r, http.StatusNotFound, authorizeTemplateData{
-				ClientID:            params.ClientID,
-				ClientName:          params.ClientName,
-				RedirectURI:         params.RedirectURI,
-				State:               params.State,
-				CodeChallenge:       params.CodeChallenge,
-				CodeChallengeMethod: params.CodeChallengeMethod,
-				Scope:               params.Scope,
-				SignozURL:           normalizedURL,
-				ErrorMessage:        "We couldn't find a SigNoz workspace at that URL. If your trial or subscription has ended, the workspace may have been deactivated — check your workspace status or contact SigNoz support.",
-				ErrorCode:           "invalid_request",
-				FailureReason:       authFailureInstanceNotFound,
-			})
+			h.renderAuthorizeError(w, r, http.StatusUnauthorized, data, "We couldn't sign in to that SigNoz instance. Check the URL and API key, then try again.", "access_denied", "")
 		default:
-			h.renderAuthorizePage(w, r, http.StatusBadGateway, authorizeTemplateData{
-				ClientID:            params.ClientID,
-				ClientName:          params.ClientName,
-				RedirectURI:         params.RedirectURI,
-				State:               params.State,
-				CodeChallenge:       params.CodeChallenge,
-				CodeChallengeMethod: params.CodeChallengeMethod,
-				Scope:               params.Scope,
-				SignozURL:           normalizedURL,
-				ErrorMessage:        "We couldn't reach that SigNoz instance. Check the URL and try again.",
-				ErrorCode:           "temporarily_unavailable",
-				FailureReason:       authFailureInstanceUnreachable,
-			})
+			h.renderDeploymentError(w, r, data, err)
 		}
 		return
 	}
@@ -328,6 +273,16 @@ func (h *Handler) HandleAuthorizeSubmit(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	h.clearCSRFCookie(w)
+
+	h.emit(r.Context(), analytics.EventOAuthAuthorizationSubmitted, util.APIKeyCredential(apiKey), normalizedURL, map[string]any{
+		analytics.AttrTenantURL: normalizedURL,
+	})
+
+	http.Redirect(w, r, redirectURL, http.StatusFound)
+}
+
+func (h *Handler) clearCSRFCookie(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     csrfCookieName,
 		Value:    "",
@@ -337,12 +292,21 @@ func (h *Handler) HandleAuthorizeSubmit(w http.ResponseWriter, r *http.Request) 
 		Secure:   h.isSecure(),
 		MaxAge:   -1,
 	})
+}
 
-	h.emit(r.Context(), analytics.EventOAuthAuthorizationSubmitted, apiKey, normalizedURL, map[string]any{
-		analytics.AttrTenantURL: normalizedURL,
-	})
+// renderAuthorizeError re-renders the page with an error banner.
+func (h *Handler) renderAuthorizeError(w http.ResponseWriter, r *http.Request, status int, data authorizeTemplateData, message, code, failureReason string) {
+	data.ErrorMessage = message
+	data.ErrorCode = code
+	data.FailureReason = failureReason
+	h.renderAuthorizePage(w, r, status, data)
+}
 
-	http.Redirect(w, r, redirectURL, http.StatusFound)
+func failureReasonAttrs(reason string) []attribute.KeyValue {
+	if reason == "" {
+		return nil
+	}
+	return []attribute.KeyValue{attribute.String("mcp.auth.failure_reason", reason)}
 }
 
 func (h *Handler) validateSigNozCredentials(ctx context.Context, signozURL, apiKey string) error {
@@ -425,6 +389,11 @@ func (h *Handler) handleAuthorizationCodeGrant(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	if sessionCode, err := DecryptSessionAuthorizationCode(code, h.tokenSecret); !errors.Is(err, ErrInvalidToken) {
+		h.handleSessionCodeGrant(w, r, sessionCode, err, clientID, redirectURI, codeVerifier)
+		return
+	}
+
 	apiKey, signozURL, authClientID, authRedirectURI, codeChallenge, codeChallengeMethod, _, err := DecryptAuthorizationCode(code, h.tokenSecret)
 	if err != nil {
 		h.writeOAuthError(r, w, http.StatusBadRequest, "invalid_grant", "authorization code is invalid or expired")
@@ -450,6 +419,11 @@ func (h *Handler) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Request
 	clientID := strings.TrimSpace(r.FormValue("client_id"))
 	if refreshTokenValue == "" {
 		h.writeOAuthError(r, w, http.StatusBadRequest, "invalid_request", "refresh_token is required")
+		return
+	}
+
+	if session, refreshClientID, err := DecryptSessionRefreshToken(refreshTokenValue, h.tokenSecret); !errors.Is(err, ErrInvalidToken) {
+		h.handleSessionRefreshGrant(w, r, session, refreshClientID, err, clientID)
 		return
 	}
 
@@ -506,7 +480,7 @@ func (h *Handler) issueTokenPair(w http.ResponseWriter, r *http.Request, clientI
 		RefreshToken: refreshTokenValue,
 	})
 
-	h.emit(r.Context(), analytics.EventOAuthTokenIssued, apiKey, signozURL, map[string]any{
+	h.emit(r.Context(), analytics.EventOAuthTokenIssued, util.APIKeyCredential(apiKey), signozURL, map[string]any{
 		analytics.AttrTenantURL: signozURL,
 		analytics.AttrGrantType: grantType,
 	})
@@ -540,6 +514,7 @@ func (h *Handler) validateAuthorizeRequest(values url.Values) (authorizeTemplate
 		ClientID:            clientID,
 		ClientName:          clientName,
 		RedirectURI:         redirectURI,
+		RedirectHost:        redirectDisplayHost(redirectURI),
 		State:               values.Get("state"),
 		CodeChallenge:       codeChallenge,
 		CodeChallengeMethod: codeChallengeMethod,
@@ -634,17 +609,33 @@ func (h *Handler) issuerURL() string {
 }
 
 func (h *Handler) authorizePath() string {
+	return h.basePath() + "/oauth/authorize"
+}
+
+// basePath is the issuer URL's path prefix, empty when served at the root.
+func (h *Handler) basePath() string {
 	parsed, err := url.Parse(h.issuerURL())
 	if err != nil {
-		return "/oauth/authorize"
+		return ""
 	}
+	return strings.TrimSuffix(parsed.Path, "/")
+}
 
-	basePath := strings.TrimSuffix(parsed.Path, "/")
-	if basePath == "" {
-		return "/oauth/authorize"
+func (h *Handler) issuerHost() string {
+	return hostOf(h.issuerURL())
+}
+
+// redirectDisplayHost names where the client sends the code: the host for
+// web redirects, the scheme for app schemes such as cursor://.
+func redirectDisplayHost(redirectURI string) string {
+	parsed, err := url.Parse(redirectURI)
+	if err != nil {
+		return ""
 	}
-
-	return basePath + "/oauth/authorize"
+	if parsed.Host != "" {
+		return parsed.Host
+	}
+	return parsed.Scheme + "://"
 }
 
 // isSecure derives the Secure cookie flag from the issuer URL scheme rather

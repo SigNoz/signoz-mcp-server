@@ -32,6 +32,10 @@ data_sources:
   global_config: {read: {path: /api/v1/global/config, method: GET}}
   service_account_me: {read: {path: /api/v1/service_accounts/me, method: GET}}
   user_me: {read: {path: /api/v2/users/me, method: GET}}
+  session_context: {read: {path: /api/v2/sessions/context, method: GET}}
+  session_email_password: {read: {path: /api/v2/sessions/email_password, method: POST}}
+  session_rotate: {read: {path: /api/v2/sessions/rotate, method: POST}}
+  session_delete: {read: {path: /api/v2/sessions, method: DELETE}}
   stats: {read: {path: /api/v1/stats, method: GET}}
   features: {read: {path: /api/v2/features, method: GET}}
   alerts: {read: {path: /api/v1/alerts, method: GET}}

@@ -22,6 +22,9 @@ const (
 	blobTypeClientID
 	blobTypeAuthorizationCode
 	blobTypeRefreshToken
+	blobTypeSessionAuthorizationCode
+	blobTypeSessionRefreshToken
+	blobTypePendingAuthorization
 )
 
 type encryptedTokenPayload struct {

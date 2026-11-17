@@ -37,18 +37,17 @@ subgraph HTTPPath["HTTP Transport — Multi Tenant"]
     HEALTHCHECK -->|/.well-known/*<br/>/oauth/*| OAUTHFLOW["OAuth 2.1 Endpoints<br/>(no auth required)"]
     HEALTHCHECK -->|/mcp| AUTH["authMiddleware"]
 
-    AUTH --> APIKEY{"Authorization header?"}
-    APIKEY -->|Yes + OAuth enabled| TRYDECRYPT["Try decrypt as OAuth token"]
-    TRYDECRYPT -->|Success| OAUTHCTX["Extract apiKey + signozURL<br/>from encrypted token"]
-    TRYDECRYPT -->|Expired| EXPIRED["401 + WWW-Authenticate challenge"]
-    TRYDECRYPT -->|Not OAuth format| RAWKEY["Forward token upstream<br/>as Authorization: Bearer"]
-    APIKEY -->|Yes + OAuth disabled| PARSE["Forward token upstream<br/>as Authorization: Bearer"]
-    APIKEY -->|No + OAuth enabled| CHALLENGE["401 + WWW-Authenticate<br/>resource_metadata URL"]
-    APIKEY -->|No + env set| ENVKEY["Use config.APIKey"]
-    APIKEY -->|No + no env| DENY["401 Unauthorized"]
+    AUTH --> CHAIN{"Resolver chain<br/>(first match wins)"}
+    CHAIN -->|SIGNOZ-API-KEY header| APIKEYHDR["Forward as SIGNOZ-API-KEY"]
+    CHAIN -->|Bearer sz1.* + OAuth enabled| SESSION["Session token: decode deployment,<br/>allowlist, GET /api/v2/users/me (cached 30s)"]
+    SESSION -->|rejected| EXPIRED["401 + WWW-Authenticate invalid_token"]
+    CHAIN -->|Bearer encrypted token + OAuth enabled| OAUTHCTX["Decrypt → apiKey + signozURL"]
+    CHAIN -->|other Bearer| RAWKEY["Forward as Authorization: Bearer"]
+    CHAIN -->|none + env key| ENVKEY["Use config.APIKey"]
+    CHAIN -->|none| CHALLENGE["401 + WWW-Authenticate<br/>resource_metadata URL"]
 
     AUTH --> URLCHECK{"SigNoz URL source?"}
-    URLCHECK -->|OAuth token| FROMTOKEN["Already extracted<br/>from decrypted token"]
+    URLCHECK -->|OAuth token| FROMTOKEN["Deployment named by the token"]
     URLCHECK -->|X-SigNoz-URL header| NORMALIZE["normalizeSigNozURL"]
     URLCHECK -->|env set| ENVURL["Use config.URL"]
     URLCHECK -->|none| NOURL["400 Bad Request"]
@@ -61,8 +60,9 @@ subgraph HTTPPath["HTTP Transport — Multi Tenant"]
         STRIPPORT --> ORIGIN["Return canonical origin"]
     end
 
-    ORIGIN --> SETCTX_H["Set apiKey and signozURL into ctx"]
-    PARSE --> SETCTX_H
+    ORIGIN --> SETCTX_H["Set credential (header + value) and signozURL into ctx"]
+    APIKEYHDR --> SETCTX_H
+    SESSION --> SETCTX_H
     OAUTHCTX --> SETCTX_H
     RAWKEY --> SETCTX_H
     ENVKEY --> SETCTX_H
@@ -77,19 +77,27 @@ subgraph OAuthFlow["OAuth 2.1 Flow (Stateless)"]
     DISC --> REGCLIENT["POST /oauth/register<br/>{client_name, redirect_uris}"]
     REGCLIENT --> ENCID["client_id = encrypt(redirect_uris, name)"]
     ENCID --> AUTHPAGE["GET /oauth/authorize<br/>Browser opens, user sees form"]
-    AUTHPAGE --> SUBMIT["POST /oauth/authorize<br/>User submits SigNoz URL + API key"]
-    SUBMIT --> VALIDATE["Normalize SigNoz URL and validate<br/>credentials against SigNoz API"]
-    VALIDATE -->|success| ENCCODE["auth_code = encrypt(api_key, signoz_url,<br/>client_id, redirect_uri, code_challenge)"]
-    VALIDATE -->|invalid URL / rejected creds / unreachable instance| AUTHPAGEERR["Re-render authorize page<br/>with inline error"]
-    ENCCODE --> REDIRECT["302 Redirect to client<br/>with ?code=encrypted"]
+    AUTHPAGE --> CHOOSE{"User picks"}
+    CHOOSE -->|SigNoz sign-in| DISCOVER["POST step=discover: deployment + email<br/>→ GET /api/v2/sessions/context?email&ref"]
+    DISCOVER --> SIGNIN["Consent page: password form and/or SSO buttons<br/>SSO sets cookie signoz_mcp_sso_&lt;nonce&gt; = encrypt(pending authorization)"]
+    SIGNIN -->|password| PWD["POST step=password<br/>→ POST /api/v2/sessions/email_password"]
+    SIGNIN -->|SSO| IDP["Browser → IdP → SigNoz /api/v1/complete/*<br/>→ GET /oauth/sso-callback/&lt;nonce&gt;?accessToken&refreshToken&expiresIn"]
+    IDP --> CORR["Cookie for this nonce required;<br/>decrypt pending authorization"]
+    PWD --> SCODE["auth_code = encrypt(SigNoz session, client_id,<br/>redirect_uri, code_challenge)"]
+    CORR --> SCODE
+    CHOOSE -->|API key| SUBMIT["POST step=apikey: SigNoz URL + API key<br/>validated against /api/v1/service_accounts/me"]
+    SUBMIT --> ENCCODE["auth_code = encrypt(api_key, signoz_url,<br/>client_id, redirect_uri, code_challenge)"]
+    SCODE --> REDIRECT["302 Redirect to client<br/>with ?code=encrypted"]
+    ENCCODE --> REDIRECT
     REDIRECT --> EXCHANGE["POST /oauth/token<br/>{code, code_verifier}"]
     EXCHANGE --> VERIFY["Decrypt code, verify PKCE,<br/>verify client_id + redirect_uri match"]
-    VERIFY --> ISSUE["access_token = encrypt(api_key, signoz_url)<br/>refresh_token = encrypt(api_key, signoz_url)"]
-    ISSUE --> USE["Client uses access_token on /mcp<br/>Middleware decrypts → apiKey + signozURL"]
+    VERIFY --> ISSUE["Session: access_token = sz1.&lt;b64url(deployment)&gt;.&lt;SigNoz access token&gt;<br/>refresh_token = encrypt(SigNoz session)<br/>API key: both encrypt(api_key, signoz_url)"]
+    ISSUE --> USE["Client uses access_token on /mcp"]
 
     REFRESH["POST /oauth/token<br/>{grant_type: refresh_token}"]
-    REFRESH --> DECREF["Decrypt refresh_token<br/>→ api_key, signoz_url"]
+    REFRESH --> DECREF["Session: POST /api/v2/sessions/rotate<br/>API key: decrypt"]
     DECREF --> ISSUE
+    REVOKE["POST /oauth/revoke"] --> DELSESS["DELETE /api/v2/sessions"]
 end
 
 subgraph GetClient["GetClient — Unified for Both Transports"]
@@ -234,6 +242,31 @@ Each blob is prefixed with a type byte to prevent cross-type confusion:
 | `0x02` | `authorization_code` | `{api_key, signoz_url, client_id, redirect_uri, code_challenge, expires_at}` | `/oauth/authorize` (form submit) | `/oauth/token` |
 | `0x03` | `refresh_token` | `{api_key, signoz_url, client_id, expires_at}` | `/oauth/token` | `/oauth/token` (refresh grant) |
 | (untagged) | `access_token` | `{api_key, signoz_url, client_id, expires_at}` | `/oauth/token` | `/mcp` (every request) |
+| `0x05` | session `authorization_code` | `{session, client_id, redirect_uri, code_challenge, expires_at}` | password submit, SSO callback | `/oauth/token` |
+| `0x06` | session `refresh_token` | `{session, client_id, expires_at}`; `session` is `{signoz_url, access_token, refresh_token, access_expires_at}` | `/oauth/token` | `/oauth/token` (refresh grant), `/oauth/revoke` |
+| `0x07` | pending authorization | `{nonce, client_id, redirect_uri, state, code_challenge, signoz_url, expires_at}` | sign-in page (SSO offered) | `/oauth/sso-callback/{nonce}` |
+
+The refresh blob carries both SigNoz tokens because SigNoz rotation needs the access token as
+well as the refresh token. A session access token is not encrypted:
+`sz1.<base64url(deployment URL)>.<SigNoz access token>`. `/mcp` routes on the deployment,
+re-checks it against `SIGNOZ_INSTANCE_URL_ALLOWLIST`, and validates the token with
+`GET /api/v2/users/me`. `expires_in` is the shorter of SigNoz's `expiresIn` and
+`OAUTH_ACCESS_TOKEN_TTL_MINUTES`.
+
+### Sign in with SigNoz
+
+The authorize page offers SigNoz sign-in (password or SSO, using the deployment's existing
+`/api/v2/sessions/*` endpoints) and a service-account API key. For SSO, `ref` is
+`<issuer>/oauth/sso-callback/<nonce>`. SigNoz keeps only `ref`'s scheme, host and path and
+replaces its query with the token, so the nonce correlates the callback, and an HttpOnly,
+SameSite=Lax cookie scoped to that path holds the encrypted pending authorization. A callback
+without the cookie for its nonce is rejected. SigNoz offers SSO for `ref` only when the issuer
+origin passes the deployment's `global.allowed_origins`; otherwise the page says so and offers
+the password.
+
+Session tokens are ordinary SigNoz UI sessions: SigNoz doesn't know which MCP client holds
+them, they count toward the per-user session cap (the oldest is evicted, which can sign the
+user out of the browser), and they share the deployment's session lifetimes.
 
 ### Multi-Instance Deployment
 
@@ -246,7 +279,13 @@ The auth middleware forwards each credential upstream on the **header the client
 - `SIGNOZ-API-KEY: <key>` → forwarded as `SIGNOZ-API-KEY` (service-account API keys).
 - `Authorization: [Bearer] <token>` → forwarded as `Authorization: Bearer <token>` (user/session tokens, JWT **or** opaque).
 
-When OAuth is enabled, the middleware first tries to decrypt an `Authorization` Bearer token as a server-issued OAuth access token; a valid one unwraps to a stored API key forwarded via `SIGNOZ-API-KEY`. Only if decryption fails (and a SigNoz URL is available) is the token treated as a direct credential and forwarded on `Authorization`.
+Request auth is an ordered resolver chain in `internal/mcp-server/auth_resolvers.go`: the
+`SIGNOZ-API-KEY` header, then (with OAuth enabled) server-issued tokens, then any other
+`Authorization` bearer, then the server's own `SIGNOZ_API_KEY`. A server-issued session token
+forwards its SigNoz access token on `Authorization`; an encrypted token unwraps to a stored API
+key forwarded via `SIGNOZ-API-KEY`. Only a bearer that is neither (and with a SigNoz URL
+available) is forwarded as a direct credential on `Authorization`. Every path stores one
+`util.Credential` (header and value) on the context, which the SigNoz client sends as-is.
 
 > **Removed (breaking):** earlier versions used a shape heuristic (`isJWTToken`) to reroute non-JWT `Authorization` tokens to `SIGNOZ-API-KEY`. That heuristic misrouted opaque user/session tokens (which SigNoz only accepts on `Authorization`) and has been removed. Clients sending a service-account API key must use the `SIGNOZ-API-KEY` header, not `Authorization`.
 
