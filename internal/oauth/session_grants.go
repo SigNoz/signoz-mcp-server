@@ -88,10 +88,8 @@ func (h *Handler) issueSessionTokenPair(w http.ResponseWriter, r *http.Request, 
 	})
 }
 
-// HandleRevoke implements RFC 7009 for session tokens: it ends the SigNoz
-// session behind an access or refresh token. It answers 200 for unknown or
-// already-ended tokens, as the RFC requires. Tokens with an API key inside
-// cannot be revoked server-side and expire on their own.
+// HandleRevoke answers 200 for unknown or ended tokens, as RFC 7009 requires.
+// Tokens carrying an API key can't be revoked server-side; they expire.
 func (h *Handler) HandleRevoke(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		h.writeOAuthError(r, w, http.StatusBadRequest, "invalid_request", "form data is required")

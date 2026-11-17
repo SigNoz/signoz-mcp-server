@@ -51,10 +51,8 @@ type authFailure struct {
 	oauthChallenge bool
 }
 
-// authResolver recognizes one kind of credential. It returns (nil, nil) when
-// the request does not carry its kind, so the next resolver runs. Resolvers
-// run in order and the first match wins, so a future trusted-gateway resolver
-// (behind an explicit config flag) can go first without restructuring.
+// authResolver returns (nil, nil) for a credential it doesn't own. First match
+// wins, so a future trusted-gateway resolver (behind an explicit flag) can go first.
 type authResolver func(ctx context.Context, r *http.Request) (*authResolution, *authFailure)
 
 func (m *MCPServer) authResolvers() []authResolver {

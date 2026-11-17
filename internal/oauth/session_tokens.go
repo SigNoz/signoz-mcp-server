@@ -107,10 +107,8 @@ func DecryptPendingAuthorization(value string, secret []byte) (PendingAuthorizat
 // token. Legacy encrypted tokens are unpadded base64url and never contain '.'.
 const sessionAccessTokenPrefix = "sz1"
 
-// FormatSessionAccessToken returns the MCP access token for a SigNoz session:
-// "sz1.<base64url(instance URL)>.<SigNoz access token>". The instance is
-// readable so /mcp can route without decryption; it is not trusted and is
-// re-checked against the allowlist on every request.
+// FormatSessionAccessToken leaves the instance URL readable so /mcp can route
+// without decryption; it is untrusted and allowlist-checked on every request.
 func FormatSessionAccessToken(signozURL, accessToken string) string {
 	return sessionAccessTokenPrefix + "." +
 		base64.RawURLEncoding.EncodeToString([]byte(signozURL)) + "." + accessToken
@@ -122,11 +120,8 @@ func IsSessionAccessToken(token string) bool {
 	return strings.HasPrefix(token, sessionAccessTokenPrefix+".")
 }
 
-// ParseSessionAccessToken splits a session access token and returns its
-// instance URL in normalized form. The URL is client-supplied, so it is
-// normalized here (which rejects non-ASCII hosts whose lowercase and dialed
-// forms differ) before any caller can allowlist-check or dial it. ok is false
-// for any other token shape and for an invalid instance URL.
+// ParseSessionAccessToken normalizes the client-supplied instance URL itself, so
+// no caller can allowlist-check or dial a non-ASCII host whose dialed form differs.
 func ParseSessionAccessToken(token string) (signozURL, accessToken string, ok bool) {
 	parts := strings.SplitN(token, ".", 3)
 	if len(parts) != 3 || parts[0] != sessionAccessTokenPrefix || parts[2] == "" {
