@@ -1,6 +1,10 @@
 package main
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/SigNoz/signoz-mcp-server/internal/docs"
+)
 
 func TestCorpusFailureThresholdExceeded(t *testing.T) {
 	tests := []struct {
@@ -54,5 +58,27 @@ func TestCorpusFailureThresholdExceeded(t *testing.T) {
 				t.Fatalf("corpusFailureThresholdExceeded(%d, %d, %d) = %v, want %v", tt.total, tt.failures, tt.notFound, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestCurrentPagesReusesOnlyPagesTheManifestStillPublishes(t *testing.T) {
+	pages := []docs.PageRecord{
+		{URL: "https://signoz.io/docs/install.md", SourceETag: `W/"same"`},
+		{URL: "https://signoz.io/docs/logs.md", SourceETag: `W/"old"`},
+		{URL: "https://signoz.io/docs/removed.md", SourceETag: `W/"gone"`},
+		{URL: "https://signoz.io/docs/no-etag.md"},
+	}
+	published := map[string]string{
+		"https://signoz.io/docs/install.md": `W/"same"`,
+		"https://signoz.io/docs/logs.md":    `W/"new"`,
+		"https://signoz.io/docs/no-etag.md": `W/"any"`,
+	}
+
+	current := currentPages(pages, published)
+	if len(current) != 1 {
+		t.Fatalf("currentPages reused %d pages, want only install.md: %v", len(current), current)
+	}
+	if _, ok := current["https://signoz.io/docs/install.md"]; !ok {
+		t.Fatalf("install.md has the published ETag and should be reused")
 	}
 }

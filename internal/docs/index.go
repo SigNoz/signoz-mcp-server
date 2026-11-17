@@ -817,6 +817,7 @@ func replacePagePayload(current *PageRecord, candidate PageRecord) {
 	current.BodyMarkdown = candidate.BodyMarkdown
 	current.FetchedAt = candidate.FetchedAt
 	current.SourceETag = candidate.SourceETag
+	current.IndexETag = candidate.IndexETag
 }
 
 func breadcrumbSearchText(sectionSlugs []string, sectionMap map[string]string) string {

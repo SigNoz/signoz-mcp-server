@@ -101,6 +101,10 @@ func TestSingleflightSerialization(t *testing.T) {
 			_, _ = w.Write([]byte(sitemapForEntries(entries)))
 			return
 		}
+		if r.URL.Path == "/docs/manifest.json" {
+			http.NotFound(w, r)
+			return
+		}
 		pageFetches.Add(1)
 		_, _ = w.Write([]byte("# Install SigNoz Using Docker\n\nDocker Compose setup.\n"))
 	}))
@@ -291,14 +295,14 @@ func TestRefreshThreshold(t *testing.T) {
 		blockedFetches[entries[i].URL] = PageFetch{Status: FetchStatusNotFound, URL: entries[i].URL}
 	}
 	refresher.fetcher = mapFetcher(blockedFetches)
-	_, blocked, err := refresher.buildSnapshot(context.Background(), sitemapForEntries(entries), "new", entries, previous, false)
+	_, blocked, err := refresher.buildSnapshot(context.Background(), sitemapForEntries(entries), "new", entries, previous, false, nil)
 	require.NoError(t, err)
 	require.True(t, blocked)
 
 	allowedFetches := fetchMapForEntries(entries)
 	allowedFetches[entries[0].URL] = PageFetch{Status: FetchStatusNotFound, URL: entries[0].URL}
 	refresher.fetcher = mapFetcher(allowedFetches)
-	next, blocked, err := refresher.buildSnapshot(context.Background(), sitemapForEntries(entries), "newer", entries, previous, false)
+	next, blocked, err := refresher.buildSnapshot(context.Background(), sitemapForEntries(entries), "newer", entries, previous, false, nil)
 	require.NoError(t, err)
 	require.False(t, blocked)
 	require.Len(t, next.Pages, len(entries))
@@ -315,11 +319,11 @@ func TestRefreshThresholdPersistsNotFoundHistoryWhenBlocked(t *testing.T) {
 	}
 	refresher.fetcher = mapFetcher(fetches)
 
-	_, blocked, err := refresher.buildSnapshot(context.Background(), sitemapForEntries(entries), "first-blocked", entries, previous, false)
+	_, blocked, err := refresher.buildSnapshot(context.Background(), sitemapForEntries(entries), "first-blocked", entries, previous, false, nil)
 	require.NoError(t, err)
 	require.True(t, blocked)
 
-	next, blocked, err := refresher.buildSnapshot(context.Background(), sitemapForEntries(entries), "second-allowed", entries, previous, false)
+	next, blocked, err := refresher.buildSnapshot(context.Background(), sitemapForEntries(entries), "second-allowed", entries, previous, false, nil)
 	require.NoError(t, err)
 	require.False(t, blocked)
 	require.Len(t, next.Pages, len(entries))
@@ -335,13 +339,13 @@ func TestTransient404Grace(t *testing.T) {
 
 	current := previous
 	for i := 1; i <= 3; i++ {
-		next, blocked, err := refresher.buildSnapshot(context.Background(), sitemapForEntries(entries), fmt.Sprintf("hash-%d", i), entries, current, false)
+		next, blocked, err := refresher.buildSnapshot(context.Background(), sitemapForEntries(entries), fmt.Sprintf("hash-%d", i), entries, current, false, nil)
 		require.NoError(t, err)
 		require.False(t, blocked)
 		require.Len(t, next.Pages, len(entries), "404 #%d should preserve previous page", i)
 		current = next
 	}
-	next, blocked, err := refresher.buildSnapshot(context.Background(), sitemapForEntries(entries), "hash-4", entries, current, false)
+	next, blocked, err := refresher.buildSnapshot(context.Background(), sitemapForEntries(entries), "hash-4", entries, current, false, nil)
 	require.NoError(t, err)
 	require.False(t, blocked)
 	require.Len(t, next.Pages, len(entries)-1)
@@ -350,7 +354,7 @@ func TestTransient404Grace(t *testing.T) {
 	fetches = fetchMapForEntries(entries)
 	fetches[entries[0].URL] = PageFetch{Status: FetchStatusNotFound, URL: entries[0].URL}
 	refresher.fetcher = mapFetcher(fetches)
-	next, blocked, err = refresher.buildSnapshot(context.Background(), sitemapForEntries(entries), "hash-once", entries, previous, false)
+	next, blocked, err = refresher.buildSnapshot(context.Background(), sitemapForEntries(entries), "hash-once", entries, previous, false, nil)
 	require.NoError(t, err)
 	require.False(t, blocked)
 	require.Len(t, next.Pages, len(entries))
@@ -377,7 +381,7 @@ func TestRefreshFallbackPreservesDuplicateURLSections(t *testing.T) {
 	fetches[duplicateLogs.URL] = PageFetch{Status: FetchStatusError, URL: duplicateLogs.URL, Err: fmt.Errorf("temporary fetch failure")}
 	refresher.fetcher = mapFetcher(fetches)
 
-	next, blocked, err := refresher.buildSnapshot(context.Background(), sitemapForEntries(entries), "fallback-sections", entries, previous, false)
+	next, blocked, err := refresher.buildSnapshot(context.Background(), sitemapForEntries(entries), "fallback-sections", entries, previous, false, nil)
 	require.NoError(t, err)
 	require.False(t, blocked)
 

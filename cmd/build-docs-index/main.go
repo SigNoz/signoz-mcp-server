@@ -65,6 +65,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("parse sitemap: %v", err)
 	}
+	current := currentPagesFromManifest(ctx, fetcher)
 
 	type fetchOutcome struct {
 		entry  docs.SitemapEntry
@@ -72,16 +73,26 @@ func main() {
 	}
 	outcomes := make([]fetchOutcome, len(entries))
 	var wg sync.WaitGroup
-	wg.Add(len(entries))
+	reused := 0
 	start := time.Now()
 	for i, entry := range entries {
+		canonical, _ := docs.CanonicalDocURL(entry.URL)
+		if page, ok := current[canonical]; ok {
+			outcomes[i] = fetchOutcome{entry: entry, result: docs.PageFetch{
+				Status: docs.FetchStatusOK, URL: entry.URL, Body: page.BodyMarkdown, ETag: page.SourceETag, FetchedAt: page.FetchedAt,
+			}}
+			reused++
+			continue
+		}
+		wg.Add(1)
 		go func(i int, entry docs.SitemapEntry) {
 			defer wg.Done()
 			outcomes[i] = fetchOutcome{entry: entry, result: fetcher.Fetch(ctx, entry.URL)}
 		}(i, entry)
 	}
 	wg.Wait()
-	log.Printf("fetched %d pages in %s", len(entries), time.Since(start).Round(time.Millisecond))
+	log.Printf("fetched %d pages and reused %d unchanged ones in %s",
+		len(entries)-reused, reused, time.Since(start).Round(time.Millisecond))
 
 	pages := make([]docs.PageRecord, 0, len(entries))
 	failures := 0
@@ -114,6 +125,39 @@ func main() {
 		log.Fatal(err)
 	}
 	fmt.Printf("wrote %s and %s (%d pages)\n", corpusPath, manifestPath, len(pages))
+}
+
+func currentPagesFromManifest(ctx context.Context, fetcher *docs.Fetcher) map[string]docs.PageRecord {
+	committed, err := docs.LoadEmbeddedCorpus()
+	if err != nil {
+		log.Printf("WARN: committed corpus unavailable (%v); downloading every page", err)
+		return nil
+	}
+	manifest := fetcher.FetchManifest(ctx, docs.DefaultManifestURL, "")
+	if manifest.Status != docs.FetchStatusOK {
+		log.Printf("WARN: docs manifest unavailable (%s %v); downloading every page", manifest.Status, manifest.Err)
+		return nil
+	}
+	_, published, err := docs.ParseDocsManifest(manifest.Body)
+	if err != nil {
+		log.Printf("WARN: docs manifest invalid (%v); downloading every page", err)
+		return nil
+	}
+	return currentPages(committed.Pages, published)
+}
+
+func currentPages(pages []docs.PageRecord, published map[string]string) map[string]docs.PageRecord {
+	current := make(map[string]docs.PageRecord)
+	for _, page := range pages {
+		canonical, ok := docs.CanonicalDocURL(page.URL)
+		if !ok || page.SourceETag == "" {
+			continue
+		}
+		if etag, listed := published[canonical]; listed && etag == page.SourceETag {
+			current[canonical] = page
+		}
+	}
+	return current
 }
 
 func corpusFailureThresholdExceeded(total, failures, notFound int) bool {
