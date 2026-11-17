@@ -240,6 +240,8 @@ make build
 
 The binary is at `./bin/signoz-mcp-server`.
 
+To check which build you have, run `./bin/signoz-mcp-server --version`.
+
 ## Connect to Self-Hosted SigNoz
 
 ### Prerequisites
