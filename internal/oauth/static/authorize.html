@@ -184,6 +184,7 @@
     }
 
     input[type="text"],
+    input[type="email"],
     input[type="password"] {
       width: 100%;
       padding: 10px 14px;
@@ -202,6 +203,7 @@
     }
 
     input[type="text"]:focus,
+    input[type="email"]:focus,
     input[type="password"]:focus {
       outline: none;
       border-color: var(--accent);
@@ -225,44 +227,70 @@
       text-decoration: underline;
     }
 
-    .api-key-help {
-      position: relative;
-      display: inline-block;
-    }
-
-    .api-key-tooltip {
-      position: absolute;
-      top: calc(100% + 8px);
-      left: 0;
-      z-index: 20;
-      width: min(320px, calc(100vw - 72px));
-      padding: 10px 12px;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 6px;
-      background: #0f1117;
-      box-shadow: 0 12px 30px var(--shadow);
+    .consent {
       color: var(--ink-secondary);
-      font-size: 0.78rem;
-      font-weight: 400;
-      line-height: 1.45;
+      font-size: 0.86rem;
+      line-height: 1.5;
+      margin-bottom: 18px;
+    }
+
+    .org-block {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    .org-name {
+      font-weight: 600;
+      color: var(--ink);
+    }
+
+    .btn-secondary {
+      display: block;
+      text-align: center;
+      padding: 10px 16px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--input-bg);
+      color: var(--ink);
+      font-size: 0.9rem;
+      font-weight: 600;
       text-decoration: none;
-      pointer-events: none;
-      opacity: 0;
-      visibility: hidden;
-      transform: translateY(-2px);
     }
 
-    .api-key-help:hover .api-key-tooltip,
-    .api-key-help:focus-within .api-key-tooltip {
-      opacity: 1;
-      visibility: visible;
-      transform: translateY(0);
+    .btn-secondary:hover {
+      border-color: var(--accent);
     }
 
-    .api-key-help a:focus-visible {
-      border-radius: 4px;
-      outline: 2px solid var(--accent);
-      outline-offset: 2px;
+    .divider {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 22px 0 18px;
+      color: var(--muted);
+      font-size: 0.78rem;
+    }
+
+    .divider::before,
+    .divider::after {
+      content: "";
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    .link-form {
+      text-align: center;
+    }
+
+    .link-button {
+      border: 0;
+      background: none;
+      color: var(--accent);
+      font-family: inherit;
+      font-size: 0.8rem;
+      cursor: pointer;
     }
 
     .error-banner {
@@ -283,7 +311,7 @@
       line-height: 1.45;
     }
 
-    button[type="submit"] {
+    button[type="submit"]:not(.link-button) {
       width: 100%;
       border: 0;
       border-radius: 6px;
@@ -302,7 +330,7 @@
       margin-top: 4px;
     }
 
-    button[type="submit"]:hover {
+    button[type="submit"]:not(.link-button):hover {
       background: var(--accent-hover);
       box-shadow: 0 4px 16px var(--accent-glow);
     }
@@ -438,8 +466,13 @@
           d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z" />
       </svg>
     </div>
+    {{if eq .Step "signin"}}
+    <h1>Sign in to SigNoz</h1>
+    <p class="subtitle">Sign in to <strong>{{.InstanceHost}}</strong> as <strong>{{.Email}}</strong> to finish connecting.</p>
+    {{else}}
     <h1>Authorize access</h1>
-    <p class="subtitle">Enter the SigNoz instance URL and API key you want this MCP client to use.</p>
+    <p class="subtitle">Enter your SigNoz instance URL and the email you sign in with.</p>
+    {{end}}
 
     <div class="card">
       <div class="client-badge">
@@ -448,51 +481,100 @@
           <path stroke-linecap="round" stroke-linejoin="round"
             d="M6.75 7.5l3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0021 18V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v12a2.25 2.25 0 002.25 2.25z" />
         </svg>
-        Client: {{.ClientName}}
+        Client: {{.ClientName}}{{if .RedirectHost}} ({{.RedirectHost}}){{end}}
       </div>
 
+      {{if .ErrorMessage}}
+      <div class="error-banner" role="alert">{{.ErrorMessage}}</div>
+      {{end}}
+
+      {{if eq .Step "signin"}}
+      <p class="consent">{{.ClientName}} wants to act as you on <strong>{{.InstanceHost}}</strong>. It can read
+        and change what your SigNoz role allows. Sign in only if you started this connection.</p>
+
+      {{range .Orgs}}
+      <div class="org-block">
+        {{if gt (len $.Orgs) 1}}<div class="org-name">{{.Name}}</div>{{end}}
+        {{if .Warning}}<div class="input-note">{{.Warning}}</div>{{end}}
+        {{range .SSO}}
+        <a class="btn-secondary" href="{{.URL}}">Continue with {{.Label}}</a>
+        {{end}}
+        {{if .Password}}
+        <form method="post" action="{{$.AuthorizePath}}">
+          <div class="field">
+            <label for="password-{{.ID}}">Password</label>
+            <input id="password-{{.ID}}" name="password" type="password" autocomplete="current-password" required>
+          </div>
+          <input type="hidden" name="step" value="password">
+          <input type="hidden" name="org_id" value="{{.ID}}">
+          <input type="hidden" name="email" value="{{$.Email}}">
+          <input type="hidden" name="signoz_url" value="{{$.SignozURL}}">
+          {{template "oauthFields" $}}
+          <button type="submit">Sign in and authorize</button>
+        </form>
+        {{end}}
+      </div>
+      {{end}}
+
+      <form method="post" action="{{.AuthorizePath}}" class="link-form">
+        <input type="hidden" name="step" value="start">
+        <input type="hidden" name="email" value="{{.Email}}">
+        <input type="hidden" name="signoz_url" value="{{.SignozURL}}">
+        {{template "oauthFields" .}}
+        <button type="submit" class="link-button">Use a different instance URL or email</button>
+      </form>
+      {{else}}
       <form method="post" action="{{.AuthorizePath}}">
         <div class="field">
-          <label for="signoz_url">SigNoz Instance URL</label>
+          <label for="signoz_url">SigNoz instance URL</label>
           <input id="signoz_url" name="signoz_url" type="text" value="{{.SignozURL}}"
-            placeholder="your-instance.signoz.cloud" required>
-          <div class="input-note">Paste your SigNoz deployment URL.</div>
+            placeholder="signoz.example.com" required>
+          <div class="input-note">The address you use to open SigNoz in a browser.</div>
         </div>
 
         <div class="field">
-          <label for="api_key">API Key</label>
-          <input id="api_key" name="api_key" type="password" placeholder="Paste your SigNoz API key" required>
-          <div class="field-hint">
-            <span class="api-key-help">
-              <a href="https://signoz.io/docs/manage/administrator-guide/iam/service-accounts/#create-a-service-account"
-                target="_blank" rel="noopener" aria-describedby="api-key-help-tooltip">How to get your API key?</a>
-              <span id="api-key-help-tooltip" class="api-key-tooltip" role="tooltip">Go to Settings → Service Accounts in
-                SigNoz, create a service account, and generate an API key. Click for
-                details.</span>
-            </span>
-          </div>
+          <label for="email">Email</label>
+          <input id="email" name="email" type="email" value="{{.Email}}" autocomplete="username"
+            placeholder="you@example.com" required>
         </div>
 
-        <input type="hidden" name="client_id" value="{{.ClientID}}">
-        <input type="hidden" name="redirect_uri" value="{{.RedirectURI}}">
-        <input type="hidden" name="state" value="{{.State}}">
-        <input type="hidden" name="code_challenge" value="{{.CodeChallenge}}">
-        <input type="hidden" name="code_challenge_method" value="{{.CodeChallengeMethod}}">
-        <input type="hidden" name="scope" value="{{.Scope}}">
-        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-
-        {{if .ErrorMessage}}
-        <div class="error-banner" role="alert">{{.ErrorMessage}}</div>
-        {{end}}
+        <input type="hidden" name="step" value="discover">
+        {{template "oauthFields" .}}
 
         <button type="submit">
-          Authorize
+          Continue with SigNoz sign-in
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
             stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
           </svg>
         </button>
       </form>
+
+      <div class="divider"><span>or use a service-account API key</span></div>
+
+      <form method="post" action="{{.AuthorizePath}}">
+        <div class="field">
+          <label for="apikey_signoz_url">SigNoz instance URL</label>
+          <input id="apikey_signoz_url" name="signoz_url" type="text" value="{{.SignozURL}}"
+            placeholder="signoz.example.com" required>
+        </div>
+
+        <div class="field">
+          <label for="api_key">API key</label>
+          <input id="api_key" name="api_key" type="password" placeholder="Paste your SigNoz API key" required>
+          <div class="field-hint">
+            <a href="https://signoz.io/docs/manage/administrator-guide/iam/service-accounts/#create-a-service-account"
+              target="_blank" rel="noopener">How to get an API key</a>
+          </div>
+          <div class="input-note">The client acts as the service account, not as you.</div>
+        </div>
+
+        <input type="hidden" name="step" value="apikey">
+        {{template "oauthFields" .}}
+
+        <button type="submit">Authorize with API key</button>
+      </form>
+      {{end}}
     </div>
 
     <!-- Security note -->
@@ -501,7 +583,11 @@
         <path stroke-linecap="round" stroke-linejoin="round"
           d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
       </svg>
-      <p>Your credentials stay within the SigNoz MCP server and are exchanged for scoped OAuth tokens.</p>
+      {{if eq .Step "signin"}}
+      <p>The MCP server passes your password to your SigNoz instance and doesn't store it. The MCP client receives a token for your account.</p>
+      {{else}}
+      <p>The MCP server passes your password or API key to your SigNoz instance and doesn't store it. The MCP client receives a token for your account or for the service account.</p>
+      {{end}}
     </div>
 
     <!-- Footer -->
@@ -517,3 +603,12 @@
 </body>
 
 </html>
+{{define "oauthFields"}}
+<input type="hidden" name="client_id" value="{{.ClientID}}">
+<input type="hidden" name="redirect_uri" value="{{.RedirectURI}}">
+<input type="hidden" name="state" value="{{.State}}">
+<input type="hidden" name="code_challenge" value="{{.CodeChallenge}}">
+<input type="hidden" name="code_challenge_method" value="{{.CodeChallengeMethod}}">
+<input type="hidden" name="scope" value="{{.Scope}}">
+<input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+{{end}}

@@ -318,7 +318,9 @@ Client config needs just the URL, no keys:
 }
 ```
 
-The client discovers OAuth endpoints automatically, opens a browser for credentials, and handles token exchange.
+The client discovers OAuth endpoints automatically, opens a browser, and handles token exchange. In the browser, users either sign in to their SigNoz instance with their own account (password or SSO), so the client acts as them, or paste a service-account API key. Revoking a token at `/oauth/revoke` ends the SigNoz session behind it.
+
+SSO sign-in needs the MCP server's origin (`OAUTH_ISSUER_URL`) to pass the SigNoz instance's `global.allowed_origins` when that list is set. Each signed-in client holds an ordinary SigNoz session, which counts toward SigNoz's per-user session limit.
 
 #### Without OAuth (Simple Setup)
 
