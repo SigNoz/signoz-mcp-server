@@ -138,7 +138,8 @@ func TestNotificationChannelMutations_AreSingleAttempt(t *testing.T) {
 			return err
 		}},
 		{"update", http.MethodPut, func(c *SigNoz) error {
-			return c.UpdateNotificationChannel(context.Background(), clientNotificationID, []byte(`{"config":{"kind":"webhook","spec":{"url":"https://example.test"}}}`))
+			_, err := c.UpdateNotificationChannel(context.Background(), clientNotificationID, []byte(`{"config":{"kind":"webhook","spec":{"url":"https://example.test"}}}`))
+			return err
 		}},
 		{"delete", http.MethodDelete, func(c *SigNoz) error {
 			return c.DeleteNotificationChannel(context.Background(), clientNotificationID)
@@ -170,7 +171,7 @@ func TestUpdateNotificationChannel_ParseFailureSurfacesCommittedID(t *testing.T)
 	}))
 	defer server.Close()
 	client := NewClient(logpkg.New("error"), server.URL, "key", "SIGNOZ-API-KEY", nil)
-	err := client.UpdateNotificationChannel(context.Background(), clientNotificationID, []byte(`{"config":{"kind":"webhook","spec":{"url":"https://example.test"}}}`))
+	_, err := client.UpdateNotificationChannel(context.Background(), clientNotificationID, []byte(`{"config":{"kind":"webhook","spec":{"url":"https://example.test"}}}`))
 	var committed *CommittedNotificationChannelError
 	require.ErrorAs(t, err, &committed)
 	require.Equal(t, clientNotificationID, committed.ID)
