@@ -27,6 +27,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+
+## [0.20.0] - 2026-11-18
+
+### Added
+- sign in with your SigNoz account ([#456](https://github.com/SigNoz/signoz-mcp-server/pull/456))
+- let agents report problems with the MCP server ([#442](https://github.com/SigNoz/signoz-mcp-server/pull/442))
+- tell agents which arguments a tool ignored ([#450](https://github.com/SigNoz/signoz-mcp-server/pull/450))
+- add --version with a cobra root command ([#451](https://github.com/SigNoz/signoz-mcp-server/pull/451))
+
+### Fixed
+- cast SigNoz v0.150.0, the release the pinned spec matches ([#448](https://github.com/SigNoz/signoz-mcp-server/pull/448))
+
+### CI
+- bump the signoz-mcp-server chart in SigNoz/charts on release tags ([#444](https://github.com/SigNoz/signoz-mcp-server/pull/444))
+
+### Other
+- resolve dependency vulnerabilities ([#453](https://github.com/SigNoz/signoz-mcp-server/pull/453))
+- move the SigNoz spec pin to the v0.150.0 release ([#449](https://github.com/SigNoz/signoz-mcp-server/pull/449))
+
 ## [0.19.0] - 2026-11-12
 
 ### Breaking changes
@@ -574,3 +593,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [0.17.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.16.0...v0.17.0
 [0.18.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.17.0...v0.18.0
 [0.19.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.18.0...v0.19.0
+[0.20.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.19.0...v0.20.0
