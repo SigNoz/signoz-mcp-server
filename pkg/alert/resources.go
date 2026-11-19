@@ -239,7 +239,7 @@ Set groupBy on high-cardinality queries to reduce noise. usePolicy=false (the de
 
 ## Labels & Routing
 
-- labels.severity: do not set it. Each alert already carries severity equal to the tier that fired; a static labels.severity replaces that value on every alert, so every tier reports the same severity. The alert-rule list reads severity from this label only, so a rule without it lists with no severity.
+- labels.severity: does not set the severity of a fired alert. An alert fired by a threshold tier carries severity and threshold.name equal to that tier, and SigNoz drops rule labels with those names from every alert. The alert-rule list reads severity from this label only, so a rule without it lists with no severity.
 - Additional labels like team, service, environment enable routing policies.
 
 ### Label sources available to routing policies
