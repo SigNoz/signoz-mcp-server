@@ -40,7 +40,12 @@ and row shape.
 - `internal/handler/tools/aggregate_helper.go`: carry the logs source on `AggregateRequest`.
 - `pkg/querybuilder/request.go`: set `Source` on the logs query for search and aggregate.
 - `guardrails/policy.go`: grandfather the 16-parameter `signoz_aggregate_logs` inventory.
-- Guide, instructions, README, manifest, wire catalog, and e2e: later steps of this plan.
+- `pkg/querybuilder/logs_guide.go`: audit events section and a complete audit request example.
+- `internal/handler/tools/query_builder.go`: logs guide resource description mentions audit.
+- `internal/mcp-server/testdata/wire-catalog/`: the two tool entries and the guide's list and
+  content entries.
+- `README.md`, `manifest.json`: `source` on both log tools.
+- `tests/e2e/`: audit queries through MCP (later step).
 
 ## Key Decisions
 
@@ -74,6 +79,14 @@ and row shape.
 - Alternatives rejected: leaving `source` off the aggregate tool (audit breakdowns would need
   hand-written `signoz_execute_builder_query` JSON); dropping another parameter (breaking).
 
+### 2026-11-19: no audit line in the server instructions
+
+- Decision: leave `pkg/instructions` unchanged, though the issue lists it.
+- Rationale: the instructions are at 2047 of the 2048-byte `MaxServerInstructionsBytes` budget;
+  both log tool descriptions already tell agents to set `source="audit"` for SigNoz audit events,
+  and the logs guide holds the details.
+- Alternatives rejected: trimming other rules to fit a sentence; raising the guardrail budget.
+
 ### 2026-11-19: cast the source until the spec lists `audit`
 
 - Decision: send `apitypes.TelemetrytypesSource("audit")` with a TODO to use the generated
@@ -87,5 +100,9 @@ and row shape.
 - [SigNoz/signoz#13438: querier changes for the audit schema](https://github.com/SigNoz/signoz/pull/13438)
 
 ## Verification
+
+Pending.
+
+## Outcome
 
 Pending.

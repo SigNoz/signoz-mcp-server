@@ -159,11 +159,11 @@
     },
     {
       "name": "signoz_aggregate_logs",
-      "description": "Return log counts, error counts, rates, percentiles, or grouped or top-N breakdowns, not individual records; use signoz_search_logs for log rows and messages"
+      "description": "Return log counts, error counts, rates, percentiles, or grouped or top-N breakdowns, not individual records; use signoz_search_logs for log rows and messages. source=\"audit\" aggregates SigNoz audit events"
     },
     {
       "name": "signoz_search_logs",
-      "description": "Search individual log records with field filters or explicit search() across log contexts; searchText matches only body text by default"
+      "description": "Search individual log records with field filters or explicit search() across log contexts; searchText matches only body text by default. source=\"audit\" searches SigNoz audit events"
     },
     {
       "name": "signoz_aggregate_traces",
