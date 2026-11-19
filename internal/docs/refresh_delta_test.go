@@ -13,8 +13,8 @@ import (
 )
 
 // deltaFixture returns sitemap entries as the refresher parses them, a
-// baseline snapshot built from those entries, and a fetch map serving the
-// sitemap plus every page body.
+// baseline snapshot built from those entries, and a fetch map serving a
+// new sitemap revision plus every page body.
 func deltaFixture(t *testing.T, n int) ([]SitemapEntry, CorpusSnapshot, map[string]PageFetch) {
 	t.Helper()
 	sitemap := sitemapForEntries(manyEntries(n))
@@ -24,7 +24,7 @@ func deltaFixture(t *testing.T, n int) ([]SitemapEntry, CorpusSnapshot, map[stri
 	bodies := bodiesForEntries(parsed)
 	initial := snapshotForEntries(parsed, bodies)
 	fetches := map[string]PageFetch{
-		DefaultSitemapURL: {Status: FetchStatusOK, URL: DefaultSitemapURL, Body: sitemap, FetchedAt: time.Now()},
+		DefaultSitemapURL: {Status: FetchStatusOK, URL: DefaultSitemapURL, Body: sitemap + "\n", FetchedAt: time.Now()},
 	}
 	for _, entry := range parsed {
 		fetches[entry.URL] = PageFetch{Status: FetchStatusOK, URL: entry.URL, Body: bodies[entry.URL], FetchedAt: time.Now()}

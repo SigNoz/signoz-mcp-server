@@ -251,6 +251,11 @@ func (r *Refresher) refresh(ctx context.Context, forced bool) error {
 		return fmt.Errorf("fetch sitemap: %v", sitemap.Err)
 	}
 	hash := SitemapHash(sitemap.Body)
+	if !forced && current.SitemapHash == hash {
+		outcome = "no-op"
+		r.logger.InfoContext(ctx, "docs refresh no-op; sitemap unchanged")
+		return nil
+	}
 	entries, err := ParseSitemapMarkdown(sitemap.Body)
 	if err != nil {
 		outcome = "parse-error"

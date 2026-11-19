@@ -304,9 +304,12 @@ The refresher keeps the last-good page when a fetch fails or a cache serves a di
 ETag. An omission from the manifest still requires a real 404 if the sitemap lists the page.
 The refresh stores the manifest ETag after reconciliation completes, so the next tick can
 retry unresolved URLs. A missing or invalid manifest falls back to the sitemap-only flow.
-On each fallback tick, it conditionally revalidates every unique sitemap URL, including
-pages in an unchanged sitemap.
-Both paths use the same index rebuild thresholds.
+A scheduled fallback skips page requests when the sitemap hash matches the current snapshot.
+If the hash changes, it conditionally revalidates each unique sitemap URL. A forced refresh
+can still fetch pages on a matching hash. Both paths use the same index rebuild thresholds.
+
+The search index builds in 64-page batches. Its in-memory segments retain their backing
+buffers, so the segment size estimate limits extra capacity to 16 pages.
 
 ## Resource browser links
 
