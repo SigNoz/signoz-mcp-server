@@ -461,6 +461,116 @@ def test_area_chart_panel_round_trips_stack_and_fill_and_rejects_fill_none(mcp_c
         assert gone.get("isError", False), f"dashboard {dashboard_id} remained after cleanup"
 
 
+def _scalar_count_panel(name: str, plugin: dict, group_by: list[str]) -> dict:
+    return {
+        "kind": "Panel",
+        "spec": {
+            "display": {"name": name},
+            "links": [],
+            "plugin": plugin,
+            "queries": [
+                {
+                    "kind": "scalar",
+                    "spec": {
+                        "name": "A",
+                        "plugin": {
+                            "kind": "signoz/BuilderQuery",
+                            "spec": {
+                                "signal": "traces",
+                                "name": "A",
+                                "aggregations": [{"expression": "count()"}],
+                                "groupBy": [
+                                    {
+                                        "name": key,
+                                        "fieldContext": "resource",
+                                        "fieldDataType": "string",
+                                        "signal": "traces",
+                                    }
+                                    for key in group_by
+                                ],
+                                "order": [{"key": {"name": "count()"}, "direction": "desc"}],
+                                "limit": 10,
+                            },
+                        },
+                    },
+                }
+            ],
+        },
+    }
+
+
+def test_top_list_and_geo_map_panels_round_trip(mcp_client: MCPClient, test_id: str) -> None:
+    title = f"mcp-e2e-toplist-geomap-{test_id}"
+    top_list = {
+        "kind": "signoz/TopListPanel",
+        "spec": {"appearance": {"barColor": "#E5484D", "showRank": True, "showShare": True}},
+    }
+    geo_map = {
+        "kind": "signoz/GeoMapPanel",
+        "spec": {
+            "location": {"mode": "country", "country": "geo.country.iso_code", "countryFormat": "alpha2"},
+            "map": {"layer": "bubbles", "view": "world", "projection": "equal_earth"},
+        },
+    }
+    created = assert_tool_ok(
+        mcp_client.call_tool(
+            "signoz_create_dashboard",
+            {
+                "searchContext": f"create a dashboard named {title} with a top list and a geo map",
+                "schemaVersion": "v6",
+                "tags": [],
+                "spec": {
+                    "display": {"name": title},
+                    "variables": [],
+                    "panels": {
+                        "top": _scalar_count_panel("Busiest Services", top_list, ["service.name"]),
+                        "geo": _scalar_count_panel("Requests by Country", geo_map, ["geo.country.iso_code"]),
+                    },
+                    "layouts": [
+                        {
+                            "kind": "Grid",
+                            "spec": {
+                                "items": [
+                                    {"x": 0, "y": 0, "width": 6, "height": 6, "content": {"$ref": "#/spec/panels/top"}},
+                                    {"x": 6, "y": 0, "width": 6, "height": 6, "content": {"$ref": "#/spec/panels/geo"}},
+                                ]
+                            },
+                        }
+                    ],
+                },
+            },
+        )
+    )
+    dashboard_id = _dashboard_id(first_json(created))
+    try:
+        fetched = assert_tool_ok(
+            mcp_client.call_tool(
+                "signoz_get_dashboard", {"searchContext": f"get dashboard {dashboard_id}", "id": dashboard_id}
+            )
+        )
+        panels = _data(first_json(fetched))["spec"]["panels"]
+        top_plugin = panels["top"]["spec"]["plugin"]
+        assert top_plugin["kind"] == "signoz/TopListPanel"
+        assert top_plugin["spec"]["appearance"] == top_list["spec"]["appearance"]
+        geo_plugin = panels["geo"]["spec"]["plugin"]
+        assert geo_plugin["kind"] == "signoz/GeoMapPanel"
+        for section in ("location", "map"):
+            for key, value in geo_map["spec"][section].items():
+                assert geo_plugin["spec"][section][key] == value, f"geo map {section}.{key} did not round-trip"
+    finally:
+        assert_tool_ok(
+            mcp_client.call_tool(
+                "signoz_delete_dashboard",
+                {"searchContext": f"cleanup dashboard {dashboard_id}", "id": dashboard_id},
+            )
+        )
+        gone = mcp_client.call_tool(
+            "signoz_get_dashboard",
+            {"searchContext": f"confirm dashboard {dashboard_id} is gone after cleanup", "id": dashboard_id},
+        )
+        assert gone.get("isError", False), f"dashboard {dashboard_id} remained after cleanup"
+
+
 ENVELOPE_BY_PLUGIN = {
     "signoz/BuilderQuery": "builder_query",
     "signoz/Formula": "builder_formula",
