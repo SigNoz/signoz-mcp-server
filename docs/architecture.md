@@ -157,8 +157,11 @@ replay-safe requests on transport errors and 429/502/503/504, and buffers each r
   `pkg/*/examples.generated.md` files that the `signoz://*/examples` resources embed, rendered
   from the request examples the spec publishes on each operation. `make gen-spec` regenerates
   them without skaff; `make gen-check` fails when any generated file is stale.
-- **Hand-written requests** (`doRequest`): only for routes missing from the spec, today the two
-  services endpoints. It shares `callAPI`'s response path, so it rejects a 2xx HTML page too.
+- **Hand-written requests** (`doRequest`): only for routes missing from the spec, today three:
+  the services list (`POST /api/v2/services`), a service's top operations
+  (`POST /api/v2/service/top_operations`), and the service dependency graph
+  (`POST /api/v1/dependency_graph`). It shares `callAPI`'s response path, so it rejects a 2xx
+  HTML page too.
   Query parameters the spec omits for a documented route, such as the Alertmanager filters of
   `GET /api/v1/alerts`, are appended to the generated request with a request editor. Credential
   validation builds its requests with the generated constructors but sends them outside the

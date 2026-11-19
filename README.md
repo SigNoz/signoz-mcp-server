@@ -455,6 +455,7 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 | `signoz_list_dashboard_templates` | Search curated templates and discover an import path |
 | `signoz_list_services` | List APM services with trace activity in a time range |
 | `signoz_get_service_top_operations` | Get ranked operations for one traced service |
+| `signoz_get_service_map` | Get the service dependency graph: callers, callees, and each call edge's rate, errors, and latency |
 | `signoz_list_views` | List saved Explorer views for traces/logs/metrics/Cost Meter and discover UUIDs |
 | `signoz_get_view` | Get one saved Explorer view's complete definition by `id` |
 | `signoz_search_docs` | Find ranked official-doc matches when no exact page is selected |
@@ -733,6 +734,20 @@ Gets the built-in operation table for one traced service, ranked by p99 latency 
   - `start` (optional) - Start time in unix milliseconds (defaults to 6 hours ago).
   - `end` (optional) - End time in unix milliseconds (defaults to now)
   - `tags` (optional) - JSON-encoded `TagQueryParam` array passed as a string, for example `[{"key":"http.method","tagType":"SpanAttribute","operator":"In","stringValues":["GET"]}]`; omit for no tag filter
+
+#### `signoz_get_service_map`
+
+Gets the service dependency graph that SigNoz's Service Map draws for a time window: one edge per caller (`parent`) and callee (`child`) with `callCount`, `callRate` (calls per second), `errorRate` (percent of calls that failed), and `p50` to `p99` latency in nanoseconds. Set `service` and `direction` to answer which services call a service or what it depends on in one call. Databases and message systems are callees named by their system (for example `redis` or `kafka`); a message system is the child of both its producers and its consumers. Edges are sorted by parent, then child, and paginated. Edges come from per-minute rollups of traced calls, so a window shorter than a minute can return nothing, and an uninstrumented caller leaves no edge. On an edge between two services, `callCount` and `callRate` count only the calls whose caller and callee spans SigNoz paired at ingestion, so they can be lower than a span count from `signoz_aggregate_traces`; database and message-system edges count every call. When the graph is empty, or no edge touches the requested `service`, a note says which.
+
+- **Parameters**:
+  - `service` (optional) - Exact service name whose edges to keep, typically from `signoz_list_services`; omit for the whole graph
+  - `direction` (optional) - `upstream` (services that call `service`), `downstream` (services, databases, and message systems it calls), or `both` (default); requires `service`
+  - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '7d'; defaults to last 6 hours; ignored when both `start` and `end` are provided)
+  - `start` (optional) - Start time in unix milliseconds (defaults to 6 hours ago)
+  - `end` (optional) - End time in unix milliseconds (defaults to now)
+  - `limit` (optional) - Maximum edges per page (default: 50, max: 1000; higher values are clamped)
+  - `offset` (optional) - Number of edges to skip for pagination (default: 0)
+  - `tags` (optional) - JSON-encoded `TagQueryParam` array passed as a string, for example `[{"key":"deployment.environment","tagType":"ResourceAttribute","operator":"In","stringValues":["production"]}]`. The graph filters only on `deployment.environment`, `k8s.cluster.name`, and `k8s.namespace.name` with operator `In` or `NotIn`; other keys and operators return a validation error instead of an unfiltered graph
 
 #### `signoz_get_alert_history`
 

@@ -156,6 +156,67 @@ def seed_traces(
     return trace_ids
 
 
+def seed_service_calls(caller: str, callee: str, *, count: int, callee_duration_ns: int) -> None:
+    """Push `count` traces in which `caller` calls `callee` and every call fails.
+
+    Each trace is a caller server span, a caller client span under it, and a
+    callee server span under the client span, so SigNoz's dependency graph
+    records a caller -> callee edge. Every span goes out in one export, because
+    the graph pairs a parent and child span only when they are ingested together.
+    """
+    now = time.time_ns()
+    caller_spans, callee_spans = [], []
+    for i in range(count):
+        trace_id = uuid.uuid4().hex
+        root_id, client_id = uuid.uuid4().hex[:16], uuid.uuid4().hex[:16]
+        start = now - (count - i) * 1_000_000_000
+        end = start + callee_duration_ns + 20_000_000
+        caller_spans += [
+            {
+                "traceId": trace_id,
+                "spanId": root_id,
+                "name": "GET /checkout",
+                "kind": 2,  # SPAN_KIND_SERVER
+                "startTimeUnixNano": str(start),
+                "endTimeUnixNano": str(end),
+                "status": {"code": 1},
+            },
+            {
+                "traceId": trace_id,
+                "spanId": client_id,
+                "parentSpanId": root_id,
+                "name": "POST /reserve",
+                "kind": 3,  # SPAN_KIND_CLIENT
+                "startTimeUnixNano": str(start + 5_000_000),
+                "endTimeUnixNano": str(end - 5_000_000),
+                "status": {"code": 1},
+            },
+        ]
+        callee_spans.append(
+            {
+                "traceId": trace_id,
+                "spanId": uuid.uuid4().hex[:16],
+                "parentSpanId": client_id,
+                "name": "POST /reserve",
+                "kind": 2,  # SPAN_KIND_SERVER
+                "startTimeUnixNano": str(start + 10_000_000),
+                "endTimeUnixNano": str(start + 10_000_000 + callee_duration_ns),
+                "status": {"code": 2},  # STATUS_CODE_ERROR
+            }
+        )
+
+    def resource_spans(service_name: str, spans: list[dict]) -> dict:
+        return {
+            "resource": {"attributes": [{"key": "service.name", "value": {"stringValue": service_name}}]},
+            "scopeSpans": [{"scope": {"name": "signoz-mcp-e2e"}, "spans": spans}],
+        }
+
+    payload = {"resourceSpans": [resource_spans(caller, caller_spans), resource_spans(callee, callee_spans)]}
+    resp = requests.post(f"{OTLP_ENDPOINT}/v1/traces", json=payload, timeout=30)
+    resp.raise_for_status()
+    logger.info("seeded %d call(s) from %s to %s", count, caller, callee)
+
+
 def _attr(key: str, value: str | float) -> dict:
     if isinstance(value, str):
         return {"key": key, "value": {"stringValue": value}}
