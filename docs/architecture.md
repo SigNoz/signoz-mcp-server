@@ -289,6 +289,19 @@ available) is forwarded as a direct credential on `Authorization`. Every path st
 
 > **Removed (breaking):** earlier versions used a shape heuristic (`isJWTToken`) to reroute non-JWT `Authorization` tokens to `SIGNOZ-API-KEY`. That heuristic misrouted opaque user/session tokens (which SigNoz only accepts on `Authorization`) and has been removed. Clients sending a service-account API key must use the `SIGNOZ-API-KEY` header, not `Authorization`.
 
+## Docs index refresh
+
+The embedded docs corpus seeds each instance. Scheduled refreshes use the website's
+[docs manifest](https://signoz.io/docs/manifest.json) to identify changes. The refresher verifies
+the sitemap ETag before applying membership changes and compares advertised Markdown ETags
+with the fetched copies. It downloads each URL once and projects its content into every
+section where the sitemap lists it.
+
+The refresher keeps the last-good page when a fetch fails or a cache serves a different
+ETag. An omission from the manifest still requires a real 404 if the sitemap lists the page.
+The refresh stores the manifest ETag after reconciliation completes, so the next tick can
+retry unresolved URLs. A missing or invalid manifest falls back to the sitemap-only flow.
+
 ## Resource browser links
 
 SigNoz owns the browser URL in `global.external_url`. Before a resource operation

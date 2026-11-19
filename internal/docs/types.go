@@ -31,8 +31,6 @@ type PageRecord struct {
 	BodyMarkdown      string            `json:"body_markdown"`
 	FetchedAt         time.Time         `json:"fetched_at"`
 	SourceETag        string            `json:"source_etag,omitempty"`
-	// IndexETag is the manifest ETag this page was last reconciled against.
-	IndexETag string `json:"index_etag,omitempty"`
 }
 
 type DocsETagIndex struct {

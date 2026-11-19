@@ -13,7 +13,6 @@ import (
 	otelpkg "github.com/SigNoz/signoz-mcp-server/pkg/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
-	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -82,6 +81,12 @@ type manifestFetcher interface {
 const fetchStatusCurrent FetchStatus = "current"
 
 const docsManifestVersion = 1
+
+type refreshManifest struct {
+	etag        string
+	sitemapETag string
+	pages       map[string]string
+}
 
 func NewRefresher(logger *slog.Logger, registry *IndexRegistry, fetcher *Fetcher, cfg RefreshConfig) *Refresher {
 	if logger == nil {
@@ -348,13 +353,18 @@ func (r *Refresher) refreshFromManifest(ctx context.Context, current CorpusSnaps
 			return true, "error", fmt.Errorf("fetch sitemap: %v", sitemap.Err)
 		}
 	}
+	if storedSitemapETag != sitemapETag {
+		return true, "error", fmt.Errorf("docs sitemap ETag %q does not match manifest ETag %q", storedSitemapETag, sitemapETag)
+	}
 	entries, err := ParseSitemapMarkdown(sitemapRaw)
 	if err != nil {
 		r.recordSitemapParseFailure(ctx)
 		return true, "parse-error", fmt.Errorf("parse sitemap: %w", err)
 	}
 	r.logger.InfoContext(ctx, "docs refresh reconciling with manifest", "forced", forced, "entries", len(entries), "manifest_pages", len(published))
-	next, blocked, err := r.buildSnapshot(ctx, sitemapRaw, SitemapHash(sitemapRaw), entries, current, forced, published)
+	next, blocked, err := r.buildSnapshot(ctx, sitemapRaw, SitemapHash(sitemapRaw), entries, current, forced, &refreshManifest{
+		etag: manifest.ETag, sitemapETag: sitemapETag, pages: published,
+	})
 	if err != nil {
 		return true, "error", err
 	}
@@ -362,8 +372,6 @@ func (r *Refresher) refreshFromManifest(ctx context.Context, current CorpusSnaps
 		r.logger.WarnContext(ctx, "docs refresh blocked by failure threshold; keeping last-good index")
 		return true, "threshold-blocked", fmt.Errorf("docs refresh blocked by failure threshold")
 	}
-	next.ManifestETag = manifest.ETag
-	next.SitemapETag = storedSitemapETag
 	outcome, err = r.publish(ctx, current, next, forced)
 	return true, outcome, err
 }
@@ -375,6 +383,9 @@ func ParseDocsManifest(raw string) (string, map[string]string, error) {
 	}
 	if manifest.Version != docsManifestVersion {
 		return "", nil, fmt.Errorf("unsupported manifest version %d", manifest.Version)
+	}
+	if manifest.Sitemap.ETag == "" {
+		return "", nil, fmt.Errorf("manifest is missing the sitemap ETag")
 	}
 	if len(manifest.Pages) == 0 {
 		return "", nil, fmt.Errorf("manifest lists no pages")
@@ -498,7 +509,7 @@ func pageContentEqual(a, b PageRecord) bool {
 	return true
 }
 
-func (r *Refresher) buildSnapshot(ctx context.Context, sitemapRaw, sitemapHash string, entries []SitemapEntry, previous CorpusSnapshot, forced bool, published map[string]string) (CorpusSnapshot, bool, error) {
+func (r *Refresher) buildSnapshot(ctx context.Context, sitemapRaw, sitemapHash string, entries []SitemapEntry, previous CorpusSnapshot, forced bool, manifest *refreshManifest) (CorpusSnapshot, bool, error) {
 	priorByURL := make(map[string]PageRecord, len(previous.Pages))
 	for _, page := range previous.Pages {
 		canonical, ok := CanonicalDocURL(page.URL)
@@ -510,62 +521,51 @@ func (r *Refresher) buildSnapshot(ctx context.Context, sitemapRaw, sitemapHash s
 		}
 	}
 
-	type item struct {
-		entry     SitemapEntry
-		fetch     PageFetch
-		indexETag string
-	}
-	results := make([]item, len(entries))
-	// A scheduled refresh revalidates with the stored ETag so unchanged pages
-	// cost a 304 instead of a body. A forced sitemap-only refresh re-fetches
-	// everything; with a manifest, forcing only rebuilds the index.
+	fetches := make(map[string]*PageFetch, len(entries))
 	conditional, canRevalidate := r.fetcher.(conditionalFetcher)
-	canRevalidate = canRevalidate && (!forced || published != nil)
-	g, ctx := errgroup.WithContext(ctx)
-	for i, entry := range entries {
-		i, entry := i, entry
-		g.Go(func() error {
-			etag := priorETag(entry, priorByURL)
-			var indexETag string
-			if published != nil {
-				canonical, _ := CanonicalDocURL(entry.URL)
-				listed := false
-				indexETag, listed = published[canonical]
-				if !listed {
-					results[i] = item{entry: entry, fetch: PageFetch{Status: FetchStatusNotFound, URL: entry.URL, FetchedAt: time.Now()}}
-					return nil
-				}
-				// A lagging edge copy is retried only by a forced refresh, not every tick.
-				prior, hasPrior := priorPageForEntry(entry, priorByURL)
-				if hasPrior && (etag == indexETag || (!forced && prior.IndexETag == indexETag)) {
-					results[i] = item{entry: entry, fetch: PageFetch{Status: fetchStatusCurrent, URL: entry.URL, ETag: etag, FetchedAt: time.Now()}, indexETag: indexETag}
-					return nil
-				}
-			}
-			var fetch PageFetch
-			if canRevalidate && etag != "" {
-				fetch = conditional.FetchConditional(ctx, entry.URL, etag)
+	canRevalidate = canRevalidate && (!forced || manifest != nil)
+	var wg sync.WaitGroup
+	for _, entry := range entries {
+		url := entry.URL
+		if _, seen := fetches[url]; seen {
+			continue
+		}
+		result := new(PageFetch)
+		fetches[url] = result
+		wg.Go(func() {
+			etag := priorByURL[url].SourceETag
+			if manifest != nil && etag != "" && etag == manifest.pages[url] {
+				*result = PageFetch{Status: fetchStatusCurrent, ETag: etag, FetchedAt: time.Now()}
+			} else if canRevalidate && etag != "" {
+				*result = conditional.FetchConditional(ctx, url, etag)
 			} else {
-				fetch = r.fetcher.Fetch(ctx, entry.URL)
+				*result = r.fetcher.Fetch(ctx, url)
 			}
-			results[i] = item{entry: entry, fetch: fetch, indexETag: indexETag}
-			return nil
 		})
 	}
-	if err := g.Wait(); err != nil {
-		return CorpusSnapshot{}, false, err
+	wg.Wait()
+	total := len(fetches)
+	if total == 0 {
+		return CorpusSnapshot{}, false, fmt.Errorf("cannot build docs snapshot from empty sitemap")
 	}
 
-	failures := 0 // non-OK + non-404 (errors, out-of-scope, etc.)
-	notFound := 0 // 404s this cycle (any — new or already-tombstoned)
-	newNotFound := 0
-	fetched, revalidated, current := 0, 0, 0
+	failures, notFound, newNotFound := 0, 0, 0
+	fetched, revalidated, current, pending := 0, 0, 0, 0
 	r.mu.Lock()
-	for _, result := range results {
-		switch result.fetch.Status {
+	defer r.mu.Unlock()
+	for url, result := range fetches {
+		expected := ""
+		if manifest != nil {
+			expected = manifest.pages[url]
+			if expected != "" && expected != result.ETag {
+				// A stale response cannot replace the last-good page or count as a deletion.
+				result.Status = FetchStatusError
+			}
+		}
+		switch result.Status {
 		case FetchStatusOK, FetchStatusNotModified, fetchStatusCurrent:
-			r.notFoundCounts[result.entry.URL] = 0
-			switch result.fetch.Status {
+			delete(r.notFoundCounts, url)
+			switch result.Status {
 			case FetchStatusOK:
 				fetched++
 			case FetchStatusNotModified:
@@ -573,23 +573,25 @@ func (r *Refresher) buildSnapshot(ctx context.Context, sitemapRaw, sitemapHash s
 			default:
 				current++
 			}
+			if manifest != nil && expected == "" {
+				pending++
+			}
 		case FetchStatusNotFound:
 			notFound++
-			// "New" = this URL has not been 404ing in previous cycles. The
-			// notFoundCounts map tracks consecutive 404 runs; a zero count
-			// here means this is the first refresh to see a 404 for the URL.
-			if r.notFoundCounts[result.entry.URL] == 0 {
+			if r.notFoundCounts[url] == 0 {
 				newNotFound++
 			}
-			r.notFoundCounts[result.entry.URL]++
+			r.notFoundCounts[url]++
+			if _, indexed := priorByURL[url]; indexed && r.notFoundCounts[url] <= 3 {
+				pending++
+			}
 		default:
 			failures++
+			pending++
 		}
 	}
-	r.mu.Unlock()
-	total := len(entries)
-	if total == 0 {
-		return CorpusSnapshot{}, false, fmt.Errorf("cannot build docs snapshot from empty sitemap")
+	if manifest != nil && pending > 0 {
+		r.logger.WarnContext(ctx, "docs manifest reconciliation incomplete; retrying on next refresh", "pending_pages", pending)
 	}
 	// Plan gates: block if >10% of any-class failures OR >5% newly 404.
 	// "Any-class" includes 404s so a 9% 5xx + 5% 404 combo can't sneak a
@@ -600,13 +602,11 @@ func (r *Refresher) buildSnapshot(ctx context.Context, sitemapRaw, sitemapHash s
 	}
 
 	pages := make([]PageRecord, 0, len(entries))
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	for _, result := range results {
-		entry := result.entry
-		switch result.fetch.Status {
+	for _, entry := range entries {
+		result := fetches[entry.URL]
+		switch result.Status {
 		case FetchStatusOK:
-			body := result.fetch.Body
+			body := result.Body
 			headings := ExtractHeadings(body)
 			title := FirstHeadingTitle(body, entry.Title)
 			pages = append(pages, PageRecord{
@@ -616,20 +616,13 @@ func (r *Refresher) buildSnapshot(ctx context.Context, sitemapRaw, sitemapHash s
 				SectionBreadcrumb: entry.SectionBreadcrumb,
 				HeadingsJSON:      mustJSON(headings),
 				BodyMarkdown:      body,
-				FetchedAt:         result.fetch.FetchedAt,
-				SourceETag:        result.fetch.ETag,
-				IndexETag:         result.indexETag,
+				FetchedAt:         result.FetchedAt,
+				SourceETag:        result.ETag,
 			})
 		case FetchStatusNotModified, fetchStatusCurrent:
-			// The body is unchanged, but the revalidation itself is a
-			// successful fetch and the sitemap may have renamed the page, so
-			// refresh the bookkeeping and the heading-less fallback title.
 			if page, ok := priorPageForEntry(entry, priorByURL); ok {
-				page.FetchedAt = result.fetch.FetchedAt
+				page.FetchedAt = result.FetchedAt
 				page.Title = FirstHeadingTitle(page.BodyMarkdown, entry.Title)
-				if result.indexETag != "" {
-					page.IndexETag = result.indexETag
-				}
 				pages = append(pages, page)
 			}
 		case FetchStatusNotFound:
@@ -645,29 +638,24 @@ func (r *Refresher) buildSnapshot(ctx context.Context, sitemapRaw, sitemapHash s
 		}
 	}
 	normalized := NormalizePages(pages)
-	// Entries collapse into fewer pages when the sitemap lists one URL under
-	// several sections, when a 404 outlives its grace period, or when a
-	// fetch fails with no prior record to keep. Log the accounting so the
-	// gap between sitemap entries and indexed pages is never silent.
 	r.logger.InfoContext(ctx, "docs refresh fetched pages",
-		"entries", total, "fetched", fetched, "revalidated", revalidated, "current", current,
+		"entries", len(entries), "fetched", fetched, "revalidated", revalidated, "current", current,
 		"not_found", notFound, "failed", failures, "pages", len(normalized),
 		"merged_duplicates", len(pages)-len(normalized))
-	return CorpusSnapshot{
+	next := CorpusSnapshot{
 		SchemaVersion: CorpusSchemaVersion,
 		BuiltAt:       time.Now().UTC(),
 		SitemapRaw:    sitemapRaw,
 		SitemapHash:   sitemapHash,
 		Pages:         normalized,
-	}, false, nil
-}
-
-func priorETag(entry SitemapEntry, priorByURL map[string]PageRecord) string {
-	canonical, ok := CanonicalDocURL(entry.URL)
-	if !ok {
-		return ""
 	}
-	return priorByURL[canonical].SourceETag
+	if manifest != nil {
+		next.SitemapETag = manifest.sitemapETag
+		if pending == 0 {
+			next.ManifestETag = manifest.etag
+		}
+	}
+	return next, false, nil
 }
 
 func priorPageForEntry(entry SitemapEntry, priorByURL map[string]PageRecord) (PageRecord, bool) {
