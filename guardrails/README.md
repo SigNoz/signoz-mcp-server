@@ -22,6 +22,7 @@ access to unexported retry, registration, middleware, and server-composition hel
 - Mutating POST requests are not replayed after ambiguous failures; audited read-only POSTs may retry.
 - Tool results remain JSON-safe through the production transport.
 - Tool-result telemetry measures the complete serialized result, including structured content.
+- A tool result stays within `MaxToolResultChars` of text by default: search_traces, search_logs and get_trace_details over rows with a real instance's attribute volume are cut and tagged with a note, so an MCP client does not drop them.
 - The production HTTP handler preserves discovery descriptors, deterministic resource and prompt contents, and representative tool/error results across the MCP SDK migration.
 - Building the docs index from the embedded corpus stays under a reviewed peak-heap budget and resident budget, and the build commits in bounded batches, so a refresh cannot regress into the single-batch peak that OOM-killed 512Mi containers.
 
