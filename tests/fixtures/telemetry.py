@@ -156,13 +156,15 @@ def seed_traces(
     return trace_ids
 
 
-def seed_service_calls(caller: str, callee: str, *, count: int, callee_duration_ns: int) -> None:
+def seed_service_calls(caller: str, callee: str, *, count: int, callee_duration_ns: int, environment: str) -> None:
     """Push `count` traces in which `caller` calls `callee` and every call fails.
 
     Each trace is a caller server span, a caller client span under it, and a
     callee server span under the client span, so SigNoz's dependency graph
     records a caller -> callee edge. Every span goes out in one export, because
     the graph pairs a parent and child span only when they are ingested together.
+    Both services carry `environment` as deployment.environment, the key the
+    graph stores for filtering.
     """
     now = time.time_ns()
     caller_spans, callee_spans = [], []
@@ -207,7 +209,9 @@ def seed_service_calls(caller: str, callee: str, *, count: int, callee_duration_
 
     def resource_spans(service_name: str, spans: list[dict]) -> dict:
         return {
-            "resource": {"attributes": [{"key": "service.name", "value": {"stringValue": service_name}}]},
+            "resource": {
+                "attributes": [_attr("service.name", service_name), _attr("deployment.environment", environment)]
+            },
             "scopeSpans": [{"scope": {"name": "signoz-mcp-e2e"}, "spans": spans}],
         }
 

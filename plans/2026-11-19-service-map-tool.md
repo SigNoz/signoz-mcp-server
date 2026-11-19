@@ -1,8 +1,8 @@
 # Plan: Service Dependency Map Tool
 
-Status: In Progress
+Status: Done
 Issue: SigNoz/nerve-pod#371
-PR:
+PR: SigNoz/signoz-mcp-server#460
 
 ## Context
 
@@ -58,6 +58,21 @@ appends a note labelling units.
 - `README.md`, `manifest.json`, `docs/architecture.md`: tool table, parameters, metadata, request path
 
 ## Key Decisions
+
+### 2026-11-19 — A hand-written route, approved as an exception
+
+- Decision: call `POST /api/v1/dependency_graph` on the hand-written request path, although
+  `CLAUDE.md` asks new tools to use routes in the pinned spec. Approved by the maintainer before
+  the PR left draft.
+- Rationale: no route in the pinned spec returns edges between services. `/api/v5/query_range`
+  can rebuild part of the graph with the trace operator, but it needs one query per candidate
+  callee, scans raw spans on every call, and reads latency and errors from the caller's spans
+  where the Service Map reports the callee's, so its numbers would disagree with the page users
+  compare against. This route is the one SigNoz's Service Map page calls.
+- Risk: the route has no service, limit, or pagination parameter, so every call fetches the whole
+  graph for the window, and it skips unknown filter keys without an error. The tool limits its
+  inputs to the three keys the graph stores. Follow-up: ask SigNoz to add a dependency-graph
+  route to its spec, with service and limit parameters, and move the tool onto it.
 
 ### 2026-11-19 — Plain environment, cluster, and namespace parameters instead of tags
 
@@ -124,11 +139,13 @@ appends a note labelling units.
   protocol step ran with `MCP_PROTOCOL_PORT=18181` because another local service held 18080.
 - Handler tests run through the real client against an `httptest` upstream: direction filtering
   and name order, the nanosecond window and the tags built from `environment`, `cluster`, and
-  `namespace`, offset pages, the note for a service
-  no edge touches, rejected filters that never reach SigNoz, and the envelope fallback. The
-  client test pins the request body and the retry on a 503.
-- `tests/e2e/tests/test_service_map.py` seeds a caller-to-callee call and reads the edge from
-  both ends against the pinned release. Not run locally; it runs in the e2e CI job.
+  `namespace`, offset pages, the note for a service no edge touches, rejected arguments that
+  never reach SigNoz, and the envelope fallback. The client test pins the request body and the
+  retry on a 503.
+- `tests/e2e/tests/test_service_map.py` seeds caller-to-callee calls tagged with a
+  `deployment.environment` and, against the pinned release, reads the edge from both ends, finds
+  it with `environment` set to that value, and gets an empty graph with the empty-graph note for
+  another value. It runs in the e2e CI job.
 - Live, against a local SigNoz v0.150.0-rc.1 instance with the server built from this branch,
   window 2026-11-12 18:00 to 23:30 UTC, read-only calls:
   - Every edge the tool returned matched SigNoz's own dependency-graph response field for field.
@@ -152,5 +169,7 @@ appends a note labelling units.
 
 ## Outcome
 
-In progress. The route is undocumented in SigNoz's OpenAPI spec; the tool uses the hand-written
-request path until SigNoz documents it.
+Done. `signoz_get_service_map` returns SigNoz's dependency graph with one service's callers or
+callees, filtered by `environment`, `cluster`, or `namespace`, with units and counting caveats
+stated in every result. The route is outside SigNoz's OpenAPI spec and uses the hand-written
+request path as an approved exception; moving to a documented route is the follow-up above.
