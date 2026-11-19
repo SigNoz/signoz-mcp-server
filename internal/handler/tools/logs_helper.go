@@ -55,6 +55,29 @@ func errFilterExpressionObject() error {
 	return fmt.Errorf("%s %s", validationErrorPrefix, filterExpressionObjectHint)
 }
 
+// logSourceAudit selects SigNoz audit events instead of application logs.
+// TODO: use apitypes.TelemetrytypesSourceAudit once the SigNoz spec
+// lists audit
+const logSourceAudit = "audit"
+
+// readLogSource returns the logs store to query. SigNoz reads application
+// logs for any source it does not know, so an unsupported value is dropped and
+// reported as ignored for the result to say so.
+func readLogSource(args map[string]any) (source string, ignored bool) {
+	raw, exists := args["source"]
+	if !exists || raw == nil || raw == "" {
+		return "", false
+	}
+	if raw == logSourceAudit {
+		return logSourceAudit, false
+	}
+	return "", true
+}
+
+// sourceIgnoredNote explains a dropped source, so the rows are not mistaken
+// for audit events.
+const sourceIgnoredNote = `note: source was ignored because only "` + logSourceAudit + `" is supported, so this result covers application logs; set source="` + logSourceAudit + `" for SigNoz audit events.`
+
 // parseAggregateLogsArgs validates and parses arguments for the aggregate_logs tool.
 func parseAggregateLogsArgs(args map[string]any) (*AggregateRequest, error) {
 	service, _ := args["service"].(string)
@@ -65,7 +88,12 @@ func parseAggregateLogsArgs(args map[string]any) (*AggregateRequest, error) {
 	}
 	filterExpr := buildLogFilterExpr(filter, service, severity, "", "")
 
-	return parseAggregateArgs(args, "logs", filterExpr)
+	reqData, err := parseAggregateArgs(args, "logs", filterExpr)
+	if err != nil {
+		return nil, err
+	}
+	reqData.Source, reqData.SourceIgnored = readLogSource(args)
+	return reqData, nil
 }
 
 // SearchLogsRequest holds the parsed parameters for a log search query.
@@ -84,6 +112,10 @@ type SearchLogsRequest struct {
 	Offset       int
 	StartTime    int64
 	EndTime      int64
+	// Source is "audit" for SigNoz audit events and "" for application logs;
+	// SourceIgnored is set when an unsupported value was dropped.
+	Source        string
+	SourceIgnored bool
 }
 
 func parseSearchLogsArgs(args map[string]any) (*SearchLogsRequest, error) {
@@ -124,6 +156,7 @@ func parseSearchLogsArgs(args map[string]any) (*SearchLogsRequest, error) {
 	if raw := strings.TrimSpace(stringValue(args["orderBy"])); raw != "" {
 		orderKey, orderDir = parseOrderBy(raw)
 	}
+	source, sourceIgnored := readLogSource(args)
 
 	return &SearchLogsRequest{
 		FilterExpression:   filterExpr,
@@ -136,6 +169,8 @@ func parseSearchLogsArgs(args map[string]any) (*SearchLogsRequest, error) {
 		Offset:             offset,
 		StartTime:          startTime,
 		EndTime:            endTime,
+		Source:             source,
+		SourceIgnored:      sourceIgnored,
 	}, nil
 }
 

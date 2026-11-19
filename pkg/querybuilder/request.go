@@ -134,6 +134,8 @@ type RawSearchOptions struct {
 	SelectFields []FieldKey
 	OrderKey     string
 	OrderDir     string
+	// Source selects a logs store such as "audit"; "" reads application logs.
+	Source string
 }
 
 func selectFieldsOf(fields []FieldKey) *[]FieldKey {
@@ -164,6 +166,7 @@ func LogsSearch(start, end int64, filter string, limit, offset int, opts RawSear
 	envelope, err := builderEnvelope(func(spec *apitypes.Querybuildertypesv5BuilderQuerySpec) error {
 		return spec.FromQuerybuildertypesv5QueryBuilderQueryGithubComSigNozSignozPkgTypesQuerybuildertypesQuerybuildertypesv5LogAggregation(logQuery{
 			Name:         new("A"),
+			Source:       nonEmpty(apitypes.TelemetrytypesSource(opts.Source)),
 			Disabled:     new(false),
 			Filter:       filterOf(filter),
 			Limit:        new(limit),
@@ -286,6 +289,7 @@ type AggregateSpec struct {
 	Having       string
 	Functions    []Function
 	QueryType    string // builder_ai_query selects the AI envelope for traces
+	Source       string // logs only; "audit" reads SigNoz audit events
 }
 
 func havingOf(expression string) *apitypes.Querybuildertypesv5Having {
@@ -325,6 +329,7 @@ func Aggregate(spec AggregateSpec) (Request, error) {
 		envelope, err = builderEnvelope(func(builder *apitypes.Querybuildertypesv5BuilderQuerySpec) error {
 			return builder.FromQuerybuildertypesv5QueryBuilderQueryGithubComSigNozSignozPkgTypesQuerybuildertypesQuerybuildertypesv5LogAggregation(logQuery{
 				Name:         new("A"),
+				Source:       nonEmpty(apitypes.TelemetrytypesSource(spec.Source)),
 				StepInterval: step,
 				Disabled:     new(false),
 				Filter:       filterOf(spec.Filter),
