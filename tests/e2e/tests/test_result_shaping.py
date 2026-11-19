@@ -1,9 +1,10 @@
 """Result shaping on the query tools against the pinned release.
 
 Each check teaches a claim the tool descriptions make about fields SigNoz
-accepts: several aggregations, a having clause, and functions on the aggregate
-tools, limit/orderBy/having, typed formulaQueries, and functions on
-query_metrics, and selectFields and orderBy on the raw searches.
+accepts: several aggregations, a having clause, functions, and zero-filled
+count series on the aggregate tools, limit/orderBy/having, typed
+formulaQueries, and functions on query_metrics, and selectFields and orderBy
+on the raw searches.
 """
 
 import time
@@ -160,6 +161,62 @@ def test_aggregate_logs_time_shift_reads_an_earlier_window(
     # The points come back on the current window's timestamps, so they overlay an unshifted query.
     assert all(point["timestamp"] >= window_start_ms - 60_000 for point in points), (
         f"shifted points must land inside the requested window: {points}"
+    )
+
+
+def test_aggregate_logs_count_series_is_zero_in_empty_buckets(
+    mcp_client: MCPClient, test_id: str, telemetry: None
+) -> None:
+    """A count series has a 0 for every empty one-minute bucket of the window; an avg series skips them."""
+    service = f"mcp-e2e-{test_id}"
+    # Two logs ten minutes ago and one a minute ago, with empty minutes between them.
+    seed_logs(service, f"marker-{test_id}", count=2, age_seconds=600)
+    seed_logs(service, f"marker-{test_id}", count=1, age_seconds=60)
+
+    def aggregate(**arguments) -> dict:
+        return mcp_client.call_tool(
+            "signoz_aggregate_logs",
+            {"searchContext": "when did this service log", "service": service, "timeRange": "30m", **arguments},
+        )
+
+    def scalar_count(result: dict) -> float:
+        if result.get("isError", False):
+            return -1
+        rows = [row for r in first_block_json(result)["data"]["data"]["results"] for row in r.get("data") or []]
+        return rows[0][-1] if rows else 0
+
+    wait_for(
+        lambda: scalar_count(aggregate(aggregations="count()")) == 3, f"all three seeded logs for {service} counted"
+    )
+
+    end_ms = int(time.time() * 1000)
+    start_ms = end_ms - 15 * 60_000
+    result = assert_tool_ok(
+        aggregate(
+            aggregations=["count()", "avg(severity_number)"],
+            requestType="time_series",
+            stepInterval="60",
+            start=str(start_ms),
+            end=str(end_ms),
+        )
+    )
+    series = {
+        bucket["index"]: [point for one in bucket.get("series") or [] for point in one.get("values") or []]
+        for query_result in first_block_json(result)["data"]["data"]["results"]
+        for bucket in query_result.get("aggregations") or []
+    }
+    counts, averages = series.get(0, []), series.get(1, [])
+
+    # SigNoz buckets [start, end) on whole minutes, so the partial first and last minutes count too.
+    buckets = list(range(start_ms - start_ms % 60_000, end_ms - 1 - (end_ms - 1) % 60_000 + 1, 60_000))
+    assert [point["timestamp"] for point in counts] == buckets, f"the count series must cover every minute: {counts}"
+    assert sum(point["value"] for point in counts) == 3, f"the count series must hold the seeded logs: {counts}"
+    with_logs = sorted(point["timestamp"] for point in counts if point["value"] > 0)
+    assert sorted(point["timestamp"] for point in averages) == with_logs, (
+        f"the avg series must have points only where logs were: {averages}"
+    )
+    assert "__result_0 (count()) is 0 for each 60s bucket in the window with no matching rows" in note_blocks(result), (
+        f"the result must say the count series was zero-filled: {note_blocks(result)!r}"
     )
 
 

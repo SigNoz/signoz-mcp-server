@@ -27,7 +27,7 @@
           "inputSchema": {
             "properties": {
               "aggregations": {
-                "description": "Aggregation expressions to compute, written as the Query Builder writes them: count(), count_distinct(user_id), avg(duration), sum(bytes), min(x), max(x), p50(x) to p99(x), rate(), or a conditional such as countIf(severity_text = 'ERROR'). One expression or an array; results come back as __result_0, __result_1, ... in that order. Example: [\"count()\", \"p99(duration)\"]. SigNoz validates the expressions.",
+                "description": "Aggregation expressions to compute, written as the Query Builder writes them: count(), count_distinct(user_id), avg(duration), sum(bytes), min(x), max(x), p50(x) to p99(x), rate(), or a conditional such as countIf(severity_text = 'ERROR'). One expression or an array; results come back as __result_0, __result_1, ... in that order. Example: [\"count()\", \"p99(duration)\"]. SigNoz validates the expressions. In a time_series, count, count_distinct, sum, rate, rate_sum, and their If forms are 0 in a bucket with no matching rows; other expressions, such as avg, min, max, percentiles, and ratios like countIf(x) / count(), have no point there, and a group with no rows in the window has no series. No zeros are added when having or a function other than timeShift is set, or when they would add too many points; a result note then says how to get them.",
                 "items": {
                   "type": "string"
                 },
@@ -121,7 +121,7 @@
               },
               "requestType": {
                 "default": "scalar",
-                "description": "Result shape. \"scalar\" (default) returns one value or a grouped/ranked table over the full time range; use it for totals, percentiles, and top lists. \"time_series\" returns time-bucketed values, with one series per group when grouped; use it for spikes, trends, changes over time, or questions about when something happened.",
+                "description": "Result shape. \"scalar\" (default) returns one value or a grouped/ranked table over the full time range; use it for totals, percentiles, and top lists. \"time_series\" returns time-bucketed values, with one series per group when grouped; use it for spikes, trends, changes over time, or questions about when something happened. A bucket with no rows is 0 for counts, sums, and rates and missing for other aggregations; see aggregations.",
                 "enum": [
                   "scalar",
                   "time_series"
@@ -178,7 +178,7 @@
           "inputSchema": {
             "properties": {
               "aggregations": {
-                "description": "Aggregation expressions to compute, written as the Query Builder writes them: count(), count_distinct(name), avg(duration_nano), sum(x), min(x), max(x), p50(duration_nano) to p99(duration_nano), rate(), or a conditional such as countIf(has_error = true). duration_nano is span latency in nanoseconds. One expression or an array; results come back as __result_0, __result_1, ... in that order. Example: [\"count()\", \"p99(duration_nano)\"]. SigNoz validates the expressions.",
+                "description": "Aggregation expressions to compute, written as the Query Builder writes them: count(), count_distinct(name), avg(duration_nano), sum(x), min(x), max(x), p50(duration_nano) to p99(duration_nano), rate(), or a conditional such as countIf(has_error = true). duration_nano is span latency in nanoseconds. One expression or an array; results come back as __result_0, __result_1, ... in that order. Example: [\"count()\", \"p99(duration_nano)\"]. SigNoz validates the expressions. In a time_series, count, count_distinct, sum, rate, rate_sum, and their If forms are 0 in a bucket with no matching rows; other expressions, such as avg, min, max, percentiles, and ratios like countIf(x) / count(), have no point there, and a group with no rows in the window has no series. No zeros are added when having or a function other than timeShift is set, or when they would add too many points; a result note then says how to get them.",
                 "items": {
                   "type": "string"
                 },
@@ -306,7 +306,7 @@
               },
               "requestType": {
                 "default": "scalar",
-                "description": "Result shape. \"scalar\" (default) returns one value or a grouped/ranked table over the full time range; use it for totals, percentiles, and top lists. \"time_series\" returns time-bucketed values, with one series per group when grouped; use it for spikes, trends, changes over time, or questions about when something happened.",
+                "description": "Result shape. \"scalar\" (default) returns one value or a grouped/ranked table over the full time range; use it for totals, percentiles, and top lists. \"time_series\" returns time-bucketed values, with one series per group when grouped; use it for spikes, trends, changes over time, or questions about when something happened. A bucket with no rows is 0 for counts, sums, and rates and missing for other aggregations; see aggregations.",
                 "enum": [
                   "scalar",
                   "time_series"

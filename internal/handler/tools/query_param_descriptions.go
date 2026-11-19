@@ -18,7 +18,7 @@ const (
 		"When omitted, the backend auto-selects an appropriate interval. " +
 		"Only set this if the user explicitly requests a specific granularity. " +
 		"Examples: '60' (1 min), '3600' (1 hour), '86400' (1 day)."
-	aggregateRequestTypeParamDescription = `Result shape. "scalar" (default) returns one value or a grouped/ranked table over the full time range; use it for totals, percentiles, and top lists. "time_series" returns time-bucketed values, with one series per group when grouped; use it for spikes, trends, changes over time, or questions about when something happened.`
+	aggregateRequestTypeParamDescription = `Result shape. "scalar" (default) returns one value or a grouped/ranked table over the full time range; use it for totals, percentiles, and top lists. "time_series" returns time-bucketed values, with one series per group when grouped; use it for spikes, trends, changes over time, or questions about when something happened. A bucket with no rows is 0 for counts, sums, and rates and missing for other aggregations; see aggregations.`
 	aggregateLimitParamDescription       = "Maximum number of groups to return (default: 100, max: 10000; higher values are clamped). For time_series queries, groups are ranked across the entire time range, so a short-lived spike can fall outside the selected top groups."
 	havingParamDescription               = "Condition on the aggregation results, in the filter syntax, applied after grouping. " +
 		"Reference an aggregation by its expression, for example \"count() > 100\" or \"p99(duration_nano) > 500000000\". SigNoz validates it."
@@ -33,6 +33,9 @@ const (
 		"On a scalar request SigNoz applies only timeShift; set requestType to time_series for the others."
 	metricsFunctionsParamDescription = functionsParamDescription +
 		"On a scalar request they run on each series before reduceTo."
+	// zeroBucketsParamDescription ends the aggregations description of both
+	// aggregate tools: which time_series buckets read as 0 (see zero_fill.go).
+	zeroBucketsParamDescription = " In a time_series, count, count_distinct, sum, rate, rate_sum, and their If forms are 0 in a bucket with no matching rows; other expressions, such as avg, min, max, percentiles, and ratios like countIf(x) / count(), have no point there, and a group with no rows in the window has no series. No zeros are added when having or a function other than timeShift is set, or when they would add too many points; a result note then says how to get them."
 )
 
 // signoz_aggregate_logs and signoz_search_logs.
@@ -40,7 +43,7 @@ const (
 	logsFilterParamDescription          = "Filter expression text in SigNoz search syntax, not {\"expression\": ...} (see signoz://logs/query-builder-guide). Combine conditions with AND, OR, and parentheses. An unknown key may not fail: no rows plus a `key ... not found in metadata` warning means the key is absent. Ambiguous keys default to resource; prefix attribute.<key> or resource.<key> to choose. Log keys are workspace-specific; even service.name exists only when the log pipeline sets it. Discover keys and values with signoz_get_field_keys and signoz_get_field_values first. For message text use body CONTAINS 'term'. Only when you don't know which field holds a term, use search('term') for every field or search('term', attribute); scopes (body, attribute, resource, log) are ORed. search() is slow and may be rejected over wide time ranges. There is no key:value, STARTS WITH, or IS NULL; use LIKE 'prefix%', and EXISTS or NOT EXISTS. Example: \"service.name = 'payment-svc' AND severity_text = 'ERROR'\"."
 	aggregateLogsFilterParamDescription = logsFilterParamDescription + " Combined with service/severity params using AND."
 	logsAggregationsParamDescription    = "Aggregation expressions to compute, written as the Query Builder writes them: count(), count_distinct(user_id), avg(duration), sum(bytes), min(x), max(x), p50(x) to p99(x), rate(), or a conditional such as countIf(severity_text = 'ERROR'). " +
-		"One expression or an array; results come back as __result_0, __result_1, ... in that order. Example: [\"count()\", \"p99(duration)\"]. SigNoz validates the expressions."
+		"One expression or an array; results come back as __result_0, __result_1, ... in that order. Example: [\"count()\", \"p99(duration)\"]. SigNoz validates the expressions." + zeroBucketsParamDescription
 	logsGroupByParamDescription = "Field names to group results by, as an array or a comma-separated string (e.g. [\"service.name\", \"severity_text\"] or 'service.name, severity_text'). Leave empty for a single aggregate value. " +
 		"Group by keys signoz_get_field_keys returns; an unknown key can come back as one empty group. A body field (body.<path>) can be grouped only when signoz_get_field_keys(signal=\"logs\", fieldContext=\"body\") lists it; otherwise SigNoz rejects it with `can be filtered but not selected or grouped` or `field not found`, so filter on it instead."
 	aggregateLogsOrderByParamDescription  = "How to order results, as '<expression> <direction>'. The expression must be one of this call's aggregations written exactly as in aggregations, or a groupBy key, e.g. 'count_distinct(trace_id) desc' when aggregations is 'count_distinct(trace_id)', or 'service.name asc'. Omit it to sort by the first aggregation, descending."
@@ -65,7 +68,7 @@ const (
 	aggregateTracesFilterParamDescription = tracesFilterParamDescription + " Combined with service/operation/error/duration params using AND."
 	searchTracesFilterParamDescription    = tracesFilterParamDescription + " Combined with shortcut params using AND."
 	tracesAggregationsParamDescription    = "Aggregation expressions to compute, written as the Query Builder writes them: count(), count_distinct(name), avg(duration_nano), sum(x), min(x), max(x), p50(duration_nano) to p99(duration_nano), rate(), or a conditional such as countIf(has_error = true). " +
-		"duration_nano is span latency in nanoseconds. One expression or an array; results come back as __result_0, __result_1, ... in that order. Example: [\"count()\", \"p99(duration_nano)\"]. SigNoz validates the expressions."
+		"duration_nano is span latency in nanoseconds. One expression or an array; results come back as __result_0, __result_1, ... in that order. Example: [\"count()\", \"p99(duration_nano)\"]. SigNoz validates the expressions." + zeroBucketsParamDescription
 	tracesGroupByParamDescription            = "Field names to group results by, as an array or a comma-separated string (e.g. [\"service.name\", \"name\"] or 'service.name, name'). Leave empty for a single aggregate value. For values over time, use requestType time_series; grouping by timestamp fails."
 	aggregateTracesOrderByParamDescription   = "How to order results, as '<expression> <direction>'. The expression must be one of this call's aggregations written exactly as in aggregations, or a groupBy key, e.g. 'p99(duration_nano) desc' when aggregations is 'p99(duration_nano)', or 'name asc'. Omit it to sort by the first aggregation, descending."
 	aggregateTracesServiceParamDescription   = "Shortcut filter for service name. Equivalent to adding service.name = '<value>' to filter."
