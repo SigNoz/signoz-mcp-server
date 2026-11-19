@@ -99,10 +99,13 @@ appends a note labelling units.
 
 ### 2026-11-19 — Service and direction filters stay in the handler
 
-- Decision: kept from #271. SigNoz has no service parameter for this route, so the handler filters
-  the full graph. `direction` without `service`, or an unknown `direction`, is a validation error.
-  When no edge touches the requested service, the result carries a note pointing to
-  `signoz_list_services`, without echoing the name.
+- Decision: kept from #271. SigNoz has no service, limit, or offset parameter for this route, so
+  the handler filters, sorts, and pages the full graph. `direction` without `service`, or an
+  unknown `direction`, is a validation error. When no edge touches the requested service, the
+  result carries a note, without echoing the name. The `service` description and that note point
+  to `signoz_get_field_values` for `service.name`, not to `signoz_list_services`: it reads
+  metadata instead of computing per-service stats over the window, and `searchText` finds a name
+  by substring when the case or spelling is off.
 
 ### 2026-11-19 — Say that service-to-service counts can be low
 

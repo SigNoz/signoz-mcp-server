@@ -49,7 +49,7 @@ func (h *Handler) RegisterServiceHandlers(s *mcp.Server) {
 		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description(searchContextParamDescription)),
 		mcp.WithDescription("Use this when the user asks which services call a service, what a service depends on, or which dependency is slow or failing. It returns the dependency graph behind SigNoz's Service Map for a time window: one edge per caller (parent) and callee (child) with callCount, callRate (calls per second), errorRate (percent of calls that failed), and p50 to p99 latency in nanoseconds. Set service and direction to keep one service's edges, and environment, cluster, or namespace to narrow the graph. Databases and message systems are callees named by their system, such as redis or kafka; a message system is the child of both its producers and its consumers. Edges come from per-minute rollups of traced calls, so a window shorter than a minute can return nothing, and an uninstrumented caller leaves no edge. Use signoz_list_services for per-service totals, signoz_get_service_top_operations for one service's operations, and signoz_aggregate_traces for custom span statistics."),
-		mcp.WithString("service", mcp.Description("Exact service name whose edges to keep, as signoz_list_services returns it. Omit for the whole graph.")),
+		mcp.WithString("service", mcp.Description("Exact service.name value whose edges to keep, or a database or message system named in an edge. Discover service names with signoz_get_field_values with signal=\"traces\", fieldContext=\"resource\", and name=\"service.name\". Omit for the whole graph.")),
 		mcp.WithString("direction", mcp.DefaultString("both"), mcp.Enum("both", "upstream", "downstream"), mcp.Description("Which of service's edges to keep: upstream (the services that call it), downstream (the services, databases, and message systems it calls), or both (default). Requires service.")),
 		mcp.WithString("timeRange", mcp.DefaultString("6h"), mcp.Description(timeRangeParamDescription("Defaults to last 6 hours if not provided."))),
 		mcp.WithString("start", intOrStringType(), mcp.Description("Start time in unix milliseconds (optional, defaults to 6 hours ago).")),
@@ -68,7 +68,7 @@ const (
 	serviceMapUnitsNote      = "note: p50 to p99 are latencies in nanoseconds; callRate is calls per second over the window; errorRate is the percentage of calls that failed (0.5 means 0.5%). On an edge between two services, callCount and callRate count only the calls whose caller and callee spans SigNoz paired at ingestion, so they can be lower than a span count from signoz_aggregate_traces."
 	serviceMapEmptyGraphNote = "note: the graph has no edges for this time range and filters. Edges come from per-minute rollups of traced calls; widen the time range or drop environment, cluster, and namespace before concluding there are no dependencies."
 	// The requested name is not echoed back, so a long argument cannot grow the result.
-	serviceMapNoSuchServiceNote = "note: no edge in this window has the requested service as parent or child. Service names are exact and case-sensitive; check the name with signoz_list_services or widen the time range."
+	serviceMapNoSuchServiceNote = "note: no edge in this window has the requested service as parent or child. Service names are exact and case-sensitive; check the name with signoz_get_field_values with signal=\"traces\", fieldContext=\"resource\", and name=\"service.name\", or widen the time range."
 )
 
 // SigNoz builds the dependency graph from a rollup that keeps only these

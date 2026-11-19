@@ -6648,7 +6648,7 @@
                 "type": "string"
               },
               "service": {
-                "description": "Exact service name whose edges to keep, as signoz_list_services returns it. Omit for the whole graph.",
+                "description": "Exact service.name value whose edges to keep, or a database or message system named in an edge. Discover service names with signoz_get_field_values with signal=\"traces\", fieldContext=\"resource\", and name=\"service.name\". Omit for the whole graph.",
                 "type": "string"
               },
               "start": {
