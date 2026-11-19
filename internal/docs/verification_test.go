@@ -64,24 +64,6 @@ func TestSchemaVersionGuard(t *testing.T) {
 	require.ErrorContains(t, err, "unsupported corpus schema version")
 }
 
-func TestForcedRefreshBypassesUnchangedSitemapHash(t *testing.T) {
-	verifyNoDocsLeaks(t)
-	entries := []SitemapEntry{{URL: "https://signoz.io/docs/install/docker/", Title: "Install SigNoz Using Docker", SectionSlug: "install", SectionBreadcrumb: "Install > Docker"}}
-	initial := snapshotForEntries(entries, map[string]string{entries[0].URL: "# Old\n"})
-	initial.SitemapHash = SitemapHash(sitemapForEntries(entries))
-	reg := newTestRegistry(t, initial)
-	srv := docsCorpusServer(t, sitemapForEntries(entries), map[string]PageFetch{
-		"/docs/install/docker/": {Status: FetchStatusOK, Body: "# Install SigNoz Using Docker\n\nDocker Compose setup.\n"},
-	})
-	defer srv.Close()
-
-	refresher := NewRefresher(slog.Default(), reg, newRewriteFetcher(srv), RefreshConfig{})
-	require.NoError(t, refresher.Trigger(context.Background(), true))
-	snapshot, ok := reg.Snapshot()
-	require.True(t, ok)
-	require.Contains(t, snapshot.Pages[0].BodyMarkdown, "Docker Compose")
-}
-
 func TestSingleflightSerialization(t *testing.T) {
 	verifyNoDocsLeaks(t)
 	entries := []SitemapEntry{{URL: "https://signoz.io/docs/install/docker/", Title: "Install SigNoz Using Docker", SectionSlug: "install", SectionBreadcrumb: "Install > Docker"}}
@@ -443,29 +425,6 @@ func (t rewriteTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	resp := rr.Result()
 	resp.Request = original
 	return resp, nil
-}
-
-func docsCorpusServer(t *testing.T, sitemap string, pages map[string]PageFetch) *localHTTPTestServer {
-	t.Helper()
-	return newHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/docs/sitemap.md" {
-			_, _ = w.Write([]byte(sitemap))
-			return
-		}
-		fetch, ok := pages[r.URL.Path]
-		if !ok {
-			http.NotFound(w, r)
-			return
-		}
-		switch fetch.Status {
-		case FetchStatusOK:
-			_, _ = w.Write([]byte(fetch.Body))
-		case FetchStatusNotFound:
-			http.NotFound(w, r)
-		default:
-			http.Error(w, "error", http.StatusInternalServerError)
-		}
-	}))
 }
 
 type localHTTPTestServer struct {

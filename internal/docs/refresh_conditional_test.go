@@ -92,9 +92,6 @@ func conditionalFixture(t *testing.T) ([]SitemapEntry, CorpusSnapshot, *etagServ
 		initial.Pages[i].SourceETag = `W/"` + "/docs" + initial.Pages[i].URL[len("https://signoz.io/docs"):] + `-v1"`
 		initial.Pages[i].FetchedAt = time.Now().UTC().Add(-48 * time.Hour)
 	}
-	// The embedded corpus never matches the live sitemap; model that so the
-	// refresh takes the full path rather than the hash no-op.
-	initial.SitemapHash = "stale"
 	return parsed, initial, newETagServer(sitemap, bodies)
 }
 
@@ -146,10 +143,6 @@ func TestRefreshRevalidatesWithETagAndKeepsIndex(t *testing.T) {
 	require.Equal(t, SitemapHash(srv.sitemap), snapshot.SitemapHash, "published snapshot carries the live sitemap hash")
 	require.Contains(t, snapshot.Pages[0].BodyMarkdown, "Docker Compose")
 
-	// The next scheduled tick now short-circuits on the sitemap hash.
-	require.NoError(t, refresher.Trigger(context.Background(), false))
-	require.Equal(t, int64(2), srv.conditional.Load(), "a no-op tick fetches no pages")
-
 	search, err := reg.Search(context.Background(), "docker compose", "", 3)
 	require.NoError(t, err)
 	require.NotEmpty(t, search.Results)
@@ -174,7 +167,6 @@ func TestRevalidatedPageAdoptsRenamedSitemapTitle(t *testing.T) {
 	initial := snapshotForEntries(parsed, map[string]string{parsed[0].URL: body})
 	initial.Pages[0].Title = FirstHeadingTitle(body, "Old Name")
 	initial.Pages[0].SourceETag = `W/"/docs/logs/overview/-v1"`
-	initial.SitemapHash = "stale"
 	require.Equal(t, "Old Name", initial.Pages[0].Title)
 
 	srv := newETagServer(strings.Replace(sitemap, "Old Name", "New Name", 1), map[string]string{"/docs/logs/overview/": body})

@@ -17,18 +17,16 @@ import (
 )
 
 const (
-	defaultRuntimeRefreshInterval       = 6 * time.Hour
-	defaultFallbackRevalidationInterval = 24 * time.Hour
-	defaultRefreshDeadline              = 5 * time.Minute
-	defaultRefreshJitter                = 30 * time.Minute
+	defaultRuntimeRefreshInterval = 6 * time.Hour
+	defaultRefreshDeadline        = 5 * time.Minute
+	defaultRefreshJitter          = 30 * time.Minute
 )
 
 type RefreshConfig struct {
-	SitemapURL                   string
-	ManifestURL                  string
-	RefreshInterval              time.Duration
-	FallbackRevalidationInterval time.Duration
-	RefreshDeadline              time.Duration
+	SitemapURL      string
+	ManifestURL     string
+	RefreshInterval time.Duration
+	RefreshDeadline time.Duration
 	// JitterWindow is the symmetric maximum jitter applied to scheduled
 	// refresh ticks so replica fleets don't herd on a common cadence. The
 	// effective jitter is capped to half the scheduled interval so short
@@ -37,10 +35,8 @@ type RefreshConfig struct {
 	//   - zero (default)    → use defaultRefreshJitter (30 min)
 	//   - negative          → no jitter (tests that want determinism)
 	//   - positive duration → use that value, capped per interval
-	JitterWindow                time.Duration
-	DisableScheduled            bool
-	DisableFallbackRevalidation bool
-	RevalidateFallbackEveryTick bool
+	JitterWindow     time.Duration
+	DisableScheduled bool
 }
 
 type Refresher struct {
@@ -52,8 +48,6 @@ type Refresher struct {
 	meters         *otelpkg.Meters
 	mu             sync.Mutex
 	notFoundCounts map[string]int
-	// Only the refresh owner reads or updates the last fallback revalidation.
-	lastFallbackRevalidation time.Time
 	// forceRequested carries a pending force-refresh intent across a
 	// singleflight share. If a forced Trigger arrives while an incremental
 	// refresh is in flight, setting this flag guarantees that the running
@@ -104,9 +98,6 @@ func NewRefresher(logger *slog.Logger, registry *IndexRegistry, fetcher *Fetcher
 	if cfg.RefreshInterval <= 0 {
 		cfg.RefreshInterval = defaultRuntimeRefreshInterval
 	}
-	if cfg.FallbackRevalidationInterval <= 0 {
-		cfg.FallbackRevalidationInterval = defaultFallbackRevalidationInterval
-	}
 	if cfg.RefreshDeadline <= 0 {
 		cfg.RefreshDeadline = defaultRefreshDeadline
 	}
@@ -116,12 +107,11 @@ func NewRefresher(logger *slog.Logger, registry *IndexRegistry, fetcher *Fetcher
 		cfg.JitterWindow = defaultRefreshJitter
 	}
 	return &Refresher{
-		logger:                   logger,
-		registry:                 registry,
-		fetcher:                  fetcher,
-		cfg:                      cfg,
-		notFoundCounts:           map[string]int{},
-		lastFallbackRevalidation: time.Now(),
+		logger:         logger,
+		registry:       registry,
+		fetcher:        fetcher,
+		cfg:            cfg,
+		notFoundCounts: map[string]int{},
 	}
 }
 
@@ -261,13 +251,6 @@ func (r *Refresher) refresh(ctx context.Context, forced bool) error {
 		return fmt.Errorf("fetch sitemap: %v", sitemap.Err)
 	}
 	hash := SitemapHash(sitemap.Body)
-	revalidationDue := !r.cfg.DisableFallbackRevalidation &&
-		(r.cfg.RevalidateFallbackEveryTick || start.Sub(r.lastFallbackRevalidation) >= r.cfg.FallbackRevalidationInterval)
-	if !forced && current.SitemapHash == hash && !revalidationDue {
-		outcome = "no-op"
-		r.logger.InfoContext(ctx, "docs refresh no-op; sitemap unchanged")
-		return nil
-	}
 	entries, err := ParseSitemapMarkdown(sitemap.Body)
 	if err != nil {
 		outcome = "parse-error"
@@ -285,9 +268,6 @@ func (r *Refresher) refresh(ctx context.Context, forced bool) error {
 		return fmt.Errorf("docs refresh blocked by failure threshold")
 	}
 	outcome, err = r.publish(ctx, current, next, forced)
-	if err == nil {
-		r.lastFallbackRevalidation = start
-	}
 	return err
 }
 
@@ -393,9 +373,7 @@ func (r *Refresher) recordSitemapParseFailure(ctx context.Context) {
 func (r *Refresher) publish(ctx context.Context, current, next CorpusSnapshot, forced bool) (string, error) {
 	delta := diffSnapshots(current, next)
 	if delta.empty() {
-		// Nothing indexed would change; publish the new sitemap and page
-		// metadata so the next tick hits the hash no-op, but keep the live
-		// index and skip the rebuild peak entirely.
+		// Only the refresh metadata changed, so keep the live index.
 		if err := r.registry.PublishSnapshot(ctx, next); err != nil {
 			return "error", err
 		}

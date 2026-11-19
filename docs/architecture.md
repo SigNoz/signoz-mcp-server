@@ -301,7 +301,8 @@ The refresher keeps the last-good page when a fetch fails or a cache serves a di
 ETag. An omission from the manifest still requires a real 404 if the sitemap lists the page.
 The refresh stores the manifest ETag after reconciliation completes, so the next tick can
 retry unresolved URLs. A missing or invalid manifest falls back to the sitemap-only flow.
-That flow revalidates pages when the sitemap changes or the fallback period has elapsed.
+On each fallback tick, it conditionally revalidates every unique sitemap URL, including
+pages in an unchanged sitemap.
 Both paths use the same index rebuild thresholds.
 
 ## Resource browser links

@@ -38,16 +38,15 @@ func TestGetEnvRefreshInterval(t *testing.T) {
 func TestLoadConfigDocsRefreshCompatibility(t *testing.T) {
 	tests := []struct {
 		name, refresh, legacy string
-		interval, fallback    time.Duration
-		scheduleOff           bool
-		fallbackOff           bool
-		fallbackEveryTick     bool
+		interval              time.Duration
+		disabled              bool
 	}{
-		{name: "defaults", interval: 6 * time.Hour, fallback: 24 * time.Hour},
-		{name: "shorter legacy interval keeps the primary cadence", refresh: "10m", legacy: "5m", interval: 10 * time.Minute, fallback: 5 * time.Minute},
-		{name: "legacy-only cadence keeps refreshing", refresh: "0", legacy: "12h", interval: 12 * time.Hour, fallback: 12 * time.Hour, fallbackEveryTick: true},
-		{name: "legacy off disables only the unchanged-sitemap check", legacy: "off", interval: 6 * time.Hour, fallback: 24 * time.Hour, fallbackOff: true},
-		{name: "both off disables the scheduler", refresh: "off", legacy: "off", scheduleOff: true, fallbackOff: true},
+		{name: "defaults to one six-hour schedule", interval: 6 * time.Hour},
+		{name: "primary cadence wins", refresh: "10m", legacy: "5m", interval: 10 * time.Minute},
+		{name: "legacy-only cadence keeps refreshing", refresh: "0", legacy: "12h", interval: 12 * time.Hour},
+		{name: "primary off preserves the legacy schedule default", refresh: "off", interval: 24 * time.Hour},
+		{name: "legacy off keeps the primary schedule", legacy: "off", interval: 6 * time.Hour},
+		{name: "both off disables the scheduler", refresh: "off", legacy: "off", disabled: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -57,18 +56,11 @@ func TestLoadConfigDocsRefreshCompatibility(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if cfg.DocsRefreshDisabled != tt.scheduleOff || cfg.DocsFallbackDisabled != tt.fallbackOff {
-				t.Fatalf("schedule and fallback disabled = (%t, %t), want (%t, %t)",
-					cfg.DocsRefreshDisabled, cfg.DocsFallbackDisabled, tt.scheduleOff, tt.fallbackOff)
+			if cfg.DocsRefreshDisabled != tt.disabled {
+				t.Fatalf("schedule disabled = %t, want %t", cfg.DocsRefreshDisabled, tt.disabled)
 			}
-			if cfg.DocsFallbackEveryTick != tt.fallbackEveryTick {
-				t.Fatalf("revalidate on every fallback tick = %t, want %t", cfg.DocsFallbackEveryTick, tt.fallbackEveryTick)
-			}
-			if !tt.scheduleOff && cfg.DocsRefreshInterval != tt.interval {
+			if !tt.disabled && cfg.DocsRefreshInterval != tt.interval {
 				t.Fatalf("refresh interval = %s, want %s", cfg.DocsRefreshInterval, tt.interval)
-			}
-			if !tt.fallbackOff && cfg.DocsFallbackCheckPeriod != tt.fallback {
-				t.Fatalf("fallback revalidation interval = %s, want %s", cfg.DocsFallbackCheckPeriod, tt.fallback)
 			}
 		})
 	}

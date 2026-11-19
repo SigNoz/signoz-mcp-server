@@ -17,7 +17,7 @@ Use the manifest to skip unchanged pages. Check the sitemap ETag before applying
 changes, keep the last-good page when an advertised ETag fails to match, and retry unresolved
 pages on the next tick. Confirm sitemap-listed omissions by requesting the Markdown. Fetch
 each URL once and preserve all of its section memberships. Use one jittered timer and
-revalidate pages periodically in the sitemap-only fallback.
+revalidate pages on each sitemap-only fallback tick.
 
 ## Files to Modify
 
@@ -37,10 +37,9 @@ the manifest again and skips any page whose stored ETag already matches.
 
 ### 2026-11-19 — Use one manifest-first schedule
 
-Keep the six-hour default and its jitter. Check elapsed time in the sitemap-only fallback
-to catch edits absent from the sitemap. The legacy full-refresh setting supplies that
-fallback period. Deployments that enabled only the legacy schedule keep its cadence and
-revalidate sitemap pages on every fallback tick, including early ticks caused by jitter.
+Keep the six-hour default and its jitter. When the manifest is missing or invalid,
+conditionally check each unique sitemap URL on every tick, even when the sitemap is unchanged.
+The deprecated full-refresh setting preserves the single timer cadence for legacy-only deployments.
 
 ### 2026-11-19 — Refresh the embedded corpus during release prep
 
@@ -55,9 +54,9 @@ The search tests compare HTML and Markdown URLs for the same page using the exis
 
 ## Verification
 
-- Regression tests passed for conditional scheduled requests, elapsed-time fallback,
-  legacy-only cadence, sitemap and page cache skew, real 404 handling, and duplicate URLs.
-  Two live scheduled ticks returned manifest 304s with the fallback period already elapsed.
+- Regression tests passed for conditional scheduled requests, every-tick fallback on missing
+  and invalid manifests, legacy-only cadence, sitemap and page cache skew, real 404 handling,
+  and duplicate URLs. Live scheduled ticks returned manifest 304s without page requests.
 - All local CI targets passed with Go 1.26.11. Dependency verification used a clean module cache,
   and protocol checks used alternate ports.
 - The Go fetcher parsed 980 entries from the live website manifest, received a bodyless 304,

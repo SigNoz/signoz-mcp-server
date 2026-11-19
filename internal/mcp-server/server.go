@@ -427,11 +427,8 @@ func (m *MCPServer) Run(ctx context.Context) error {
 			loaded = true
 		}
 		refresher := docsindex.NewRefresher(m.logger, placeholderRegistry, docsindex.NewFetcher(docsindex.FetcherConfig{}), docsindex.RefreshConfig{
-			RefreshInterval:              m.config.DocsRefreshInterval,
-			FallbackRevalidationInterval: m.config.DocsFallbackCheckPeriod,
-			DisableScheduled:             m.config.DocsRefreshDisabled,
-			DisableFallbackRevalidation:  m.config.DocsFallbackDisabled,
-			RevalidateFallbackEveryTick:  m.config.DocsFallbackEveryTick,
+			RefreshInterval:  m.config.DocsRefreshInterval,
+			DisableScheduled: m.config.DocsRefreshDisabled,
 		})
 		refresher.SetMeters(m.meters)
 		refresher.Start(ctx)
