@@ -6595,11 +6595,19 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user wants the built-in operation table for one traced service in a time window. It ranks operation names by p99 latency and returns p50, p95, p99, call count, and error count. Use signoz_list_services to discover active traced service names. For custom aggregation, grouping, time series, cross-service comparison, or arbitrary trace filters, use signoz_aggregate_traces instead. The optional tags parameter is a JSON-encoded TagQueryParam array.",
+          "description": "Use this when the user wants the built-in operation table for one traced service in a time window. It returns operations with the highest p99 latency first, up to limit, each with p50, p95, and p99 latency in nanoseconds, numCalls, and errorCount. Use signoz_list_services to discover active traced service names. For custom aggregation, grouping, time series, cross-service comparison, arbitrary trace filters, or operations ranked by calls or errors, use signoz_aggregate_traces instead. The optional tags parameter is a JSON-encoded TagQueryParam array.",
           "inputSchema": {
             "properties": {
               "end": {
                 "description": "End time in unix milliseconds (optional, defaults to now).",
+                "type": [
+                  "integer",
+                  "string"
+                ]
+              },
+              "limit": {
+                "default": "100",
+                "description": "Maximum operations to return, highest p99 first. Default: 100; max: 5000 (higher values are clamped).",
                 "type": [
                   "integer",
                   "string"
@@ -7288,7 +7296,7 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user wants APM services with trace activity and their call or latency summaries in a time window. It returns traced-service records sorted by name and paginated; absence means no trace activity in that window, not that a matching service.name never appears in logs. For log values use signoz_get_field_values with signal=\"logs\" and name=\"service.name\"; for one service's operations use signoz_get_service_top_operations. Follow pagination.nextOffset until hasMore=false before concluding a traced service is absent.",
+          "description": "Use this when the user wants APM services with trace activity and their call or latency summaries in a time window. It returns traced-service records sorted by name and paginated; absence means no trace activity in that window, not that a matching service.name never appears in logs. p99 and avgDuration are latencies in nanoseconds, callRate is calls per second, and errorRate and fourXXRate are percentages (0.5 means 0.5%). For log values use signoz_get_field_values with signal=\"logs\" and name=\"service.name\"; for one service's operations use signoz_get_service_top_operations. Follow pagination.nextOffset until hasMore=false before concluding a traced service is absent.",
           "inputSchema": {
             "properties": {
               "end": {

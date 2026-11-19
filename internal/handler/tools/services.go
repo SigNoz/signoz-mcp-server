@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"sort"
 
@@ -22,7 +23,7 @@ func (h *Handler) RegisterServiceHandlers(s *mcp.Server) {
 	listTool := mcp.NewTool("signoz_list_services",
 		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description(searchContextParamDescription)),
-		mcp.WithDescription("Use this when the user wants APM services with trace activity and their call or latency summaries in a time window. It returns traced-service records sorted by name and paginated; absence means no trace activity in that window, not that a matching service.name never appears in logs. For log values use signoz_get_field_values with signal=\"logs\" and name=\"service.name\"; for one service's operations use signoz_get_service_top_operations. Follow pagination.nextOffset until hasMore=false before concluding a traced service is absent."),
+		mcp.WithDescription("Use this when the user wants APM services with trace activity and their call or latency summaries in a time window. It returns traced-service records sorted by name and paginated; absence means no trace activity in that window, not that a matching service.name never appears in logs. p99 and avgDuration are latencies in nanoseconds, callRate is calls per second, and errorRate and fourXXRate are percentages (0.5 means 0.5%). For log values use signoz_get_field_values with signal=\"logs\" and name=\"service.name\"; for one service's operations use signoz_get_service_top_operations. Follow pagination.nextOffset until hasMore=false before concluding a traced service is absent."),
 		mcp.WithString("timeRange", mcp.DefaultString("6h"), mcp.Description(timeRangeParamDescription("Defaults to last 6 hours if not provided."))),
 		mcp.WithString("start", intOrStringType(), mcp.Description("Start time in unix milliseconds (optional, defaults to 6 hours ago).")),
 		mcp.WithString("end", intOrStringType(), mcp.Description("End time in unix milliseconds (optional, defaults to now).")),
@@ -35,12 +36,13 @@ func (h *Handler) RegisterServiceHandlers(s *mcp.Server) {
 	getOpsTool := mcp.NewTool("signoz_get_service_top_operations",
 		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description(searchContextParamDescription)),
-		mcp.WithDescription("Use this when the user wants the built-in operation table for one traced service in a time window. It ranks operation names by p99 latency and returns p50, p95, p99, call count, and error count. Use signoz_list_services to discover active traced service names. For custom aggregation, grouping, time series, cross-service comparison, or arbitrary trace filters, use signoz_aggregate_traces instead. The optional tags parameter is a JSON-encoded TagQueryParam array."),
+		mcp.WithDescription("Use this when the user wants the built-in operation table for one traced service in a time window. It returns operations with the highest p99 latency first, up to limit, each with p50, p95, and p99 latency in nanoseconds, numCalls, and errorCount. Use signoz_list_services to discover active traced service names. For custom aggregation, grouping, time series, cross-service comparison, arbitrary trace filters, or operations ranked by calls or errors, use signoz_aggregate_traces instead. The optional tags parameter is a JSON-encoded TagQueryParam array."),
 		mcp.WithString("service", mcp.Required(), mcp.Description("Exact traced service name, typically from signoz_list_services.")),
 		mcp.WithString("timeRange", mcp.DefaultString("6h"), mcp.Description(timeRangeParamDescription("Defaults to last 6 hours if not provided."))),
 		mcp.WithString("start", intOrStringType(), mcp.Description("Start time in unix milliseconds (optional, defaults to 6 hours ago).")),
 		mcp.WithString("end", intOrStringType(), mcp.Description("End time in unix milliseconds (optional, defaults to now).")),
 		mcp.WithString("tags", mcp.Description("JSON-encoded TagQueryParam array; omit for no tag filter. Example: [{\"key\":\"http.method\",\"tagType\":\"SpanAttribute\",\"operator\":\"In\",\"stringValues\":[\"GET\"]}]. Pass the array as a string, not as a JSON array value.")),
+		mcp.WithString("limit", mcp.DefaultString("100"), intOrStringType(), mcp.Description("Maximum operations to return, highest p99 first. Default: 100; max: 5000 (higher values are clamped).")),
 	)
 
 	h.addTool(s, getOpsTool, h.handleGetServiceTopOperations)
@@ -144,16 +146,23 @@ func (h *Handler) handleGetServiceTopOperations(ctx context.Context, req mcp.Cal
 		tags = json.RawMessage("[]")
 	}
 
+	limit, err := intArg(args, "limit", topOperationsDefaultLimit)
+	if err != nil {
+		return validationError("limit", "must be a positive integer"), nil
+	}
+	limit = min(limit, signozclient.TopOperationsLimit)
+
 	h.logger.DebugContext(ctx, "Tool called: signoz_get_service_top_operations",
 		slog.String("start", start),
 		slog.String("end", end),
-		slog.String("service", service))
+		slog.String("service", service),
+		slog.Int("limit", limit))
 
 	client, err := h.GetClient(ctx)
 	if err != nil {
 		return clientError(err), nil
 	}
-	result, err := client.GetServiceTopOperations(ctx, start, end, service, tags)
+	result, err := client.GetServiceTopOperations(ctx, start, end, service, tags, limit)
 	if err != nil {
 		h.logUpstreamFailure(ctx, "Failed to get service top operations", err, slog.String("start", start), slog.String("end", end), slog.String("service", service))
 		return upstreamError(err), nil
@@ -179,8 +188,18 @@ func (h *Handler) handleGetServiceTopOperations(ctx context.Context, req mcp.Cal
 	if err != nil {
 		return InternalErrorResult("failed to marshal response: " + err.Error()), nil
 	}
-	if len(operations) >= signozclient.TopOperationsLimit {
-		return resultWithNotes(payload, limitOnlyCompletenessNote(len(operations), signozclient.TopOperationsLimit, true, "a shorter time range or tags")), nil
+	switch {
+	case len(operations) < limit:
+		return mcp.NewToolResultText(string(payload)), nil
+	case limit < signozclient.TopOperationsLimit:
+		return resultWithNotes(payload, fmt.Sprintf(topOperationsLimitFilledNote, len(operations), signozclient.TopOperationsLimit)), nil
+	default:
+		return resultWithNotes(payload, limitOnlyCompletenessNote(len(operations), limit, true, "a shorter time range or tags")), nil
 	}
-	return mcp.NewToolResultText(string(payload)), nil
 }
+
+const (
+	topOperationsDefaultLimit = 100
+	// The result is text, so this note reaches clients that read only structured content too.
+	topOperationsLimitFilledNote = "note: returned the %d operations with the highest p99; the service likely has more. Raise limit, up to %d, to see them, or rank operations by calls or errors with signoz_aggregate_traces."
+)
