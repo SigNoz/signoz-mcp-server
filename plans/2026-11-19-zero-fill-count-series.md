@@ -1,8 +1,8 @@
 # Plan: Zero Buckets in Count Series
 
-Status: In Progress
+Status: Done
 Issue:
-PR:
+PR: https://github.com/SigNoz/signoz-mcp-server/pull/463
 
 ## Context
 
@@ -147,7 +147,8 @@ because a zero there would read as a measurement.
   With the call removed from `handleAggregateTraces`, the traces cases fail; without the shifted
   grid, the duplicate check, the partial flag, or the single whole-second shift rule, the matching
   cases fail.
-- `GOTOOLCHAIN=go1.26.11 make ci`: see the PR.
+- `GOTOOLCHAIN=go1.26.11 make ci`: pass, with `GOMODCACHE` on a fresh cache (one module in the local
+  cache failed `go mod verify`) and the protocol and conformance ports moved off 18080.
 - Against a local SigNoz v0.150.0-rc.1 instance, through the built server over stdio, with explicit
   windows on 2026-11-12 (before is `origin/main`, after is this branch):
   - `count()` of `payment` error spans, 20:00 to 23:00, 600 s step: 6 points, then 18, with 0
