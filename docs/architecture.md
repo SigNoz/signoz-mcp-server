@@ -164,6 +164,9 @@ replay-safe requests on transport errors and 429/502/503/504, and buffers each r
   validation builds its requests with the generated constructors but sends them outside the
   `doer`, because a credential check must not retry.
 
+The hand-written path is legacy, not a route for new tools: `CLAUDE.md` asks for new tools to use
+routes in the spec.
+
 Both paths return the raw response body. Tools pass it through or parse only the fields they need,
 so fields the spec doesn't model still reach clients. Request bodies go through the generated
 `WithBody` methods with the bytes the tool built, and the generated enum `Valid()` helpers are
