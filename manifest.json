@@ -159,11 +159,11 @@
     },
     {
       "name": "signoz_aggregate_logs",
-      "description": "Return aggregate log statistics and grouped or top-N breakdowns, not individual records; use signoz_search_logs for log rows and messages"
+      "description": "Return aggregate log statistics and grouped or top-N breakdowns, not individual records; use signoz_search_logs for log rows and messages. source=\"audit\" aggregates SigNoz audit events"
     },
     {
       "name": "signoz_search_logs",
-      "description": "Search individual log records with field filters or explicit search() across log contexts; searchText matches only body text"
+      "description": "Search individual log records with field filters or explicit search() across log contexts; searchText matches only body text. source=\"audit\" searches SigNoz audit events"
     },
     {
       "name": "signoz_aggregate_traces",
