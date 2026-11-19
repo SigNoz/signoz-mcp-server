@@ -75,11 +75,7 @@ func TestForcedRefreshBypassesUnchangedSitemapHash(t *testing.T) {
 	})
 	defer srv.Close()
 
-	refresher := NewRefresher(slog.Default(), reg, newRewriteFetcher(srv), RefreshConfig{
-		SitemapURL:          DefaultSitemapURL,
-		RefreshInterval:     time.Hour,
-		FullRefreshInterval: time.Minute,
-	})
+	refresher := NewRefresher(slog.Default(), reg, newRewriteFetcher(srv), RefreshConfig{})
 	require.NoError(t, refresher.Trigger(context.Background(), true))
 	snapshot, ok := reg.Snapshot()
 	require.True(t, ok)

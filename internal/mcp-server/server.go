@@ -427,10 +427,11 @@ func (m *MCPServer) Run(ctx context.Context) error {
 			loaded = true
 		}
 		refresher := docsindex.NewRefresher(m.logger, placeholderRegistry, docsindex.NewFetcher(docsindex.FetcherConfig{}), docsindex.RefreshConfig{
-			RefreshInterval:     m.config.DocsRefreshInterval,
-			FullRefreshInterval: m.config.DocsFullRefreshInterval,
-			DisableScheduled:    m.config.DocsRefreshDisabled,
-			DisableFullRefresh:  m.config.DocsFullRefreshDisabled,
+			RefreshInterval:              m.config.DocsRefreshInterval,
+			FallbackRevalidationInterval: m.config.DocsFallbackCheckPeriod,
+			DisableScheduled:             m.config.DocsRefreshDisabled,
+			DisableFallbackRevalidation:  m.config.DocsFallbackDisabled,
+			RevalidateFallbackEveryTick:  m.config.DocsFallbackEveryTick,
 		})
 		refresher.SetMeters(m.meters)
 		refresher.Start(ctx)
@@ -441,7 +442,7 @@ func (m *MCPServer) Run(ctx context.Context) error {
 		// "blob loaded fine" case, we deliberately skip the on-boot refresh
 		// so startup doesn't pay a ~15 s CPU/memory spike against the live
 		// corpus; freshness is handled by the scheduled refresher
-		// (6 h incremental, 24 h forced) and by the manually-dispatched
+		// and by the manually-dispatched
 		// docs-index-refresh workflow that maintainers run ahead of a
 		// release (.github/workflows/docs-index-refresh.yml) to keep the
 		// committed blob reasonably fresh at cold-boot time.

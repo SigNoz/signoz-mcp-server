@@ -46,12 +46,10 @@ type Config struct {
 	Feedback analytics.FeedbackConfig
 
 	DocsRefreshInterval     time.Duration
-	DocsFullRefreshInterval time.Duration
-	// DocsRefreshDisabled / DocsFullRefreshDisabled are set when the matching
-	// interval env var is "0" (or off/disabled/false), which turns that
-	// scheduled docs refresh off instead of falling back to the default cadence.
+	DocsFallbackCheckPeriod time.Duration
 	DocsRefreshDisabled     bool
-	DocsFullRefreshDisabled bool
+	DocsFallbackDisabled    bool
+	DocsFallbackEveryTick   bool
 
 	// MaxRequestBytes caps the size of an inbound MCP HTTP request body.
 	MaxRequestBytes int
@@ -85,13 +83,13 @@ const (
 
 	MaxRequestBytesEnv = "MCP_MAX_REQUEST_BYTES"
 
-	defaultClientCacheSize       = 256
-	defaultClientCacheTTLMinutes = 30
-	defaultAccessTTLMinutes      = 60    // 1 hour
-	defaultRefreshTTLMinutes     = 43200 // 30 days
-	defaultAuthCodeTTLSeconds    = 600
-	defaultDocsRefreshInterval   = 6 * time.Hour
-	defaultDocsFullRefreshPeriod = 24 * time.Hour
+	defaultClientCacheSize         = 256
+	defaultClientCacheTTLMinutes   = 30
+	defaultAccessTTLMinutes        = 60    // 1 hour
+	defaultRefreshTTLMinutes       = 43200 // 30 days
+	defaultAuthCodeTTLSeconds      = 600
+	defaultDocsRefreshInterval     = 6 * time.Hour
+	defaultDocsFallbackCheckPeriod = 24 * time.Hour
 	// defaultMaxRequestBytes bounds inbound MCP request bodies; 4 MiB is far
 	// above any legitimate tool-call payload (incl. dashboard imports).
 	defaultMaxRequestBytes = 4 << 20 // 4 MiB
@@ -107,12 +105,12 @@ func LoadConfig() (*Config, error) {
 	refreshTTLMinutes := getEnvInt(OAuthRefreshTTLMinutes, defaultRefreshTTLMinutes)
 	authCodeTTLSeconds := getEnvInt(OAuthAuthCodeTTLSeconds, defaultAuthCodeTTLSeconds)
 	docsRefreshInterval, docsRefreshDisabled := getEnvRefreshInterval(DocsRefreshIntervalEnv, defaultDocsRefreshInterval)
-	docsFullRefreshInterval, docsFullRefreshDisabled := getEnvRefreshInterval(DocsFullRefreshIntervalEnv, defaultDocsFullRefreshPeriod)
-	if !docsRefreshDisabled && !docsFullRefreshDisabled && docsFullRefreshInterval < docsRefreshInterval {
-		log.Printf("WARN: %s (%s) is shorter than %s (%s); falling back to defaults",
-			DocsFullRefreshIntervalEnv, docsFullRefreshInterval, DocsRefreshIntervalEnv, docsRefreshInterval)
-		docsRefreshInterval = defaultDocsRefreshInterval
-		docsFullRefreshInterval = defaultDocsFullRefreshPeriod
+	fallbackInterval, fallbackDisabled := getEnvRefreshInterval(DocsFullRefreshIntervalEnv, defaultDocsFallbackCheckPeriod)
+	fallbackEveryTick := docsRefreshDisabled && !fallbackDisabled
+	if fallbackEveryTick {
+		// A legacy full-only schedule keeps its cadence on the manifest-first path.
+		docsRefreshInterval = fallbackInterval
+		docsRefreshDisabled = false
 	}
 
 	// Parse custom headers from SIGNOZ_CUSTOM_HEADERS env var (format: "Key1:Value1,Key2:Value2")
@@ -156,9 +154,10 @@ func LoadConfig() (*Config, error) {
 		SegmentKey:              getEnv(SegmentKeyEnv, ""),
 		Feedback:                analytics.FeedbackConfigFromEnv(getEnv(SegmentKeyEnv, "")),
 		DocsRefreshInterval:     docsRefreshInterval,
-		DocsFullRefreshInterval: docsFullRefreshInterval,
+		DocsFallbackCheckPeriod: fallbackInterval,
 		DocsRefreshDisabled:     docsRefreshDisabled,
-		DocsFullRefreshDisabled: docsFullRefreshDisabled,
+		DocsFallbackDisabled:    fallbackDisabled,
+		DocsFallbackEveryTick:   fallbackEveryTick,
 		MaxRequestBytes:         getEnvInt(MaxRequestBytesEnv, defaultMaxRequestBytes),
 	}, nil
 }

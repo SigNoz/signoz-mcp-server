@@ -11,8 +11,8 @@ name: docs-index-refresh
 # Rebuilds internal/docs/assets/corpus.gob.gz and corpus.manifest.json and
 # opens a PR with the diff so a reviewer can eyeball the manifest.
 #
-# The running server also refreshes from signoz.io on its own
-# (6 h incremental, 24 h forced), so this CI is a cold-boot freshness
+# The running server refreshes from signoz.io on its own (every 6 h by
+# default), so this CI is a cold-boot freshness
 # guarantee — not the hot path for keeping running fleets current.
 
 on:
@@ -68,7 +68,7 @@ jobs:
             and `internal/docs/assets/corpus.manifest.json`.
 
             Review the manifest diff for per-page URL and SHA-256 changes.
-            The running server also refreshes on its own (6 h / 24 h), so
+            The running server refreshes on its own, so
             this PR is a cold-boot freshness guarantee — not strictly
             load-bearing for running fleets.
           add-paths: |
