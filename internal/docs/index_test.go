@@ -49,12 +49,24 @@ func TestIndexSearchFetchAndSwap(t *testing.T) {
 	require.Equal(t, "prerequisites", doc.Heading)
 	require.Contains(t, doc.Content, "Docker")
 
+	markdownURL := "https://signoz.io/docs/install/docker.md"
+	alias, code, err := reg.FetchDoc(ctx, markdownURL, "prerequisites")
+	require.NoError(t, err)
+	require.Empty(t, code)
+	require.Equal(t, doc, alias)
+
 	_, code, err = reg.FetchDoc(ctx, "https://example.com/docs/install/docker/", "")
 	require.NoError(t, err)
 	require.Equal(t, CodeOutOfScopeURL, code)
 
-	err = reg.Swap(ctx, testSnapshot())
+	next := testSnapshot()
+	next.Pages[1].URL = markdownURL
+	require.NoError(t, reg.Swap(ctx, next))
+	alias, code, err = reg.FetchDoc(ctx, "/docs/install/docker/", "prerequisites")
 	require.NoError(t, err)
+	require.Empty(t, code)
+	require.Equal(t, markdownURL, alias.URL)
+	require.Equal(t, doc.Content, alias.Content)
 }
 
 func TestTruncateContentIsUTF8Safe(t *testing.T) {

@@ -18,8 +18,9 @@ contracts.
 - `make fmt goimports`: rewrite formatting and imports. `make build` runs both first.
 - `make test-e2e`: e2e suite against an ephemeral SigNoz cast by foundry. `make setup-e2e-env`
   keeps the environment and `make test-e2e-reuse` reruns against it. See `tests/README.md`.
-- `make docs-index`: rebuild the embedded docs corpus in `internal/docs/assets/`. Diff the
-  manifest and commit both files.
+- `make docs-index`: rebuild the embedded docs corpus in `internal/docs/assets/`. Pages whose
+  ETag in `https://signoz.io/docs/manifest.json` matches the committed copy are reused, not
+  downloaded. Diff the manifest and commit both files.
 - `make gen`: regenerate everything derived from the pinned SigNoz spec (`SIGNOZ_SPEC_REF`): the
   API client in `internal/apiclient/` from `skaff.yml`, the dashboard input schemas in
   `internal/handler/tools/schemas/`, and the `pkg/*/examples.generated.md` files behind the

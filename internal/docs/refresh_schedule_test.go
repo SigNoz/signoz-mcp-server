@@ -2,111 +2,78 @@ package docs
 
 import (
 	"context"
-	"log/slog"
-	"sync"
+	"net/http"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/require"
 )
 
-// recordingFetcher records every URL the scheduler fetches, in order. It serves
-// the sitemap unchanged, so an incremental tick stops at the sitemap hash and
-// only a forced full tick goes on to fetch pages.
-type recordingFetcher struct {
-	sitemap string
-	mu      sync.Mutex
-	urls    []string
-}
-
-func (f *recordingFetcher) Fetch(_ context.Context, rawURL string) PageFetch {
-	f.mu.Lock()
-	f.urls = append(f.urls, rawURL)
-	f.mu.Unlock()
-	return PageFetch{Status: FetchStatusOK, URL: rawURL, Body: f.sitemap, FetchedAt: time.Now()}
-}
-
-// fetches counts sitemap and page fetches. A sitemap fetch followed directly by
-// another sitemap fetch marks an incremental tick, because a forced tick fetches
-// its pages before the next sitemap.
-func (f *recordingFetcher) fetches() (sitemaps, pages int, incrementalTick bool) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	for i, rawURL := range f.urls {
-		if rawURL != DefaultSitemapURL {
-			pages++
-			continue
-		}
-		sitemaps++
-		if i+1 < len(f.urls) && f.urls[i+1] == DefaultSitemapURL {
-			incrementalTick = true
-		}
-	}
-	return sitemaps, pages, incrementalTick
-}
-
-func TestScheduledRefreshCanBeDisabledIndependently(t *testing.T) {
+func TestScheduledRefreshRevalidatesTheManifest(t *testing.T) {
 	verifyNoDocsLeaks(t)
-	snapshot := testSnapshot()
-	snapshot.SitemapHash = SitemapHash(snapshot.SitemapRaw)
+	site, _, refresher := newManifestSite(t)
+	require.NoError(t, refresher.Trigger(context.Background(), false))
+	site.take()
 
-	cases := []struct {
-		name       string
-		cfg        RefreshConfig
-		wantCalls  bool
-		wantForced bool
-	}{
-		{"both disabled", RefreshConfig{DisableScheduled: true, DisableFullRefresh: true}, false, false},
-		{"incremental disabled", RefreshConfig{DisableScheduled: true}, true, true},
-		{"full disabled", RefreshConfig{DisableFullRefresh: true}, true, false},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			reg := newTestRegistry(t, snapshot)
-			fetcher := &recordingFetcher{sitemap: snapshot.SitemapRaw}
-			cfg := tc.cfg
-			cfg.RefreshInterval = 5 * time.Millisecond
-			cfg.FullRefreshInterval = 10 * time.Millisecond
-			cfg.JitterWindow = -1
-			refresher := NewRefresher(slog.Default(), reg, nil, cfg)
-			refresher.fetcher = fetcher
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		refresher.cfg.RefreshInterval = time.Hour
+		refresher.cfg.JitterWindow = -1
 
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
-			// run is what Start launches; driving it directly shows when it exits.
-			done := make(chan struct{})
-			go func() {
-				defer close(done)
-				refresher.run(ctx)
-			}()
+		refresher.Start(ctx)
+		time.Sleep(2 * time.Hour)
+		synctest.Wait()
+		require.Equal(t, []string{"304 /docs/manifest.json", "304 /docs/manifest.json"}, site.take())
+	})
+}
 
-			if !tc.wantCalls {
-				select {
-				case <-done:
-				case <-time.After(time.Second):
-					t.Fatal("a fully disabled scheduler must return instead of arming timers")
+func TestDisabledScheduleMakesNoRequests(t *testing.T) {
+	verifyNoDocsLeaks(t)
+	site, _, refresher := newManifestSite(t)
+	refresher.cfg.DisableScheduled = true
+	refresher.cfg.RefreshInterval = time.Millisecond
+	refresher.cfg.JitterWindow = -1
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	refresher.run(ctx)
+	require.Empty(t, site.take())
+}
+
+func TestSitemapFallbackRevalidatesPagesEveryTick(t *testing.T) {
+	for _, status := range []int{http.StatusNotFound, http.StatusOK} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			verifyNoDocsLeaks(t)
+			duplicate := SitemapEntry{URL: manifestEntries[1].URL, Title: "Another Section"}
+			site, reg, refresher := newManifestSite(t, duplicate)
+			refresher.fetcher = newRewriteFetcher(newHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/docs/manifest.json" {
+					site.set(func() { site.requests = append(site.requests, "GET "+r.URL.Path) })
+					w.WriteHeader(status)
+					if status == http.StatusOK {
+						_, _ = w.Write([]byte("invalid manifest"))
+					}
+					return
 				}
-				sitemaps, pages, _ := fetcher.fetches()
-				require.Zero(t, sitemaps+pages, "disabled scheduler must never fetch")
-				return
-			}
-			// A few ticks of the enabled schedule also give a wrongly enabled one time to fire.
-			require.Eventually(t, func() bool {
-				sitemaps, pages, _ := fetcher.fetches()
-				if tc.wantForced {
-					return pages >= 2*len(snapshot.Pages)
-				}
-				return sitemaps >= 4
-			}, time.Second, time.Millisecond)
-			cancel()
-			<-done
+				site.ServeHTTP(w, r)
+			})))
 
-			_, pages, incrementalTick := fetcher.fetches()
-			if tc.wantForced {
-				require.False(t, incrementalTick, "incremental tick must not fire")
-			} else {
-				require.Zero(t, pages, "full refresh tick must not fire")
-			}
+			const path = "/docs/install/docker.md"
+			ctx := context.Background()
+			require.NoError(t, refresher.Trigger(ctx, false))
+			require.ElementsMatch(t, []string{"GET /docs/manifest.json", "200 /docs/sitemap.md", "304 " + path, "304 /docs/logs/overview.md"}, site.take())
+
+			site.set(func() {
+				site.pages[path] = "# Install SigNoz Using Docker\n\nUpdated while the sitemap stayed the same.\n"
+			})
+			require.NoError(t, refresher.Trigger(ctx, false))
+			require.ElementsMatch(t, []string{"GET /docs/manifest.json", "200 /docs/sitemap.md", "200 " + path, "304 /docs/logs/overview.md"}, site.take())
+			doc, code, err := reg.FetchDoc(ctx, "https://signoz.io"+path, "")
+			require.NoError(t, err)
+			require.Empty(t, code)
+			require.Contains(t, doc.Content, "Updated while the sitemap stayed the same.")
 		})
 	}
 }

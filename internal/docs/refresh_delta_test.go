@@ -23,9 +23,6 @@ func deltaFixture(t *testing.T, n int) ([]SitemapEntry, CorpusSnapshot, map[stri
 	require.Len(t, parsed, n)
 	bodies := bodiesForEntries(parsed)
 	initial := snapshotForEntries(parsed, bodies)
-	// The live sitemap never matches the baseline hash, so the refresh takes
-	// the full path rather than the hash no-op.
-	initial.SitemapHash = "stale"
 	fetches := map[string]PageFetch{
 		DefaultSitemapURL: {Status: FetchStatusOK, URL: DefaultSitemapURL, Body: sitemap, FetchedAt: time.Now()},
 	}

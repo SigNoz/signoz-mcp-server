@@ -45,13 +45,8 @@ type Config struct {
 	// SegmentKey when that is set, and does not depend on AnalyticsEnabled.
 	Feedback analytics.FeedbackConfig
 
-	DocsRefreshInterval     time.Duration
-	DocsFullRefreshInterval time.Duration
-	// DocsRefreshDisabled / DocsFullRefreshDisabled are set when the matching
-	// interval env var is "0" (or off/disabled/false), which turns that
-	// scheduled docs refresh off instead of falling back to the default cadence.
-	DocsRefreshDisabled     bool
-	DocsFullRefreshDisabled bool
+	DocsRefreshInterval time.Duration
+	DocsRefreshDisabled bool
 
 	// MaxRequestBytes caps the size of an inbound MCP HTTP request body.
 	MaxRequestBytes int
@@ -91,7 +86,7 @@ const (
 	defaultRefreshTTLMinutes     = 43200 // 30 days
 	defaultAuthCodeTTLSeconds    = 600
 	defaultDocsRefreshInterval   = 6 * time.Hour
-	defaultDocsFullRefreshPeriod = 24 * time.Hour
+	legacyDocsRefreshInterval    = 24 * time.Hour
 	// defaultMaxRequestBytes bounds inbound MCP request bodies; 4 MiB is far
 	// above any legitimate tool-call payload (incl. dashboard imports).
 	defaultMaxRequestBytes = 4 << 20 // 4 MiB
@@ -107,12 +102,12 @@ func LoadConfig() (*Config, error) {
 	refreshTTLMinutes := getEnvInt(OAuthRefreshTTLMinutes, defaultRefreshTTLMinutes)
 	authCodeTTLSeconds := getEnvInt(OAuthAuthCodeTTLSeconds, defaultAuthCodeTTLSeconds)
 	docsRefreshInterval, docsRefreshDisabled := getEnvRefreshInterval(DocsRefreshIntervalEnv, defaultDocsRefreshInterval)
-	docsFullRefreshInterval, docsFullRefreshDisabled := getEnvRefreshInterval(DocsFullRefreshIntervalEnv, defaultDocsFullRefreshPeriod)
-	if !docsRefreshDisabled && !docsFullRefreshDisabled && docsFullRefreshInterval < docsRefreshInterval {
-		log.Printf("WARN: %s (%s) is shorter than %s (%s); falling back to defaults",
-			DocsFullRefreshIntervalEnv, docsFullRefreshInterval, DocsRefreshIntervalEnv, docsRefreshInterval)
-		docsRefreshInterval = defaultDocsRefreshInterval
-		docsFullRefreshInterval = defaultDocsFullRefreshPeriod
+	if strings.TrimSpace(os.Getenv(DocsFullRefreshIntervalEnv)) != "" {
+		log.Printf("WARN: %s is deprecated and only applies when %s is off", DocsFullRefreshIntervalEnv, DocsRefreshIntervalEnv)
+	}
+	if docsRefreshDisabled {
+		// Preserve the cadence of deployments that ran only the old full-refresh schedule.
+		docsRefreshInterval, docsRefreshDisabled = getEnvRefreshInterval(DocsFullRefreshIntervalEnv, legacyDocsRefreshInterval)
 	}
 
 	// Parse custom headers from SIGNOZ_CUSTOM_HEADERS env var (format: "Key1:Value1,Key2:Value2")
@@ -136,30 +131,28 @@ func LoadConfig() (*Config, error) {
 	}
 
 	return &Config{
-		URL:                     url,
-		APIKey:                  getEnv(SignozApiKey, ""),
-		LogLevel:                getEnv(LogLevel, "info"),
-		TransportMode:           getEnv(TransportMode, "stdio"),
-		Host:                    getEnv(MCPHost, ""),
-		Port:                    getEnv(MCPPort, "8000"),
-		OAuthEnabled:            getEnvBool(OAuthEnabledEnv, false),
-		OAuthTokenSecret:        getEnv(OAuthTokenSecretEnv, ""),
-		OAuthIssuerURL:          strings.TrimSuffix(getEnv(OAuthIssuerURLEnv, ""), "/"),
-		AccessTokenTTL:          time.Duration(accessTTLMinutes) * time.Minute,
-		RefreshTokenTTL:         time.Duration(refreshTTLMinutes) * time.Minute,
-		AuthCodeTTL:             time.Duration(authCodeTTLSeconds) * time.Second,
-		ClientCacheSize:         cacheSize,
-		ClientCacheTTL:          time.Duration(cacheTTLMinutes) * time.Minute,
-		CustomHeaders:           customHeaders,
-		InstanceURLAllowlist:    instanceURLAllowlist,
-		AnalyticsEnabled:        getEnvBool(AnalyticsEnabledEnv, false),
-		SegmentKey:              getEnv(SegmentKeyEnv, ""),
-		Feedback:                analytics.FeedbackConfigFromEnv(getEnv(SegmentKeyEnv, "")),
-		DocsRefreshInterval:     docsRefreshInterval,
-		DocsFullRefreshInterval: docsFullRefreshInterval,
-		DocsRefreshDisabled:     docsRefreshDisabled,
-		DocsFullRefreshDisabled: docsFullRefreshDisabled,
-		MaxRequestBytes:         getEnvInt(MaxRequestBytesEnv, defaultMaxRequestBytes),
+		URL:                  url,
+		APIKey:               getEnv(SignozApiKey, ""),
+		LogLevel:             getEnv(LogLevel, "info"),
+		TransportMode:        getEnv(TransportMode, "stdio"),
+		Host:                 getEnv(MCPHost, ""),
+		Port:                 getEnv(MCPPort, "8000"),
+		OAuthEnabled:         getEnvBool(OAuthEnabledEnv, false),
+		OAuthTokenSecret:     getEnv(OAuthTokenSecretEnv, ""),
+		OAuthIssuerURL:       strings.TrimSuffix(getEnv(OAuthIssuerURLEnv, ""), "/"),
+		AccessTokenTTL:       time.Duration(accessTTLMinutes) * time.Minute,
+		RefreshTokenTTL:      time.Duration(refreshTTLMinutes) * time.Minute,
+		AuthCodeTTL:          time.Duration(authCodeTTLSeconds) * time.Second,
+		ClientCacheSize:      cacheSize,
+		ClientCacheTTL:       time.Duration(cacheTTLMinutes) * time.Minute,
+		CustomHeaders:        customHeaders,
+		InstanceURLAllowlist: instanceURLAllowlist,
+		AnalyticsEnabled:     getEnvBool(AnalyticsEnabledEnv, false),
+		SegmentKey:           getEnv(SegmentKeyEnv, ""),
+		Feedback:             analytics.FeedbackConfigFromEnv(getEnv(SegmentKeyEnv, "")),
+		DocsRefreshInterval:  docsRefreshInterval,
+		DocsRefreshDisabled:  docsRefreshDisabled,
+		MaxRequestBytes:      getEnvInt(MaxRequestBytesEnv, defaultMaxRequestBytes),
 	}, nil
 }
 

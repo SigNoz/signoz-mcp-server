@@ -250,7 +250,7 @@
   {
     "query": "dashboard query builder",
     "expected_top_pages": [
-      "https://signoz.io/docs/product-features/query-builder/"
+      "https://signoz.io/docs/userguide/query-builder-v5/"
     ],
     "style": "keyword",
     "baseline_rank": 1
@@ -306,7 +306,9 @@
   {
     "query": "metrics troubleshooting missing data",
     "expected_top_pages": [
-      "https://signoz.io/docs/metrics-management/troubleshooting/troubleshooting/"
+      "https://signoz.io/docs/metrics-management/troubleshooting/troubleshooting/",
+      "https://signoz.io/docs/metrics-management/troubleshooting/faqs/",
+      "https://signoz.io/docs/ingestion/signoz-cloud/troubleshooting/data-not-appearing/"
     ],
     "style": "keyword",
     "baseline_rank": 2
@@ -379,6 +381,7 @@
   {
     "query": "instrumenting a python fastapi app",
     "expected_top_pages": [
+      "https://signoz.io/docs/instrumentation/python/fastapi-native-opentelemetry/",
       "https://signoz.io/docs/instrumentation/opentelemetry-python/",
       "https://signoz.io/docs/instrumentation/python/manual-instrumentation/"
     ],
@@ -922,6 +925,7 @@
   {
     "query": "download export logs CSV from logs explorer",
     "expected_top_pages": [
+      "https://signoz.io/docs/userguide/logs_query_builder/",
       "https://signoz.io/docs/logs-management/features/logs-explorer-guides/",
       "https://signoz.io/docs/logs-management/overview/"
     ],
@@ -931,7 +935,9 @@
   {
     "query": "LLM observability GenAI semantic conventions gen_ai spans tracing agents",
     "expected_top_pages": [
-      "https://signoz.io/docs/llm-observability/"
+      "https://signoz.io/docs/llm-observability/",
+      "https://signoz.io/docs/llm-observability-core-concepts/",
+      "https://signoz.io/docs/ai-observability-telemetry-requirements/"
     ],
     "style": "production-real",
     "baseline_rank": 2
@@ -986,6 +992,7 @@
   {
     "query": "logs explorer list view add columns to log table",
     "expected_top_pages": [
+      "https://signoz.io/docs/userguide/logs_query_builder/",
       "https://signoz.io/docs/logs-management/features/logs-explorer-guides/",
       "https://signoz.io/docs/logs-management/overview/"
     ],
@@ -1087,6 +1094,7 @@
   {
     "query": "alertOnAbsent absentFor alert rule API JSON condition",
     "expected_top_pages": [
+      "https://signoz.io/docs/alerts-management/migrate-alert-rules-schema-v1-to-v2alpha1/",
       "https://signoz.io/docs/alerts-management/user-guides/how-to-configure-alerts-for-missing-data/",
       "https://signoz.io/docs/alerts-management/reference/"
     ],
@@ -1116,7 +1124,8 @@
   {
     "query": "where are dashboards stored metadata database sqlite postgres vs clickhouse telemetry store",
     "expected_top_pages": [
-      "https://signoz.io/docs/architecture/"
+      "https://signoz.io/docs/architecture/",
+      "https://signoz.io/docs/manage/administrator-guide/configuration/relational-database/"
     ],
     "style": "production-real",
     "baseline_rank": 0

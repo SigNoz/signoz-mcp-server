@@ -1,6 +1,6 @@
 name: dashboard-templates-refresh
 
-# Dispatch-only, mirroring docs-index-refresh.yml. The maintainer runs this
+# Dispatch-only. The maintainer runs this
 # manually (typically right before pre-release.yaml) so the bundled PR carries
 # a freshly-rebuilt dashboard template catalog. Also usable ad-hoc whenever
 # the upstream SigNoz/dashboards repo has drifted enough that the committed

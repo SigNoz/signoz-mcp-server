@@ -189,7 +189,7 @@ jobs:
               head -n $((FIRST_VERSION_LINE - 1)) CHANGELOG.md
               echo ""
               echo -e "$ENTRY"
-              tail -n +${FIRST_VERSION_LINE} CHANGELOG.md
+              tail -n "+${FIRST_VERSION_LINE}" CHANGELOG.md
             } > CHANGELOG.tmp && mv CHANGELOG.tmp CHANGELOG.md
           else
             {
@@ -202,6 +202,16 @@ jobs:
           if ! grep -q "^\[${VERSION}\]:" CHANGELOG.md; then
             echo "$LINK" >> CHANGELOG.md
           fi
+
+      - name: set up Go for the docs corpus
+        uses: actions/setup-go@v6
+        continue-on-error: true
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: refresh the embedded docs corpus
+        run: bash .github/scripts/refresh-release-docs.sh
 
       - name: check for changes
         id: changes
@@ -227,6 +237,7 @@ jobs:
             - `manifest.json` version → `${{ steps.version.outputs.version }}`
             - `server.json` version → `${{ steps.version.outputs.version }}`
             - `CHANGELOG.md` — adds `[${{ steps.version.outputs.version }}]` entry generated from commit history
+            - Embedded docs corpus and manifest when the refreshed snapshot passes verification
 
             Merge this PR **before** creating the GitHub release so the tag lands on the bumped commit and artifacts carry the correct version.
           labels: automated

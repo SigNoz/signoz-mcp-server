@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -50,11 +51,11 @@ func TestGoldenSet(t *testing.T) {
 		for _, url := range q.ExpectedTopPages {
 			canonical, ok := CanonicalDocURL(url)
 			require.True(t, ok, "bad expected URL for %q: %s", q.Query, url)
-			expected[canonical] = true
+			expected[goldenPageURL(canonical)] = true
 		}
 		rank := 0
 		for i, hit := range res.Results {
-			if expected[hit.URL] {
+			if expected[goldenPageURL(hit.URL)] {
 				rank = i + 1
 				break
 			}
@@ -168,9 +169,14 @@ func TestEmbeddedCorpusSectionFilters(t *testing.T) {
 			}
 			var urls []string
 			for _, hit := range res.Results {
-				urls = append(urls, hit.URL)
+				urls = append(urls, goldenPageURL(hit.URL))
 			}
-			require.Contains(t, urls, tt.wantURL)
+			require.Contains(t, urls, goldenPageURL(tt.wantURL))
 		})
 	}
+}
+
+// The corpus can contain either the HTML or Markdown URL for the same docs page.
+func goldenPageURL(url string) string {
+	return strings.TrimSuffix(strings.TrimSuffix(url, "/"), ".md")
 }

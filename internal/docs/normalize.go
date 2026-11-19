@@ -44,6 +44,16 @@ func IsDocURL(raw string) bool {
 	return ok
 }
 
+func alternateDocURL(canonical string) string {
+	if base, ok := strings.CutSuffix(canonical, ".md"); ok {
+		return base + "/"
+	}
+	if base, ok := strings.CutSuffix(canonical, "/"); ok {
+		return base + ".md"
+	}
+	return ""
+}
+
 func SlugifyHeading(text string) string {
 	text = strings.TrimSpace(strings.TrimLeft(text, "#"))
 	text = strings.ToLower(text)

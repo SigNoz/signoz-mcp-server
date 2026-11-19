@@ -521,6 +521,13 @@ func (r *IndexRegistry) FetchDoc(ctx context.Context, rawURL, heading string) (F
 	if err != nil {
 		return FetchResult{}, "", err
 	}
+	if alias := alternateDocURL(canonical); len(res.Hits) == 0 && alias != "" {
+		term.Term = alias
+		res, err = entry.idx.SearchInContext(ctx, req)
+		if err != nil {
+			return FetchResult{}, "", err
+		}
+	}
 	if len(res.Hits) == 0 {
 		return FetchResult{}, CodeDocNotFound, nil
 	}

@@ -65,42 +65,52 @@ func main() {
 	if err != nil {
 		log.Fatalf("parse sitemap: %v", err)
 	}
+	current := currentPagesFromManifest(ctx, fetcher, sitemap.ETag)
 
-	type fetchOutcome struct {
-		entry  docs.SitemapEntry
-		result docs.PageFetch
-	}
-	outcomes := make([]fetchOutcome, len(entries))
+	outcomes := make(map[string]*docs.PageFetch, len(entries))
 	var wg sync.WaitGroup
-	wg.Add(len(entries))
+	reused := 0
 	start := time.Now()
-	for i, entry := range entries {
-		go func(i int, entry docs.SitemapEntry) {
-			defer wg.Done()
-			outcomes[i] = fetchOutcome{entry: entry, result: fetcher.Fetch(ctx, entry.URL)}
-		}(i, entry)
+	for _, entry := range entries {
+		url := entry.URL
+		if _, seen := outcomes[url]; seen {
+			continue
+		}
+		result := new(docs.PageFetch)
+		outcomes[url] = result
+		if page, ok := current[url]; ok {
+			*result = docs.PageFetch{
+				Status: docs.FetchStatusOK, URL: url, Body: page.BodyMarkdown, ETag: page.SourceETag, FetchedAt: page.FetchedAt,
+			}
+			reused++
+			continue
+		}
+		wg.Go(func() { *result = fetcher.Fetch(ctx, url) })
 	}
 	wg.Wait()
-	log.Printf("fetched %d pages in %s", len(entries), time.Since(start).Round(time.Millisecond))
+	log.Printf("fetched %d pages and reused %d unchanged ones in %s",
+		len(outcomes)-reused, reused, time.Since(start).Round(time.Millisecond))
 
-	pages := make([]docs.PageRecord, 0, len(entries))
-	failures := 0
-	notFound := 0
-	for _, o := range outcomes {
-		if o.result.Status == docs.FetchStatusNotFound {
-			log.Printf("WARN: skipping 404 docs page %s", o.entry.URL)
+	failures, notFound := 0, 0
+	for url, result := range outcomes {
+		switch result.Status {
+		case docs.FetchStatusOK:
+		case docs.FetchStatusNotFound:
+			log.Printf("WARN: skipping 404 docs page %s", url)
 			notFound++
-			continue
-		}
-		if o.result.Status != docs.FetchStatusOK {
-			log.Printf("WARN: failed to fetch docs page %s: %v", o.entry.URL, o.result.Err)
+		default:
+			log.Printf("WARN: failed to fetch docs page %s: %v", url, result.Err)
 			failures++
-			continue
 		}
-		pages = append(pages, pageFromFetch(o.entry, o.result))
 	}
-	if corpusFailureThresholdExceeded(len(entries), failures, notFound) {
-		log.Fatalf("too many docs fetch failures: failures=%d 404s=%d total=%d", failures, notFound, len(entries))
+	if corpusFailureThresholdExceeded(len(outcomes), failures, notFound) {
+		log.Fatalf("too many docs fetch failures: failures=%d 404s=%d total=%d", failures, notFound, len(outcomes))
+	}
+	pages := make([]docs.PageRecord, 0, len(entries))
+	for _, entry := range entries {
+		if result := outcomes[entry.URL]; result.Status == docs.FetchStatusOK {
+			pages = append(pages, pageFromFetch(entry, *result))
+		}
 	}
 	pages = docs.NormalizePages(pages)
 	snapshot := docs.CorpusSnapshot{
@@ -108,12 +118,50 @@ func main() {
 		BuiltAt:       time.Now().UTC(),
 		SitemapRaw:    sitemap.Body,
 		SitemapHash:   docs.SitemapHash(sitemap.Body),
+		SitemapETag:   sitemap.ETag,
 		Pages:         pages,
 	}
 	if err := writeCorpusAndManifest(corpusPath, manifestPath, snapshot); err != nil {
 		log.Fatal(err)
 	}
 	fmt.Printf("wrote %s and %s (%d pages)\n", corpusPath, manifestPath, len(pages))
+}
+
+func currentPagesFromManifest(ctx context.Context, fetcher *docs.Fetcher, sitemapETag string) map[string]docs.PageRecord {
+	committed, err := docs.LoadEmbeddedCorpus()
+	if err != nil {
+		log.Printf("WARN: committed corpus unavailable (%v); downloading every page", err)
+		return nil
+	}
+	manifest := fetcher.FetchManifest(ctx, docs.DefaultManifestURL, "")
+	if manifest.Status != docs.FetchStatusOK {
+		log.Printf("WARN: docs manifest unavailable (%s %v); downloading every page", manifest.Status, manifest.Err)
+		return nil
+	}
+	expectedSitemapETag, published, err := docs.ParseDocsManifest(manifest.Body)
+	if err != nil {
+		log.Printf("WARN: docs manifest invalid (%v); downloading every page", err)
+		return nil
+	}
+	if expectedSitemapETag != sitemapETag {
+		log.Printf("WARN: sitemap ETag does not match the docs manifest; downloading every page")
+		return nil
+	}
+	return currentPages(committed.Pages, published)
+}
+
+func currentPages(pages []docs.PageRecord, published map[string]string) map[string]docs.PageRecord {
+	current := make(map[string]docs.PageRecord)
+	for _, page := range pages {
+		canonical, ok := docs.CanonicalDocURL(page.URL)
+		if !ok || page.SourceETag == "" {
+			continue
+		}
+		if etag, listed := published[canonical]; listed && etag == page.SourceETag {
+			current[canonical] = page
+		}
+	}
+	return current
 }
 
 func corpusFailureThresholdExceeded(total, failures, notFound int) bool {

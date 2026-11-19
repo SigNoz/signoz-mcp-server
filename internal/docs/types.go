@@ -5,8 +5,9 @@ import "time"
 const CorpusSchemaVersion = 2
 
 const (
-	DefaultSitemapURL = "https://signoz.io/docs/sitemap.md"
-	DocsSitemapURI    = "signoz://docs/sitemap"
+	DefaultSitemapURL  = "https://signoz.io/docs/sitemap.md"
+	DefaultManifestURL = "https://signoz.io/docs/manifest.json"
+	DocsSitemapURI     = "signoz://docs/sitemap"
 )
 
 type CorpusSnapshot struct {
@@ -15,6 +16,8 @@ type CorpusSnapshot struct {
 	SitemapRaw    string       `json:"sitemap_raw"`
 	SitemapHash   string       `json:"sitemap_hash"`
 	Pages         []PageRecord `json:"pages"`
+	ManifestETag  string       `json:"manifest_etag,omitempty"`
+	SitemapETag   string       `json:"sitemap_etag,omitempty"`
 }
 
 type PageRecord struct {
@@ -28,6 +31,17 @@ type PageRecord struct {
 	BodyMarkdown      string            `json:"body_markdown"`
 	FetchedAt         time.Time         `json:"fetched_at"`
 	SourceETag        string            `json:"source_etag,omitempty"`
+}
+
+type DocsETagIndex struct {
+	Version int                  `json:"version"`
+	Sitemap DocsETagIndexEntry   `json:"sitemap"`
+	Pages   []DocsETagIndexEntry `json:"pages"`
+}
+
+type DocsETagIndexEntry struct {
+	URL  string `json:"url"`
+	ETag string `json:"etag"`
 }
 
 type SitemapEntry struct {

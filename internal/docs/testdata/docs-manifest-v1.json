@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "sitemap": {
+    "url": "https://signoz.io/docs/sitemap.md",
+    "etag": "W/\"6437c44b6df8131291b371c37cc9a99f75589669\""
+  },
+  "pages": [
+    {
+      "url": "https://signoz.io/docs/install/docker.md",
+      "etag": "W/\"baa912179162965e707d10242837e8677ae17743\""
+    }
+  ]
+}

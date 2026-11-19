@@ -35,47 +35,32 @@ func TestGetEnvRefreshInterval(t *testing.T) {
 	}
 }
 
-func TestLoadConfigDocsRefreshOrderingFallback(t *testing.T) {
+func TestLoadConfigDocsRefreshCompatibility(t *testing.T) {
 	tests := []struct {
-		name                string
-		refresh, full       string
-		wantRefreshDisabled bool
-		wantRefresh         time.Duration // zero: not asserted
-		wantFull            time.Duration
+		name, refresh, legacy string
+		interval              time.Duration
+		disabled              bool
 	}{
-		{
-			name:        "full shorter than incremental falls back to the defaults",
-			refresh:     "10m",
-			full:        "5m",
-			wantRefresh: defaultDocsRefreshInterval,
-			wantFull:    defaultDocsFullRefreshPeriod,
-		},
-		{
-			name:                "a disabled incremental schedule does not trip the fallback",
-			refresh:             "0",
-			full:                "12h",
-			wantRefreshDisabled: true,
-			wantFull:            12 * time.Hour,
-		},
+		{name: "defaults to one six-hour schedule", interval: 6 * time.Hour},
+		{name: "primary cadence wins", refresh: "10m", legacy: "5m", interval: 10 * time.Minute},
+		{name: "legacy-only cadence keeps refreshing", refresh: "0", legacy: "12h", interval: 12 * time.Hour},
+		{name: "primary off preserves the legacy schedule default", refresh: "off", interval: 24 * time.Hour},
+		{name: "legacy off keeps the primary schedule", legacy: "off", interval: 6 * time.Hour},
+		{name: "both off disables the scheduler", refresh: "off", legacy: "off", disabled: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Setenv("SIGNOZ_URL", "https://example.invalid")
-			t.Setenv("SIGNOZ_API_KEY", "test")
 			t.Setenv(DocsRefreshIntervalEnv, tt.refresh)
-			t.Setenv(DocsFullRefreshIntervalEnv, tt.full)
+			t.Setenv(DocsFullRefreshIntervalEnv, tt.legacy)
 			cfg, err := LoadConfig()
 			if err != nil {
 				t.Fatal(err)
 			}
-			if cfg.DocsRefreshDisabled != tt.wantRefreshDisabled || cfg.DocsFullRefreshDisabled {
-				t.Fatalf("disabled flags = (%v, %v), want (%v, false)", cfg.DocsRefreshDisabled, cfg.DocsFullRefreshDisabled, tt.wantRefreshDisabled)
+			if cfg.DocsRefreshDisabled != tt.disabled {
+				t.Fatalf("schedule disabled = %t, want %t", cfg.DocsRefreshDisabled, tt.disabled)
 			}
-			if tt.wantRefresh != 0 && cfg.DocsRefreshInterval != tt.wantRefresh {
-				t.Fatalf("refresh interval = %s, want %s", cfg.DocsRefreshInterval, tt.wantRefresh)
-			}
-			if cfg.DocsFullRefreshInterval != tt.wantFull {
-				t.Fatalf("full refresh interval = %s, want %s", cfg.DocsFullRefreshInterval, tt.wantFull)
+			if !tt.disabled && cfg.DocsRefreshInterval != tt.interval {
+				t.Fatalf("refresh interval = %s, want %s", cfg.DocsRefreshInterval, tt.interval)
 			}
 		})
 	}
