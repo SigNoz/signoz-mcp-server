@@ -162,6 +162,14 @@
       "description": "Search individual log records with field filters or explicit search() across log contexts; searchText matches only body text"
     },
     {
+      "name": "signoz_list_log_pipelines",
+      "description": "List the log ingestion and processing pipelines in the latest configuration with ids, names, enabled state, and processor counts"
+    },
+    {
+      "name": "signoz_get_log_pipeline",
+      "description": "Get one log pipeline's complete processors, filter, and enabled state by id; use signoz_list_log_pipelines to discover ids"
+    },
+    {
       "name": "signoz_aggregate_traces",
       "description": "Return custom aggregate span or per-AI-trace statistics, groups, or time series; use signoz_get_service_top_operations for one service's built-in p99-ranked operation table"
     },
