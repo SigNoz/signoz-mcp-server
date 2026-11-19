@@ -93,6 +93,18 @@ func TestToolHandlers_RejectInvalidArgumentsBeforeCallingSigNoz(t *testing.T) {
 		{tool: "signoz_query_metrics", arguments: `{"metricName":"x","formulaQueries":[{"name":"B","metricName":"y","groupBy":"[\"host.name\""}]}`, wantText: `formulaQueries[0]`},
 		{tool: "signoz_search_logs", arguments: `{"filter":"{\"expression\":\"service.name = 'api'\"}"}`, wantText: `not {"expression": ...}`},
 		{tool: "signoz_list_alert_rules", arguments: `{"states":["firing",3]}`, wantText: `"states" item 3: each item must be a state string`},
+		// Every time-windowed tool resolves its window before calling SigNoz.
+		{tool: "signoz_search_logs", arguments: `{"start":"2026-11-19T11:00:00Z","end":"2026-11-19T10:00:00Z"}`, wantText: `"start" 2026-11-19T11:00:00Z is after "end" 2026-11-19T10:00:00Z`},
+		{tool: "signoz_aggregate_logs", arguments: `{"aggregations":"count()","start":"0","end":"2592000000"}`, wantText: "looks like a duration"},
+		{tool: "signoz_search_traces", arguments: `{"start":"2026-10-27T00:00:00"}`, wantText: "add Z for UTC or an offset"},
+		{tool: "signoz_aggregate_traces", arguments: `{"aggregations":"count()","timeRange":"6h-4h"}`, wantText: `start "now-6h" and end "now-4h"`},
+		{tool: "signoz_query_metrics", arguments: `{"metricName":"m","metricType":"gauge","start":"now-1h","end":"2099-01-01T00:00:00Z"}`, wantText: "Check the year"},
+		{tool: "signoz_list_metrics", arguments: `{"start":"-24h"}`, wantText: `write a relative time as "now-24h"`},
+		{tool: "signoz_get_top_metrics", arguments: `{"timeRange":{"from":"now-24h","to":"now"}}`, wantText: `give a duration string such as "24h"`},
+		{tool: "signoz_check_metric_cardinality", arguments: `{"metricName":"m","start":"3600"}`, wantText: "looks like a duration"},
+		{tool: "signoz_list_services", arguments: `{"start":"now","end":"now"}`, wantText: "so it is empty"},
+		{tool: "signoz_get_service_top_operations", arguments: `{"service":"frontend","timeRange":"24hours"}`, wantText: `invalid "timeRange" "24hours"`},
+		{tool: "signoz_get_alert_history", arguments: `{"id":"0196634d-5d66-75c4-b778-e317f49dab7a","start":"yesterday"}`, wantText: `invalid "start" "yesterday"`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.tool+" "+tt.arguments, func(t *testing.T) {

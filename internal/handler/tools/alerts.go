@@ -17,7 +17,6 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/pkg/alert"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/SigNoz/signoz-mcp-server/pkg/paginate"
-	"github.com/SigNoz/signoz-mcp-server/pkg/timeutil"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 )
@@ -82,8 +81,8 @@ func (h *Handler) RegisterAlertsHandlers(s *mcp.Server) {
 		mcp.WithDescription("Use this when the user wants alert firing history or the state-transition timeline of one configured rule; use signoz_list_alerts for current instances and signoz_get_alert for the rule definition. It requires a rule ID from signoz_list_alert_rules, defaults to the last 6 hours, and supports state/filter narrowing. For the next page, pass data.nextCursor as cursor and repeat the original filters, time range, and order."),
 		mcp.WithString("id", mcp.Description("Alert rule ID. Required; obtain it from signoz_list_alert_rules.")),
 		mcp.WithString("timeRange", mcp.DefaultString("6h"), mcp.Description(timeRangeParamDescription("Defaults to last 6 hours if not provided."))),
-		mcp.WithString("start", intOrStringType(), mcp.Description("Start timestamp in unix milliseconds (optional, defaults to 6 hours ago).")),
-		mcp.WithString("end", intOrStringType(), mcp.Description("End timestamp in unix milliseconds (optional, defaults to now).")),
+		mcp.WithString("start", intOrStringType(), mcp.Description(startParamDescription)),
+		mcp.WithString("end", intOrStringType(), mcp.Description(endParamDescription)),
 		mcp.WithString("state", mcp.Description("Filter by alert state: inactive, pending, recovering, firing, nodata, or disabled. Omit to return all transitions.")),
 		mcp.WithString("filter", mcp.Description("Filter timeline labels using SigNoz query-builder syntax. Combine conditions with AND, OR, and parentheses; quote string values with single quotes and use operators such as =, !=, IN, and NOT IN. Example: \"severity = 'critical' AND (team = 'payments' OR service.name = 'checkout')\". To discover label keys, first call without a filter and inspect data.items[].labels[].key.name. If a filter returns no matches, retry unfiltered and verify the key spelling; malformed expressions return validation errors.")),
 		mcp.WithString("cursor", mcp.Description("Opaque continuation cursor. Repeat the original time range, state, filter, and order when fetching the next page. Omit cursor for the first page.")),
@@ -364,25 +363,10 @@ func (h *Handler) handleGetAlertHistory(ctx context.Context, req mcp.CallToolReq
 		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "offset" is no longer supported; use data.nextCursor as "cursor" for subsequent pages.`), nil
 	}
 
-	// Reject a present-but-malformed start/end loudly; otherwise
-	// GetTimestampsWithDefaults silently falls back to the default window.
-	if err := timeutil.ValidateExplicitTimestamps(args); err != nil {
-		h.logger.WarnContext(ctx, "Invalid explicit timestamp", logpkg.ErrAttr(err))
-		return errorWithCode(CodeValidationFailed, "Parameter validation failed: "+err.Error()), nil
-	}
-
-	startStr, endStr := timeutil.GetTimestampsWithDefaults(args, "ms")
-	var start, end int64
-	if _, err := fmt.Sscanf(startStr, "%d", &start); err != nil {
-		h.logger.WarnContext(ctx, "Invalid start timestamp format", slog.String("start", startStr), logpkg.ErrAttr(err))
-		return errorWithCode(CodeValidationFailed, fmt.Sprintf(`Invalid "start" timestamp: "%s". Expected milliseconds since epoch (e.g., "1697385600000") or use "timeRange" parameter instead (e.g., "24h")`, startStr)), nil
-	}
-	if _, err := fmt.Sscanf(endStr, "%d", &end); err != nil {
-		h.logger.WarnContext(ctx, "Invalid end timestamp format", slog.String("end", endStr), logpkg.ErrAttr(err))
-		return errorWithCode(CodeValidationFailed, fmt.Sprintf(`Invalid "end" timestamp: "%s". Expected milliseconds since epoch (e.g., "1697472000000") or use "timeRange" parameter instead (e.g., "24h")`, endStr)), nil
-	}
-	if start >= end {
-		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "start" must be earlier than "end".`), nil
+	start, end, err := resolveTimestamps(args, "6h")
+	if err != nil {
+		h.logger.WarnContext(ctx, "Invalid time window", logpkg.ErrAttr(err))
+		return errorWithCode(CodeValidationFailed, err.Error()), nil
 	}
 
 	cursor := strings.TrimSpace(stringArg(args, "cursor"))

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 	"github.com/SigNoz/signoz-mcp-server/pkg/paginate"
@@ -229,33 +230,14 @@ func parseBoolArg(args map[string]any, key string) (bool, bool, error) {
 	}
 }
 
+// resolveTimestamps resolves a tool's start, end and timeRange arguments into a
+// window in Unix milliseconds, reading the clock once per call.
 func resolveTimestamps(args map[string]any, defaultRange string) (int64, int64, error) {
-	// Reject a present-but-malformed start/end LOUDLY before falling through to
-	// the default window. GetTimestampsWithDefaults silently defaults on a bad
-	// value, which would hand back the wrong time range with no error.
-	if err := timeutil.ValidateExplicitTimestamps(args); err != nil {
-		return 0, 0, err
+	w, err := timeutil.ResolveWindow(args, defaultRange, time.Now())
+	if err != nil {
+		return 0, 0, fmt.Errorf("%s %w", validationErrorPrefix, err)
 	}
-	// Inject the tool's advertised default window when there is no usable explicit
-	// time input — no usable timeRange string AND no usable explicit start. A
-	// present-but-empty start (which timeutil treats as absent) must NOT block the
-	// default, or GetTimestampsWithDefaults silently falls back to its generic 6h
-	// window. A present-but-non-string timeRange is already rejected loudly by
-	// ValidateExplicitTimestamps above; an empty-string timeRange means "use default".
-	if tr, ok := args["timeRange"].(string); !ok || tr == "" {
-		if !timeutil.HasUsableTimestamp(args, "start") {
-			args["timeRange"] = defaultRange
-		}
-	}
-	start, end := timeutil.GetTimestampsWithDefaults(args, "ms")
-	var startTime, endTime int64
-	if err := json.Unmarshal([]byte(start), &startTime); err != nil {
-		return 0, 0, fmt.Errorf("invalid start timestamp: use timeRange instead (e.g., \"1h\", \"24h\")")
-	}
-	if err := json.Unmarshal([]byte(end), &endTime); err != nil {
-		return 0, 0, fmt.Errorf("invalid end timestamp: use timeRange instead (e.g., \"1h\", \"24h\")")
-	}
-	return startTime, endTime, nil
+	return w.StartMs(), w.EndMs(), nil
 }
 
 // parseStepInterval parses an optional stepInterval (seconds) argument for the

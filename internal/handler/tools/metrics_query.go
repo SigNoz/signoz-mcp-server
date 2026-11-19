@@ -95,7 +95,7 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 	}
 
 	// Resolve timestamps
-	startTime, endTime, err := resolveTimestamps(args, mqr.TimeRange)
+	startTime, endTime, err := resolveTimestamps(args, "1h")
 	if err != nil {
 		return errorWithCode(CodeValidationFailed, err.Error()), nil
 	}

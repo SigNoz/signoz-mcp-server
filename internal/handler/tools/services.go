@@ -6,6 +6,8 @@ import (
 	"errors"
 	"log/slog"
 	"sort"
+	"strconv"
+	"time"
 
 	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
@@ -24,8 +26,8 @@ func (h *Handler) RegisterServiceHandlers(s *mcp.Server) {
 		mcp.WithString("searchContext", mcp.Description(searchContextParamDescription)),
 		mcp.WithDescription("Use this when the user wants APM services with trace activity and their call or latency summaries in a time window. It returns traced-service records sorted by name and paginated; absence means no trace activity in that window, not that a matching service.name never appears in logs. For log values use signoz_get_field_values with signal=\"logs\" and name=\"service.name\"; for one service's operations use signoz_get_service_top_operations. Follow pagination.nextOffset until hasMore=false before concluding a traced service is absent."),
 		mcp.WithString("timeRange", mcp.DefaultString("6h"), mcp.Description(timeRangeParamDescription("Defaults to last 6 hours if not provided."))),
-		mcp.WithString("start", intOrStringType(), mcp.Description("Start time in unix milliseconds (optional, defaults to 6 hours ago).")),
-		mcp.WithString("end", intOrStringType(), mcp.Description("End time in unix milliseconds (optional, defaults to now).")),
+		mcp.WithString("start", intOrStringType(), mcp.Description(startParamDescription)),
+		mcp.WithString("end", intOrStringType(), mcp.Description(endParamDescription)),
 		mcp.WithString("limit", mcp.DefaultString("50"), intOrStringType(), mcp.Description("Maximum services per page. Default: 50; max: 1000 (higher values are clamped).")),
 		mcp.WithString("offset", mcp.DefaultString("0"), intOrStringType(), mcp.Description("Number of services to skip. Default: 0; use pagination.nextOffset for the next page.")),
 	)
@@ -38,8 +40,8 @@ func (h *Handler) RegisterServiceHandlers(s *mcp.Server) {
 		mcp.WithDescription("Use this when the user wants the built-in operation table for one traced service in a time window. It ranks operation names by p99 latency and returns p50, p95, p99, call count, and error count. Use signoz_list_services to discover active traced service names. For custom aggregation, grouping, time series, cross-service comparison, or arbitrary trace filters, use signoz_aggregate_traces instead. The optional tags parameter is a JSON-encoded TagQueryParam array."),
 		mcp.WithString("service", mcp.Required(), mcp.Description("Exact traced service name, typically from signoz_list_services.")),
 		mcp.WithString("timeRange", mcp.DefaultString("6h"), mcp.Description(timeRangeParamDescription("Defaults to last 6 hours if not provided."))),
-		mcp.WithString("start", intOrStringType(), mcp.Description("Start time in unix milliseconds (optional, defaults to 6 hours ago).")),
-		mcp.WithString("end", intOrStringType(), mcp.Description("End time in unix milliseconds (optional, defaults to now).")),
+		mcp.WithString("start", intOrStringType(), mcp.Description(startParamDescription)),
+		mcp.WithString("end", intOrStringType(), mcp.Description(endParamDescription)),
 		mcp.WithString("tags", mcp.Description("JSON-encoded TagQueryParam array; omit for no tag filter. Example: [{\"key\":\"http.method\",\"tagType\":\"SpanAttribute\",\"operator\":\"In\",\"stringValues\":[\"GET\"]}]. Pass the array as a string, not as a JSON array value.")),
 	)
 
@@ -259,14 +261,10 @@ func filterServiceMapEdges(edges []any, service, direction string) ([]any, bool)
 func (h *Handler) handleListServices(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args := req.GetArguments()
 
-	// Reject a present-but-malformed start/end loudly; otherwise
-	// GetTimestampsWithDefaults silently falls back to the default window.
-	if err := timeutil.ValidateExplicitTimestamps(args); err != nil {
-		h.logger.WarnContext(ctx, "Invalid explicit timestamp", logpkg.ErrAttr(err))
-		return errorWithCode(CodeValidationFailed, "Parameter validation failed: "+err.Error()), nil
+	start, end, errResult := serviceWindowNanos(ctx, h, args)
+	if errResult != nil {
+		return errResult, nil
 	}
-
-	start, end := timeutil.GetTimestampsWithDefaults(args, timeutil.UnitNanos)
 	limit, offset, limitClamped := paginate.ParseParamsClamped(req.Params.Arguments)
 
 	h.logger.DebugContext(ctx, "Tool called: signoz_list_services", slog.String("start", start), slog.String("end", end), slog.Int("limit", limit), slog.Int("offset", offset))
@@ -336,14 +334,10 @@ func (h *Handler) handleGetServiceTopOperations(ctx context.Context, req mcp.Cal
 		return errResult, nil
 	}
 
-	// Reject a present-but-malformed start/end loudly; otherwise
-	// GetTimestampsWithDefaults silently falls back to the default window.
-	if err := timeutil.ValidateExplicitTimestamps(args); err != nil {
-		h.logger.WarnContext(ctx, "Invalid explicit timestamp", logpkg.ErrAttr(err))
-		return errorWithCode(CodeValidationFailed, "Parameter validation failed: "+err.Error()), nil
+	start, end, errResult := serviceWindowNanos(ctx, h, args)
+	if errResult != nil {
+		return errResult, nil
 	}
-
-	start, end := timeutil.GetTimestampsWithDefaults(args, timeutil.UnitNanos)
 
 	// tags is passed through to SigNoz verbatim as its tag filter array; an
 	// absent or non-string value means no tag filter.
@@ -393,4 +387,15 @@ func (h *Handler) handleGetServiceTopOperations(ctx context.Context, req mcp.Cal
 		return resultWithNotes(payload, limitOnlyCompletenessNote(len(operations), signozclient.TopOperationsLimit, true, "a shorter time range or tags")), nil
 	}
 	return mcp.NewToolResultText(string(payload)), nil
+}
+
+// serviceWindowNanos resolves the service tools' window. Their SigNoz routes
+// take Unix nanoseconds as strings.
+func serviceWindowNanos(ctx context.Context, h *Handler, args map[string]any) (start, end string, errResult *mcp.CallToolResult) {
+	w, err := timeutil.ResolveWindow(args, "6h", time.Now())
+	if err != nil {
+		h.logger.WarnContext(ctx, "Invalid time window", logpkg.ErrAttr(err))
+		return "", "", errorWithCode(CodeValidationFailed, validationErrorPrefix+" "+err.Error())
+	}
+	return strconv.FormatInt(w.StartNs(), 10), strconv.FormatInt(w.EndNs(), 10), nil
 }

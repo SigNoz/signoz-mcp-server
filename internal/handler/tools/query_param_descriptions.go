@@ -12,8 +12,8 @@ const (
 
 // Shared by the query tools: time window, buckets, result shape, and result shaping.
 const (
-	startParamDescription        = "Start time in unix milliseconds (optional). When both start and end are provided, they override timeRange."
-	endParamDescription          = "End time in unix milliseconds (optional). When both start and end are provided, they override timeRange."
+	startParamDescription        = `Window start: an RFC 3339 date-time with Z or an offset (YYYY-MM-DDThh:mm:ssZ), "now-<duration>" ("now-2h"), or Unix epoch milliseconds. When set, the window runs from start to end and timeRange is ignored.`
+	endParamDescription          = `Window end, in the same forms as start or "now". Defaults to now. Without start, the window is timeRange long and ends here.`
 	stepIntervalParamDescription = "Time bucket size in seconds for time_series mode (optional). " +
 		"When omitted, the backend auto-selects an appropriate interval. " +
 		"Only set this if the user explicitly requests a specific granularity. " +
@@ -103,8 +103,6 @@ const (
 	spaceAggregationParamDescription      = "Aggregation across series: sum, avg, min, max, count, or p50, p75, p90, p95, p99 (histograms only). Omit for the type's default: sum, or p99 for histograms. Summary metrics have no defaults; set both aggregations."
 	metricsGroupByParamDescription        = "Label names to group by, as an array or a comma-separated string (e.g. [\"service.name\", \"k8s.pod.name\"]). Metric labels hold resource and data-point attributes in one set, so names need no context prefix. Discover them with signoz_get_field_keys (signal=\"metrics\", metricName)."
 	metricsFilterParamDescription         = "Filter expression, passed as the expression text, not {\"expression\": ...}. Example: \"k8s.cluster.name = 'prod' AND service.name = 'frontend'\". Regex matches use REGEXP, not PromQL's =~."
-	metricsStartParamDescription          = "Start time in unix milliseconds. When both start and end are provided, they override timeRange."
-	metricsEndParamDescription            = "End time in unix milliseconds. When both start and end are provided, they override timeRange."
 	metricsStepIntervalParamDescription   = "Step interval in seconds for time_series mode (optional). When omitted, the backend auto-selects an appropriate interval (~300 data points, min 60s). Only set this if the user explicitly requests a specific granularity. Examples: '60' (1 min), '3600' (1 hour), '86400' (1 day)."
 	metricsRequestTypeParamDescription    = "Response format: \"time_series\" (default) returns one value per time bucket; \"scalar\" returns a single value per series, reduced with reduceTo, which scalar requires."
 	reduceToParamDescription              = "Required when requestType is scalar: how to reduce each series to one value. Choose from the question: last for the current value, max for the peak, avg for a typical value, or sum, min, count, median. For a total count over the window, use timeAggregation increase with reduceTo sum; summing rates is not a count. Ignored for time_series."
@@ -116,13 +114,10 @@ const (
 	metricsSourceParamDescription         = "Optional data-source filter forwarded to the backend. Use \"meter\" to query Cost Meter data. Omit for the default SigNoz metrics store."
 )
 
-// timeRangeParamDescription builds the shared "timeRange" description. All time-windowed
-// tools use one parser (timeutil.ParseTimeRange), so only the per-tool default
-// window differs — defaultDesc is that trailing sentence (e.g. "Defaults to
-// '1h'."). The full Go-duration grammar is accepted; we advertise the m/h/d
-// subset because it covers every realistic observability window.
+// timeRangeParamDescription builds the shared "timeRange" description. Every
+// time-windowed tool resolves its window with timeutil.ResolveWindow, so only
+// the per-tool default differs; defaultDesc is that trailing sentence.
 func timeRangeParamDescription(defaultDesc string) string {
-	return "Relative time range. Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). " +
-		"Examples: '30m', '1h', '2h', '6h', '24h', '3d', '7d'. " +
-		"Ignored when both start and end are provided. " + defaultDesc
+	return `Window length ending at end (default now): one or more <number><unit> terms with unit s, m, h, d (24h), or w (7d), such as "30m", "6h", "7d", "2w", or "1h30m". ` +
+		"Ignored when start is set. " + defaultDesc
 }

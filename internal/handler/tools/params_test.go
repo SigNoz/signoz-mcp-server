@@ -115,19 +115,15 @@ func TestListResult_ClampNoteSeparateBlock(t *testing.T) {
 	}
 }
 
-func TestResolveTimestampsEndOnlyUsesDefaultRange(t *testing.T) {
+func TestResolveTimestampsEndOnlyEndsTheDefaultWindowAtEnd(t *testing.T) {
 	start, end, err := resolveTimestamps(map[string]any{
 		"end": "1711130400000",
 	}, "1h")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-
-	if start >= end {
-		t.Fatalf("start = %d, end = %d, want non-inverted default window", start, end)
-	}
-	if delta := end - start; delta < int64(59*time.Minute/time.Millisecond) || delta > int64(61*time.Minute/time.Millisecond) {
-		t.Fatalf("delta = %dms, want about 1h", delta)
+	if end != 1711130400000 || start != 1711130400000-int64(time.Hour/time.Millisecond) {
+		t.Fatalf("window = [%d, %d], want the 1h default ending at end", start, end)
 	}
 }
 
