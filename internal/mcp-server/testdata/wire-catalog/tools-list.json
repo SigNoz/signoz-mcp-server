@@ -6595,9 +6595,13 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user asks which services call a service, what a service depends on, or which dependency is slow or failing. It returns the dependency graph behind SigNoz's Service Map for a time window: one edge per caller (parent) and callee (child) with callCount, callRate (calls per second), errorRate (percent of calls that failed), and p50 to p99 latency in nanoseconds. Set service and direction to keep one service's edges. Databases and message systems are callees named by their system, such as redis or kafka; a message system is the child of both its producers and its consumers. Edges come from per-minute rollups of traced calls, so a window shorter than a minute can return nothing, and an uninstrumented caller leaves no edge. Use signoz_list_services for per-service totals, signoz_get_service_top_operations for one service's operations, and signoz_aggregate_traces for custom span statistics.",
+          "description": "Use this when the user asks which services call a service, what a service depends on, or which dependency is slow or failing. It returns the dependency graph behind SigNoz's Service Map for a time window: one edge per caller (parent) and callee (child) with callCount, callRate (calls per second), errorRate (percent of calls that failed), and p50 to p99 latency in nanoseconds. Set service and direction to keep one service's edges, and environment, cluster, or namespace to narrow the graph. Databases and message systems are callees named by their system, such as redis or kafka; a message system is the child of both its producers and its consumers. Edges come from per-minute rollups of traced calls, so a window shorter than a minute can return nothing, and an uninstrumented caller leaves no edge. Use signoz_list_services for per-service totals, signoz_get_service_top_operations for one service's operations, and signoz_aggregate_traces for custom span statistics.",
           "inputSchema": {
             "properties": {
+              "cluster": {
+                "description": "Keep only edges recorded with this k8s.cluster.name resource value. Discover values with signoz_get_field_values with signal=\"traces\", fieldContext=\"resource\", and name=\"k8s.cluster.name\".",
+                "type": "string"
+              },
               "direction": {
                 "default": "both",
                 "description": "Which of service's edges to keep: upstream (the services that call it), downstream (the services, databases, and message systems it calls), or both (default). Requires service.",
@@ -6615,6 +6619,10 @@
                   "string"
                 ]
               },
+              "environment": {
+                "description": "Keep only edges recorded with this deployment.environment resource value. Discover values with signoz_get_field_values with signal=\"traces\", fieldContext=\"resource\", and name=\"deployment.environment\".",
+                "type": "string"
+              },
               "limit": {
                 "default": "50",
                 "description": "Maximum edges per page. Default: 50; max: 1000 (higher values are clamped).",
@@ -6622,6 +6630,10 @@
                   "integer",
                   "string"
                 ]
+              },
+              "namespace": {
+                "description": "Keep only edges recorded with this k8s.namespace.name resource value. Discover values with signoz_get_field_values with signal=\"traces\", fieldContext=\"resource\", and name=\"k8s.namespace.name\".",
+                "type": "string"
               },
               "offset": {
                 "default": "0",
@@ -6645,10 +6657,6 @@
                   "integer",
                   "string"
                 ]
-              },
-              "tags": {
-                "description": "JSON-encoded TagQueryParam array that narrows the graph to calls from one environment, cluster, or namespace; omit for no filter. The graph filters only on the keys deployment.environment, k8s.cluster.name, and k8s.namespace.name with operator In or NotIn and stringValues; the tool rejects other keys and operators. Example: [{\"key\":\"deployment.environment\",\"tagType\":\"ResourceAttribute\",\"operator\":\"In\",\"stringValues\":[\"production\"]}]. Pass the array as a string, not as a JSON array value.",
-                "type": "string"
               },
               "timeRange": {
                 "default": "6h",

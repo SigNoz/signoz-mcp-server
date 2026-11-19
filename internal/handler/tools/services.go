@@ -5,9 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
-	"slices"
 	"sort"
-	"strings"
 
 	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
@@ -50,7 +48,7 @@ func (h *Handler) RegisterServiceHandlers(s *mcp.Server) {
 	serviceMapTool := mcp.NewTool("signoz_get_service_map",
 		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description(searchContextParamDescription)),
-		mcp.WithDescription("Use this when the user asks which services call a service, what a service depends on, or which dependency is slow or failing. It returns the dependency graph behind SigNoz's Service Map for a time window: one edge per caller (parent) and callee (child) with callCount, callRate (calls per second), errorRate (percent of calls that failed), and p50 to p99 latency in nanoseconds. Set service and direction to keep one service's edges. Databases and message systems are callees named by their system, such as redis or kafka; a message system is the child of both its producers and its consumers. Edges come from per-minute rollups of traced calls, so a window shorter than a minute can return nothing, and an uninstrumented caller leaves no edge. Use signoz_list_services for per-service totals, signoz_get_service_top_operations for one service's operations, and signoz_aggregate_traces for custom span statistics."),
+		mcp.WithDescription("Use this when the user asks which services call a service, what a service depends on, or which dependency is slow or failing. It returns the dependency graph behind SigNoz's Service Map for a time window: one edge per caller (parent) and callee (child) with callCount, callRate (calls per second), errorRate (percent of calls that failed), and p50 to p99 latency in nanoseconds. Set service and direction to keep one service's edges, and environment, cluster, or namespace to narrow the graph. Databases and message systems are callees named by their system, such as redis or kafka; a message system is the child of both its producers and its consumers. Edges come from per-minute rollups of traced calls, so a window shorter than a minute can return nothing, and an uninstrumented caller leaves no edge. Use signoz_list_services for per-service totals, signoz_get_service_top_operations for one service's operations, and signoz_aggregate_traces for custom span statistics."),
 		mcp.WithString("service", mcp.Description("Exact service name whose edges to keep, as signoz_list_services returns it. Omit for the whole graph.")),
 		mcp.WithString("direction", mcp.DefaultString("both"), mcp.Enum("both", "upstream", "downstream"), mcp.Description("Which of service's edges to keep: upstream (the services that call it), downstream (the services, databases, and message systems it calls), or both (default). Requires service.")),
 		mcp.WithString("timeRange", mcp.DefaultString("6h"), mcp.Description(timeRangeParamDescription("Defaults to last 6 hours if not provided."))),
@@ -58,7 +56,9 @@ func (h *Handler) RegisterServiceHandlers(s *mcp.Server) {
 		mcp.WithString("end", intOrStringType(), mcp.Description("End time in unix milliseconds (optional, defaults to now).")),
 		mcp.WithString("limit", mcp.DefaultString("50"), intOrStringType(), mcp.Description("Maximum edges per page. Default: 50; max: 1000 (higher values are clamped).")),
 		mcp.WithString("offset", mcp.DefaultString("0"), intOrStringType(), mcp.Description("Number of edges to skip. Default: 0; use pagination.nextOffset for the next page.")),
-		mcp.WithString("tags", mcp.Description("JSON-encoded TagQueryParam array that narrows the graph to calls from one environment, cluster, or namespace; omit for no filter. The graph filters only on the keys deployment.environment, k8s.cluster.name, and k8s.namespace.name with operator In or NotIn and stringValues; the tool rejects other keys and operators. Example: [{\"key\":\"deployment.environment\",\"tagType\":\"ResourceAttribute\",\"operator\":\"In\",\"stringValues\":[\"production\"]}]. Pass the array as a string, not as a JSON array value.")),
+		mcp.WithString("environment", mcp.Description("Keep only edges recorded with this deployment.environment resource value. Discover values with signoz_get_field_values with signal=\"traces\", fieldContext=\"resource\", and name=\"deployment.environment\".")),
+		mcp.WithString("cluster", mcp.Description("Keep only edges recorded with this k8s.cluster.name resource value. Discover values with signoz_get_field_values with signal=\"traces\", fieldContext=\"resource\", and name=\"k8s.cluster.name\".")),
+		mcp.WithString("namespace", mcp.Description("Keep only edges recorded with this k8s.namespace.name resource value. Discover values with signoz_get_field_values with signal=\"traces\", fieldContext=\"resource\", and name=\"k8s.namespace.name\".")),
 	)
 
 	h.addTool(s, serviceMapTool, h.handleGetServiceMap)
@@ -66,19 +66,19 @@ func (h *Handler) RegisterServiceHandlers(s *mcp.Server) {
 
 const (
 	serviceMapUnitsNote      = "note: p50 to p99 are latencies in nanoseconds; callRate is calls per second over the window; errorRate is the percentage of calls that failed (0.5 means 0.5%). On an edge between two services, callCount and callRate count only the calls whose caller and callee spans SigNoz paired at ingestion, so they can be lower than a span count from signoz_aggregate_traces."
-	serviceMapEmptyGraphNote = "note: the graph has no edges for this time range and tags. Edges come from per-minute rollups of traced calls; widen the time range or drop tags before concluding there are no dependencies."
+	serviceMapEmptyGraphNote = "note: the graph has no edges for this time range and filters. Edges come from per-minute rollups of traced calls; widen the time range or drop environment, cluster, and namespace before concluding there are no dependencies."
 	// The requested name is not echoed back, so a long argument cannot grow the result.
 	serviceMapNoSuchServiceNote = "note: no edge in this window has the requested service as parent or child. Service names are exact and case-sensitive; check the name with signoz_list_services or widen the time range."
 )
 
 // SigNoz builds the dependency graph from a rollup that keeps only these
-// resource keys, and it skips any other key or operator without an error. A
-// skipped tag returns the whole graph to a caller who believes it is filtered,
-// so the handler rejects it instead.
-var (
-	serviceMapTagKeys      = []string{"deployment.environment", "k8s.cluster.name", "k8s.namespace.name"}
-	serviceMapTagOperators = []string{"In", "NotIn"}
-)
+// resource keys and skips a filter on any other key without an error, so the
+// tool takes one plain parameter per key instead of SigNoz's tag array.
+var serviceMapFilters = []struct{ param, key string }{
+	{"environment", "deployment.environment"},
+	{"cluster", "k8s.cluster.name"},
+	{"namespace", "k8s.namespace.name"},
+}
 
 func (h *Handler) handleGetServiceMap(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args, errResult := requireArgsMap(req.Params.Arguments)
@@ -104,7 +104,7 @@ func (h *Handler) handleGetServiceMap(ctx context.Context, req mcp.CallToolReque
 	if direction != "both" && service == "" {
 		return validationError("direction", `is relative to one service; set "service" to the service whose callers or callees you want`), nil
 	}
-	tags, errResult := serviceMapTags(args["tags"])
+	tags, errResult := serviceMapTags(args)
 	if errResult != nil {
 		return errResult, nil
 	}
@@ -170,39 +170,33 @@ func (h *Handler) handleGetServiceMap(ctx context.Context, req mcp.CallToolReque
 	return res, nil
 }
 
-// serviceMapTags validates the tags argument and returns it unchanged for
-// SigNoz, or nil when it is absent.
-func serviceMapTags(raw any) (json.RawMessage, *mcp.CallToolResult) {
-	if raw == nil {
-		return nil, nil
-	}
-	text, ok := raw.(string)
-	if !ok {
-		return nil, validationError("tags", "must be a JSON-encoded array passed as a string, not a JSON array value")
-	}
-	text = strings.TrimSpace(text)
-	if text == "" {
-		return nil, nil
-	}
-	var tags []struct {
+// serviceMapTags builds SigNoz's tag filter from the environment, cluster, and
+// namespace arguments, or returns nil when none is set.
+func serviceMapTags(args map[string]any) (json.RawMessage, *mcp.CallToolResult) {
+	type tagQuery struct {
 		Key          string   `json:"key"`
+		TagType      string   `json:"tagType"`
 		Operator     string   `json:"operator"`
 		StringValues []string `json:"stringValues"`
 	}
-	if err := json.Unmarshal([]byte(text), &tags); err != nil {
-		return nil, validationError("tags", `must be a JSON array of TagQueryParam objects, for example [{"key":"deployment.environment","tagType":"ResourceAttribute","operator":"In","stringValues":["production"]}]`)
-	}
-	for i, tag := range tags {
-		switch {
-		case !slices.Contains(serviceMapTagKeys, tag.Key):
-			return nil, validationErrorf("tags", "entry %d has key %q, which the service map cannot filter on; use deployment.environment, k8s.cluster.name, or k8s.namespace.name, and use service to keep one service's edges", i, tag.Key)
-		case !slices.Contains(serviceMapTagOperators, tag.Operator):
-			return nil, validationErrorf("tags", "entry %d has operator %q; use In or NotIn", i, tag.Operator)
-		case len(tag.StringValues) == 0:
-			return nil, validationErrorf("tags", "entry %d needs at least one value in stringValues", i)
+	var tags []tagQuery
+	for _, filter := range serviceMapFilters {
+		value, errResult := optionalStringArg(args, filter.param)
+		if errResult != nil {
+			return nil, errResult
+		}
+		if value != "" {
+			tags = append(tags, tagQuery{Key: filter.key, TagType: "ResourceAttribute", Operator: "In", StringValues: []string{value}})
 		}
 	}
-	return json.RawMessage(text), nil
+	if len(tags) == 0 {
+		return nil, nil
+	}
+	body, err := json.Marshal(tags)
+	if err != nil {
+		return nil, InternalErrorResult("failed to encode the service map filters: " + err.Error())
+	}
+	return body, nil
 }
 
 // decodeServiceMapEdges reads the bare edge array SigNoz returns. Newer SigNoz

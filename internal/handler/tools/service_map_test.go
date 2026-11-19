@@ -97,14 +97,19 @@ func TestServiceMapKeepsOneServicesEdgesByDirectionInNameOrder(t *testing.T) {
 	}
 }
 
-func TestServiceMapSendsWindowInNanosecondsWithTags(t *testing.T) {
+// environment, cluster, and namespace become SigNoz's tag filter on the three
+// resource keys the graph keeps; an unset one adds no tag.
+func TestServiceMapSendsWindowInNanosecondsWithFilters(t *testing.T) {
 	h, requests := serviceMapUpstream(t, serviceMapGraph)
-	tags := `[{"key":"deployment.environment","tagType":"ResourceAttribute","operator":"In","stringValues":["production"]}]`
 
-	callServiceMap(t, h, map[string]any{"start": "1762905600000", "end": "1762992000000", "tags": tags})
+	callServiceMap(t, h, map[string]any{"start": "1762905600000", "end": "1762992000000", "environment": "production", "namespace": "shop"})
+	callServiceMap(t, h, map[string]any{"start": "1762905600000", "end": "1762992000000", "cluster": ""})
 
-	require.Len(t, *requests, 1)
-	assert.JSONEq(t, `{"start":"1762905600000000000","end":"1762992000000000000","tags":`+tags+`}`, (*requests)[0])
+	require.Len(t, *requests, 2)
+	assert.JSONEq(t, `{"start":"1762905600000000000","end":"1762992000000000000","tags":[
+		{"key":"deployment.environment","tagType":"ResourceAttribute","operator":"In","stringValues":["production"]},
+		{"key":"k8s.namespace.name","tagType":"ResourceAttribute","operator":"In","stringValues":["shop"]}]}`, (*requests)[0])
+	assert.JSONEq(t, `{"start":"1762905600000000000","end":"1762992000000000000","tags":[]}`, (*requests)[1])
 }
 
 func TestServiceMapPagesEdgesWithNextOffset(t *testing.T) {
@@ -133,7 +138,7 @@ func TestServiceMapNotesWhenNoEdgeTouchesTheService(t *testing.T) {
 	assert.Equal(t, []string{serviceMapUnitsNote}, notes)
 }
 
-// When the window or tags leave no edges at all, the note must not blame the
+// When the window or filters leave no edges at all, the note must not blame the
 // service name.
 func TestServiceMapNotesAnEmptyGraph(t *testing.T) {
 	h, _ := serviceMapUpstream(t, `[]`)
@@ -144,8 +149,8 @@ func TestServiceMapNotesAnEmptyGraph(t *testing.T) {
 	assert.Equal(t, []string{serviceMapEmptyGraphNote, serviceMapUnitsNote}, notes)
 }
 
-// Each case is a filter SigNoz would skip without an error, returning a graph
-// the caller would read as filtered. None of them may reach SigNoz.
+// Each case is a filter the tool cannot apply as asked. None of them may reach
+// SigNoz.
 func TestServiceMapRejectsFiltersItCannotApply(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -155,11 +160,7 @@ func TestServiceMapRejectsFiltersItCannotApply(t *testing.T) {
 		{"direction without service", map[string]any{"direction": "upstream"}, `"direction"`},
 		{"unknown direction", map[string]any{"service": "orders", "direction": "callers"}, `"direction"`},
 		{"service that is not a string", map[string]any{"service": 42}, `"service"`},
-		{"tag on a key the graph does not keep", map[string]any{"tags": `[{"key":"service.name","tagType":"ResourceAttribute","operator":"In","stringValues":["orders"]}]`}, `"tags"`},
-		{"tag with an operator the graph skips", map[string]any{"tags": `[{"key":"k8s.namespace.name","tagType":"ResourceAttribute","operator":"Equals","stringValues":["shop"]}]`}, `"tags"`},
-		{"tag without string values", map[string]any{"tags": `[{"key":"k8s.cluster.name","tagType":"ResourceAttribute","operator":"In"}]`}, `"tags"`},
-		{"tags that are not JSON", map[string]any{"tags": `deployment.environment=production`}, `"tags"`},
-		{"tags as a JSON array value", map[string]any{"tags": []any{map[string]any{"key": "deployment.environment"}}}, `"tags"`},
+		{"environment that is not a string", map[string]any{"environment": 42}, `"environment"`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var calls atomic.Int32

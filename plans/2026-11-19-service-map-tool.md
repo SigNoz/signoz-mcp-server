@@ -59,16 +59,20 @@ appends a note labelling units.
 
 ## Key Decisions
 
-### 2026-11-19 — Reject tag filters the graph cannot apply
+### 2026-11-19 — Plain environment, cluster, and namespace parameters instead of tags
 
-- Decision: accept only the three rollup keys with operator `In` or `NotIn` and non-empty
-  `stringValues`; reject anything else with a `tags` validation error before calling SigNoz.
-- Rationale: SigNoz skips other filters without an error and returns the whole graph, which an
-  agent would read as filtered (SCH-2). On the live instance, `Equals` failed with HTTP 400, and
-  `Contains` and `StartsWith` matched nothing for a value they should match, so only `In` and
-  `NotIn` are accepted.
-- Risk: if SigNoz adds a filter column, the tool rejects it until this list grows. The error names
-  the accepted keys, so an agent can drop the tag and retry.
+- Decision: the tool takes `environment`, `cluster`, and `namespace`, one optional string per
+  rollup key (`deployment.environment`, `k8s.cluster.name`, `k8s.namespace.name`). Each set value
+  becomes an `In` tag with that one value; the tool builds SigNoz's tag array itself. Each
+  description points to `signoz_get_field_values` with the same key name for valid values.
+- Rationale: SigNoz skips a filter on any other key, an unknown operator, or a tag without values
+  without an error and returns the whole graph, which an agent would read as filtered (SCH-2). A
+  JSON-encoded `TagQueryParam` string invites exactly those mistakes: agents have sent tags in
+  other shapes to the top-operations tool, which drops them without an error. Plain parameters
+  leave nothing to get wrong, and an undeclared `tags` argument gets the ignored-argument notice.
+- Trade-off: no `NotIn` and one value per key, which keeps each parameter a plain value; either
+  can be added later. On the live instance `Equals` failed with HTTP 400 and `Contains` and
+  `StartsWith` matched nothing, so `In` and `NotIn` are the only operators that work.
 
 ### 2026-11-19 — Keep nanoseconds and label them
 
@@ -96,9 +100,9 @@ appends a note labelling units.
 
 ### 2026-11-19 — Separate note for an empty graph
 
-- Decision: when the window and tags leave no edges at all, the result says so and suggests
-  widening the window or dropping tags; the note about an unknown service name appears only when
-  the graph has edges and none touches the service.
+- Decision: when the window and filters leave no edges at all, the result says so and suggests
+  widening the window or dropping the filters; the note about an unknown service name appears only
+  when the graph has edges and none touches the service.
 - Rationale: the live test filtered to an environment with no data and got the unknown-service
   note, which blamed the name.
 
@@ -119,7 +123,8 @@ appends a note labelling units.
   guardrails including the wire catalog, protocol and conformance, e2e style, repo docs). The
   protocol step ran with `MCP_PROTOCOL_PORT=18181` because another local service held 18080.
 - Handler tests run through the real client against an `httptest` upstream: direction filtering
-  and name order, the nanosecond window and forwarded tags, offset pages, the note for a service
+  and name order, the nanosecond window and the tags built from `environment`, `cluster`, and
+  `namespace`, offset pages, the note for a service
   no edge touches, rejected filters that never reach SigNoz, and the envelope fallback. The
   client test pins the request body and the retry on a 503.
 - `tests/e2e/tests/test_service_map.py` seeds a caller-to-callee call and reads the edge from
@@ -139,8 +144,9 @@ appends a note labelling units.
     (18496).
   - Filters, called directly on SigNoz: `service.name`, `host.name`, an unknown operator, and a
     tag without values returned the unfiltered graph; `In` and `NotIn` on the three keys
-    filtered; `Equals` returned HTTP 400; `Contains` and `StartsWith` returned nothing. Through the
-    tool, the unsupported key and `Contains` failed validation before any request.
+    filtered; `Equals` returned HTTP 400; `Contains` and `StartsWith` returned nothing. The tool
+    now sends only `In` on the three keys, the shape that filtered correctly here. The live test
+    was not rerun after the switch from `tags` to plain parameters.
   - A window with no minute start inside it returned no edges; a 30 s window starting on a minute
     returned that whole minute.
 
