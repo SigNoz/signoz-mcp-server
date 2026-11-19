@@ -42,7 +42,7 @@ func TestDisabledScheduleMakesNoRequests(t *testing.T) {
 	require.Empty(t, site.take())
 }
 
-func TestSitemapFallbackRevalidatesPagesEveryTick(t *testing.T) {
+func TestSitemapFallbackRevalidatesPagesWhenSitemapChanges(t *testing.T) {
 	for _, status := range []int{http.StatusNotFound, http.StatusOK} {
 		t.Run(http.StatusText(status), func(t *testing.T) {
 			verifyNoDocsLeaks(t)
@@ -62,18 +62,30 @@ func TestSitemapFallbackRevalidatesPagesEveryTick(t *testing.T) {
 
 			const path = "/docs/install/docker.md"
 			ctx := context.Background()
-			require.NoError(t, refresher.Trigger(ctx, false))
-			require.ElementsMatch(t, []string{"GET /docs/manifest.json", "200 /docs/sitemap.md", "304 " + path, "304 /docs/logs/overview.md"}, site.take())
-
 			site.set(func() {
 				site.pages[path] = "# Install SigNoz Using Docker\n\nUpdated while the sitemap stayed the same.\n"
 			})
 			require.NoError(t, refresher.Trigger(ctx, false))
-			require.ElementsMatch(t, []string{"GET /docs/manifest.json", "200 /docs/sitemap.md", "200 " + path, "304 /docs/logs/overview.md"}, site.take())
+			require.ElementsMatch(t, []string{"GET /docs/manifest.json", "200 /docs/sitemap.md"}, site.take(),
+				"fallback makes zero page requests when the sitemap hash matches")
+
+			const newPath = "/docs/new.md"
+			site.set(func() {
+				site.sitemap += "- [New page](https://signoz.io" + newPath + ")\n"
+				site.pages[newPath] = "# New page\n"
+			})
+			require.NoError(t, refresher.Trigger(ctx, false))
+			require.ElementsMatch(t, []string{
+				"GET /docs/manifest.json", "200 /docs/sitemap.md", "200 " + path, "304 /docs/logs/overview.md", "200 " + newPath,
+			}, site.take(), "a changed sitemap revalidates each unique page once")
 			doc, code, err := reg.FetchDoc(ctx, "https://signoz.io"+path, "")
 			require.NoError(t, err)
 			require.Empty(t, code)
 			require.Contains(t, doc.Content, "Updated while the sitemap stayed the same.")
+
+			require.NoError(t, refresher.Trigger(ctx, false))
+			require.ElementsMatch(t, []string{"GET /docs/manifest.json", "200 /docs/sitemap.md"}, site.take(),
+				"the next fallback uses the newly indexed sitemap hash")
 		})
 	}
 }

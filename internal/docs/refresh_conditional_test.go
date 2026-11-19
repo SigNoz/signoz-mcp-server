@@ -128,6 +128,7 @@ func TestFetcherConditionalRequest(t *testing.T) {
 func TestRefreshRevalidatesWithETagAndKeepsIndex(t *testing.T) {
 	verifyNoDocsLeaks(t)
 	_, initial, srv := conditionalFixture(t)
+	srv.sitemap += "\n"
 	reg := newTestRegistry(t, initial)
 	before := reg.currentHandle(t)
 	refresher := NewRefresher(slog.Default(), reg, newRewriteFetcher(newHTTPTestServer(t, srv)), RefreshConfig{SitemapURL: DefaultSitemapURL})
@@ -205,6 +206,7 @@ func TestForcedRefreshRefetchesWithoutRevalidation(t *testing.T) {
 func TestRefreshRebuildsWhenContentChanges(t *testing.T) {
 	verifyNoDocsLeaks(t)
 	_, initial, srv := conditionalFixture(t)
+	srv.sitemap += "\n"
 	srv.set("/docs/logs/overview/", "# Logs Overview\n\nCollect logs with the OpenTelemetry Collector.\n", `W/"v2"`)
 	reg := newTestRegistry(t, initial)
 	before := reg.currentHandle(t)

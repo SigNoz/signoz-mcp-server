@@ -287,7 +287,7 @@ The server keeps the SigNoz docs search index in memory. With stemming on titles
 
 The server runs one jittered refresh every `6h` by default. Each tick revalidates the [docs manifest](https://signoz.io/docs/manifest.json) and stops on a 304. When the manifest changes, the refresh checks that the sitemap ETag agrees with it and fetches each changed or new Markdown URL once. It retries unresolved pages on the next refresh and confirms sitemap-listed omissions against the page endpoint. A manifest timeout or server error leaves the current index in service for that tick.
 
-If the manifest is missing or invalid, the same tick reads the sitemap and revalidates each unique Markdown URL, even when the sitemap is unchanged. The fallback sends a request per page on each tick, using `If-None-Match` when it has a validator. Matching pages return bodyless 304s, and content-only edits can reach the index on that tick.
+If the manifest is missing or invalid, the same tick reads the sitemap and compares its hash with the indexed snapshot. A matching hash means zero page requests. If the sitemap changes, the server revalidates each unique Markdown URL, using `If-None-Match` when it has a validator. During fallback, content-only edits wait for a sitemap change or a valid manifest.
 
 The refresh updates the index when page contents or sitemap metadata change. Changes covering up to a quarter of the pages are applied in one atomic batch. Larger changes and the 25th in-place update on the same index rebuild the index in 64-page batches and compact the accumulated segments.
 
@@ -295,7 +295,7 @@ Recommendations for containerized HTTP deployments:
 
 - Set the memory limit to at least `512Mi`, and monitor memory during refreshes and concurrent requests. The highest measured index-only build peak is 134 MiB above baseline and the resident index is 28 to 36 MiB; rebuilds also retain the serving index. Setting Go's `GOMEMLIMIT` is optional: it can reclaim garbage earlier but cannot shrink live data inside an index batch.
 - Set both `SIGNOZ_DOCS_REFRESH_INTERVAL=0` and `SIGNOZ_DOCS_FULL_REFRESH_INTERVAL=0` when you would rather serve the docs snapshot that shipped with the release than pay any refresh. New docs pages then arrive with the next server upgrade. With only the primary interval off, the single scheduler uses the legacy cadence.
-- Every refresh logs `docs refresh starting` and ends with a completion or failure line, for example `docs refresh no-op; manifest unchanged`, `docs refresh found no page changes; index kept`, `docs refresh applied delta`, `docs refresh rebuilt index`, or a `docs refresh failed` warning. A refresh normally finishes within a few minutes. A container whose last docs line is `docs refresh starting`, `docs refresh fetching pages`, `docs refresh reconciling with manifest`, or `docs refresh rebuilding index` and that then restarted most likely died mid-refresh.
+- Every refresh logs `docs refresh starting` and ends with a completion or failure line, for example `docs refresh no-op; manifest unchanged`, `docs refresh no-op; sitemap unchanged`, `docs refresh found no page changes; index kept`, `docs refresh applied delta`, `docs refresh rebuilt index`, or a `docs refresh failed` warning. A refresh normally finishes within a few minutes. A container whose last docs line is `docs refresh starting`, `docs refresh fetching pages`, `docs refresh reconciling with manifest`, or `docs refresh rebuilding index` and that then restarted most likely died mid-refresh.
 
 #### With OAuth (Multi-Tenant / Cloud)
 
