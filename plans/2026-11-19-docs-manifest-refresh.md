@@ -1,8 +1,8 @@
 # Plan: Refresh the Docs Index from the Website Manifest
 
-Status: In Progress
+Status: Done
 Issue: https://github.com/SigNoz/nerve-pod/issues/590
-PR: https://github.com/SigNoz/signoz-mcp-server/pull/454 (original)
+PR: https://github.com/SigNoz/signoz-mcp-server/pull/458
 
 ## Context
 
@@ -38,9 +38,14 @@ the manifest again and skips any page whose stored ETag already matches.
 
 ## Verification
 
-- Exercise request counts, cache skew recovery, and real 404 handling through the refresher.
-- Run the repository's local CI before opening the replacement PR.
+- Regression tests passed for sitemap and page cache skew, real 404 handling, and duplicate URLs.
+- All local CI targets passed with Go 1.26.11. Dependency verification used a clean module cache,
+  and protocol checks used alternate ports.
+- The Go fetcher parsed 980 entries from the live website manifest, received a bodyless 304,
+  and matched the live sitemap and a sampled Markdown page to the advertised ETags.
 
 ## Outcome
 
-The replacement carries the original author commit and the review fixes.
+The replacement carries Manika Malhotra’s original commit and all three review fixes.
+Fleet-wide request and byte savings still need verification after rollout under
+[SigNoz/nerve-pod#590](https://github.com/SigNoz/nerve-pod/issues/590).
