@@ -134,7 +134,7 @@ func (h *Handler) handleGetServiceMap(ctx context.Context, req mcp.CallToolReque
 
 	edges, ok := h.decodeServiceMapEdges(ctx, result)
 	if !ok {
-		return upstreamResponseError("service map response is not an array of edges"), nil
+		return upstreamResponseError("service map response is not an array of edges with parent and child names"), nil
 	}
 
 	var notes []string
@@ -204,21 +204,32 @@ func serviceMapTags(args map[string]any) (json.RawMessage, *mcp.CallToolResult) 
 // with a WARN; anything else fails loudly rather than reading as an empty graph.
 func (h *Handler) decodeServiceMapEdges(ctx context.Context, raw json.RawMessage) ([]any, bool) {
 	var edges []any
-	if err := json.Unmarshal(raw, &edges); err == nil {
-		if edges == nil {
-			edges = []any{}
+	if err := json.Unmarshal(raw, &edges); err != nil {
+		var envelope struct {
+			Data *[]any `json:"data"`
 		}
-		return edges, true
+		if err := json.Unmarshal(raw, &envelope); err != nil || envelope.Data == nil {
+			h.logger.WarnContext(ctx, "Service map response is not an edge array", logpkg.ErrAttr(err), slog.String("response", logpkg.TruncBody(raw)))
+			return nil, false
+		}
+		h.logger.WarnContext(ctx, "Service map response arrived in a status/data envelope instead of a bare array", slog.Int("edges", len(*envelope.Data)))
+		edges = *envelope.Data
 	}
-	var envelope struct {
-		Data *[]any `json:"data"`
+	// The service filter and the page order read parent and child, so an edge
+	// without them would drop out of a service's edges without a trace.
+	for i, edge := range edges {
+		m, _ := edge.(map[string]any)
+		_, hasParent := m["parent"].(string)
+		_, hasChild := m["child"].(string)
+		if !hasParent || !hasChild {
+			h.logger.WarnContext(ctx, "Service map edge has no parent or child name", slog.Int("index", i), slog.String("response", logpkg.TruncBody(raw)))
+			return nil, false
+		}
 	}
-	if err := json.Unmarshal(raw, &envelope); err != nil || envelope.Data == nil {
-		h.logger.WarnContext(ctx, "Service map response is not an edge array", logpkg.ErrAttr(err), slog.String("response", logpkg.TruncBody(raw)))
-		return nil, false
+	if edges == nil {
+		edges = []any{}
 	}
-	h.logger.WarnContext(ctx, "Service map response arrived in a status/data envelope instead of a bare array", slog.Int("edges", len(*envelope.Data)))
-	return *envelope.Data, true
+	return edges, true
 }
 
 func serviceMapEdgeEnds(edge any) (parent, child string) {

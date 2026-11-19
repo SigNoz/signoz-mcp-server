@@ -182,16 +182,21 @@ func TestServiceMapRejectsFiltersItCannotApply(t *testing.T) {
 }
 
 // SigNoz answers with a bare array today. A status/data envelope is accepted so
-// a future upstream change does not empty the graph; any other body is an
-// upstream error, never an empty graph.
+// a future upstream change does not empty the graph; any other body, or an edge
+// without string parent and child names, is an upstream error, never an empty
+// or partly dropped graph.
 func TestServiceMapReadsEnvelopedEdgesAndRejectsOtherBodies(t *testing.T) {
 	h, _ := serviceMapUpstream(t, `{"status":"success","data":[{"parent":"frontend","child":"orders","callCount":10}]}`)
 	_, page, _ := callServiceMap(t, h, map[string]any{})
 	assert.Equal(t, []string{"frontend>orders"}, serviceMapEdgeNames(page))
 
-	for _, body := range []string{`{"status":"error","error":"boom"}`, `<html>gateway</html>x`, `{"data":{"edges":[]}}`} {
+	for _, body := range []string{
+		`{"status":"error","error":"boom"}`, `<html>gateway</html>x`, `{"data":{"edges":[]}}`,
+		`[{"source":"frontend","target":"orders","callCount":10}]`, `[null]`,
+		`{"status":"success","data":[{"parent":"frontend","child":7}]}`,
+	} {
 		h, _ := serviceMapUpstream(t, body)
-		res, err := h.handleGetServiceMap(testCtx(), makeToolRequest("signoz_get_service_map", map[string]any{}))
+		res, err := h.handleGetServiceMap(testCtx(), makeToolRequest("signoz_get_service_map", map[string]any{"service": "frontend"}))
 		require.NoError(t, err)
 		require.True(t, res.IsError, "body %s should be an error, got: %s", body, textContent(t, res))
 		assert.Equal(t, CodeUpstreamError, resultCode(t, res), "body %s", body)

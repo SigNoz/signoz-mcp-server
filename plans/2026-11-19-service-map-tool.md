@@ -128,7 +128,9 @@ appends a note labelling units.
 
 - Decision: kept from #271. SigNoz returns a bare array from this route; newer routes wrap
   payloads. The handler accepts both, WARNs on the wrapped form, and returns `UPSTREAM_ERROR` for
-  any other body rather than an empty graph.
+  any other body rather than an empty graph. An edge without string `parent` and `child` is also
+  a WARN and `UPSTREAM_ERROR`: the service filter would otherwise drop it and report that no edge
+  touches the service. Other edge fields pass through unchecked.
 
 ## Reference Links
 
@@ -143,8 +145,8 @@ appends a note labelling units.
 - Handler tests run through the real client against an `httptest` upstream: direction filtering
   and name order, the nanosecond window and the tags built from `environment`, `cluster`, and
   `namespace`, offset pages, the note for a service no edge touches, rejected arguments that
-  never reach SigNoz, and the envelope fallback. The client test pins the request body and the
-  retry on a 503.
+  never reach SigNoz, the envelope fallback, and edges without parent and child names. The client
+  test pins the request body and the retry on a 503.
 - `tests/e2e/tests/test_service_map.py` seeds caller-to-callee calls tagged with a
   `deployment.environment` and, against the pinned release, reads the edge from both ends, finds
   it with `environment` set to that value, and gets an empty graph with the empty-graph note for
