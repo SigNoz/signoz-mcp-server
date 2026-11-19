@@ -43,6 +43,7 @@ the manifest again and skips any page whose stored ETag already matches.
   and protocol checks used alternate ports.
 - The Go fetcher parsed 980 entries from the live website manifest, received a bodyless 304,
   and matched the live sitemap and a sampled Markdown page to the advertised ETags.
+  The refresh suite replays the recorded Docker entry and sitemap ETag without network access.
 
 ## Outcome
 

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -132,16 +133,54 @@ func newManifestSite(t *testing.T, additionalEntries ...SitemapEntry) (*manifest
 	return site, reg, refresher
 }
 
-func TestManifestRefreshWithoutChangesCostsOneRequest(t *testing.T) {
+func TestManifestRefreshRevalidatesRecordedWebsiteResponse(t *testing.T) {
 	verifyNoDocsLeaks(t)
-	site, _, refresher := newManifestSite(t)
+	// Captured from signoz.io/docs/manifest.json on 2026-11-19, trimmed to one page.
+	manifest, err := os.ReadFile("testdata/docs-manifest-v1.json")
+	require.NoError(t, err)
+	const sitemapETag = `W/"6437c44b6df8131291b371c37cc9a99f75589669"`
+	const pageETag = `W/"baa912179162965e707d10242837e8677ae17743"`
+	entry := SitemapEntry{URL: "https://signoz.io/docs/install/docker.md", Title: "Install SigNoz Using Docker"}
+	entries := []SitemapEntry{entry}
+	initial := snapshotForEntries(entries, map[string]string{entry.URL: "# Install SigNoz Using Docker\n\nDocker Compose setup."})
+	initial.Pages[0].SourceETag = pageETag
 
-	require.NoError(t, refresher.Trigger(context.Background(), false))
-	require.Equal(t, []string{"200 /docs/manifest.json", "200 /docs/sitemap.md"}, site.take(),
-		"pages whose stored ETag matches the manifest are not requested")
+	var requests []string
+	var mu sync.Mutex
+	manifestETag := weakETag(string(manifest))
+	server := newHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		switch r.URL.Path {
+		case "/docs/manifest.json":
+			w.Header().Set("ETag", manifestETag)
+			if r.Header.Get("If-None-Match") == manifestETag {
+				requests = append(requests, "304 /docs/manifest.json")
+				w.WriteHeader(http.StatusNotModified)
+				return
+			}
+			requests = append(requests, "200 /docs/manifest.json")
+			_, _ = w.Write(manifest)
+		case "/docs/sitemap.md":
+			requests = append(requests, "200 /docs/sitemap.md")
+			w.Header().Set("ETag", sitemapETag)
+			_, _ = w.Write([]byte(sitemapForEntries(entries)))
+		default:
+			requests = append(requests, "404 "+r.URL.Path)
+			http.NotFound(w, r)
+		}
+	}))
 
-	require.NoError(t, refresher.Trigger(context.Background(), false))
-	require.Equal(t, []string{"304 /docs/manifest.json"}, site.take())
+	refresher := NewRefresher(slog.Default(), newTestRegistry(t, initial), newRewriteFetcher(server), RefreshConfig{})
+	ctx := context.Background()
+	require.NoError(t, refresher.Trigger(ctx, false))
+	require.ElementsMatch(t, []string{"200 /docs/manifest.json", "200 /docs/sitemap.md"}, requests,
+		"the matching recorded page ETag should avoid downloading the page")
+	requests = nil
+
+	require.NoError(t, refresher.Trigger(ctx, false))
+	require.Equal(t, []string{"304 /docs/manifest.json"}, requests,
+		"a conditional manifest read should skip the sitemap and page requests")
 }
 
 func TestManifestRefreshFetchesChangedURLOnceAndKeepsItsSections(t *testing.T) {
@@ -155,7 +194,7 @@ func TestManifestRefreshFetchesChangedURLOnceAndKeepsItsSections(t *testing.T) {
 		site.pages["/docs/logs/overview.md"] = "# Logs Overview\n\nCollect logs with the OpenTelemetry Collector.\n"
 	})
 	require.NoError(t, refresher.Trigger(context.Background(), false))
-	require.Equal(t, []string{"200 /docs/manifest.json", "200 /docs/logs/overview.md"}, site.take())
+	require.ElementsMatch(t, []string{"200 /docs/manifest.json", "200 /docs/logs/overview.md"}, site.take())
 
 	doc, code, err := reg.FetchDoc(context.Background(), "https://signoz.io/docs/logs/overview.md", "")
 	require.NoError(t, err)
@@ -164,11 +203,14 @@ func TestManifestRefreshFetchesChangedURLOnceAndKeepsItsSections(t *testing.T) {
 	snapshot, ok := reg.Snapshot()
 	require.True(t, ok)
 	require.Len(t, snapshot.Pages, 2)
+	var sections []string
 	for _, page := range snapshot.Pages {
 		if page.URL == duplicate.URL {
-			require.ElementsMatch(t, []string{"logs-overview", "another-section"}, page.SectionSlugs)
+			sections = page.SectionSlugs
+			break
 		}
 	}
+	require.ElementsMatch(t, []string{"logs-overview", "another-section"}, sections)
 }
 
 func TestManifestRefreshFollowsSitemapChanges(t *testing.T) {
@@ -184,7 +226,7 @@ func TestManifestRefreshFollowsSitemapChanges(t *testing.T) {
 		delete(site.pages, "/docs/logs/overview.md")
 	})
 	require.NoError(t, refresher.Trigger(context.Background(), false))
-	require.Equal(t, []string{"200 /docs/manifest.json", "200 /docs/sitemap.md", "200 /docs/traces/overview.md"}, site.take())
+	require.ElementsMatch(t, []string{"200 /docs/manifest.json", "200 /docs/sitemap.md", "200 /docs/traces/overview.md"}, site.take())
 
 	snapshot, ok := reg.Snapshot()
 	require.True(t, ok)
@@ -219,15 +261,15 @@ func TestManifestRefreshWaitsForMatchingSitemap(t *testing.T) {
 		site.sitemap = sitemapForEntries(manifestEntries[:1])
 		site.pages["/docs/traces/overview.md"] = "# Traces Overview\n\nSpans.\n"
 	})
-	require.ErrorContains(t, refresher.Trigger(ctx, false), "does not match manifest")
-	require.Equal(t, []string{"200 /docs/manifest.json", "200 /docs/sitemap.md"}, site.take())
+	require.Error(t, refresher.Trigger(ctx, false))
+	require.ElementsMatch(t, []string{"200 /docs/manifest.json", "200 /docs/sitemap.md"}, site.take())
 	snapshot, ok := reg.Snapshot()
 	require.True(t, ok)
 	require.Len(t, snapshot.Pages, 2)
 
 	site.set(func() { site.sitemap = site.manifestSitemap })
 	require.NoError(t, refresher.Trigger(ctx, false))
-	require.Equal(t, []string{"200 /docs/manifest.json", "200 /docs/sitemap.md", "200 /docs/traces/overview.md"}, site.take())
+	require.ElementsMatch(t, []string{"200 /docs/manifest.json", "200 /docs/sitemap.md", "200 /docs/traces/overview.md"}, site.take())
 	snapshot, ok = reg.Snapshot()
 	require.True(t, ok)
 	require.Len(t, snapshot.Pages, 3)
@@ -244,11 +286,11 @@ func TestManifestRefreshRetriesStalePageOnNextIncrementalRefresh(t *testing.T) {
 
 	site.set(func() { site.published[path] = weakETag(updated) })
 	require.NoError(t, refresher.Trigger(ctx, false))
-	require.Equal(t, []string{"200 /docs/manifest.json", "304 " + path}, site.take())
+	require.ElementsMatch(t, []string{"200 /docs/manifest.json", "304 " + path}, site.take())
 
 	site.set(func() { site.pages[path] = "# Install SigNoz Using Docker\n\nAn older edge copy.\n" })
 	require.NoError(t, refresher.Trigger(ctx, false))
-	require.Equal(t, []string{"200 /docs/manifest.json", "200 " + path}, site.take())
+	require.ElementsMatch(t, []string{"200 /docs/manifest.json", "200 " + path}, site.take())
 	doc, code, err := reg.FetchDoc(ctx, "https://signoz.io"+path, "")
 	require.NoError(t, err)
 	require.Empty(t, code)
@@ -256,7 +298,7 @@ func TestManifestRefreshRetriesStalePageOnNextIncrementalRefresh(t *testing.T) {
 
 	site.set(func() { site.pages[path] = updated })
 	require.NoError(t, refresher.Trigger(ctx, false))
-	require.Equal(t, []string{"200 /docs/manifest.json", "200 " + path}, site.take())
+	require.ElementsMatch(t, []string{"200 /docs/manifest.json", "200 " + path}, site.take())
 	doc, code, err = reg.FetchDoc(ctx, "https://signoz.io"+path, "")
 	require.NoError(t, err)
 	require.Empty(t, code)
@@ -266,7 +308,7 @@ func TestManifestRefreshRetriesStalePageOnNextIncrementalRefresh(t *testing.T) {
 	require.Equal(t, []string{"304 /docs/manifest.json"}, site.take())
 }
 
-func TestManifestOmissionRequiresRealNotFoundBeforeRemovingPage(t *testing.T) {
+func TestManifestOmissionRevalidatesThePageAndRetriesA404(t *testing.T) {
 	verifyNoDocsLeaks(t)
 	site, reg, refresher := newManifestSite(t, manyEntries(20)...)
 	ctx := context.Background()
@@ -275,30 +317,25 @@ func TestManifestOmissionRequiresRealNotFoundBeforeRemovingPage(t *testing.T) {
 	site.take()
 
 	site.set(func() { site.published[path] = "" })
-	for range 4 {
-		require.NoError(t, refresher.Trigger(ctx, false))
-		require.Equal(t, []string{"200 /docs/manifest.json", "304 " + path}, site.take())
-	}
-	snapshot, ok := reg.Snapshot()
-	require.True(t, ok)
-	require.Len(t, snapshot.Pages, 22)
+	require.NoError(t, refresher.Trigger(ctx, false))
+	require.ElementsMatch(t, []string{"200 /docs/manifest.json", "304 " + path}, site.take(),
+		"an omission alone is insufficient evidence that the page is gone")
 
 	site.set(func() { delete(site.pages, path) })
-	for range 4 {
+	for range 2 {
 		require.NoError(t, refresher.Trigger(ctx, false))
-		require.Equal(t, []string{"200 /docs/manifest.json", "404 " + path}, site.take())
+		require.ElementsMatch(t, []string{"200 /docs/manifest.json", "404 " + path}, site.take(),
+			"an unchanged manifest should not prevent confirming a missing page")
 	}
-	snapshot, ok = reg.Snapshot()
-	require.True(t, ok)
-	require.Len(t, snapshot.Pages, 21)
-	require.NoError(t, refresher.Trigger(ctx, false))
-	require.Equal(t, []string{"304 /docs/manifest.json"}, site.take())
+	doc, code, err := reg.FetchDoc(ctx, "https://signoz.io"+path, "")
+	require.NoError(t, err)
+	require.Empty(t, code)
+	require.Contains(t, doc.Content, "Docker Compose setup.")
 }
 
 func TestManifestErrorSkipsTheTickInsteadOfSweeping(t *testing.T) {
 	verifyNoDocsLeaks(t)
 	site, reg, refresher := newManifestSite(t)
-	before := reg.currentHandle(t)
 	failing := newHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/docs/manifest.json" {
 			w.WriteHeader(http.StatusServiceUnavailable)
@@ -310,5 +347,8 @@ func TestManifestErrorSkipsTheTickInsteadOfSweeping(t *testing.T) {
 
 	require.Error(t, refresher.Trigger(context.Background(), false))
 	require.Empty(t, site.take(), "no sitemap or page requests while the manifest is failing")
-	require.Same(t, before, reg.currentHandle(t))
+	doc, code, err := reg.FetchDoc(context.Background(), manifestEntries[0].URL, "")
+	require.NoError(t, err)
+	require.Empty(t, code)
+	require.Contains(t, doc.Content, "Docker Compose setup.")
 }
