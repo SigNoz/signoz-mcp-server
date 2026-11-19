@@ -26,6 +26,7 @@ import (
 	"github.com/blevesearch/bleve/v2/index/scorch"
 	"github.com/blevesearch/bleve/v2/mapping"
 	bleveQuery "github.com/blevesearch/bleve/v2/search/query"
+	zap "github.com/blevesearch/zapx/v16"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -36,6 +37,12 @@ const snippetRuneLimit = 200
 // bleve batch. Keep 64-page batches for build-heap headroom; smaller chunks
 // increase resident memory because in-memory scorch never merges.
 const indexBatchSize = 64
+
+func init() {
+	// In-memory segments keep their backing buffers. Limit the extra capacity
+	// in each estimate to keep the resident heap within budget.
+	zap.NewSegmentBufferNumResultsBump = 16
+}
 
 var urlSearchTokenReplacer = strings.NewReplacer("/", " ", "-", " ", "_", " ", ".", " ")
 

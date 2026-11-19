@@ -305,6 +305,9 @@ A scheduled fallback skips page requests when the sitemap hash matches the curre
 If the hash changes, it conditionally revalidates each unique sitemap URL. A forced refresh
 can still fetch pages on a matching hash. Both paths use the same index rebuild thresholds.
 
+The search index builds in 64-page batches. Its in-memory segments retain their backing
+buffers, so the segment size estimate limits extra capacity to 16 pages.
+
 ## Resource browser links
 
 SigNoz owns the browser URL in `global.external_url`. Before a resource operation

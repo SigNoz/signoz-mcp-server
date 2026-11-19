@@ -276,11 +276,11 @@ HTTP mode listens on all interfaces by default. Set `MCP_SERVER_HOST=127.0.0.1` 
 
 #### Memory footprint
 
-The server keeps the SigNoz docs search index in memory. With stemming on titles and headings and a single standard-analyzed body field, the embedded 746-page index used 28 to 36 MiB of resident heap across eight local Go 1.26 whole-package test runs. Build peaks ranged from 97 to 134 MiB above the pre-build heap baseline, using 64-page batches. These are index measurements, not whole-process RSS or container memory guarantees; request handling and refresh work add memory.
+The server keeps the SigNoz docs search index in memory. On Linux amd64 with Go 1.26.11, the embedded 980-page index used 44 to 52 MiB of resident heap across 24 local runs of the heap guardrail. Build peaks ranged from 141 to 204 MiB above the pre-build heap baseline, using 64-page batches. These figures cover the index heap. Total process memory also includes request handling and refresh work.
 
 | Moment | Index memory behavior |
 | --- | --- |
-| Startup build from the embedded corpus (746 pages) | Up to 134 MiB above the pre-build heap baseline in the measured runs |
+| Startup build from the embedded corpus (980 pages) | Up to 204 MiB above the pre-build heap baseline in the measured runs |
 | Full rebuild after a scheduled refresh | Builds a new index while the old index is still serving; combined peak has not been re-measured with this configuration |
 | Scheduled refresh that changes a few pages | Applies changed pages in one atomic batch to the live index; peak depends on the changed content and has not been re-measured with this configuration |
 | Scheduled refresh with an unchanged manifest | no index work; one conditional request for the docs manifest (a 304) and no page requests |
@@ -293,7 +293,7 @@ The refresh updates the index when page contents or sitemap metadata change. Cha
 
 Recommendations for containerized HTTP deployments:
 
-- Set the memory limit to at least `512Mi`, and monitor memory during refreshes and concurrent requests. The highest measured index-only build peak is 134 MiB above baseline and the resident index is 28 to 36 MiB; rebuilds also retain the serving index. Setting Go's `GOMEMLIMIT` is optional: it can reclaim garbage earlier but cannot shrink live data inside an index batch.
+- Set the memory limit to at least `512Mi`, and monitor memory during refreshes and concurrent requests. A rebuild retains the serving index while it builds the next one. Go's optional `GOMEMLIMIT` can reclaim garbage earlier while live data inside an index batch still needs memory.
 - Set both `SIGNOZ_DOCS_REFRESH_INTERVAL=0` and `SIGNOZ_DOCS_FULL_REFRESH_INTERVAL=0` when you would rather serve the docs snapshot that shipped with the release than pay any refresh. New docs pages then arrive with the next server upgrade. With only the primary interval off, the single scheduler uses the legacy cadence.
 - Every refresh logs `docs refresh starting` and ends with a completion or failure line, for example `docs refresh no-op; manifest unchanged`, `docs refresh no-op; sitemap unchanged`, `docs refresh found no page changes; index kept`, `docs refresh applied delta`, `docs refresh rebuilt index`, or a `docs refresh failed` warning. A refresh normally finishes within a few minutes. A container whose last docs line is `docs refresh starting`, `docs refresh fetching pages`, `docs refresh reconciling with manifest`, or `docs refresh rebuilding index` and that then restarted most likely died mid-refresh.
 
