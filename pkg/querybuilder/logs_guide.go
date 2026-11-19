@@ -167,6 +167,66 @@ inside CONTAINS or LIKE act as wildcards; write \\% and \\_ to match them litera
 A bare full-text token is still an error when the backend has no configured full-text column;
 write search() explicitly.
 
+== AUDIT EVENTS (source "audit") ==
+
+SigNoz records each create, update, delete, attach, and detach in this SigNoz workspace as an
+audit event: who changed what, and whether it succeeded. Reads are not recorded. Query audit
+events with source="audit" on signoz_search_logs and signoz_aggregate_logs, or with
+"source": "audit" in a logs builder_query spec. Without it, the same filters read application
+logs.
+
+Field discovery does not cover audit attributes: signoz_get_field_keys(source="audit") lists only
+the built-in columns and the resource keys below, and signoz_get_field_values returns no values.
+Use the names below. To see the values present in this workspace, group by the field:
+  signoz_aggregate_logs(source="audit", aggregations="count()", groupBy="signoz.principal.email")
+
+Bare names resolve to the right context; resource.<key> and attribute.<key> also work.
+
+Built-in columns:
+  body                 "<principal> <action> <kind> (<id>)", e.g. "alice@acme.com (<user id>) deleted dashboard (<id>)";
+                       a failure reads "failed to <verb>" and ends with the error type
+  event_name           signoz.audit.create, signoz.audit.update, signoz.audit.delete, signoz.audit.attach,
+                       signoz.audit.detach
+  severity_text        INFO on success, ERROR on failure
+  trace_id, span_id    the API request that made the change
+
+Who (attribute):
+  signoz.principal.email             email of the caller, when it has one
+  signoz.principal.id                user or service account id
+  signoz.principal.type              user, service_account
+  signoz.principal.identn.provider   how the caller signed in: tokenizer (session), api_key, impersonation,
+                                     internal, anonymous
+  signoz.organization.id             organization id
+
+What (attribute):
+  signoz.audit.verb                  create, update, delete, attach, detach
+  signoz.audit.outcome               success, failure
+  signoz.audit.action_category       access_control, configuration_changes, data_access
+  exception.type                     error type, on failures only
+
+On what (resource):
+  signoz.resource.kind               the changed object's kind, e.g. dashboard, rule (alert rule), saved-view,
+                                     notification-channel, user, role, serviceaccount
+  signoz.resource.id                 the changed object's id
+  signoz.resource.object             object path ending in the id
+  service.name                       always "signoz"; do not filter on it
+
+Attach and detach also name the other object (attribute): signoz.resource.target.kind,
+signoz.resource.target.id, and signoz.resource.target.object.
+
+The API request (attribute): http.request.method, http.route, http.response.status_code (number),
+url.path, client.address, user_agent.original.
+
+Audit rows differ from application log rows: body is {"message": "..."}, attributes is one flat
+object, and resource attributes are under resource.attributes. There are no attributes_string or
+resources_string maps.
+
+Filter examples:
+  signoz.resource.kind = 'dashboard' AND signoz.audit.verb = 'delete'
+  signoz.principal.email = 'alice@acme.com' AND signoz.audit.outcome = 'failure'
+  signoz.resource.kind = 'rule' AND signoz.resource.id = '<rule id>'
+  event_name IN ('signoz.audit.attach', 'signoz.audit.detach') AND signoz.resource.kind = 'role'
+
 == RESULT BOUNDS AND ORDERING ==
 
 Every builder_query must include a positive limit and explicit order.
@@ -345,6 +405,42 @@ matters more than response size.
   "variables": {}
 }
 
+--- Example 6: Audit events - deletions per person and object kind (requestType: "scalar") ---
+
+{
+  "schemaVersion": "v1",
+  "start": 1756386047000,
+  "end": 1756387847000,
+  "requestType": "scalar",
+  "compositeQuery": {
+    "queries": [
+      {
+        "type": "builder_query",
+        "spec": {
+          "name": "A",
+          "signal": "logs",
+          "source": "audit",
+          "disabled": false,
+          "limit": 100,
+          "offset": 0,
+          "having": {"expression": ""},
+          "filter": {"expression": "signoz.audit.verb = 'delete'"},
+          "aggregations": [
+            {"expression": "count()"}
+          ],
+          "groupBy": [
+            {"name": "signoz.principal.email", "fieldDataType": "string", "signal": "logs", "fieldContext": "attribute"},
+            {"name": "signoz.resource.kind", "fieldDataType": "string", "signal": "logs", "fieldContext": "resource"}
+          ],
+          "order": [{"key": {"name": "count()"}, "direction": "desc"}]
+        }
+      }
+    ]
+  },
+  "formatOptions": {"formatTableResultForUI": false, "fillGaps": false},
+  "variables": {}
+}
+
 == TIMESTAMP FORMAT ==
 
 The top-level "start" and "end" request fields are Unix milliseconds (13-digit), e.g. 1756386047000;
@@ -364,4 +460,6 @@ use a nanosecond value (e.g. 1756386047000000000), not milliseconds; otherwise i
 | Kubernetes namespace         | k8s.namespace.name       | resource                  |
 | Application log attribute    | workflow_run_id          | attribute                 |
 | Cross-field full-text search | search('timeout')        | n/a (filter function)     |
+| Who changed a SigNoz object  | signoz.principal.email   | attribute, source "audit" |
+| Which SigNoz object changed  | signoz.resource.kind     | resource, source "audit"  |
 `
