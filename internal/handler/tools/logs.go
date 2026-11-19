@@ -19,7 +19,8 @@ func (h *Handler) RegisterLogsHandlers(s *mcp.Server) {
 	aggregateLogsTool := mcp.NewTool("signoz_aggregate_logs",
 		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description(searchContextParamDescription)),
-		mcp.WithDescription("Use this when the user wants log counts, error counts, rates, averages, percentiles, or grouped or top-N breakdowns over logs, rather than individual log records. Use signoz_search_logs for log rows and message inspection; use signoz_execute_builder_query only for queries this tool cannot express. Log fields are workspace-specific, so discover unfamiliar keys with signoz_get_field_keys before filtering on them; signoz://logs/query-builder-guide has the filter grammar. Defaults to the last 1 hour."),
+		mcp.WithDescription("Use this when the user wants log counts, error counts, rates, averages, percentiles, or grouped or top-N breakdowns over logs, rather than individual log records. Use signoz_search_logs for log rows and message inspection; use signoz_execute_builder_query only for queries this tool cannot express. Log fields are workspace-specific, so discover unfamiliar keys with signoz_get_field_keys before filtering on them; signoz://logs/query-builder-guide has the filter grammar. "+logsAuditToolSentence+" Defaults to the last 1 hour."),
+		mcp.WithString("source", mcp.Enum(logSourceAudit), mcp.Description(logsSourceParamDescription)),
 		mcp.WithString("aggregations", mcp.Required(), stringOrStringArrayType(), mcp.Description(logsAggregationsParamDescription)),
 		mcp.WithString("groupBy", stringOrStringArrayType(), mcp.Description(logsGroupByParamDescription)),
 		mcp.WithString("having", mcp.Description(havingParamDescription)),
@@ -43,7 +44,8 @@ func (h *Handler) RegisterLogsHandlers(s *mcp.Server) {
 	searchLogsTool := mcp.NewTool("signoz_search_logs",
 		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description(searchContextParamDescription)),
-		mcp.WithDescription("Use this when the user wants individual log records or messages matching text, service, severity, or field filters. It returns paginated rows, not counts, trends, or grouped breakdowns; use signoz_aggregate_logs for those, and signoz_execute_builder_query only for queries this tool cannot express. Each row is the complete log record: log columns such as body and severity_text, attributes in attributes_string, attributes_number, and attributes_bool, and resource attributes such as service.name in resources_string. Name fields in selectFields to get only those fields. Discover unfamiliar fields with signoz_get_field_keys before filtering on them; signoz://logs/query-builder-guide has the filter grammar. Defaults to the last 1 hour."),
+		mcp.WithDescription("Use this when the user wants individual log records or messages matching text, service, severity, or field filters. It returns paginated rows, not counts, trends, or grouped breakdowns; use signoz_aggregate_logs for those, and signoz_execute_builder_query only for queries this tool cannot express. Each row is the complete log record: log columns such as body and severity_text, attributes in attributes_string, attributes_number, and attributes_bool, and resource attributes such as service.name in resources_string. Name fields in selectFields to get only those fields. Discover unfamiliar fields with signoz_get_field_keys before filtering on them; signoz://logs/query-builder-guide has the filter grammar. "+logsAuditToolSentence+" Defaults to the last 1 hour."),
+		mcp.WithString("source", mcp.Enum(logSourceAudit), mcp.Description(logsSourceParamDescription)),
 		mcp.WithString("filter", mcp.Description(logsFilterParamDescription)),
 		mcp.WithString("service", mcp.Description(searchLogsServiceParamDescription)),
 		mcp.WithString("severity", mcp.Description(searchLogsSeverityParamDescription)),
@@ -78,6 +80,7 @@ func aggregateSpec(signal string, reqData *AggregateRequest) querybuilder.Aggreg
 		Having:       reqData.Having,
 		Functions:    reqData.Functions,
 		QueryType:    reqData.QueryType,
+		Source:       reqData.Source,
 	}
 }
 
@@ -122,6 +125,9 @@ func (h *Handler) handleAggregateLogs(ctx context.Context, req mcp.CallToolReque
 
 	notes := append([]string{windowNote(reqData.StartTime, reqData.EndTime)}, aggregateNotes(reqData)...)
 	notes = append(notes, aggregateStepNote(ctx, h.logger, "signoz_aggregate_logs", reqData, result))
+	if reqData.SourceIgnored {
+		notes = append(notes, sourceIgnoredNote)
+	}
 	return aggregateResult(ctx, h.logger, "signoz_aggregate_logs", result, reqData.LimitClamped, notes...), nil
 }
 
@@ -143,6 +149,7 @@ func (h *Handler) handleSearchLogs(ctx context.Context, req mcp.CallToolRequest)
 			SelectFields: reqData.SelectFields,
 			OrderKey:     reqData.OrderKey,
 			OrderDir:     reqData.OrderDir,
+			Source:       reqData.Source,
 		},
 	)
 	if err != nil {
@@ -171,6 +178,9 @@ func (h *Handler) handleSearchLogs(ctx context.Context, req mcp.CallToolRequest)
 	notes := []string{windowNote(reqData.StartTime, reqData.EndTime)}
 	if reqData.SearchScopeIgnored {
 		notes = append(notes, searchScopeIgnoredNote)
+	}
+	if reqData.SourceIgnored {
+		notes = append(notes, sourceIgnoredNote)
 	}
 	var emptyNote string
 	if reqData.BodyOnlySearchText {

@@ -34,6 +34,8 @@ type AggregateRequest struct {
 	EndTime          int64
 	RequestType      string // "scalar" (default) or "time_series"
 	QueryType        string // traces only; builder_ai_query selects the AI envelope
+	Source           string // logs only; "audit" reads SigNoz audit events
+	SourceIgnored    bool   // logs only; an unsupported source was dropped
 	StepInterval     *int64 // nil = let backend auto-select
 	Having           string
 	Functions        []querybuilder.Function

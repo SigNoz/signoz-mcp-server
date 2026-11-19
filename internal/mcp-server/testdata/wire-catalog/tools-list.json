@@ -23,7 +23,7 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user wants log counts, error counts, rates, averages, percentiles, or grouped or top-N breakdowns over logs, rather than individual log records. Use signoz_search_logs for log rows and message inspection; use signoz_execute_builder_query only for queries this tool cannot express. Log fields are workspace-specific, so discover unfamiliar keys with signoz_get_field_keys before filtering on them; signoz://logs/query-builder-guide has the filter grammar. Defaults to the last 1 hour.",
+          "description": "Use this when the user wants log counts, error counts, rates, averages, percentiles, or grouped or top-N breakdowns over logs, rather than individual log records. Use signoz_search_logs for log rows and message inspection; use signoz_execute_builder_query only for queries this tool cannot express. Log fields are workspace-specific, so discover unfamiliar keys with signoz_get_field_keys before filtering on them; signoz://logs/query-builder-guide has the filter grammar. Set source=\"audit\" for SigNoz audit events, such as who created, updated, or deleted what in this SigNoz workspace; read signoz://logs/query-builder-guide for audit field names, their values, and the audit row shape. Defaults to the last 1 hour.",
           "inputSchema": {
             "properties": {
               "aggregations": {
@@ -133,11 +133,18 @@
                 "type": "string"
               },
               "service": {
-                "description": "Shortcut filter for service name. Equivalent to adding resource.service.name = '\u003cvalue\u003e' to filter. When this workspace's logs carry no resource service.name, the call usually returns no rows with a `key ... not found in metadata` warning instead of failing; find the key with signoz_get_field_keys(signal=\"logs\") and filter on it instead, such as attribute.service.name when it is a log attribute.",
+                "description": "Shortcut filter for service name. Equivalent to adding resource.service.name = '\u003cvalue\u003e' to filter. When this workspace's logs carry no resource service.name, the call usually returns no rows with a `key ... not found in metadata` warning instead of failing; find the key with signoz_get_field_keys(signal=\"logs\") and filter on it instead, such as attribute.service.name when it is a log attribute. With source=\"audit\", omit this: every audit event has service.name \"signoz\".",
                 "type": "string"
               },
               "severity": {
                 "description": "Shortcut filter for severity_text, matched in any case and as a prefix, so WARN also matches warning and Warning; pass the short form (ERR, WARN, INFO). Common values include DEBUG, INFO, WARN, ERROR, and FATAL, but they are not an exhaustive enum. Discover the workspace's values with signoz_get_field_values(signal=\"logs\", name=\"severity_text\", fieldContext=\"log\").",
+                "type": "string"
+              },
+              "source": {
+                "description": "Set \"audit\" to query SigNoz audit events (who created, updated, or deleted what in this SigNoz workspace) instead of application logs; omit for application logs. signoz_get_field_keys does not list audit attributes and signoz_get_field_values returns none for them, so take audit field names from signoz://logs/query-builder-guide.",
+                "enum": [
+                  "audit"
+                ],
                 "type": "string"
               },
               "start": {
@@ -8406,7 +8413,7 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user wants individual log records or messages matching text, service, severity, or field filters. It returns paginated rows, not counts, trends, or grouped breakdowns; use signoz_aggregate_logs for those, and signoz_execute_builder_query only for queries this tool cannot express. Each row is the complete log record: log columns such as body and severity_text, attributes in attributes_string, attributes_number, and attributes_bool, and resource attributes such as service.name in resources_string. Name fields in selectFields to get only those fields. Discover unfamiliar fields with signoz_get_field_keys before filtering on them; signoz://logs/query-builder-guide has the filter grammar. Defaults to the last 1 hour.",
+          "description": "Use this when the user wants individual log records or messages matching text, service, severity, or field filters. It returns paginated rows, not counts, trends, or grouped breakdowns; use signoz_aggregate_logs for those, and signoz_execute_builder_query only for queries this tool cannot express. Each row is the complete log record: log columns such as body and severity_text, attributes in attributes_string, attributes_number, and attributes_bool, and resource attributes such as service.name in resources_string. Name fields in selectFields to get only those fields. Discover unfamiliar fields with signoz_get_field_keys before filtering on them; signoz://logs/query-builder-guide has the filter grammar. Set source=\"audit\" for SigNoz audit events, such as who created, updated, or deleted what in this SigNoz workspace; read signoz://logs/query-builder-guide for audit field names, their values, and the audit row shape. Defaults to the last 1 hour.",
           "inputSchema": {
             "properties": {
               "end": {
@@ -8469,11 +8476,18 @@
                 ]
               },
               "service": {
-                "description": "Optional service name to filter by (adds resource.service.name = '\u003cvalue\u003e'). When this workspace's logs carry no resource service.name, the call usually returns no rows with a `key ... not found in metadata` warning instead of failing; find the key with signoz_get_field_keys(signal=\"logs\") and filter on it instead, such as attribute.service.name when it is a log attribute.",
+                "description": "Optional service name to filter by (adds resource.service.name = '\u003cvalue\u003e'). When this workspace's logs carry no resource service.name, the call usually returns no rows with a `key ... not found in metadata` warning instead of failing; find the key with signoz_get_field_keys(signal=\"logs\") and filter on it instead, such as attribute.service.name when it is a log attribute. With source=\"audit\", omit this: every audit event has service.name \"signoz\".",
                 "type": "string"
               },
               "severity": {
                 "description": "Filter on severity_text, matched in any case and as a prefix, so WARN also matches warning and Warning; pass the short form (ERR, WARN, INFO). Common values include DEBUG, INFO, WARN, ERROR, and FATAL, but they are not an exhaustive enum. Discover the workspace's values with signoz_get_field_values(signal=\"logs\", name=\"severity_text\", fieldContext=\"log\").",
+                "type": "string"
+              },
+              "source": {
+                "description": "Set \"audit\" to query SigNoz audit events (who created, updated, or deleted what in this SigNoz workspace) instead of application logs; omit for application logs. signoz_get_field_keys does not list audit attributes and signoz_get_field_values returns none for them, so take audit field names from signoz://logs/query-builder-guide.",
+                "enum": [
+                  "audit"
+                ],
                 "type": "string"
               },
               "start": {
