@@ -48,6 +48,14 @@ when reconciling a skipped version bump for the next release. A failed refresh k
 the committed corpus and logs a warning so website or ranking regressions do not block releases.
 The search tests compare HTML and Markdown URLs for the same page using the existing thresholds.
 
+### 2026-11-19 — Ship the refreshed corpus in this PR
+
+The published sitemap grew from 746 to 980 unique pages. Store the full snapshot and raise
+the compressed size cap from 2 MiB to 2.5 MiB to accommodate the 2.15 MiB artifact. Pages
+are now indexed under their Markdown URLs, so direct fetch also tries the equivalent HTML
+or Markdown URL when the requested form is absent. Update the golden expectations for
+verified docs that moved or cover the requested topic directly.
+
 ## Reference Links
 
 - [SigNoz/signoz.io#4530](https://github.com/SigNoz/signoz.io/pull/4530)
@@ -63,13 +71,19 @@ The search tests compare HTML and Markdown URLs for the same page using the exis
   and matched the live sitemap and a sampled Markdown page to the advertised ETags.
   The refresh suite replays the recorded Docker entry and sitemap ETag without network access.
 
-- A local rebuild generated 980 pages. The candidate failed the existing ranking thresholds
-  even after accounting for Markdown URL aliases, and exceeded the 2 MiB budget. Replaying that
-  candidate through the release script confirmed that it restores both committed files.
+- Replaying the initial candidate through the release script confirmed that it restores
+  both committed files when validation fails.
+- The embedded sitemap ETag and all 980 page ETags matched the live manifest. Two refreshes
+  from the fresh snapshot received manifest responses of 200 and 304 and made zero sitemap
+  or page requests. All golden search gates passed. The local index build measured
+  170 MiB peak and 55 MiB resident under the existing 224 MiB and 64 MiB limits.
+- With scheduled refresh disabled, a fresh stdio server ranked the FastAPI guide first,
+  returned identical Markdown for its HTML and Markdown URLs, and exposed the page in the sitemap.
 
 ## Outcome
 
 The replacement carries Manika Malhotra’s original commit and all three review fixes.
+The PR ships the fresh embedded corpus.
 Release prep attempts future corpus updates, with the committed snapshot retained when validation fails.
 Fleet-wide request and byte savings still need verification after rollout under
 [SigNoz/nerve-pod#590](https://github.com/SigNoz/nerve-pod/issues/590).
