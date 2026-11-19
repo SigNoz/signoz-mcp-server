@@ -24,6 +24,7 @@ revalidate pages periodically in the sitemap-only fallback.
 - `internal/docs/` handles scheduling, manifest reconciliation, and projected sitemap entries.
 - `internal/config/` maps existing refresh settings to the single schedule.
 - `cmd/build-docs-index/` reuses matching corpus records and fetches each URL once.
+- The release workflows rebuild and validate the embedded corpus with a shared script.
 - `README.md` and `docs/architecture.md` describe the refresh policy.
 
 ## Key Decisions
@@ -41,6 +42,13 @@ to catch edits absent from the sitemap. The legacy full-refresh setting supplies
 fallback period. Deployments that enabled only the legacy schedule keep its cadence and
 revalidate sitemap pages on every fallback tick, including early ticks caused by jitter.
 
+### 2026-11-19 — Refresh the embedded corpus during release prep
+
+Pre-release includes the rebuilt corpus when docs tests pass. Post-release does the same
+when reconciling a skipped version bump for the next release. A failed refresh keeps
+the committed corpus and logs a warning so website or ranking regressions do not block releases.
+The search tests compare HTML and Markdown URLs for the same page using the existing thresholds.
+
 ## Reference Links
 
 - [SigNoz/signoz.io#4530](https://github.com/SigNoz/signoz.io/pull/4530)
@@ -56,8 +64,13 @@ revalidate sitemap pages on every fallback tick, including early ticks caused by
   and matched the live sitemap and a sampled Markdown page to the advertised ETags.
   The refresh suite replays the recorded Docker entry and sitemap ETag without network access.
 
+- A local rebuild generated 980 pages. The candidate failed the existing ranking thresholds
+  even after accounting for Markdown URL aliases, and exceeded the 2 MiB budget. Replaying that
+  candidate through the release script confirmed that it restores both committed files.
+
 ## Outcome
 
 The replacement carries Manika Malhotra’s original commit and all three review fixes.
+Release prep attempts future corpus updates, with the committed snapshot retained when validation fails.
 Fleet-wide request and byte savings still need verification after rollout under
 [SigNoz/nerve-pod#590](https://github.com/SigNoz/nerve-pod/issues/590).

@@ -17,7 +17,9 @@ as `io.github.SigNoz/signoz-mcp-server`. The version that gets published lives i
 
 1. Run the **prereleaser** (`.github/workflows/pre-release.yaml`, manual dispatch). It raises a PR
    bumping `manifest.json`, `CHANGELOG.md`, and `server.json` — both `.version` and the pinned OCI
-   image tag (`docker.io/signoz/signoz-mcp-server:vX.Y.Z`).
+   image tag (`docker.io/signoz/signoz-mcp-server:vX.Y.Z`). It also rebuilds the embedded
+   docs corpus and includes both generated files if the docs tests pass. A failed refresh logs a
+   warning and keeps the committed corpus.
 2. Merge that PR, then create the GitHub release on the bumped commit so the tag carries the correct
    `server.json`.
 3. The `vX.Y.Z` tag triggers `.github/workflows/dockerbuildci.yaml`: it builds and pushes the Docker
@@ -25,6 +27,9 @@ as `io.github.SigNoz/signoz-mcp-server`. The version that gets published lives i
    registry via GitHub OIDC (no secret). It asserts the file matches the tag, waits for the image to
    be pullable, and is idempotent (skips an already-published version). Pre-release tags (`-rc.N`)
    are not published.
+
+When post-release reconciles a skipped version bump, it also attempts the same corpus refresh.
+The refreshed corpus in that PR is available for the next release.
 
 To publish out of band, re-run the `dockerbuildci` workflow on the release tag, or — from a
 workstation checked out at the tagged commit — run `mcp-publisher login github` (as a SigNoz org
