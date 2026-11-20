@@ -20,7 +20,7 @@ const (
 	aiTraceRowsNote     = "note: AI trace rows: filters, orderBy, and the limit use spans inside the time window, while each row's values cover the whole trace. estimated_total_cost is an estimate in USD from SigNoz's pricing rules, null for unpriced models (list them with signoz_get_ai_pricing, view=unpriced_models), and total_tokens already includes cache tokens."
 	aiAggregateNote     = "note: AI aggregations count only spans inside the time window. Cost is an estimate in USD from SigNoz's pricing rules (null for unpriced models), and total tokens already include cache tokens."
 	aiCostAggregateNote = "note: cost comes from SigNoz's pricing rules, so a null or 0 cost means a model has no price; list those models with signoz_get_ai_pricing (view=unpriced_models)."
-	aiNoRowsNote        = "note: no AI traces matched in this time window. Widen timeRange; if the app's spans use other model or tool keys (such as llm.model_name), find them with signoz_get_field_keys on the default queryType, check signoz_list_ai_attribute_mappings for a mapping to gen_ai.*, and if none exists, add one on the Attribute Mapping tab of AI Observability."
+	aiNoRowsNote        = "note: no AI traces matched in this time window. Widen it: move start earlier, or, without start, lengthen timeRange; if the app's spans use other model or tool keys (such as llm.model_name), find them with signoz_get_field_keys on the default queryType, check signoz_list_ai_attribute_mappings for a mapping to gen_ai.*, and if none exists, add one on the Attribute Mapping tab of AI Observability."
 
 	// maxSelectFields bounds how many columns one raw search can request.
 	maxSelectFields = 50
