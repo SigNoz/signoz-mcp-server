@@ -87,7 +87,7 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *mcp.Server) {
 	logsQueryBuilderGuide := mcp.NewResource(
 		"signoz://logs/query-builder-guide",
 		"Logs Query Builder Guide",
-		mcp.WithResourceDescription("Read this before writing Query Builder v5 JSON for logs or filtering on unfamiliar log fields. It explains filter syntax, field discovery, body, JSON-path, and cross-field search(), row and aggregate queries, stable pagination, limits, ordering, timestamps, and examples for rows, single values, and time series."),
+		mcp.WithResourceDescription("Read this before writing Query Builder v5 JSON for logs or filtering on unfamiliar log fields. It explains filter syntax, field discovery, body, JSON-path, and cross-field search(), row and aggregate queries, stable pagination, limits, ordering, timestamps, and examples for rows, single values, and time series. It also lists the SigNoz audit event fields and values for source=\"audit\"."),
 		mcp.WithMIMEType("text/markdown"),
 		mcp.WithResourceSize(int64(len(querybuilder.LogsQueryBuilderGuide))),
 	)
