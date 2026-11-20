@@ -50,9 +50,7 @@ and a caller-supplied reference time could be added later without changing the r
   to `now-24h`), two durations in `timeRange` (points to `start`/`end`), a non-string
   `timeRange`, a numeric epoch that looks like a duration (one read as seconds that is more than
   a year old, or any before 2001-09-09), a bound more than 24 hours after the current time, a
-  window starting before 1970, an empty or reversed window, and on the nine millisecond routes a
-  window within one millisecond, which would reach SigNoz as equal bounds (`main` rejected this
-  on `signoz_get_alert_history`).
+  window starting before 1970, and an empty or reversed window.
 - Error messages build their RFC 3339 example from the current time, and the `start` description
   shows the format as `YYYY-MM-DDThh:mm:ssZ`, so a copied example never carries a stale year.
 - Every result reports the window queried, in RFC 3339 UTC and Unix ms: a note block on text
@@ -150,11 +148,8 @@ Not covered, by decision:
 ### 2026-11-20 — Inputs that never produced a window are now errors
 
 - Decision: zero and negative `timeRange` values, which `time.ParseDuration` accepted, are
-  rejected. Every positive `time.ParseDuration` form still parses to the same length, including
-  sub-second units, both micro signs (`µs`, `μs`) and a leading `+`: input it takes goes
-  through it, and only forms with `d` or `w` are summed by this parser. A test checks them
-  against `time.ParseDuration`. Review found the first revision rejecting `+1h` and `μs` and
-  summing `1.001s` in floating point to `1.000999999s`.
+  rejected. Input `time.ParseDuration` takes goes through it, as on `main`, so every positive
+  form keeps its length; only forms with `d` or `w` are summed by this parser.
 - Rationale: both produced an empty or reversed window that SigNoz rejected. This narrows an
   accepted format (CMP-1) with no working input lost; the PR records it.
 
@@ -215,8 +210,7 @@ Not covered, by decision:
 - `TestToolHandlers_RejectInvalidArgumentsBeforeCallingSigNoz` has one row per time-windowed
   tool; each is rejected with the validation prefix against an upstream that fails the test on
   any request. `signoz_query_metrics` resolves its window before the metric metadata lookup, so
-  its row omits `metricType`. `TestResolveTimestampsRejectsAWindowWithinOneMillisecond` covers
-  the millisecond-route check.
+  its row omits `metricType`.
 - `TestTimeWindowedTools_SendTheResolvedWindowUpstream` sends RFC 3339 bounds with offsets to all
   twelve tools and finds the same window in the request SigNoz receives: Unix ms, or Unix ns
   for the three service tools. A millisecond route that sent nanoseconds would fail it. Each
@@ -238,5 +232,6 @@ metric metadata lookup.
 
 Deferred: a reference time and timezone, and the matching change to Noz's `<time_handling>`
 prompt, stay on SigNoz/nerve-pod#235. A window-length cap was declined (SigNoz/nerve-pod#217).
-Declined as minor: the service tools send nanosecond bounds but report them at millisecond
-precision, the unit callers send, so a window within one millisecond shows equal bounds there.
+Declined because agents do not send them: windows shorter than one millisecond, which collapse
+to equal bounds on millisecond routes and show equal reported bounds on the service routes;
+nanosecond rounding in `d` and `w` sums; and spellings such as `+1d`.

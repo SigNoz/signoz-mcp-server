@@ -245,16 +245,15 @@ func windowLength(v any, defaultRange string) (time.Duration, string, error) {
 	return 0, "", fmt.Errorf(`invalid "timeRange" %q: %v`, s, err)
 }
 
-// durationUnits are the units ParseDuration accepts in a term: time.ParseDuration's
-// units, including both micro signs, plus d and w. Descriptions advertise s to w.
+// durationUnits are the units ParseDuration sums for forms time.ParseDuration
+// rejects, which are those with d or w. Descriptions advertise s to w.
 var durationUnits = []struct {
 	name string
 	d    time.Duration
 }{
 	{"ns", time.Nanosecond},
 	{"us", time.Microsecond},
-	{"µs", time.Microsecond}, // micro sign, U+00B5
-	{"μs", time.Microsecond}, // Greek mu, U+03BC
+	{"µs", time.Microsecond},
 	{"ms", time.Millisecond},
 	{"s", time.Second},
 	{"m", time.Minute},
@@ -267,8 +266,8 @@ var errDuration = errors.New(`give one or more <number><unit> terms with unit s,
 
 // ParseDuration parses a window length: one or more <number><unit> terms, such
 // as "90s", "6h", "1h30m", "1.5d" or "2w". d is 24 hours and w is 7 days. The
-// result must be greater than zero. Input time.ParseDuration takes, such as
-// "+1h" or "1.001s", gets its exact result; forms with d or w are summed here.
+// result must be greater than zero. Input time.ParseDuration takes goes through
+// it, as on main; only forms with d or w are summed here.
 func ParseDuration(s string) (time.Duration, error) {
 	s = strings.TrimSpace(s)
 	if d, err := time.ParseDuration(s); err == nil {
@@ -277,7 +276,6 @@ func ParseDuration(s string) (time.Duration, error) {
 		}
 		return d, nil
 	}
-	s = strings.TrimPrefix(s, "+")
 	if s == "" {
 		return 0, errDuration
 	}

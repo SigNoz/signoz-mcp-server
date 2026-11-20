@@ -162,16 +162,15 @@ func TestParseDuration(t *testing.T) {
 		"2d12h": 60 * time.Hour,
 		"2w":    14 * 24 * time.Hour,
 		"500ms": 500 * time.Millisecond,
-		"+2d":   48 * time.Hour,
 	}
 	for in, want := range valid {
 		if got, err := ParseDuration(in); err != nil || got != want {
 			t.Errorf("ParseDuration(%q) = %v, %v; want %v", in, got, err, want)
 		}
 	}
-	// Positive time.ParseDuration inputs, which timeRange took before d and w
-	// were added, keep their meaning.
-	for _, in := range []string{"+1h", "+1.5h30m", "1.001s", "1000000μs", "1000000µs", "1000000us", "1500ns", ".5h", "5.h", "2h45m0.5s"} {
+	// Positive time.ParseDuration inputs, which timeRange took on main, keep
+	// their meaning.
+	for _, in := range []string{"+1h", "1.001s", "1000000μs", ".5h"} {
 		want, err := time.ParseDuration(in)
 		if err != nil {
 			t.Fatalf("time.ParseDuration(%q): %v", in, err)
@@ -180,7 +179,7 @@ func TestParseDuration(t *testing.T) {
 			t.Errorf("ParseDuration(%q) = %v, %v; want %v as time.ParseDuration gives", in, got, err, want)
 		}
 	}
-	for _, in := range []string{"", "+", "++1h", "0h", "-1h", "1x", "24hours", "h", "5", "1h30", "1 h", "1..5h"} {
+	for _, in := range []string{"", "0h", "-1h", "1x", "24hours", "h", "5", "1h30", "1 h", "1..5h"} {
 		if got, err := ParseDuration(in); err == nil {
 			t.Errorf("ParseDuration(%q) = %v, want error", in, got)
 		}

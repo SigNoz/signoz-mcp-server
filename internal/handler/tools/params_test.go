@@ -115,18 +115,6 @@ func TestListResult_ClampNoteSeparateBlock(t *testing.T) {
 	}
 }
 
-// TestResolveTimestampsRejectsAWindowWithinOneMillisecond pins that bounds the
-// millisecond routes would send as one value are rejected before querying.
-func TestResolveTimestampsRejectsAWindowWithinOneMillisecond(t *testing.T) {
-	_, _, err := resolveTimestamps(map[string]any{
-		"start": "2026-11-19T09:00:00.0001Z",
-		"end":   "2026-11-19T09:00:00.0009Z",
-	}, "1h")
-	if err == nil || !strings.Contains(err.Error(), "falls within one millisecond") {
-		t.Fatalf("resolveTimestamps error = %v, want the within-one-millisecond rejection", err)
-	}
-}
-
 // TestResolveTimestampsMalformedStartErrorsLoudly pins that present-but-malformed
 // timestamp inputs propagate an error out of resolveTimestamps instead of
 // silently falling back to the default window (the silent-failure anti-pattern).
