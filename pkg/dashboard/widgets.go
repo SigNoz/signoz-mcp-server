@@ -48,7 +48,7 @@ Field Discovery:
 - Do not invent tenant-specific attributes from an example. Adapt each example to fields present in the target tenant.
 
 Query count per panel [CRITICAL]:
-- Query-backed panels hold exactly ONE query. Putting more than one fails backend validation. To plot multiple series or compute a formula, nest them inside that single query as one signoz/CompositeQuery.
+- Query-backed panels hold exactly ONE query. Putting more than one fails backend validation. To plot multiple series, or to add a formula or trace operator, nest them with the queries they read inside that single query as one signoz/CompositeQuery.
 - signoz/TextPanel is queryless and must send a non-null empty array: "queries": []. Do not invent a query or dry-run one for a TextPanel.
 - Every panel must include queries. null is rejected, including for TextPanel.
 
@@ -90,10 +90,10 @@ Panel/widgets types in dashboards [CRITICAL]:
 7. Timeseries: time-indexed metrics.
 8. Value (the "Number" panel): single aggregated metric.
 9. Text: static Markdown notes, runbooks, links, and section context. Use plugin kind signoz/TextPanel with mode "markdown", text, presentation, headerOptions, and queries: [].
-10. Heatmap: how a value's distribution shifts over time, such as request latency per interval from a histogram metric.
-11. Top List: a ranked list of groups by one value, such as the busiest services or slowest endpoints.
-12. Scatter Plot: how two values relate across groups, such as request rate against p95 latency per service.
-13. Geo Map: values placed on a world or country map by location group-by keys, such as requests by country.
+10. Heatmap: value distribution over time.
+11. Top List: groups ranked by one value.
+12. Scatter Plot: two values compared across groups.
+13. Geo Map: values by location.
 
 Layout (concepts):
 - Panels sit on a column-based grid: each panel has a position (where it starts) and a size (how wide and tall it is).
@@ -120,23 +120,23 @@ Best for: comparing discrete categories (e.g. service names, status codes), or t
 
 Geo Map panel [CRITICAL]:
 Best for: values that differ by place, such as request count or error rate by country, region, or coordinates.
-- Use plugin kind signoz/GeoMapPanel with a scalar query: signoz/BuilderQuery, signoz/ClickHouseSQL, or signoz/CompositeQuery. Put a formula inside a signoz/CompositeQuery with the queries it reads. It rejects PromQL, signoz/AIBuilderQuery, and trace operators.
+- Use plugin kind signoz/GeoMapPanel with a scalar query: signoz/BuilderQuery, signoz/ClickHouseSQL, or signoz/CompositeQuery. It rejects PromQL, signoz/AIBuilderQuery, and trace operators.
 - Group by the location keys. Each result row is one place, and a row without a usable location is not drawn. Discover the location keys with signoz_get_field_keys; common ones are geo.country.iso_code and geo.region.iso_code, and coordinates need a latitude key and a longitude key.
 - location.mode is auto (default, detects the mode from the group-by keys), country, subdivision, or coordinates. location.country, location.region, location.lat, and location.lon name location columns: group-by keys of a Query Builder query, or result column names of a signoz/ClickHouseSQL query. SigNoz rejects a Query Builder panel that names a key outside its groupBy.
 - map.layer is regions (default, fills each shape), bubbles (a circle per region), or points (a circle per coordinate). map.view is world (default), fit, a continent (africa, asia, europe, north_america, oceania, south_america), or country with map.viewCountry set to an uppercase ISO 3166-1 alpha-2 code.
-- Subdivision mode draws states or provinces only when map.view is country and map.viewCountry names a country SigNoz has subdivision shapes for. With any other view it draws no regions.
+- Subdivision mode draws states or provinces only when map.view is country and map.viewCountry names a country SigNoz has subdivision shapes for.
 - map.colorBy and map.sizeBy name value columns. For Query Builder queries, a value column is an enabled query's name (such as A), or queryName.expression (such as A.count()) for a query with several aggregations. For signoz/ClickHouseSQL, it is the SQL column alias. Empty colorBy uses the first value column.
 - Omit order and use no limit, or one large enough to keep every place: a limit drops locations. A dry-run of a Query Builder query that no formula references and that has no limit applies and reports a 100-row limit, while the panel draws up to 10,000 places, so the dry-run checks the query, not location coverage.
 - Every query in the panel must group by the same keys, because SigNoz joins their results into one row per place.
 
 Heatmap panel [CRITICAL]:
 Best for: how a value's distribution shifts over time, such as request latency per interval from a histogram metric.
-- Use plugin kind signoz/HeatmapPanel with a query of kind heatmap: signoz/BuilderQuery, signoz/PromQLQuery, signoz/ClickHouseSQL, or signoz/CompositeQuery. Put a formula inside a signoz/CompositeQuery with the queries it reads. It rejects signoz/AIBuilderQuery and trace operators.
+- Use plugin kind signoz/HeatmapPanel with a query of kind heatmap: signoz/BuilderQuery, signoz/PromQLQuery, signoz/ClickHouseSQL, or signoz/CompositeQuery. It rejects signoz/AIBuilderQuery and trace operators.
 - The panel draws one enabled query. In a signoz/CompositeQuery, disable every other query; a formula can stay enabled while the queries it reads are disabled. SigNoz rejects functions and having on heatmap queries.
-- Build a signoz/BuilderQuery on the metrics signal. SigNoz also saves logs and traces heatmaps, but the dashboard editor offers only metrics for this panel, so users can't edit them there.
-- A histogram metric draws its own le buckets, so SigNoz rejects bucketOptions on it; the UI saves spaceAggregation count for it. A gauge, sum, or summary metric takes optional bucketOptions, linear with maxValue and numBuckets or log with scale; without them SigNoz uses a log-scale axis. Exponential histograms are not supported.
+- Build a signoz/BuilderQuery on the metrics signal; the dashboard editor offers only metrics for this panel.
+- A histogram metric draws its own le buckets, so SigNoz rejects bucketOptions on it; the UI saves spaceAggregation count for it. A gauge, sum, or summary metric takes optional bucketOptions, linear with a required maxValue and optional numBuckets, or log with an optional scale; without them SigNoz uses a log-scale axis. Exponential histograms are not supported.
 - A signoz/PromQLQuery must keep the le label, such as sum by (le) (rate(<histogram>_bucket[5m])). A signoz/ClickHouseSQL query returns one row per cell: a timestamp, the bucket bounds as __bucket_min and __bucket_max, and the count in a column named value.
-- axes.y.scale spaces the bucket bounds: auto (default), linear, log, or symlog. The create schema lists the color settings.
+- axes.y.scale spaces the bucket bounds: auto (default), linear, log, or symlog.
 
 Histogram panel [CRITICAL]:
 Best for: distribution patterns, skew, and how values cluster across ranges.
@@ -162,8 +162,8 @@ Best for: categorical proportions, such as request distribution across services.
 
 Scatter Plot panel [CRITICAL]:
 Best for: comparing two values per group to find outliers or correlation, such as request rate against p95 latency per service.
-- Use plugin kind signoz/ScatterPlotPanel with a scalar query: signoz/BuilderQuery, signoz/ClickHouseSQL, or signoz/CompositeQuery. Put a formula inside a signoz/CompositeQuery with the queries it reads. It rejects PromQL, signoz/AIBuilderQuery, and trace operators.
-- Each dot is one group: one row of the joined scalar result. Put the x and y values in separate aggregations or queries.
+- Use plugin kind signoz/ScatterPlotPanel with a scalar query: signoz/BuilderQuery, signoz/ClickHouseSQL, or signoz/CompositeQuery. It rejects PromQL, signoz/AIBuilderQuery, and trace operators.
+- Each dot is one group. Put the x and y values in separate aggregations or queries.
 - dimensions.x, dimensions.y, and dimensions.sizeBy name value columns, as map.colorBy does for Geo Map: an enabled query's name or queryName.expression for Query Builder queries, the SQL column alias for signoz/ClickHouseSQL. dimensions.colorBy lists group-by keys whose values color the dots.
 - SigNoz rejects a Query Builder panel whose dimensions name a column or key its query does not produce. It does not check names for signoz/ClickHouseSQL.
 - Every query in the panel must group by the same keys, because SigNoz joins their results row for row.
@@ -188,7 +188,7 @@ Best for: any metric whose meaning depends on change over time, such as throughp
 
 Top List panel [CRITICAL]:
 Best for: ranking groups by one value, such as the top services by request count or the slowest endpoints by p95 latency.
-- Use plugin kind signoz/TopListPanel with a scalar query: signoz/BuilderQuery, signoz/ClickHouseSQL, or signoz/CompositeQuery. Put a formula or trace operator inside a signoz/CompositeQuery with the queries it reads. It rejects PromQL and signoz/AIBuilderQuery.
+- Use plugin kind signoz/TopListPanel with a scalar query: signoz/BuilderQuery, signoz/ClickHouseSQL, or signoz/CompositeQuery. It rejects PromQL and signoz/AIBuilderQuery.
 - Group by the keys that name each row. The panel ranks the first value column of the first enabled query or formula; it ignores other aggregations.
 - Order by that value desc for the top N or asc for the bottom N, and set limit to the row count (the UI defaults to 10). SigNoz picks the N rows on the server.
 - appearance.showRank numbers the rows, appearance.showShare shows each row's share of the listed total, and appearance.barColor is a hex color for every bar. Do not use showShare for avg, min, max, or percentile values, because they do not add up to a total.
