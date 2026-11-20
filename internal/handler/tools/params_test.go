@@ -115,18 +115,6 @@ func TestListResult_ClampNoteSeparateBlock(t *testing.T) {
 	}
 }
 
-func TestResolveTimestampsEndOnlyEndsTheDefaultWindowAtEnd(t *testing.T) {
-	start, end, err := resolveTimestamps(map[string]any{
-		"end": "1711130400000",
-	}, "1h")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if end != 1711130400000 || start != 1711130400000-int64(time.Hour/time.Millisecond) {
-		t.Fatalf("window = [%d, %d], want the 1h default ending at end", start, end)
-	}
-}
-
 // TestResolveTimestampsMalformedStartErrorsLoudly pins that present-but-malformed
 // timestamp inputs propagate an error out of resolveTimestamps instead of
 // silently falling back to the default window (the silent-failure anti-pattern).

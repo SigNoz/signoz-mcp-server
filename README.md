@@ -549,8 +549,8 @@ Discover metric names and catalog metadata such as type, temporality, unit, and 
 - **Parameters**:
   - `searchText` (optional) - Filter metrics by name substring. Names separate words with dots or underscores (`system.cpu.time`, `http_server_duration`), so search one word, such as `cpu` or `memory`
   - `limit` (optional) - Maximum number of metrics to return (default: 50)
-  - `timeRange` (optional) - Window length ending at `end` (default now): `<number><unit>` terms with unit `s`, `m`, `h`, `d`, or `w`, such as '30m', '6h', '7d', '2w', or '1h30m' (default: '1h'; ignored when `start` is set)
-  - `start`/`end` (optional) - Window bounds: an RFC 3339 date-time with `Z` or an offset, `now` or `now-<duration>` (such as `now-2h`), or Unix epoch milliseconds. With `start`, the window runs from `start` to `end` (default now) and `timeRange` is ignored; with only `end`, the window is `timeRange` long and ends at `end`.
+  - `timeRange` (optional) - Window ending now, as a duration such as '30m', '6h', '7d', or '2w'; units are `s`, `m`, `h`, `d` (24h), and `w` (7d) (default: '1h'; ignored when `start` is set)
+  - `start`/`end` (optional) - A fixed window: an RFC 3339 date-time with `Z` or an offset, or Unix epoch milliseconds. With `start`, the window runs from `start` to `end` (default now) and `timeRange` is ignored. `end` without `start` is rejected with the `start` to add.
   - `source` (optional) - Data-source filter. Use `"meter"` to list Cost Meter metrics, the usage/billing metrics SigNoz meters on (currently telemetry ingestion volume); omit for the default metrics store
   - **Completeness note**: the response appends a note reporting `hasMore` (inferred from `returnedRows == limit`) so a `limit`-truncated list is never mistaken for the full set; narrow with `searchText` for more specificity
 
@@ -567,8 +567,8 @@ Query a known metric for values, trends, breakdowns, or formulas. The tool appli
   - `spaceAggregation` (optional) - Aggregation across series (defaulted by type when omitted; percentiles are histogram-only). Summary metrics need both aggregations set
   - `groupBy` (optional) - Label names to group by, as an array or a comma-separated string. Metric labels hold resource and data-point attributes in one set, so names need no context prefix. An array item that is not a string is rejected with a coded error
   - `filter` (optional) - Filter expression. Pass the expression text, not `{"expression": ...}`, which is rejected with a coded error. Regex matches use `REGEXP`, not PromQL's `=~`; a `=~` or `!~` that SigNoz rejects comes back with that hint. The former `query` alias is rejected with a coded error that names `filter`
-  - `timeRange` (optional) - Window length ending at `end` (default now): `<number><unit>` terms with unit `s`, `m`, `h`, `d`, or `w`, such as '30m', '6h', '7d', '2w', or '1h30m' (default: '1h'; ignored when `start` is set)
-  - `start`/`end` (optional) - Window bounds: an RFC 3339 date-time with `Z` or an offset, `now` or `now-<duration>` (such as `now-2h`), or Unix epoch milliseconds. With `start`, the window runs from `start` to `end` (default now) and `timeRange` is ignored; with only `end`, the window is `timeRange` long and ends at `end`.
+  - `timeRange` (optional) - Window ending now, as a duration such as '30m', '6h', '7d', or '2w'; units are `s`, `m`, `h`, `d` (24h), and `w` (7d) (default: '1h'; ignored when `start` is set)
+  - `start`/`end` (optional) - A fixed window: an RFC 3339 date-time with `Z` or an offset, or Unix epoch milliseconds. With `start`, the window runs from `start` to `end` (default now) and `timeRange` is ignored. `end` without `start` is rejected with the `start` to add.
   - `stepInterval` (optional) - Step in seconds (auto-calculated if omitted)
   - `requestType` (optional) - Response format. Enum: `time_series` (default), `scalar`. Unknown values are rejected.
   - `reduceTo` (required when `requestType` is `scalar`) - How to reduce each series to one value: `last`, `max`, `min`, `avg`, `sum`, `count`, `median`. It has no default; SigNoz rejects a scalar request without it. For a total count use `timeAggregation: increase` with `reduceTo: sum`
@@ -587,8 +587,8 @@ Query a known metric for values, trends, breakdowns, or formulas. The tool appli
 Return top 100 metrics ranked by ingested sample volume with pre-computed percentages. Use this to identify which metrics are driving the most ingestion volume and cost. Wraps `POST /api/v2/metrics/treemap`. Response fields: `metricName`, `percentage` (share of total sample volume), `totalValue` (absolute sample count).
 
 - **Parameters**:
-  - `timeRange` (optional) - Window length ending at `end` (default now): `<number><unit>` terms with unit `s`, `m`, `h`, `d`, or `w`, such as '30m', '6h', '7d', '2w', or '1h30m' (default: '7d'; ignored when `start` is set). Start with 7d; if the query times out, retry with 3d, then 24h
-  - `start`/`end` (optional) - Window bounds: an RFC 3339 date-time with `Z` or an offset, `now` or `now-<duration>` (such as `now-2h`), or Unix epoch milliseconds. With `start`, the window runs from `start` to `end` (default now) and `timeRange` is ignored; with only `end`, the window is `timeRange` long and ends at `end`.
+  - `timeRange` (optional) - Window ending now, as a duration such as '30m', '6h', '7d', or '2w'; units are `s`, `m`, `h`, `d` (24h), and `w` (7d) (default: '7d'; ignored when `start` is set). Start with 7d; if the query times out, retry with 3d, then 24h
+  - `start`/`end` (optional) - A fixed window: an RFC 3339 date-time with `Z` or an offset, or Unix epoch milliseconds. With `start`, the window runs from `start` to `end` (default now) and `timeRange` is ignored. `end` without `start` is rejected with the `start` to add.
   - **Completeness note**: returns a fixed top 100 by ingested sample volume; the response appends a note flagging whether the list was truncated at that cap (`hasMore`)
 
 #### `signoz_check_metric_usage`
@@ -606,8 +606,8 @@ Return label/attribute keys for one metric with cardinality counts and sample va
 
 - **Parameters**:
   - `metricName` (required) - Metric name to inspect. Example: `k8s.container.memory_limit`
-  - `timeRange` (optional) - Window length ending at `end` (default now): `<number><unit>` terms with unit `s`, `m`, `h`, `d`, or `w`, such as '30m', '6h', '7d', '2w', or '1h30m' (default: '7d'; ignored when `start` is set)
-  - `start`/`end` (optional) - Window bounds: an RFC 3339 date-time with `Z` or an offset, `now` or `now-<duration>` (such as `now-2h`), or Unix epoch milliseconds. With `start`, the window runs from `start` to `end` (default now) and `timeRange` is ignored; with only `end`, the window is `timeRange` long and ends at `end`.
+  - `timeRange` (optional) - Window ending now, as a duration such as '30m', '6h', '7d', or '2w'; units are `s`, `m`, `h`, `d` (24h), and `w` (7d) (default: '7d'; ignored when `start` is set)
+  - `start`/`end` (optional) - A fixed window: an RFC 3339 date-time with `Z` or an offset, or Unix epoch milliseconds. With `start`, the window runs from `start` to `end` (default now) and `timeRange` is ignored. `end` without `start` is rejected with the `start` to add.
 
 #### `signoz_list_alerts`
 
@@ -718,8 +718,8 @@ Applies an RFC 6902 JSON Patch to a dashboard: a partial update without re-sendi
 Lists APM services with trace activity in a time range, sorted by service name and paginated. Absence means no trace activity in that window, not that the same `service.name` never appears in logs; use `signoz_get_field_values` with `signal="logs"` for log values.
 
 - **Parameters**:
-  - `timeRange` (optional) - Window length ending at `end` (default now): `<number><unit>` terms with unit `s`, `m`, `h`, `d`, or `w`, such as '30m', '6h', '7d', '2w', or '1h30m' (default: '6h'; ignored when `start` is set)
-  - `start`/`end` (optional) - Window bounds: an RFC 3339 date-time with `Z` or an offset, `now` or `now-<duration>` (such as `now-2h`), or Unix epoch milliseconds. With `start`, the window runs from `start` to `end` (default now) and `timeRange` is ignored; with only `end`, the window is `timeRange` long and ends at `end`.
+  - `timeRange` (optional) - Window ending now, as a duration such as '30m', '6h', '7d', or '2w'; units are `s`, `m`, `h`, `d` (24h), and `w` (7d) (default: '6h'; ignored when `start` is set)
+  - `start`/`end` (optional) - A fixed window: an RFC 3339 date-time with `Z` or an offset, or Unix epoch milliseconds. With `start`, the window runs from `start` to `end` (default now) and `timeRange` is ignored. `end` without `start` is rejected with the `start` to add.
   - `limit` (optional) - Maximum services per page (default: 50, max: 1000; higher values are clamped)
   - `offset` (optional) - Number of results to skip for pagination (default: 0)
 - **Response**: `data` (services with `webUrl` when available), `pagination` (`total`, `offset`, `limit`, `hasMore`, `nextOffset`), and `window` (`start`, `end`, `startMs`, `endMs`), the window queried
@@ -730,8 +730,8 @@ Gets the built-in operation table for one traced service, ranked by p99 latency 
 
 - **Parameters**:
   - `service` (required) - Exact traced service name, typically from `signoz_list_services`
-  - `timeRange` (optional) - Window length ending at `end` (default now): `<number><unit>` terms with unit `s`, `m`, `h`, `d`, or `w`, such as '30m', '6h', '7d', '2w', or '1h30m' (default: '6h'; ignored when `start` is set)
-  - `start`/`end` (optional) - Window bounds: an RFC 3339 date-time with `Z` or an offset, `now` or `now-<duration>` (such as `now-2h`), or Unix epoch milliseconds. With `start`, the window runs from `start` to `end` (default now) and `timeRange` is ignored; with only `end`, the window is `timeRange` long and ends at `end`.
+  - `timeRange` (optional) - Window ending now, as a duration such as '30m', '6h', '7d', or '2w'; units are `s`, `m`, `h`, `d` (24h), and `w` (7d) (default: '6h'; ignored when `start` is set)
+  - `start`/`end` (optional) - A fixed window: an RFC 3339 date-time with `Z` or an offset, or Unix epoch milliseconds. With `start`, the window runs from `start` to `end` (default now) and `timeRange` is ignored. `end` without `start` is rejected with the `start` to add.
   - `tags` (optional) - JSON-encoded `TagQueryParam` array passed as a string, for example `[{"key":"http.method","tagType":"SpanAttribute","operator":"In","stringValues":["GET"]}]`; omit for no tag filter
 
 #### `signoz_get_service_map`
@@ -741,8 +741,8 @@ Gets the service dependency graph that SigNoz's Service Map draws for a time win
 - **Parameters**:
   - `service` (optional) - Exact `service.name` value whose edges to keep, or a database or message system named in an edge; discover service names with `signoz_get_field_values` (`signal=traces`, `fieldContext=resource`, `name=service.name`); omit for the whole graph
   - `direction` (optional) - `upstream` (services that call `service`), `downstream` (services, databases, and message systems it calls), or `both` (default); requires `service`
-  - `timeRange` (optional) - Window length ending at `end` (default now): `<number><unit>` terms with unit `s`, `m`, `h`, `d`, or `w`, such as '30m', '6h', '7d', '2w', or '1h30m' (default: '6h'; ignored when `start` is set)
-  - `start`/`end` (optional) - Window bounds: an RFC 3339 date-time with `Z` or an offset, `now` or `now-<duration>` (such as `now-2h`), or Unix epoch milliseconds. With `start`, the window runs from `start` to `end` (default now) and `timeRange` is ignored; with only `end`, the window is `timeRange` long and ends at `end`.
+  - `timeRange` (optional) - Window ending now, as a duration such as '30m', '6h', '7d', or '2w'; units are `s`, `m`, `h`, `d` (24h), and `w` (7d) (default: '6h'; ignored when `start` is set)
+  - `start`/`end` (optional) - A fixed window: an RFC 3339 date-time with `Z` or an offset, or Unix epoch milliseconds. With `start`, the window runs from `start` to `end` (default now) and `timeRange` is ignored. `end` without `start` is rejected with the `start` to add.
   - `limit` (optional) - Maximum edges per page (default: 50, max: 1000; higher values are clamped)
   - `offset` (optional) - Number of edges to skip for pagination (default: 0)
   - `environment` (optional) - Keep only edges recorded with this `deployment.environment` resource value; discover values with `signoz_get_field_values` (`signal=traces`, `fieldContext=resource`, `name=deployment.environment`)
@@ -758,8 +758,8 @@ The response is `{ "status": "success", "data": { "items": [...], "total": <n>, 
 
 - **Parameters**:
   - `id` (required) - Alert rule ID from `signoz_list_alert_rules`
-  - `timeRange` (optional) - Window length ending at `end` (default now): `<number><unit>` terms with unit `s`, `m`, `h`, `d`, or `w`, such as '30m', '6h', '7d', '2w', or '1h30m' (default: '6h'; ignored when `start` is set)
-  - `start`/`end` (optional) - Window bounds: an RFC 3339 date-time with `Z` or an offset, `now` or `now-<duration>` (such as `now-2h`), or Unix epoch milliseconds. With `start`, the window runs from `start` to `end` (default now) and `timeRange` is ignored; with only `end`, the window is `timeRange` long and ends at `end`.
+  - `timeRange` (optional) - Window ending now, as a duration such as '30m', '6h', '7d', or '2w'; units are `s`, `m`, `h`, `d` (24h), and `w` (7d) (default: '6h'; ignored when `start` is set)
+  - `start`/`end` (optional) - A fixed window: an RFC 3339 date-time with `Z` or an offset, or Unix epoch milliseconds. With `start`, the window runs from `start` to `end` (default now) and `timeRange` is ignored. `end` without `start` is rejected with the `start` to add.
   - `state` (optional) - Filter by alert state: `inactive`, `pending`, `recovering`, `firing`, `nodata`, or `disabled` (omit for all transitions)
   - `filter` (optional) - SigNoz query-builder expression over timeline labels. Combine conditions with `AND`, `OR`, and parentheses; quote strings with single quotes. Example: `severity = 'critical' AND (team = 'payments' OR service.name = 'checkout')`. To discover keys, first call without a filter and inspect `data.items[].labels[].key.name`. The backend-shaped `filterExpression` alias remains accepted for compatibility, but `filter` is canonical.
   - `cursor` (optional) - Opaque continuation cursor. Repeat the original time range, state, filter, and order when fetching the next page. Omit `cursor` for the first page.
@@ -860,8 +860,8 @@ Return aggregate statistics over logs (counts, rates, averages, percentiles, or 
   - `orderBy` (optional) - Order expression and direction. The expression must be one of the call's aggregations, written exactly as in `aggregations`, or a `groupBy` key (e.g. `'count_distinct(trace_id) desc'` when aggregating `count_distinct(trace_id)`); default: the first aggregation, descending
   - `limit` (optional) - Maximum number of groups to return (default: 100, max: 10000; higher values are clamped to bound server memory)
   - `functions` (optional) - Post-query transforms applied in order to each series, as an array of `{name, args}` objects (or a JSON-encoded string); each arg is `{"value": <number>}`. `timeShift` reads the window that many seconds earlier and returns its points on the current window's timestamps; `604800` gives the same window last week. To compare two windows, call once without `timeShift` and once with it. For `A - B` or `A / B` in one result, use `signoz_execute_builder_query` with two builder queries, the second with `timeShift`, and a `builder_formula`. `cutOffMin` and `cutOffMax` drop points below or above a threshold; `clampMin` and `clampMax` set them to it. `runningDiff` gives the change from the point before; `cumulativeSum` gives a running total. `ewma3`, `ewma5`, `ewma7`, `median3`, `median5`, and `median7` smooth a series; `fillZero` adds 0 at steps with no data; `absolute`, `log2`, and `log10` transform each value. SigNoz validates names and args. On a `scalar` request SigNoz applies only `timeShift`, and the response notes any other function it skipped
-  - `timeRange` (optional) - Window length ending at `end` (default now): `<number><unit>` terms with unit `s`, `m`, `h`, `d`, or `w`, such as '30m', '6h', '7d', '2w', or '1h30m' (default: '1h'; ignored when `start` is set)
-  - `start`/`end` (optional) - Window bounds: an RFC 3339 date-time with `Z` or an offset, `now` or `now-<duration>` (such as `now-2h`), or Unix epoch milliseconds. With `start`, the window runs from `start` to `end` (default now) and `timeRange` is ignored; with only `end`, the window is `timeRange` long and ends at `end`.
+  - `timeRange` (optional) - Window ending now, as a duration such as '30m', '6h', '7d', or '2w'; units are `s`, `m`, `h`, `d` (24h), and `w` (7d) (default: '1h'; ignored when `start` is set)
+  - `start`/`end` (optional) - A fixed window: an RFC 3339 date-time with `Z` or an offset, or Unix epoch milliseconds. With `start`, the window runs from `start` to `end` (default now) and `timeRange` is ignored. `end` without `start` is rejected with the `start` to add.
   - `requestType` (optional) - `scalar` (default; one aggregate value over the whole range) or `time_series` (one value per time bucket). Unknown values are rejected.
   - `stepInterval` (optional) - Time bucket size in seconds for `time_series` mode. Accepts a number or numeric string (backend auto-selects when omitted)
   - **Time-series ranking note**: the limit selects top groups over the whole requested window, not independently per bucket. Narrow the window or adjust the limit when a short-lived series could otherwise be hidden.
@@ -879,8 +879,8 @@ Calls using only `searchText`, `service`, `severity`, time, or pagination parame
   - `severity` (optional) - `severity_text`, matched in any case and as a prefix, so `WARN` also matches `warning` and `Warning`; pass the short form (`ERR`, `WARN`, `INFO`). DEBUG, INFO, WARN, ERROR, and FATAL are common examples, not an exhaustive enum. Discover values with `signoz_get_field_values(signal="logs", name="severity_text", fieldContext="log")`
   - `searchText` (optional) - Literal text to find, escaped automatically; combines with `filter` using AND
   - `searchScope` (optional) - Where `searchText` matches: `body` (default, `body CONTAINS`), `attribute` or `resource` (keys and values), or `all` (unscoped `search()`, slow on wide time ranges). Ignored, with a note in the result, when `searchText` is empty; an unknown scope is rejected
-  - `timeRange` (optional) - Window length ending at `end` (default now): `<number><unit>` terms with unit `s`, `m`, `h`, `d`, or `w`, such as '30m', '6h', '7d', '2w', or '1h30m' (default: '1h'; ignored when `start` is set)
-  - `start`/`end` (optional) - Window bounds: an RFC 3339 date-time with `Z` or an offset, `now` or `now-<duration>` (such as `now-2h`), or Unix epoch milliseconds. With `start`, the window runs from `start` to `end` (default now) and `timeRange` is ignored; with only `end`, the window is `timeRange` long and ends at `end`.
+  - `timeRange` (optional) - Window ending now, as a duration such as '30m', '6h', '7d', or '2w'; units are `s`, `m`, `h`, `d` (24h), and `w` (7d) (default: '1h'; ignored when `start` is set)
+  - `start`/`end` (optional) - A fixed window: an RFC 3339 date-time with `Z` or an offset, or Unix epoch milliseconds. With `start`, the window runs from `start` to `end` (default now) and `timeRange` is ignored. `end` without `start` is rejected with the `start` to add.
   - `limit` (optional) - Maximum number of logs to return (default: 20, max: 10000; higher values are clamped; paginate with `offset`)
   - `offset` (optional) - Offset for pagination (default: 0)
   - `orderBy` (optional) - Row order as `<field> <direction>` (e.g. `timestamp asc`, `severity_number desc`; default: `timestamp desc`)
@@ -936,8 +936,8 @@ Return individual paginated span rows matching service, operation, error, durati
   - `operation` (optional) - Operation/span name to filter by
   - `error` (optional) - Filter by error status. Boolean (or the strings `"true"`/`"false"`). An invalid value is rejected rather than silently dropped
   - `minDuration` / `maxDuration` (optional) - Min/max span duration as a duration such as `'500ms'` or `'2s'` (units `ns`, `us`, `ms`, `s`, `m`, `h`). A bare number, string or JSON, is nanoseconds. SigNoz rejects any other value
-  - `timeRange` (optional) - Window length ending at `end` (default now): `<number><unit>` terms with unit `s`, `m`, `h`, `d`, or `w`, such as '30m', '6h', '7d', '2w', or '1h30m' (default: '1h'; ignored when `start` is set)
-  - `start`/`end` (optional) - Window bounds: an RFC 3339 date-time with `Z` or an offset, `now` or `now-<duration>` (such as `now-2h`), or Unix epoch milliseconds. With `start`, the window runs from `start` to `end` (default now) and `timeRange` is ignored; with only `end`, the window is `timeRange` long and ends at `end`.
+  - `timeRange` (optional) - Window ending now, as a duration such as '30m', '6h', '7d', or '2w'; units are `s`, `m`, `h`, `d` (24h), and `w` (7d) (default: '1h'; ignored when `start` is set)
+  - `start`/`end` (optional) - A fixed window: an RFC 3339 date-time with `Z` or an offset, or Unix epoch milliseconds. With `start`, the window runs from `start` to `end` (default now) and `timeRange` is ignored. `end` without `start` is rejected with the `start` to add.
   - `limit` (optional) - Maximum rows to return (default: 20, max: 10000; higher values are clamped; paginate with `offset`)
   - `offset` (optional) - Number of rows to skip (default: 0)
   - `selectFields` (optional) - Fields to return on each span row instead of the complete record; SigNoz always adds `timestamp`, `trace_id`, and `span_id`. An array of field names or a comma-separated string, at most 50. Names can be span columns (`name`, `duration_nano`), resource attributes (`service.name`, `k8s.pod.name`), or span attributes (`http.route`); a `resource.`, `attribute.`, or `span.` prefix picks the context. Discover names with `signoz_get_field_keys` (`signal="traces"`)
@@ -965,8 +965,8 @@ Return custom aggregate statistics over spans (counts, rates, latency percentile
   - `orderBy` (optional) - Order expression and direction. The expression must be one of the call's aggregations, written exactly as in `aggregations`, or a `groupBy` key (e.g. `'p99(duration_nano) desc'` when aggregating `p99(duration_nano)`); default: the first aggregation, descending
   - `limit` (optional) - Maximum number of groups to return (default: 100, max: 10000; higher values are clamped to bound server memory)
   - `functions` (optional) - Post-query transforms applied in order to each series, as an array of `{name, args}` objects (or a JSON-encoded string); each arg is `{"value": <number>}`. `timeShift` reads the window that many seconds earlier and returns its points on the current window's timestamps; `604800` gives the same window last week. To compare two windows, call once without `timeShift` and once with it. For `A - B` or `A / B` in one result, use `signoz_execute_builder_query` with two builder queries, the second with `timeShift`, and a `builder_formula`. `cutOffMin` and `cutOffMax` drop points below or above a threshold; `clampMin` and `clampMax` set them to it. `runningDiff` gives the change from the point before; `cumulativeSum` gives a running total. `ewma3`, `ewma5`, `ewma7`, `median3`, `median5`, and `median7` smooth a series; `fillZero` adds 0 at steps with no data; `absolute`, `log2`, and `log10` transform each value. SigNoz validates names and args. On a `scalar` request SigNoz applies only `timeShift`, and the response notes any other function it skipped
-  - `timeRange` (optional) - Window length ending at `end` (default now): `<number><unit>` terms with unit `s`, `m`, `h`, `d`, or `w`, such as '30m', '6h', '7d', '2w', or '1h30m' (default: '1h'; ignored when `start` is set)
-  - `start`/`end` (optional) - Window bounds: an RFC 3339 date-time with `Z` or an offset, `now` or `now-<duration>` (such as `now-2h`), or Unix epoch milliseconds. With `start`, the window runs from `start` to `end` (default now) and `timeRange` is ignored; with only `end`, the window is `timeRange` long and ends at `end`.
+  - `timeRange` (optional) - Window ending now, as a duration such as '30m', '6h', '7d', or '2w'; units are `s`, `m`, `h`, `d` (24h), and `w` (7d) (default: '1h'; ignored when `start` is set)
+  - `start`/`end` (optional) - A fixed window: an RFC 3339 date-time with `Z` or an offset, or Unix epoch milliseconds. With `start`, the window runs from `start` to `end` (default now) and `timeRange` is ignored. `end` without `start` is rejected with the `start` to add.
   - `requestType` (optional) - `scalar` (default; one aggregate value over the whole range) or `time_series` (one value per time bucket). Unknown values are rejected.
   - `stepInterval` (optional) - Time bucket size in seconds for `time_series` mode. Accepts a number or numeric string (backend auto-selects when omitted)
   - `queryType` (optional) - `builder_query` (default) aggregates spans of all traces. Set `builder_ai_query` for AI observability queries: it aggregates spans of AI traces, and `aggregations`, `filter`, and `orderBy` also accept the trace-level fields listed for `signoz_search_traces`, e.g. `avg(trace.estimated_total_cost)`. One call cannot mix trace-level and span-level aggregations. Count AI traces with `count_distinct(trace_id)`. An unknown value runs as `builder_query` with an input validation notice

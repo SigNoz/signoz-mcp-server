@@ -12,8 +12,8 @@ const (
 
 // Shared by the query tools: time window, buckets, result shape, and result shaping.
 const (
-	startParamDescription        = `Window start: an RFC 3339 date-time with Z or an offset (YYYY-MM-DDThh:mm:ssZ), "now-<duration>" ("now-2h"), or Unix epoch milliseconds. When set, the window runs from start to end and timeRange is ignored.`
-	endParamDescription          = `Window end, in the same forms as start or "now". Defaults to now. Without start, the window is timeRange long and ends here.`
+	startParamDescription        = `Start of a fixed window: an RFC 3339 date-time with Z or an offset (YYYY-MM-DDThh:mm:ssZ), or Unix epoch milliseconds. When set, timeRange is ignored.`
+	endParamDescription          = `End of a fixed window, in the same forms as start. Defaults to now; set it only with start.`
 	stepIntervalParamDescription = "Time bucket size in seconds for time_series mode (optional). " +
 		"When omitted, the backend auto-selects an appropriate interval. " +
 		"Only set this if the user explicitly requests a specific granularity. " +
@@ -118,6 +118,6 @@ const (
 // time-windowed tool resolves its window with timeutil.ResolveWindow, so only
 // the per-tool default differs; defaultDesc is that trailing sentence.
 func timeRangeParamDescription(defaultDesc string) string {
-	return `Window length ending at end (default now): one or more <number><unit> terms with unit s, m, h, d (24h), or w (7d), such as "30m", "6h", "7d", "2w", or "1h30m". ` +
+	return `Window ending now, as a duration such as "30m", "6h", "7d", or "2w" (units s, m, h, d = 24h, w = 7d). ` +
 		"Ignored when start is set. " + defaultDesc
 }

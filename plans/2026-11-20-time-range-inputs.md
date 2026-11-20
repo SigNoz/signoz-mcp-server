@@ -36,13 +36,17 @@ a window. Handlers read the clock once per call and pass it in, so tests run on 
 and a caller-supplied reference time could be added later without changing the resolver.
 
 - `start` and `end` accept an RFC 3339 date-time with `Z` or an offset, `now`, `now-<duration>`,
-  or a Unix epoch of any magnitude (existing behaviour).
+  or a Unix epoch of any magnitude (existing behaviour). Their descriptions list RFC 3339 and
+  Unix ms only, so a relative window has one documented form, `timeRange`.
 - `timeRange` accepts one or more `<number><unit>` terms with `s`, `m`, `h`, `d` or `w`, and
   fractions (`1h30m`, `2d12h`, `1.5d`, `2w`). It must be greater than zero. `now-24h` is read as
   `24h`.
-- `start` set: the window runs from `start` to `end` or now. Only `end` set: the window is
-  `timeRange` (or the tool default) long and ends at `end`. Neither: it ends now.
-- Rejected before any query, with the fix in the message: an unparseable bound, a date-time
+- `timeRange` and `start`/`end` are separate windows. `start` set: the window runs from `start`
+  to `end` or now, and `timeRange` is ignored. No `start`: the window is `timeRange` (or the
+  tool default) long and ends now. `end` without `start` is rejected with the `start` to add;
+  an `end` of now counts as no `end`.
+- Rejected before any query, with the fix in the message: `end` without `start`, an unparseable
+  bound, a date-time
   without a zone, `-24h` (points to `now-24h`), two durations in `timeRange` (points to
   `start`/`end`), a non-string `timeRange`, a numeric epoch that looks like a duration (one read
   as seconds that is more than a year old, or any before 2001-09-09), a bound more than 24 hours
@@ -84,8 +88,8 @@ Not covered, by decision:
   `services.go`) — report the window queried.
 - `internal/handler/tools/query_param_descriptions.go` and the tools that had their own
   `start`/`end` text — one shared description each for `start`, `end` and `timeRange`.
-- `pkg/instructions/instructions.go` — rule 5 names the accepted forms within the 2,048-byte
-  budget.
+- `pkg/instructions/instructions.go` — rule 5 names RFC 3339 for tool bounds within the
+  2,048-byte budget.
 - `internal/handler/tools/tool_error_codes_test.go`, `time_window_test.go`, `params_test.go` —
   rejection before SigNoz and the window sent upstream, per tool.
 - `internal/mcp-server/testdata/wire-catalog/` — the 36 changed parameter descriptions and the
@@ -95,14 +99,22 @@ Not covered, by decision:
 
 ## Key Decisions
 
-### 2026-11-20 — Explicit bounds win; partial bounds are defined, not errors
+### 2026-11-20 — `timeRange` and `start`/`end` are separate windows
 
-- Decision: `start` alone runs to now and ignores `timeRange`; `end` alone takes `timeRange` or
-  the default ending at `end`.
-- Rationale: `timeRange` declares a schema default, so a client that fills defaults sends it on
-  every call. Rejecting `start` with `timeRange` would make `start` alone unusable for those
-  clients. Honouring the explicit bound removes the silent drop either way.
-- Alternatives rejected: an error for `start` plus `timeRange`; `[start, start + timeRange]`.
+- Decision: `timeRange` is a window ending now; `start` and `end` give a fixed window. `start`
+  alone runs to now and ignores `timeRange`. `end` without `start` is rejected, naming the
+  `start` that gives the `timeRange`-long window ending at `end`; an `end` of now counts as no
+  `end`. The bound descriptions stop listing `now-<duration>`, which still parses.
+- Rationale: the first revision of this PR let `end` alone set where `timeRange` ends. Its
+  description needed a sentence on `end` ("Without start, the window is timeRange long and ends
+  here") on top of the rule on `timeRange`, and "ends here" read as ambiguous. With separate
+  windows one rule covers every call: `start` overrides `timeRange`, and `timeRange` ends now.
+  An `end` sent alone costs one retry with the fix in the message instead of running a window
+  the caller did not state, and the silent drop on `main` stays removed. `timeRange` declares a
+  schema default, so a client that fills defaults sends it on every call; `start` overrides it
+  rather than conflicting with it.
+- Alternatives rejected: an `end`-anchored `timeRange` (the first revision); an error for
+  `start` plus `timeRange`; `[start, start + timeRange]`.
 
 ### 2026-11-20 — Date-times need `Z` or an offset
 
@@ -191,8 +203,9 @@ Not covered, by decision:
 - `pkg/timeutil/time_test.go` on a fixed clock: 21 equivalent ways of writing one window resolve
   to the same bounds in ms and ns; relative ranges across a year boundary; local midnight and a
   daylight-saving change through explicit offsets; old RFC 3339 dates, old millisecond epochs
-  and an `end` five minutes ahead of the clock accepted; 30 rejections, each checked for the fix
-  its message names.
+  and an `end` five minutes ahead of the clock accepted; 32 rejections, each checked for the fix
+  its message names, including `end` without `start` (absolute and relative) and the `start`
+  each message gives. An `end` of `now` with `timeRange` resolves like `timeRange` alone.
 - `TestToolHandlers_RejectInvalidArgumentsBeforeCallingSigNoz` has one row per time-windowed
   tool; each is rejected with the validation prefix against an upstream that fails the test on
   any request. `signoz_query_metrics` resolves its window before the metric metadata lookup, so
@@ -205,13 +218,14 @@ Not covered, by decision:
   report from one handler fails its row.
 - e2e tests: none sends `start` without `end`, `end` without `start`, or an old or
   seconds-sized epoch, and none asserts the removed error strings.
-- `GOTOOLCHAIN=go1.26.11 make ci` passed on 2026-11-20, including lint, race tests, guardrails,
-  the wire-catalog goldens, protocol and conformance checks.
+- `GOTOOLCHAIN=go1.26.11 make ci` passed on 2026-11-20 for both revisions, including lint, race
+  tests, guardrails, the wire-catalog goldens, protocol and conformance checks.
 
 ## Outcome
 
 Implemented in SigNoz/signoz-mcp-server#467. All twelve time-windowed tools resolve their window
-through `ResolveWindow` and report the window queried. `make ci` passed, and codex-loop approved
+through `ResolveWindow` and report the window queried. A second revision made `timeRange` and
+`start`/`end` separate windows and rejects `end` without `start`. `make ci` passed, and codex-loop approved
 after three rounds; its one fix moved `signoz_query_metrics` window validation ahead of the
 metric metadata lookup.
 

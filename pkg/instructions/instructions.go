@@ -14,7 +14,7 @@ const ServerInstructions = `Use SigNoz tools to investigate metrics, logs, trace
 
 4. **Guard negative filters.** !=, NOT LIKE, NOT IN, NOT CONTAINS, and NOT REGEXP also match missing fields. Require presence when excluding a value, for example: service.name EXISTS AND service.name != 'redis'.
 
-5. **Convert timestamps programmatically.** Tool start/end take RFC 3339 or now-1h; query bodies and results are Unix ms. Never convert them mentally; use a date/time function.
+5. **Convert timestamps programmatically.** Tool start/end take RFC 3339; query bodies and results are Unix ms. Never convert them mentally; use a date/time function.
 
 6. **Use returned webUrl values verbatim.** Resource results include SigNoz deep links. Never construct links from IDs or the instance URL.
 

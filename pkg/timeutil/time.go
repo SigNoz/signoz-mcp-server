@@ -75,11 +75,13 @@ func (w Window) StartNs() int64 { return w.Start.UnixNano() }
 func (w Window) EndNs() int64 { return w.End.UnixNano() }
 
 // ResolveWindow resolves a tool's start, end and timeRange arguments against
-// now, which the caller reads once per call:
+// now, which the caller reads once per call. timeRange and start/end are two
+// separate ways to give a window:
 //
-//   - start set: the window runs from start to end, or to now. timeRange is not used.
-//   - end set without start: the window is timeRange (or defaultRange) long and ends at end.
-//   - neither: the window is timeRange (or defaultRange) long and ends at now.
+//   - start set: a fixed window from start to end, or to now. timeRange is not used.
+//   - no start: the window is timeRange (or defaultRange) long and ends at now.
+//   - end set without start: rejected, naming the start that gives the
+//     timeRange-long window ending at end. An end of now counts as no end.
 //
 // start and end each accept an RFC 3339 date-time with Z or an offset, "now",
 // "now-<duration>", or a Unix epoch of any magnitude (seconds to nanoseconds).
@@ -97,13 +99,27 @@ func ResolveWindow(args map[string]any, defaultRange string, now time.Time) (Win
 		end = now
 	}
 	if !hasStart {
-		length, err := windowLength(args["timeRange"], defaultRange)
+		length, label, err := windowLength(args["timeRange"], defaultRange)
 		if err != nil {
 			return Window{}, err
 		}
 		start = end.Add(-length)
+		if hasEnd && !end.Equal(now) {
+			return Window{}, endWithoutStart(Window{Start: start, End: end}, label, now)
+		}
 	}
 	return checkWindow(Window{Start: start, End: end}, now)
+}
+
+// endWithoutStart rejects an end sent without start. An end that checkWindow
+// rejects keeps that more specific error, such as a duration sent as an epoch;
+// otherwise the message names the start for the window the caller likely meant.
+func endWithoutStart(w Window, length string, now time.Time) error {
+	if _, err := checkWindow(w, now); err != nil {
+		return err
+	}
+	return fmt.Errorf(`invalid window: "end" %s needs "start". For the %s before it, add start %q; for a window ending now, omit end and use timeRange`,
+		formatTime(w.End), length, formatTime(w.Start))
 }
 
 func checkWindow(w Window, now time.Time) (Window, error) {
@@ -203,29 +219,30 @@ func epochTime(key string, n int64, raw string, now time.Time) (time.Time, error
 }
 
 // windowLength reads timeRange, falling back to defaultRange when it is absent,
-// null or empty.
-func windowLength(v any, defaultRange string) (time.Duration, error) {
+// null or empty. It also returns the length as written, for messages.
+func windowLength(v any, defaultRange string) (time.Duration, string, error) {
 	s, isString := v.(string)
 	if v != nil && !isString {
-		return 0, fmt.Errorf(`invalid "timeRange" %v: give a duration string such as "24h". For explicit bounds use start and end, for example start "now-24h" and end "now"`, v)
+		return 0, "", fmt.Errorf(`invalid "timeRange" %v: give a duration string such as "24h". For explicit bounds use start and end, for example start "now-24h" and end "now"`, v)
 	}
 	s = strings.TrimSpace(s)
 	if s == "" {
 		s = defaultRange
 	}
 	// "now-24h" names the same window as "24h".
-	d, err := ParseDuration(strings.TrimPrefix(s, "now-"))
+	label := strings.TrimPrefix(s, "now-")
+	d, err := ParseDuration(label)
 	if err == nil {
-		return d, nil
+		return d, label, nil
 	}
 	if a, b, ok := strings.Cut(s, "-"); ok {
 		if _, errA := ParseDuration(a); errA == nil {
 			if _, errB := ParseDuration(b); errB == nil {
-				return 0, fmt.Errorf(`invalid "timeRange" %q: give one duration. For a window that ends in the past use start "now-%s" and end "now-%s"`, s, a, b)
+				return 0, "", fmt.Errorf(`invalid "timeRange" %q: give one duration. For a window that ends in the past use start "now-%s" and end "now-%s"`, s, a, b)
 			}
 		}
 	}
-	return 0, fmt.Errorf(`invalid "timeRange" %q: %v`, s, err)
+	return 0, "", fmt.Errorf(`invalid "timeRange" %q: %v`, s, err)
 }
 
 // durationUnits are the units ParseDuration accepts. Sub-second units are kept
