@@ -453,7 +453,15 @@
               ],
               "type": "object"
             },
-            "properties": {},
+            "properties": {
+              "notes": {
+                "description": "Advisory notes about this result, such as a clamped limit or an argument the tool ignored. Omitted when there are none.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
             "required": [],
             "type": "object"
           }
@@ -5828,6 +5836,13 @@
               "last_fetched_at": {
                 "type": "string"
               },
+              "notes": {
+                "description": "Advisory notes about this result, such as a clamped limit or an argument the tool ignored. Omitted when there are none.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
               "section_breadcrumb": {
                 "type": "string"
               },
@@ -7022,6 +7037,13 @@
                 ],
                 "type": "object"
               },
+              "notes": {
+                "description": "Advisory notes about this result, such as a clamped limit or an argument the tool ignored. Omitted when there are none.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
               "status": {
                 "type": "string"
               }
@@ -7436,6 +7458,13 @@
                   "array"
                 ]
               },
+              "notes": {
+                "description": "Advisory notes about this result, such as a clamped limit or an argument the tool ignored. Omitted when there are none.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
               "pagination": {
                 "additionalProperties": false,
                 "properties": {
@@ -7579,6 +7608,13 @@
                   "null",
                   "array"
                 ]
+              },
+              "notes": {
+                "description": "Advisory notes about this result, such as a clamped limit or an argument the tool ignored. Omitted when there are none.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
               },
               "pagination": {
                 "additionalProperties": false,
@@ -8267,6 +8303,13 @@
           "outputSchema": {
             "additionalProperties": false,
             "properties": {
+              "notes": {
+                "description": "Advisory notes about this result, such as a clamped limit or an argument the tool ignored. Omitted when there are none.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
               "query": {
                 "type": "string"
               },

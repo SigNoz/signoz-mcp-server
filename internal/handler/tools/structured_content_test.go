@@ -3,6 +3,7 @@ package tools
 import (
 	"bytes"
 	"encoding/json"
+	"log/slog"
 	"reflect"
 	"strings"
 	"testing"
@@ -146,6 +147,80 @@ func TestStructuredResult_FailsOpenOnTrailingData(t *testing.T) {
 	res := structuredResult([]byte("{\"id\":\"a\"}\n  \t"))
 	if res.StructuredContent == nil {
 		t.Fatalf("single value with trailing whitespace must keep StructuredContent")
+	}
+}
+
+// Notes added in two passes (a handler's, then the decorator's) end in one
+// notes array, and block 0 is rewritten to the same JSON with large integers
+// kept exact.
+func TestAppendNotes_AccumulatesIntoOneNotesArrayMatchingBlock0(t *testing.T) {
+	const bigInt = "9007199254740993"
+	res := structuredResult([]byte(`{"data":[{"id":` + bigInt + `,"name":"a<b"}],"pagination":{"total":1}}`))
+
+	appendNotes(testCtx(), nil, res, "note: from the handler", "  ")
+	appendNotes(testCtx(), nil, res, "notice: from the decorator")
+
+	wantNotes := []string{"note: from the handler", "notice: from the decorator"}
+	if got := structuredNotes(t, res); !reflect.DeepEqual(got, wantNotes) {
+		t.Fatalf("StructuredContent notes = %q, want %q", got, wantNotes)
+	}
+	if got := trailingTextBlocks(res); !reflect.DeepEqual(got, wantNotes) {
+		t.Fatalf("trailing text blocks = %q, want %q (blank notes dropped)", got, wantNotes)
+	}
+	block0 := textContent(t, res)
+	if !sameJSONValue(t, []byte(block0), res.StructuredContent) {
+		t.Fatalf("block 0 and StructuredContent diverged\nblock0=%s", block0)
+	}
+	if !strings.Contains(block0, `"id":`+bigInt) || !strings.Contains(block0, `"a<b"`) {
+		t.Fatalf("block 0 must keep the exact integer %s and unescaped text: %s", bigInt, block0)
+	}
+}
+
+// When notes cannot join StructuredContent, they stay as text blocks, the
+// payload stays untouched, and a WARN makes the fallback visible.
+func TestAppendNotes_FailsOpenToTextBlocksWithAWarning(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		payload string
+	}{
+		{"payload is an array", `[{"id":"a"}]`},
+		{"payload owns a notes string", `{"notes":"written by the user"}`},
+		{"payload owns a notes array", `{"notes":["written by the user"]}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var logs bytes.Buffer
+			logger := slog.New(slog.NewJSONHandler(&logs, nil))
+			res := structuredResult([]byte(tc.payload))
+
+			appendNotes(testCtx(), logger, res, "note: clamped")
+
+			if got := textContent(t, res); got != tc.payload {
+				t.Fatalf("block 0 = %s, want the untouched payload %s", got, tc.payload)
+			}
+			if !sameJSONValue(t, []byte(tc.payload), res.StructuredContent) {
+				t.Fatalf("StructuredContent changed: %#v", res.StructuredContent)
+			}
+			if got := trailingTextBlocks(res); !reflect.DeepEqual(got, []string{"note: clamped"}) {
+				t.Fatalf("trailing text blocks = %q, want the note", got)
+			}
+			if !strings.Contains(logs.String(), `"level":"WARN"`) || !strings.Contains(logs.String(), "only as text blocks") {
+				t.Fatalf("a fail-open note needs a WARN log; got %q", logs.String())
+			}
+		})
+	}
+}
+
+// An error result keeps its coded envelope; recovery text goes in a text block.
+func TestAppendNotes_LeavesErrorEnvelopeAlone(t *testing.T) {
+	res := errorWithCode(CodeNotFound, "rule not found")
+
+	appendNotes(testCtx(), nil, res, "recovery: check the id")
+
+	if got := trailingTextBlocks(res); !reflect.DeepEqual(got, []string{"recovery: check the id"}) {
+		t.Fatalf("trailing text blocks = %q, want the recovery text", got)
+	}
+	if !reflect.DeepEqual(res.StructuredContent, map[string]any{"code": CodeNotFound}) {
+		t.Fatalf("error StructuredContent = %#v, want only its code", res.StructuredContent)
 	}
 }
 

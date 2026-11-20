@@ -166,6 +166,43 @@ func containsString(values []string, want string) bool {
 // agent learns part of its request had no effect. Aliases the handler reads,
 // fields it forwards to SigNoz, and a fetched body's read-only copies are not
 // ignored, so they draw no notice; a failed call carries only its error.
+// A non-string filter is dropped, so the rules come back in every state and
+// the decorator's notice is the only sign. On a structured result the notice
+// joins the handler's own notes in one StructuredContent "notes" array, and the
+// result still matches the tool's advertised output schema.
+func TestDecoratorNoticeJoinsHandlerNotesInStructuredContent(t *testing.T) {
+	var queries []string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != "/api/v3/rules" {
+			_, _ = w.Write([]byte(`{"status":"success","data":{}}`))
+			return
+		}
+		queries = append(queries, r.URL.RawQuery)
+		_, _ = w.Write([]byte(`{"status":"success","data":{"rules":[{"id":"rule-1","alert":"High CPU","alertType":"METRIC_BASED_ALERT","ruleType":"threshold_rule","state":"inactive"}],"total":1}}`))
+	}))
+	t.Cleanup(upstream.Close)
+	h := newTestHandler(signozclient.NewClient(logpkg.New("error"), upstream.URL, "k", "SIGNOZ-API-KEY", nil))
+	server := newMCPTestServer()
+	h.RegisterAllToolHandlers(server)
+
+	result := callRegisteredTool(t, server, "signoz_list_alert_rules", `{"filter":{"status":"firing"},"limit":5000}`)
+
+	require.False(t, result.IsError, allTextBlocks(result))
+	require.Len(t, queries, 1)
+	require.NotContains(t, queries[0], "query=", "the non-string filter must not reach SigNoz")
+	notes := structuredNotes(t, result)
+	require.Len(t, notes, 2, "one notes array holds the handler's clamp note and the decorator's notice: %q", notes)
+	require.Equal(t, `note: limit clamped to 1000 per page to bound server memory; use "offset" to page through more results.`, notes[0])
+	require.True(t, strings.HasPrefix(notes[1], `Input validation notice: parameter "filter" did not fully match its advertised schema.`), notes[1])
+	require.Equal(t, notes, trailingTextBlocks(result), "clients that read content keep each note as its own block")
+	require.True(t, sameJSONValue(t, []byte(textContent(t, result)), result.StructuredContent), "block 0 must match StructuredContent: %s", textContent(t, result))
+
+	output, err := compileToolSchema("signoz_list_alert_rules", "output", outputSchemaJSON(listTestTools(t, server)["signoz_list_alert_rules"].Tool))
+	require.NoError(t, err)
+	require.NoError(t, validateSchemaValue(output.validator, result.StructuredContent, false), "a result with notes must match the advertised output schema")
+}
+
 func TestSuccessfulResultNamesTheArgumentsTheToolIgnored(t *testing.T) {
 	var requests []string
 	var putBody, postBody map[string]any
@@ -323,6 +360,11 @@ func TestSuccessfulResultNamesTheArgumentsTheToolIgnored(t *testing.T) {
 				require.Contains(t, last.Text, `"`+name+`"`, "the notice must name %q", name)
 			}
 			require.NotContains(t, last.Text, "ignore previous instructions", "a non-identifier key must not be repeated")
+			if result.StructuredContent != nil {
+				notes := structuredNotes(t, result)
+				require.NotEmpty(t, notes, "a structured result must carry the notice in StructuredContent too")
+				require.Equal(t, last.Text, notes[len(notes)-1])
+			}
 		})
 	}
 }

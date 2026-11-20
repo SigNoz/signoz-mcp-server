@@ -40,6 +40,8 @@ func serviceMapUpstream(t *testing.T, body string) (*Handler, *[]string) {
 	return newTestHandler(signozclient.NewClient(logpkg.New("error"), server.URL, "k", "SIGNOZ-API-KEY", nil)), &requests
 }
 
+const serviceMapClampNote = `note: limit clamped to 1000 per page to bound server memory; use "offset" to page through more results.`
+
 type serviceMapPage struct {
 	Data []struct {
 		Parent string `json:"parent"`
@@ -129,9 +131,10 @@ func TestServiceMapPagesEdgesWithNextOffset(t *testing.T) {
 func TestServiceMapNotesWhenNoEdgeTouchesTheService(t *testing.T) {
 	h, _ := serviceMapUpstream(t, serviceMapGraph)
 
-	_, page, notes := callServiceMap(t, h, map[string]any{"service": "Orders", "direction": "upstream"})
+	res, page, notes := callServiceMap(t, h, map[string]any{"service": "Orders", "direction": "upstream"})
 	assert.Empty(t, page.Data)
 	assert.Equal(t, []string{serviceMapNoSuchServiceNote, serviceMapUnitsNote}, notes)
+	assert.Equal(t, notes, structuredNotes(t, res), "a client that reads only StructuredContent must get the same notes")
 
 	_, page, notes = callServiceMap(t, h, map[string]any{"service": "inventory", "direction": "downstream"})
 	assert.Empty(t, page.Data)
@@ -139,14 +142,15 @@ func TestServiceMapNotesWhenNoEdgeTouchesTheService(t *testing.T) {
 }
 
 // When the window or filters leave no edges at all, the note must not blame the
-// service name.
+// service name. A clamped limit adds its own note ahead of the graph's notes.
 func TestServiceMapNotesAnEmptyGraph(t *testing.T) {
 	h, _ := serviceMapUpstream(t, `[]`)
 
-	_, page, notes := callServiceMap(t, h, map[string]any{"service": "orders", "direction": "upstream"})
+	res, page, notes := callServiceMap(t, h, map[string]any{"service": "orders", "direction": "upstream", "limit": "5000"})
 
 	assert.Empty(t, page.Data)
-	assert.Equal(t, []string{serviceMapEmptyGraphNote, serviceMapUnitsNote}, notes)
+	assert.Equal(t, []string{serviceMapClampNote, serviceMapEmptyGraphNote, serviceMapUnitsNote}, notes)
+	assert.Equal(t, notes, structuredNotes(t, res), "a client that reads only StructuredContent must get the same notes")
 }
 
 // Each case is a filter the tool cannot apply as asked. None of them may reach

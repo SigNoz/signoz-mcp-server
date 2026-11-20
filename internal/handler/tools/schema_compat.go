@@ -265,9 +265,7 @@ func (h *Handler) validationDecorator(toolName string, input, output *compiledTo
 			if ignored := use.unhandled(undeclared); len(ignored) > 0 {
 				notices = append(notices, ignoredArgumentsNotice(ignored))
 			}
-			for _, notice := range notices {
-				result.Content = append(result.Content, mcp.NewTextContent(notice))
-			}
+			appendNotes(ctx, h.logger, result, notices...)
 		}
 		if result.IsError || output == nil {
 			return result, nil
@@ -603,7 +601,42 @@ func (h *Handler) shouldLogValidationRequest(toolName, direction, path, constrai
 
 func normalizeToolSchemas(tool *mcp.Tool) {
 	tool.InputSchema = normalizeSchemaValue(tool.InputSchema, !canonicalChannelSchema(tool.Name))
-	tool.OutputSchema = normalizeSchemaValue(tool.OutputSchema, false)
+	tool.OutputSchema = declareResultNotes(normalizeSchemaValue(tool.OutputSchema, false))
+}
+
+// declareResultNotes adds the optional notes array to an object output schema,
+// because appendNotes can add notes to any tool's structured result. A schema
+// that already declares notes keeps its own definition.
+func declareResultNotes(schema any) any {
+	if schema == nil {
+		return nil
+	}
+	raw, err := json.Marshal(schema)
+	if err != nil {
+		return schema
+	}
+	var object map[string]any
+	if err := json.Unmarshal(raw, &object); err != nil || object["type"] != "object" {
+		return schema
+	}
+	properties, _ := object["properties"].(map[string]any)
+	if properties == nil {
+		properties = map[string]any{}
+	}
+	if _, declared := properties[resultNotesKey]; declared {
+		return schema
+	}
+	properties[resultNotesKey] = map[string]any{
+		"type":        "array",
+		"items":       map[string]any{"type": "string"},
+		"description": resultNotesDescription,
+	}
+	object["properties"] = properties
+	b, err := json.Marshal(object)
+	if err != nil {
+		return schema
+	}
+	return json.RawMessage(b)
 }
 
 // Channel v2 inputs retain upstream's closed config objects instead of the
