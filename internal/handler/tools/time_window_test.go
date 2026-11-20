@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"sync"
 	"testing"
+	"time"
 
 	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
@@ -20,7 +21,7 @@ import (
 // time-windowed tool sends SigNoz the window it was given as its start and end
 // bounds, in the unit its route takes (milliseconds, or nanoseconds for the
 // service routes), reports that window in its result, and without bounds
-// queries the timeRange default its schema advertises.
+// queries the timeRange default its schema advertises, ending at the call.
 func TestTimeWindowedTools_SendTheResolvedWindowUpstream(t *testing.T) {
 	const (
 		window = `"start":"2026-11-19T14:30:00+05:30","end":"2026-11-19T10:00:00Z"`
@@ -123,7 +124,13 @@ func TestTimeWindowedTools_SendTheResolvedWindowUpstream(t *testing.T) {
 				want = length.Nanoseconds()
 			}
 			takeSent()
+			before := time.Now()
 			result := callRegisteredTool(t, server, tt.tool, toolArguments(tt.required, ""))
+			after := time.Now()
+			earliestEnd, latestEnd := before.UnixMilli(), after.UnixMilli()
+			if tt.nanos {
+				earliestEnd, latestEnd = before.UnixNano(), after.UnixNano()
+			}
 			if result.IsError {
 				t.Fatalf("result is an error: %s", allTextBlocks(result))
 			}
@@ -136,6 +143,9 @@ func TestTimeWindowedTools_SendTheResolvedWindowUpstream(t *testing.T) {
 				end, errEnd := strconv.ParseInt(bounds.end, 10, 64)
 				if errStart != nil || errEnd != nil || end-start != want {
 					t.Fatalf("SigNoz received start %s and end %s, a window of %d; want the advertised default %q, %d", bounds.start, bounds.end, end-start, advertised, want)
+				}
+				if end < earliestEnd || end > latestEnd {
+					t.Fatalf("SigNoz received end %s; want the call time, between %d and %d", bounds.end, earliestEnd, latestEnd)
 				}
 			}
 		})

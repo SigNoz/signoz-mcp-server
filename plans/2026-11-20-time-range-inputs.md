@@ -219,8 +219,8 @@ Not covered, by decision:
   of the JSON body: Unix ms, or Unix ns for the three service tools, so a wrong unit or swapped
   bounds fail it. Each result must succeed and report the window: the note block on ten tools,
   the `window` field, compared as JSON, on `signoz_list_services` and `signoz_get_service_map`.
-  Called without bounds, each tool must query the `timeRange` default its schema advertises;
-  changing the alert-history default from 6h to 1h fails its row.
+  Called without bounds, each tool must query the `timeRange` default its schema advertises,
+  ending at the call time; changing the alert-history default from 6h to 1h fails its row.
 - e2e tests: none sends `start` without `end`, `end` without `start`, or an old or
   seconds-sized epoch, and none asserts the removed error strings.
 - `GOTOOLCHAIN=go1.26.11 make ci` passed on 2026-11-20 for both revisions, including lint, race
