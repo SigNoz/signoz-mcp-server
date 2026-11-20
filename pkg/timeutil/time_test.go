@@ -168,7 +168,18 @@ func TestParseDuration(t *testing.T) {
 			t.Errorf("ParseDuration(%q) = %v, %v; want %v", in, got, err, want)
 		}
 	}
-	for _, in := range []string{"", "0h", "-1h", "1x", "24hours", "h", "5", "1h30", "1 h", "1..5h"} {
+	// Positive time.ParseDuration inputs, which timeRange took before d and w
+	// were added, keep their meaning.
+	for _, in := range []string{"+1h", "+1.5h30m", "1000000μs", "1000000µs", "1000000us", "1500ns", ".5h", "5.h", "2h45m0.5s"} {
+		want, err := time.ParseDuration(in)
+		if err != nil {
+			t.Fatalf("time.ParseDuration(%q): %v", in, err)
+		}
+		if got, err := ParseDuration(in); err != nil || got != want {
+			t.Errorf("ParseDuration(%q) = %v, %v; want %v as time.ParseDuration gives", in, got, err, want)
+		}
+	}
+	for _, in := range []string{"", "+", "++1h", "0h", "-1h", "1x", "24hours", "h", "5", "1h30", "1 h", "1..5h"} {
 		if got, err := ParseDuration(in); err == nil {
 			t.Errorf("ParseDuration(%q) = %v, want error", in, got)
 		}

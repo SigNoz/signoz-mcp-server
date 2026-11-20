@@ -148,7 +148,9 @@ Not covered, by decision:
 ### 2026-11-20 — Inputs that never produced a window are now errors
 
 - Decision: zero and negative `timeRange` values, which `time.ParseDuration` accepted, are
-  rejected. Sub-second units still parse.
+  rejected. Every positive `time.ParseDuration` form still parses with the same length,
+  including sub-second units, both micro signs (`µs`, `μs`) and a leading `+`; a test checks
+  them against `time.ParseDuration`. The first revision missed the last two, found in review.
 - Rationale: both produced an empty or reversed window that SigNoz rejected. This narrows an
   accepted format (CMP-1) with no working input lost; the PR records it.
 
