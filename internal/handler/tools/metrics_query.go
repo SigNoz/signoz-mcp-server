@@ -248,7 +248,7 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 	// rather than prepended. query_metrics is a raw QB passthrough, so it stays
 	// text-only (no structuredContent) — its upstream shape is variable.
 	note := buildMetricsDecisionsNote(decisions, resolved.Warnings)
-	return resultWithNotes(result, note), nil
+	return resultWithNotes(result, windowNote(startTime, endTime), note), nil
 }
 
 // buildMetricsDecisionsNote renders the decisions/warnings advisory block that

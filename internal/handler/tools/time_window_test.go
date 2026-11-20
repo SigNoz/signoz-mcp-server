@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -9,12 +10,14 @@ import (
 	"testing"
 
 	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 )
 
 // TestTimeWindowedTools_SendTheResolvedWindowUpstream pins that every
-// time-windowed tool accepts RFC 3339 bounds and sends SigNoz the same window in
-// the unit its route takes: milliseconds, or nanoseconds for the service routes.
+// time-windowed tool accepts RFC 3339 bounds, sends SigNoz the same window in
+// the unit its route takes (milliseconds, or nanoseconds for the service
+// routes), and reports that window in its result.
 func TestTimeWindowedTools_SendTheResolvedWindowUpstream(t *testing.T) {
 	const (
 		window     = `"start":"2026-11-19T14:30:00+05:30","end":"2026-11-19T10:00:00Z"`
@@ -22,6 +25,7 @@ func TestTimeWindowedTools_SendTheResolvedWindowUpstream(t *testing.T) {
 		endMs      = "1795082400000"
 		startNanos = "1795078800000000000"
 		endNanos   = "1795082400000000000"
+		note       = "window queried: 2026-11-19T09:00:00Z to 2026-11-19T10:00:00Z (Unix ms 1795078800000 to 1795082400000)"
 	)
 
 	var mu sync.Mutex
@@ -32,7 +36,7 @@ func TestTimeWindowedTools_SendTheResolvedWindowUpstream(t *testing.T) {
 		requests = append(requests, r.URL.RawQuery+" "+string(body))
 		mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"status":"success","data":{}}`))
+		_, _ = w.Write([]byte(`{"status":"success","data":[]}`))
 	}))
 	t.Cleanup(upstream.Close)
 	h := &Handler{
@@ -65,7 +69,25 @@ func TestTimeWindowedTools_SendTheResolvedWindowUpstream(t *testing.T) {
 			requests = nil
 			mu.Unlock()
 
-			callRegisteredTool(t, server, tt.tool, tt.arguments)
+			result := callRegisteredTool(t, server, tt.tool, tt.arguments)
+			if result.IsError {
+				t.Fatalf("result is an error: %s", allTextBlocks(result))
+			}
+			if tt.tool == "signoz_list_services" {
+				// Structured results carry the window as a field, because a client
+				// may show the model only StructuredContent.
+				var structured struct {
+					Window resultWindow `json:"window"`
+				}
+				raw, _ := json.Marshal(result.StructuredContent)
+				_ = json.Unmarshal(raw, &structured)
+				want := resultWindow{Start: "2026-11-19T09:00:00Z", End: "2026-11-19T10:00:00Z", StartMs: 1795078800000, EndMs: 1795082400000}
+				if structured.Window != want {
+					t.Fatalf("structured window = %+v, want %+v; structured content: %s", structured.Window, want, raw)
+				}
+			} else if !hasNoteBlock(result, note) {
+				t.Fatalf("result has no note block %q; blocks: %s", note, allTextBlocks(result))
+			}
 
 			mu.Lock()
 			defer mu.Unlock()
@@ -80,4 +102,14 @@ func TestTimeWindowedTools_SendTheResolvedWindowUpstream(t *testing.T) {
 			t.Fatalf("no upstream request carried start %s and end %s; requests: %q", tt.start, tt.end, requests)
 		})
 	}
+}
+
+// hasNoteBlock reports whether a block after the result's first holds note.
+func hasNoteBlock(result *mcp.CallToolResult, note string) bool {
+	for _, block := range result.Content[1:] {
+		if text, ok := mcp.AsTextContent(block); ok && text.Text == note {
+			return true
+		}
+	}
+	return false
 }

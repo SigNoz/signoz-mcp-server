@@ -483,6 +483,8 @@ For detailed usage and examples, see the [full documentation](https://signoz.io/
 
 > **Resource deep links:** the resource read tools (`signoz_list_dashboards`, `signoz_get_dashboard`, `signoz_list_alerts`, `signoz_list_alert_rules`, `signoz_get_alert`, `signoz_list_services`, `signoz_search_traces`, `signoz_get_trace_details`) and the dashboard write tools (`signoz_create_dashboard`, `signoz_update_dashboard`, `signoz_patch_dashboard`, `signoz_import_dashboard`) include a `webUrl` field when the request carries a SigNoz instance URL: an absolute deep link to the resource in the SigNoz web UI (per result row for `signoz_search_traces`). The MCP server discovers the browser base from each SigNoz backend's `global.external_url`. API requests keep using the request's backend URL. See [Browser links for self-hosted SigNoz](#browser-links-for-self-hosted-signoz).
 
+> **Time windows:** the tools that take `start`, `end`, and `timeRange` (`signoz_search_logs`, `signoz_aggregate_logs`, `signoz_search_traces`, `signoz_aggregate_traces`, `signoz_query_metrics`, `signoz_list_metrics`, `signoz_get_top_metrics`, `signoz_check_metric_cardinality`, `signoz_get_alert_history`, `signoz_list_services`, and `signoz_get_service_top_operations`) report the window they queried in RFC 3339 UTC and Unix milliseconds. Text results append a note such as `window queried: 2026-11-19T09:00:00Z to 2026-11-19T10:00:00Z (Unix ms 1795078800000 to 1795082400000)`; `signoz_list_services` returns a `window` object with `start`, `end`, `startMs`, and `endMs`. `signoz_execute_builder_query` takes its window in the request body and reports none.
+
 ### Agent Routing Guidance
 
 Use `signoz_search_docs` for topical discovery when no exact documentation page is selected, then `signoz_fetch_doc` for the chosen page or heading. Use live data tools for tenant telemetry, alert state, dashboards, saved views, and notification channels.
@@ -722,6 +724,7 @@ Lists APM services with trace activity in a time range, sorted by service name a
   - `start`/`end` (optional) - Window bounds: an RFC 3339 date-time with `Z` or an offset, `now` or `now-<duration>` (such as `now-2h`), or Unix epoch milliseconds. With `start`, the window runs from `start` to `end` (default now) and `timeRange` is ignored; with only `end`, the window is `timeRange` long and ends at `end`.
   - `limit` (optional) - Maximum services per page (default: 50, max: 1000; higher values are clamped)
   - `offset` (optional) - Number of results to skip for pagination (default: 0)
+- **Response**: `data` (services with `webUrl` when available), `pagination` (`total`, `offset`, `limit`, `hasMore`, `nextOffset`), and `window` (`start`, `end`, `startMs`, `endMs`), the window queried
 
 #### `signoz_get_service_top_operations`
 

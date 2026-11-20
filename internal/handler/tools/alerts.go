@@ -445,7 +445,7 @@ func (h *Handler) handleGetAlertHistory(ctx context.Context, req mcp.CallToolReq
 	}
 
 	returnedRows, rowsKnown := countAlertHistoryRows(respJSON)
-	var notes []string
+	notes := []string{windowNote(start, end)}
 	if limitClamped {
 		notes = append(notes, fmt.Sprintf(
 			"note: result limited to %d rows to bound server memory; paginate with \"cursor\" (or narrow the time range) for more.",

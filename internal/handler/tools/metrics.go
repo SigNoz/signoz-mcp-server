@@ -118,5 +118,5 @@ func (h *Handler) handleListMetrics(ctx context.Context, req mcp.CallToolRequest
 	// offset pagination (a caller following an offset hint would loop the page).
 	returnedRows, rowsKnown := countDataArrayRows(result, "metrics")
 	note := limitOnlyCompletenessNote(returnedRows, limit, rowsKnown, `searchText, a tighter time range, or source`)
-	return resultWithNotes(result, note), nil
+	return resultWithNotes(result, windowNote(start, end), note), nil
 }

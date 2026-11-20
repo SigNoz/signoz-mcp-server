@@ -120,7 +120,8 @@ func (h *Handler) handleAggregateLogs(ctx context.Context, req mcp.CallToolReque
 		return upstreamQueryError(err, "logs"), nil
 	}
 
-	return aggregateResult(ctx, h.logger, "signoz_aggregate_logs", result, reqData.LimitClamped, aggregateNotes(reqData)...), nil
+	notes := append([]string{windowNote(reqData.StartTime, reqData.EndTime)}, aggregateNotes(reqData)...)
+	return aggregateResult(ctx, h.logger, "signoz_aggregate_logs", result, reqData.LimitClamped, notes...), nil
 }
 
 func (h *Handler) handleSearchLogs(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -166,7 +167,7 @@ func (h *Handler) handleSearchLogs(ctx context.Context, req mcp.CallToolRequest)
 		return upstreamQueryError(err, "logs"), nil
 	}
 
-	var notes []string
+	notes := []string{windowNote(reqData.StartTime, reqData.EndTime)}
 	if reqData.SearchScopeIgnored {
 		notes = append(notes, searchScopeIgnoredNote)
 	}

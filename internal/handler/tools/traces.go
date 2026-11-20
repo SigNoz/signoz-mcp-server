@@ -125,7 +125,8 @@ func (h *Handler) handleAggregateTraces(ctx context.Context, req mcp.CallToolReq
 		return upstreamQueryError(err, "traces"), nil
 	}
 
-	notes := append(aggregateNotes(reqData), aiAggregateNotes(reqData)...)
+	notes := append([]string{windowNote(reqData.StartTime, reqData.EndTime)}, aggregateNotes(reqData)...)
+	notes = append(notes, aiAggregateNotes(reqData)...)
 	return aggregateResult(ctx, h.logger, "signoz_aggregate_traces", result, reqData.LimitClamped, notes...), nil
 }
 
@@ -197,7 +198,7 @@ func (h *Handler) handleSearchTraces(ctx context.Context, req mcp.CallToolReques
 	}
 
 	result = h.enrichSearchTracesWebURL(ctx, base, result)
-	notes := aiSearchNotes(reqData, result)
+	notes := append([]string{windowNote(reqData.StartTime, reqData.EndTime)}, aiSearchNotes(reqData, result)...)
 	return rawSearchResult(ctx, h.logger, "signoz_search_traces", result, reqData.Limit, reqData.Offset, reqData.LimitClamped, notes...), nil
 }
 

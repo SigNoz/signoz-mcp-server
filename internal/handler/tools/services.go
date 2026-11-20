@@ -261,10 +261,11 @@ func filterServiceMapEdges(edges []any, service, direction string) ([]any, bool)
 func (h *Handler) handleListServices(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args := req.GetArguments()
 
-	start, end, errResult := serviceWindowNanos(ctx, h, args)
+	window, errResult := serviceWindow(ctx, h, args)
 	if errResult != nil {
 		return errResult, nil
 	}
+	start, end := windowNanos(window)
 	limit, offset, limitClamped := paginate.ParseParamsClamped(req.Params.Arguments)
 
 	h.logger.DebugContext(ctx, "Tool called: signoz_list_services", slog.String("start", start), slog.String("end", end), slog.Int("limit", limit), slog.Int("offset", offset))
@@ -307,7 +308,13 @@ func (h *Handler) handleListServices(ctx context.Context, req mcp.CallToolReques
 	total := len(services)
 	pagedServices := paginate.Array(services, offset, limit)
 
-	resultJSON, err := paginate.Wrap(pagedServices, total, offset, limit)
+	resultJSON, err := json.Marshal(struct {
+		paginate.Response
+		Window resultWindow `json:"window"`
+	}{
+		Response: paginate.Response{Data: pagedServices, Pagination: paginate.NewMetadata(total, offset, limit)},
+		Window:   newResultWindow(window.StartMs(), window.EndMs()),
+	})
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to wrap services with pagination", logpkg.ErrAttr(err))
 		return InternalErrorResult("failed to marshal response: " + err.Error()), nil
@@ -334,10 +341,11 @@ func (h *Handler) handleGetServiceTopOperations(ctx context.Context, req mcp.Cal
 		return errResult, nil
 	}
 
-	start, end, errResult := serviceWindowNanos(ctx, h, args)
+	window, errResult := serviceWindow(ctx, h, args)
 	if errResult != nil {
 		return errResult, nil
 	}
+	start, end := windowNanos(window)
 
 	// tags is passed through to SigNoz verbatim as its tag filter array; an
 	// absent or non-string value means no tag filter.
@@ -383,19 +391,25 @@ func (h *Handler) handleGetServiceTopOperations(ctx context.Context, req mcp.Cal
 	if err != nil {
 		return InternalErrorResult("failed to marshal response: " + err.Error()), nil
 	}
+	notes := []string{windowNote(window.StartMs(), window.EndMs())}
 	if len(operations) >= signozclient.TopOperationsLimit {
-		return resultWithNotes(payload, limitOnlyCompletenessNote(len(operations), signozclient.TopOperationsLimit, true, "a shorter time range or tags")), nil
+		notes = append(notes, limitOnlyCompletenessNote(len(operations), signozclient.TopOperationsLimit, true, "a shorter time range or tags"))
 	}
-	return mcp.NewToolResultText(string(payload)), nil
+	return resultWithNotes(payload, notes...), nil
 }
 
-// serviceWindowNanos resolves the service tools' window. Their SigNoz routes
-// take Unix nanoseconds as strings.
-func serviceWindowNanos(ctx context.Context, h *Handler, args map[string]any) (start, end string, errResult *mcp.CallToolResult) {
+// serviceWindow resolves the service tools' window, which defaults to 6h.
+func serviceWindow(ctx context.Context, h *Handler, args map[string]any) (timeutil.Window, *mcp.CallToolResult) {
 	w, err := timeutil.ResolveWindow(args, "6h", time.Now())
 	if err != nil {
 		h.logger.WarnContext(ctx, "Invalid time window", logpkg.ErrAttr(err))
-		return "", "", errorWithCode(CodeValidationFailed, validationErrorPrefix+" "+err.Error())
+		return timeutil.Window{}, errorWithCode(CodeValidationFailed, validationErrorPrefix+" "+err.Error())
 	}
-	return strconv.FormatInt(w.StartNs(), 10), strconv.FormatInt(w.EndNs(), 10), nil
+	return w, nil
+}
+
+// windowNanos formats w as the service routes take it: Unix nanoseconds in
+// strings.
+func windowNanos(w timeutil.Window) (start, end string) {
+	return strconv.FormatInt(w.StartNs(), 10), strconv.FormatInt(w.EndNs(), 10)
 }

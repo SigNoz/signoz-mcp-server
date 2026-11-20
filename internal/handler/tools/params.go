@@ -240,6 +240,31 @@ func resolveTimestamps(args map[string]any, defaultRange string) (int64, int64, 
 	return w.StartMs(), w.EndMs(), nil
 }
 
+// windowNote reports the window a time-windowed tool queried, so a caller can
+// check the resolved bounds and reuse them as Unix milliseconds.
+func windowNote(startMs, endMs int64) string {
+	w := newResultWindow(startMs, endMs)
+	return fmt.Sprintf("window queried: %s to %s (Unix ms %d to %d)", w.Start, w.End, w.StartMs, w.EndMs)
+}
+
+// resultWindow is the queried window as a field of a structured result, where
+// a note block may not reach the model.
+type resultWindow struct {
+	Start   string `json:"start"`
+	End     string `json:"end"`
+	StartMs int64  `json:"startMs"`
+	EndMs   int64  `json:"endMs"`
+}
+
+func newResultWindow(startMs, endMs int64) resultWindow {
+	return resultWindow{
+		Start:   time.UnixMilli(startMs).UTC().Format(time.RFC3339Nano),
+		End:     time.UnixMilli(endMs).UTC().Format(time.RFC3339Nano),
+		StartMs: startMs,
+		EndMs:   endMs,
+	}
+}
+
 // parseStepInterval parses an optional stepInterval (seconds) argument for the
 // aggregate tools. It accepts a real JSON number OR a string that is ENTIRELY a
 // positive integer. It deliberately does NOT use parseIntLoose for the string

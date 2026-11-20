@@ -57,5 +57,5 @@ func (h *Handler) handleCheckMetricCardinality(ctx context.Context, req mcp.Call
 		return upstreamError(err), nil
 	}
 
-	return mcp.NewToolResultText(string(result)), nil
+	return resultWithNotes(result, windowNote(startTime, endTime)), nil
 }

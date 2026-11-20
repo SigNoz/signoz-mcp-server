@@ -49,6 +49,9 @@ and a caller-supplied reference time could be added later without changing the r
   after the current time, a window starting before 1970, and an empty or reversed window.
 - Error messages build their RFC 3339 example from the current time, and the `start` description
   shows the format as `YYYY-MM-DDThh:mm:ssZ`, so a copied example never carries a stale year.
+- Every result reports the window queried, in RFC 3339 UTC and Unix ms: a note block on text
+  results (`window queried: 2026-11-19T09:00:00Z to 2026-11-19T10:00:00Z (Unix ms 1795078800000
+  to 1795082400000)`), and a `window` field on `signoz_list_services`, the one structured result.
 
 Coverage:
 
@@ -66,9 +69,6 @@ Not covered, by decision:
 - `signoz_get_trace_details` takes no window.
 - `signoz_get_service_map` (SigNoz/signoz-mcp-server#460, not merged) parses its own window and
   should move to `ResolveWindow` when it lands.
-- Echoing the resolved window in results is a separate change. On tools with structured results
-  it has to be a payload field, because Claude Code drops text notes beside `structuredContent`
-  (SigNoz/nerve-pod#654).
 - A reference time and timezone for relative ranges, which SigNoz/nerve-pod#235 asks for on
   behalf of Noz, is not added; see Key Decisions.
 
@@ -80,6 +80,9 @@ Not covered, by decision:
 - `pkg/timeutil/time_test.go` — fixed-clock tests for forms, calendar edges and rejections.
 - `internal/handler/tools/params.go` — `resolveTimestamps` calls the resolver and prefixes errors.
 - `internal/handler/tools/services.go`, `alerts.go`, `metrics_query.go` — use the resolver.
+- `internal/handler/tools/params.go` and the eleven handlers (`logs.go`, `traces.go`,
+  `metrics.go`, `metrics_top.go`, `metrics_query.go`, `metric_cardinality.go`, `alerts.go`,
+  `services.go`) — report the window queried.
 - `internal/handler/tools/query_param_descriptions.go` and the tools that had their own
   `start`/`end` text — one shared description each for `start`, `end` and `timeRange`.
 - `pkg/instructions/instructions.go` — rule 5 names the accepted forms within the 2,048-byte
@@ -88,7 +91,8 @@ Not covered, by decision:
   rejection before SigNoz and the window sent upstream, per tool.
 - `internal/mcp-server/testdata/wire-catalog/` — the 33 changed parameter descriptions and the
   instructions.
-- `README.md` — parameter references for the eleven tools.
+- `README.md` — parameter references for the eleven tools, the window report, and the
+  `signoz_list_services` response.
 
 ## Key Decisions
 
@@ -143,7 +147,31 @@ Not covered, by decision:
   notice.
 - Rationale: the ignored-arguments notice (`plans/2026-11-16-notice-ignored-tool-arguments.md`)
   covers only keys a schema does not declare, and `timeRange` is declared. Clients that fill
-  schema defaults would also draw the notice on every call with `start`.
+  schema defaults would also draw the notice on every call with `start`. The window report shows
+  which window ran.
+
+### 2026-11-20 — Report the window queried on every result
+
+- Decision: text results append `window queried: <start> to <end> (Unix ms <start> to <end>)`;
+  `signoz_list_services` adds `window` (`start`, `end`, `startMs`, `endMs`) to its payload.
+- Rationale: SigNoz/nerve-pod#235 asks for the resolved bounds and units to be inspectable, and a
+  caller can reuse the Unix ms values in `signoz_execute_builder_query`. Passthrough payloads stay
+  verbatim (OUT-5), so the report is a separate block there. Claude Code shows the model only
+  `structuredContent` when a result has it (SigNoz/nerve-pod#654), so on the structured result the
+  report is a payload field. Relative bounds resolve on this server's clock in UTC, so no separate
+  reference time or zone is reported. The service routes take nanoseconds; the report gives
+  milliseconds, the unit callers send.
+- Alternatives rejected: a note on `signoz_list_services` too (some clients would see it twice);
+  echoing inside passthrough JSON.
+
+### 2026-11-20 — Not marked as breaking
+
+- Decision: `feat(time)`, not `feat(time)!`; the PR lists each changed behaviour (CMP-1: not
+  silent).
+- Rationale: the newly rejected inputs produced empty, reversed or unintended windows, and the
+  partial-bound changes replace inputs that were dropped without an error. One exception: a real
+  Unix seconds epoch more than a year old resolved correctly before and is now rejected, with an
+  error naming milliseconds or RFC 3339.
 
 ### 2026-11-20 — No SigNoz/agent-skills change needed
 
@@ -171,7 +199,9 @@ Not covered, by decision:
 - `TestTimeWindowedTools_SendTheResolvedWindowUpstream` sends RFC 3339 bounds with offsets to all
   eleven tools and finds the same window in the request SigNoz receives: Unix ms, or Unix ns
   for `signoz_list_services` and `signoz_get_service_top_operations`. A millisecond route that
-  sent nanoseconds would fail it.
+  sent nanoseconds would fail it. Each result must succeed and report the window: the note block
+  on ten tools, the `window` field in `signoz_list_services` structured content. Removing the
+  report from one handler fails its row.
 - e2e tests: none sends `start` without `end`, `end` without `start`, or an old or
   seconds-sized epoch, and none asserts the removed error strings.
 - `GOTOOLCHAIN=go1.26.11 make ci` passed on 2026-11-20, including lint, race tests, guardrails,

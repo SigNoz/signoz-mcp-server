@@ -67,5 +67,5 @@ func (h *Handler) handleGetTopMetrics(ctx context.Context, req mcp.CallToolReque
 	} else {
 		note = fmt.Sprintf("note: showing up to the top %d metrics by ingested sample volume.", topMetricsLimit)
 	}
-	return resultWithNotes(result, note), nil
+	return resultWithNotes(result, windowNote(startTime, endTime), note), nil
 }
