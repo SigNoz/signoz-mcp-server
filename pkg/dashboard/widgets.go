@@ -120,7 +120,7 @@ Best for: comparing discrete categories (e.g. service names, status codes), or t
 
 Geo Map panel [CRITICAL]:
 Best for: values that differ by place, such as request count or error rate by country, region, or coordinates.
-- Use plugin kind signoz/GeoMapPanel with a scalar query: signoz/BuilderQuery, signoz/ClickHouseSQL, or a signoz/CompositeQuery that holds formulas with the queries they read. It rejects PromQL, signoz/AIBuilderQuery, and trace operators.
+- Use plugin kind signoz/GeoMapPanel with a scalar query: signoz/BuilderQuery, signoz/ClickHouseSQL, or signoz/CompositeQuery. Put a formula inside a signoz/CompositeQuery with the queries it reads. It rejects PromQL, signoz/AIBuilderQuery, and trace operators.
 - Group by the location keys. Each result row is one place, and a row without a usable location is not drawn. Discover the location keys with signoz_get_field_keys; common ones are geo.country.iso_code and geo.region.iso_code, and coordinates need a latitude key and a longitude key.
 - location.mode is auto (default, detects the mode from the group-by keys), country, subdivision, or coordinates. location.country, location.region, location.lat, and location.lon name location columns: group-by keys of a Query Builder query, or result column names of a signoz/ClickHouseSQL query. SigNoz rejects a Query Builder panel that names a key outside its groupBy.
 - map.layer is regions (default, fills each shape), bubbles (a circle per region), or points (a circle per coordinate). map.view is world (default), fit, a continent (africa, asia, europe, north_america, oceania, south_america), or country with map.viewCountry set to an uppercase ISO 3166-1 alpha-2 code.
@@ -131,7 +131,7 @@ Best for: values that differ by place, such as request count or error rate by co
 
 Heatmap panel [CRITICAL]:
 Best for: how a value's distribution shifts over time, such as span latency or log severity per interval.
-- Use plugin kind signoz/HeatmapPanel with a query of kind heatmap: signoz/BuilderQuery, signoz/PromQLQuery, signoz/ClickHouseSQL, or a signoz/CompositeQuery that holds a formula with the queries it reads. It rejects signoz/AIBuilderQuery and trace operators.
+- Use plugin kind signoz/HeatmapPanel with a query of kind heatmap: signoz/BuilderQuery, signoz/PromQLQuery, signoz/ClickHouseSQL, or signoz/CompositeQuery. Put a formula inside a signoz/CompositeQuery with the queries it reads. It rejects signoz/AIBuilderQuery and trace operators.
 - The panel draws one enabled query. In a signoz/CompositeQuery, disable every other query; a formula can stay enabled while the queries it reads are disabled. SigNoz rejects functions and having on heatmap queries.
 - Logs and traces: give the query one aggregation, written as the bare numeric field to bucket, such as duration_nano for spans or severity_number for logs. Each cell counts the events whose value falls in its bucket, so SigNoz rejects count() and every other function there. Events without the field are left out. Leave bucketOptions out: SigNoz then uses a log-scale axis, and the UI offers bucket settings only for metrics.
 - Metrics: a histogram metric draws its own le buckets, so SigNoz rejects bucketOptions on it; the UI saves spaceAggregation count for it. A gauge, sum, or summary metric takes optional bucketOptions, linear with maxValue and numBuckets or log with scale; without them SigNoz uses a log-scale axis. Exponential histograms are not supported.
@@ -162,7 +162,7 @@ Best for: categorical proportions, such as request distribution across services.
 
 Scatter Plot panel [CRITICAL]:
 Best for: comparing two values per group to find outliers or correlation, such as request rate against p95 latency per service.
-- Use plugin kind signoz/ScatterPlotPanel with a scalar query: signoz/BuilderQuery, signoz/ClickHouseSQL, or a signoz/CompositeQuery that holds formulas with the queries they read. It rejects PromQL, signoz/AIBuilderQuery, and trace operators.
+- Use plugin kind signoz/ScatterPlotPanel with a scalar query: signoz/BuilderQuery, signoz/ClickHouseSQL, or signoz/CompositeQuery. Put a formula inside a signoz/CompositeQuery with the queries it reads. It rejects PromQL, signoz/AIBuilderQuery, and trace operators.
 - Each dot is one group: one row of the joined scalar result. Put the x and y values in separate aggregations or queries.
 - dimensions.x, dimensions.y, and dimensions.sizeBy name value columns, as map.colorBy does for Geo Map: an enabled query's name or queryName.expression for Query Builder queries, the SQL column alias for signoz/ClickHouseSQL. dimensions.colorBy lists group-by keys whose values color the dots.
 - SigNoz rejects a Query Builder panel whose dimensions name a column or key its query does not produce. It does not check names for signoz/ClickHouseSQL.
@@ -188,7 +188,7 @@ Best for: any metric whose meaning depends on change over time, such as throughp
 
 Top List panel [CRITICAL]:
 Best for: ranking groups by one value, such as the top services by request count or the slowest endpoints by p95 latency.
-- Use plugin kind signoz/TopListPanel with a scalar query: signoz/BuilderQuery, signoz/ClickHouseSQL, or a signoz/CompositeQuery that holds formulas or trace operators with the queries they read. It rejects PromQL and signoz/AIBuilderQuery.
+- Use plugin kind signoz/TopListPanel with a scalar query: signoz/BuilderQuery, signoz/ClickHouseSQL, or signoz/CompositeQuery. Put a formula or trace operator inside a signoz/CompositeQuery with the queries it reads. It rejects PromQL and signoz/AIBuilderQuery.
 - Group by the keys that name each row. The panel ranks the first value column of the first enabled query or formula; it ignores other aggregations.
 - Order by that value desc for the top N or asc for the bottom N, and set limit to the row count (the UI defaults to 10). SigNoz picks the N rows on the server.
 - appearance.showRank numbers the rows, appearance.showShare shows each row's share of the listed total, and appearance.barColor is a hex color for every bar. Do not use showShare for avg, min, max, or percentile values, because they do not add up to a total.
