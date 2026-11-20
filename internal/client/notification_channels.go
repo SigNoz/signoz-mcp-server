@@ -108,13 +108,58 @@ func (s *SigNoz) getNotificationChannelV2(ctx context.Context, id string) (json.
 	if err := validateNotificationChannelData(data); err != nil {
 		return nil, err
 	}
-	return data, nil
+	return dropUnsetSpecFields(data), nil
+}
+
+// dropUnsetSpecFields removes the config.spec fields a channel readback holds
+// as "". SigNoz encodes responses with json-iterator, which ignores omitzero, so
+// an unset optional string such as Telegram's apiUrl comes back as "", and
+// SigNoz rejects that "" when the config is written back. No spec field takes ""
+// as a value, so dropping it keeps a fetched config writable as-is.
+func dropUnsetSpecFields(data json.RawMessage) json.RawMessage {
+	var channel, config, spec map[string]json.RawMessage
+	if json.Unmarshal(data, &channel) != nil || json.Unmarshal(channel["config"], &config) != nil || json.Unmarshal(config["spec"], &spec) != nil {
+		return data
+	}
+	dropped := false
+	for field, value := range spec {
+		if string(value) == `""` {
+			delete(spec, field)
+			dropped = true
+		}
+	}
+	if !dropped {
+		return data
+	}
+	var err error
+	if config["spec"], err = marshalUnescaped(spec); err != nil {
+		return data
+	}
+	if channel["config"], err = marshalUnescaped(config); err != nil {
+		return data
+	}
+	out, err := marshalUnescaped(channel)
+	if err != nil {
+		return data
+	}
+	return out
+}
+
+// marshalUnescaped keeps <, >, and & literal, as SigNoz sent them in templates.
+func marshalUnescaped(v any) (json.RawMessage, error) {
+	var buf bytes.Buffer
+	encoder := json.NewEncoder(&buf)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(v); err != nil {
+		return nil, err
+	}
+	return bytes.TrimSuffix(buf.Bytes(), []byte("\n")), nil
 }
 
 // validateNotificationChannelData checks only what this server consumes from a
 // channel response: an object carrying the id that the tool result, the
 // post-write read-back, and the test flow rely on. The provider config is
-// SigNoz's contract and passes through verbatim.
+// SigNoz's contract and passes through unvalidated.
 func validateNotificationChannelData(data []byte) error {
 	var wire notificationChannelResponse
 	if err := json.Unmarshal(data, &wire); err != nil {
@@ -134,7 +179,7 @@ func (s *SigNoz) decodeNotificationChannelResponse(operation string, response []
 	if err := validateNotificationChannelData(data); err != nil {
 		return nil, committedNotificationChannelError(operation, response, err, fallbackID)
 	}
-	return data, nil
+	return dropUnsetSpecFields(data), nil
 }
 
 func committedNotificationChannelError(operation string, response []byte, parseErr error, fallbackID string) error {
