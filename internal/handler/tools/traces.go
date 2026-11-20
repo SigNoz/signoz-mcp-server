@@ -125,7 +125,9 @@ func (h *Handler) handleAggregateTraces(ctx context.Context, req mcp.CallToolReq
 		return upstreamQueryError(err, "traces"), nil
 	}
 
+	result, fillNotes := fillEmptyBuckets(ctx, h.logger, "signoz_aggregate_traces", result, reqData)
 	notes := append(aggregateNotes(reqData), aiAggregateNotes(reqData)...)
+	notes = append(notes, fillNotes...)
 	return aggregateResult(ctx, h.logger, "signoz_aggregate_traces", result, reqData.LimitClamped, notes...), nil
 }
 

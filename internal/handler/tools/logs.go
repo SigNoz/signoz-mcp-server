@@ -120,7 +120,9 @@ func (h *Handler) handleAggregateLogs(ctx context.Context, req mcp.CallToolReque
 		return upstreamQueryError(err, "logs"), nil
 	}
 
-	return aggregateResult(ctx, h.logger, "signoz_aggregate_logs", result, reqData.LimitClamped, aggregateNotes(reqData)...), nil
+	result, fillNotes := fillEmptyBuckets(ctx, h.logger, "signoz_aggregate_logs", result, reqData)
+	notes := append(aggregateNotes(reqData), fillNotes...)
+	return aggregateResult(ctx, h.logger, "signoz_aggregate_logs", result, reqData.LimitClamped, notes...), nil
 }
 
 func (h *Handler) handleSearchLogs(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
