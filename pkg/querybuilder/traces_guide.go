@@ -98,10 +98,11 @@ selectFields entry (fieldContext: "resource" required):
   {"name": "k8s.namespace.name", "fieldDataType": "string", "signal": "traces", "fieldContext": "resource"}
 
 A role can limit which services or environments a user may query. SigNoz then runs a query only
-when its filter names an allowed value with the resource. prefix, such as
-resource.service.name = 'checkout' or resource.deployment.environment.name = 'prod', and denies
-the bare service.name = 'checkout' with a permission error. The service shortcut on the trace
-tools already uses resource.service.name.
+when its filter names an allowed value with the resource. prefix and = or IN, such as
+resource.service.name = 'checkout' or resource.deployment.environment.name IN ('prod'). That
+condition must stand alone or join the rest of the filter with AND; inside OR or NOT it does not
+count. SigNoz denies the bare service.name = 'checkout' with a permission error. The service
+shortcut on the trace tools already adds resource.service.name this way.
 
 --- 3. Span attributes (dot notation, fieldContext: "attribute") ---
 
