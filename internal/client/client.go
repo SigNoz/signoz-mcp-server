@@ -563,6 +563,25 @@ func (s *SigNoz) GetServiceTopOperations(ctx context.Context, start, end, servic
 	return s.doReplaySafePost(ctx, s.baseURL+"/api/v2/service/top_operations", bodyBytes, DefaultQueryTimeout)
 }
 
+// GetServiceMap fetches the service dependency graph from the endpoint SigNoz's
+// Service Map page calls. The SigNoz spec does not document that endpoint
+// either, so like the services endpoints it stays on the hand-written request
+// path. start and end are nanosecond epoch strings. An absent tag filter is
+// sent as an empty array, as the SigNoz UI sends it.
+func (s *SigNoz) GetServiceMap(ctx context.Context, start, end string, tags json.RawMessage) (json.RawMessage, error) {
+	if len(tags) == 0 {
+		tags = json.RawMessage("[]")
+	}
+	bodyBytes, err := json.Marshal(map[string]any{"start": start, "end": end, "tags": tags})
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode service map request: %w", err)
+	}
+
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching service dependency graph",
+		slog.String("start", start), slog.String("end", end))
+	return s.doReplaySafePost(ctx, s.baseURL+"/api/v1/dependency_graph", bodyBytes, DefaultQueryTimeout)
+}
+
 func (s *SigNoz) QueryBuilderV5(ctx context.Context, body []byte) (json.RawMessage, error) {
 	ctx = s.ensureTenantContext(ctx)
 	s.logger.DebugContext(ctx, "sending request",

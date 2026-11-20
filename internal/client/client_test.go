@@ -507,6 +507,31 @@ func TestListServices(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// The dependency graph is a read-only POST, so a retryable status is replayed
+// with the same body, and an absent tag filter goes out as an empty array.
+func TestGetServiceMapPostsWindowAndRetries(t *testing.T) {
+	var attempts atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, "/api/v1/dependency_graph", r.URL.Path)
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"start":"1640995200000000000","end":"1641081600000000000","tags":[]}`, string(body))
+		if attempts.Add(1) == 1 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		_, _ = w.Write([]byte(`[{"parent":"frontend","child":"orders","callCount":3}]`))
+	}))
+	defer server.Close()
+
+	client := NewClient(logpkg.New("error"), server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+	got, err := client.GetServiceMap(context.Background(), "1640995200000000000", "1641081600000000000", nil)
+	require.NoError(t, err)
+	assert.JSONEq(t, `[{"parent":"frontend","child":"orders","callCount":3}]`, string(got))
+	assert.Equal(t, int32(2), attempts.Load(), "a 503 on the read-only dependency graph POST should be retried once")
+}
+
 func TestGetAlertHistory(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// v2 timeline is a GET; params ride on the query string, not a body.

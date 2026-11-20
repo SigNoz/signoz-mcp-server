@@ -212,6 +212,20 @@ func requireStringArg(args map[string]any, key string) (string, *mcp.CallToolRes
 	return s, nil
 }
 
+// optionalStringArg treats a missing or empty value as absent and rejects any
+// other type, so a wrong-typed value is never dropped silently.
+func optionalStringArg(args map[string]any, key string) (string, *mcp.CallToolResult) {
+	raw, present := args[key]
+	if !present || raw == nil {
+		return "", nil
+	}
+	value, ok := raw.(string)
+	if !ok {
+		return "", validationError(key, "must be a string")
+	}
+	return value, nil
+}
+
 // notAJSONObjectError is the shared guard result for a non-object arguments payload.
 func notAJSONObjectError() *mcp.CallToolResult {
 	return errorWithCode(CodeValidationFailed, notAJSONObjectMessage)
