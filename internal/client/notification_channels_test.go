@@ -101,24 +101,34 @@ func TestListNotificationChannelsV2_PreservesEmptyKind(t *testing.T) {
 	require.Equal(t, "", got.Channels[0].Kind)
 }
 
-// The provider config is SigNoz's contract: a readback passes through with
-// unknown fields kept and no drift log that could leak secrets. Only spec fields
-// SigNoz returns as "" are dropped, because SigNoz rejects "" when the fetched
-// config is written back, and reads "" as unset.
-func TestGetNotificationChannel_DropsUnsetSpecFieldsAndKeepsTheRestSilently(t *testing.T) {
+// The provider config is SigNoz's contract: a readback passes through verbatim,
+// unknown and empty fields included, with no drift log that could leak secrets.
+func TestGetNotificationChannel_PreservesEmptyAndUnknownFieldsSilently(t *testing.T) {
 	const secret = "https://hooks.slack.test/secret"
 	var logs bytes.Buffer
 	logger := slog.New(logpkg.NewContextHandler(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn})))
-	response := `{"status":"success","data":{"name":"channel","displayName":"Channel","config":{"kind":"slack","spec":{"sendResolved":false,"apiUrl":"` + secret + `","channel":"","title":"","text":"<b>{{ .Status }}</b> & more","threadId":-1001234567890123456,"futureSpec":"kept"},"futureConfig":true},"id":"` + clientNotificationID + `","createdAt":"2026-09-18T00:00:00Z","updatedAt":"2026-09-18T00:00:00Z","futureRoot":{"kept":true}}}`
+	response := `{"status":"success","data":{"name":"channel","displayName":"Channel","config":{"kind":"slack","spec":{"sendResolved":false,"apiUrl":"` + secret + `","channel":"","title":"","text":"","futureSpec":"kept"},"futureConfig":true},"id":"` + clientNotificationID + `","createdAt":"2026-09-18T00:00:00Z","updatedAt":"2026-09-18T00:00:00Z","futureRoot":{"kept":true}}}`
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, response) }))
 	defer server.Close()
 	client := NewClient(logger, server.URL, "key", "SIGNOZ-API-KEY", nil)
 	got, err := client.GetNotificationChannel(context.Background(), clientNotificationID)
 	require.NoError(t, err)
-	require.JSONEq(t, `{"name":"channel","displayName":"Channel","config":{"kind":"slack","spec":{"sendResolved":false,"apiUrl":"`+secret+`","text":"<b>{{ .Status }}</b> & more","threadId":-1001234567890123456,"futureSpec":"kept"},"futureConfig":true},"id":"`+clientNotificationID+`","createdAt":"2026-09-18T00:00:00Z","updatedAt":"2026-09-18T00:00:00Z","futureRoot":{"kept":true}}`, string(got))
-	require.Contains(t, string(got), `"text":"<b>{{ .Status }}</b> & more"`, "templates keep <, >, and & literal")
-	require.Contains(t, string(got), `"threadId":-1001234567890123456`, "integers keep every digit")
+	require.Contains(t, string(response), string(got), "a readback with nothing to drop is returned byte for byte")
 	require.Empty(t, logs.String())
+}
+
+// SigNoz reads back an unset Telegram apiUrl as "" and rejects that "" on
+// write, so the readback drops it to stay writable as-is.
+func TestGetNotificationChannel_DropsTelegramAPIURLReadBackEmpty(t *testing.T) {
+	response := `{"status":"success","data":{"name":"channel","displayName":"Channel","config":{"kind":"telegram","spec":{"sendResolved":false,"botToken":"token","chatId":-1001234567890123456,"apiUrl":"","title":"","message":"<b>{{ .Status }}</b> & more"}},"id":"` + clientNotificationID + `"}}`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, response) }))
+	defer server.Close()
+	client := NewClient(logpkg.New("error"), server.URL, "key", "SIGNOZ-API-KEY", nil)
+	got, err := client.GetNotificationChannel(context.Background(), clientNotificationID)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"name":"channel","displayName":"Channel","config":{"kind":"telegram","spec":{"sendResolved":false,"botToken":"token","chatId":-1001234567890123456,"title":"","message":"<b>{{ .Status }}</b> & more"}},"id":"`+clientNotificationID+`"}`, string(got))
+	require.Contains(t, string(got), `"message":"<b>{{ .Status }}</b> & more"`, "templates keep <, >, and & literal")
+	require.Contains(t, string(got), `"chatId":-1001234567890123456`, "integers keep every digit")
 }
 
 func TestGetNotificationChannel_RejectsMissingID(t *testing.T) {

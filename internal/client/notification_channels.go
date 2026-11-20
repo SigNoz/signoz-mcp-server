@@ -111,19 +111,29 @@ func (s *SigNoz) getNotificationChannelV2(ctx context.Context, id string) (json.
 	return dropUnsetSpecFields(data), nil
 }
 
-// dropUnsetSpecFields removes the config.spec fields a channel readback holds
-// as "". SigNoz encodes responses with json-iterator, which ignores omitzero, so
-// an unset optional string such as Telegram's apiUrl comes back as "", and
-// SigNoz rejects that "" when the config is written back. No spec field takes ""
-// as a value, so dropping it keeps a fetched config writable as-is.
+// unsetReadbackFields lists, per channel kind, the optional spec fields SigNoz
+// reads back as "" when unset. SigNoz encodes responses with json-iterator,
+// which ignores omitzero, so an unset valuer.UnsetOrNonEmptyString with no
+// default comes back as "", and SigNoz rejects that "" when the config is
+// written back. Other "" values, such as Slack's channel, are real values. The
+// per-provider round trip in tests/e2e/tests/test_notification_channels.py
+// finds the next such field.
+var unsetReadbackFields = map[string][]string{
+	"telegram": {"apiUrl"},
+}
+
+// dropUnsetSpecFields removes the unsetReadbackFields a channel readback holds
+// as "", so a fetched config stays writable as-is.
 func dropUnsetSpecFields(data json.RawMessage) json.RawMessage {
 	var channel, config, spec map[string]json.RawMessage
-	if json.Unmarshal(data, &channel) != nil || json.Unmarshal(channel["config"], &config) != nil || json.Unmarshal(config["spec"], &spec) != nil {
+	var kind string
+	if json.Unmarshal(data, &channel) != nil || json.Unmarshal(channel["config"], &config) != nil ||
+		json.Unmarshal(config["kind"], &kind) != nil || json.Unmarshal(config["spec"], &spec) != nil {
 		return data
 	}
 	dropped := false
-	for field, value := range spec {
-		if string(value) == `""` {
+	for _, field := range unsetReadbackFields[kind] {
+		if string(spec[field]) == `""` {
 			delete(spec, field)
 			dropped = true
 		}
