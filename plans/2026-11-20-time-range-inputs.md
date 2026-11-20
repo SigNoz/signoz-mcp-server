@@ -200,7 +200,7 @@ Not covered, by decision:
 
 ## Verification
 
-- `pkg/timeutil/time_test.go` on a fixed clock: 21 equivalent ways of writing one window resolve
+- `pkg/timeutil/time_test.go` on a fixed clock: 20 equivalent ways of writing one window resolve
   to the same bounds in ms and ns; relative ranges across a year boundary; local midnight and a
   daylight-saving change through explicit offsets; old RFC 3339 dates, old millisecond epochs
   and an `end` five minutes ahead of the clock accepted; 32 rejections, each checked for the fix
