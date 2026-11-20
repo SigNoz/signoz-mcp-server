@@ -48,8 +48,6 @@ const (
 )
 
 type MCPServer struct {
-	sessionCacheState
-
 	logger    *slog.Logger
 	handler   *tools.Handler
 	config    *config.Config
@@ -307,12 +305,13 @@ func (m *MCPServer) trackEventAsync(ctx context.Context, event string, propertie
 	})
 }
 
-// trackOAuthEvent seeds the credential on ctx so the async identity lookup
-// can run even though the OAuth HTTP request carried it in form fields, a
-// grant, or an SSO callback, not in util-context.
-func (m *MCPServer) trackOAuthEvent(ctx context.Context, event string, cred util.Credential, signozURL string, props map[string]any) {
-	if !cred.IsZero() {
-		ctx = util.SetCredential(ctx, cred)
+// trackOAuthEvent seeds tenant credentials on ctx so the async identity
+// lookup can run even though the OAuth HTTP request carried them in form
+// fields or an encrypted grant, not in util-context.
+func (m *MCPServer) trackOAuthEvent(ctx context.Context, event, apiKey, signozURL string, props map[string]any) {
+	if apiKey != "" {
+		ctx = util.SetAPIKey(ctx, apiKey)
+		ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
 	}
 	if signozURL != "" {
 		ctx = util.SetSigNozURL(ctx, signozURL)
@@ -1153,21 +1152,98 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 			rootSpan.SetAttributes(otelpkg.AppendCallerCorrelation(ctx, nil)...)
 		}
 
-		// Header URL for direct credentials. A server-issued OAuth token's
-		// instance URL remains authoritative.
+		// Extract the direct-credential tenant header. A server-issued OAuth
+		// token's encrypted tenant remains authoritative.
 		customURL := r.Header.Get("X-SigNoz-URL")
 
-		res, fail := m.resolveCredential(ctx, r)
-		if fail != nil {
-			m.writeAuthFailure(ctx, w, r, fail)
+		// SigNoz classifies credentials by header name, not token shape, so
+		// each is forwarded on the header the client used: SIGNOZ-API-KEY
+		// as-is, Authorization bearer tokens as Authorization (unless the
+		// bearer is a server-issued OAuth access token, handled below).
+		signozAPIKey := r.Header.Get("SIGNOZ-API-KEY")
+		authHeader := r.Header.Get("Authorization")
+
+		var apiKey string
+		var signozURL string
+		var usedOAuthToken bool
+		authMode := authModeNone
+
+		if signozAPIKey != "" {
+			// Explicit PAT via SIGNOZ-API-KEY header — forward as-is.
+			apiKey = stripBearerPrefix(signozAPIKey)
+			authMode = authModeSignozAPIKeyHeader
+
+			ctx = util.SetAPIKey(ctx, apiKey)
+			ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
+		} else if authHeader != "" {
+			token := stripBearerPrefix(authHeader)
+			if m.config.OAuthEnabled {
+				decryptedAPIKey, decryptedURL, _, _, err := oauth.DecryptToken(token, []byte(m.config.OAuthTokenSecret))
+				switch {
+				case err == nil:
+					apiKey = decryptedAPIKey
+					signozURL = decryptedURL
+					usedOAuthToken = true
+					authMode = authModeOAuthAccessToken
+					ctx = util.SetAPIKey(ctx, apiKey)
+					ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
+				case errors.Is(err, oauth.ErrExpiredToken):
+					authMode = authModeOAuthAccessToken
+					// The token is expired but was once server-issued, so the
+					// embedded URL is a trusted tenant value. Decorate the
+					// otelhttp root span so the 401 trace carries mcp.tenant_url.
+					if decryptedURL != "" {
+						ctx = util.SetSigNozURL(ctx, decryptedURL)
+						if attr, ok := otelpkg.TenantURLAttr(ctx); ok {
+							trace.SpanFromContext(ctx).SetAttributes(attr)
+						}
+					}
+					m.logAuthFailure(ctx, r, http.StatusUnauthorized, authFailureExpiredOAuthToken, authMode, "OAuth access token expired")
+					m.setOAuthChallenge(w, `error="invalid_token", error_description="access token expired"`)
+					http.Error(w, "OAuth access token expired", http.StatusUnauthorized)
+					return
+				default:
+					// Not an OAuth token. Forward as a direct credential only
+					// when a SigNoz URL is available; otherwise a stale bearer
+					// token would mask the OAuth challenge flow.
+					if customURL == "" && m.config.URL == "" {
+						m.logAuthFailure(ctx, r, http.StatusUnauthorized, authFailureInvalidOAuthToken, authModeAuthorizationBearer, "Bearer token did not match OAuth token format and no SigNoz URL is available for legacy fallback")
+						m.setOAuthChallenge(w, `error="invalid_token", error_description="access token is invalid"`)
+						http.Error(w, "OAuth access token is invalid", http.StatusUnauthorized)
+						return
+					}
+					apiKey = "Bearer " + token
+					authMode = authModeAuthorizationBearer
+					ctx = util.SetAPIKey(ctx, apiKey)
+					ctx = util.SetAuthHeader(ctx, "Authorization")
+					m.logger.DebugContext(ctx, "Bearer token did not match OAuth token format, forwarding as Authorization")
+				}
+			} else {
+				// OAuth disabled: honor the ingress header (Authorization).
+				apiKey = "Bearer " + token
+				authMode = authModeAuthorizationBearer
+				ctx = util.SetAPIKey(ctx, apiKey)
+				ctx = util.SetAuthHeader(ctx, "Authorization")
+			}
+
+		} else if m.config.APIKey != "" {
+			// Fallback to config API key
+			apiKey = m.config.APIKey
+			authMode = authModeConfigAPIKey
+			ctx = util.SetAPIKey(ctx, apiKey)
+			ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
+			m.logger.DebugContext(ctx, "Using API key from environment config")
+		} else {
+			m.logAuthFailure(ctx, r, http.StatusUnauthorized, authFailureMissingCredential, authMode, "No API key found in headers or environment")
+			if m.config.OAuthEnabled {
+				m.setOAuthChallenge(w, "")
+			}
+			http.Error(w, "Authorization or SIGNOZ-API-KEY header required", http.StatusUnauthorized)
 			return
 		}
-		ctx = util.SetCredential(ctx, res.cred)
-		authMode := res.mode
-		var signozURL string
 
-		if res.signozURL != "" {
-			signozURL = m.config.ResolveInstanceURL(res.signozURL)
+		if usedOAuthToken {
+			signozURL = m.config.ResolveInstanceURL(signozURL)
 			ctx = util.SetSigNozURL(ctx, signozURL)
 			if attr, ok := otelpkg.TenantURLAttr(ctx); ok {
 				trace.SpanFromContext(ctx).SetAttributes(attr)
@@ -1267,8 +1343,6 @@ func (m *MCPServer) buildHTTP(s *mcp.Server) *http.Server {
 		mux.HandleFunc("GET /oauth/authorize", oauthHandler.HandleAuthorizePage)
 		mux.HandleFunc("POST /oauth/authorize", oauthHandler.HandleAuthorizeSubmit)
 		mux.HandleFunc("POST /oauth/token", oauthHandler.HandleToken)
-		mux.HandleFunc("POST /oauth/revoke", oauthHandler.HandleRevoke)
-		mux.HandleFunc("GET /oauth/sso-callback/{nonce}", oauthHandler.HandleSSOCallback)
 	}
 
 	mcpHandler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return s }, m.streamableHTTPOptions())

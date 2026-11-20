@@ -1,10 +1,8 @@
 import os
-import secrets
 import socket
 import subprocess
 import time
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -160,37 +158,43 @@ def mcp_server_binary(tmp_path_factory: pytest.TempPathFactory) -> Path:
     return binary
 
 
-def _free_port() -> int:
+@pytest.fixture
+def mcp_server_with_global_external_url(
+    mcp_server_binary: Path, signoz: SigNoz, signoz_global_external_url: str
+) -> Iterator[MCPServer]:
+    """Run natively so literal localhost reaches the same cast SigNoz on Linux and macOS."""
+    __tracebackhide__ = True
     with socket.socket() as listener:
         listener.bind(("127.0.0.1", 0))
-        return listener.getsockname()[1]
+        port = listener.getsockname()[1]
 
-
-@contextmanager
-def _native_server(binary: Path, port: int, env: dict[str, str]) -> Iterator[str]:
-    """Run the server binary over HTTP on 127.0.0.1:port; yield its base URL once ready."""
-    __tracebackhide__ = True
+    backend_url = signoz.endpoint.replace("127.0.0.1", "localhost")
+    backend_url += urlsplit(signoz_global_external_url).path.rstrip("/")
     base_url = f"http://127.0.0.1:{port}"
     process = subprocess.Popen(
-        [str(binary)],
+        [str(mcp_server_binary)],
         cwd=REPO_ROOT,
         env=os.environ
         | {
             "TRANSPORT_MODE": "http",
             "MCP_SERVER_HOST": "127.0.0.1",
             "MCP_SERVER_PORT": str(port),
+            "SIGNOZ_URL": backend_url,
+            "SIGNOZ_API_KEY": signoz.access_token,
+            "SIGNOZ_CUSTOM_HEADERS": "",
+            "SIGNOZ_INSTANCE_URL_ALLOWLIST": "127.0.0.1",
+            "OAUTH_ENABLED": "false",
             "LOG_LEVEL": "error",
             "ANALYTICS_ENABLED": "false",
             "OTEL_TRACES_EXPORTER": "none",
             "OTEL_METRICS_EXPORTER": "none",
-        }
-        | env,
+        },
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
     )
     try:
         _wait_ready(base_url, lambda: process.poll() is None, lambda: f"exit code: {process.poll()}")
-        yield base_url
+        yield MCPServer(base_url=base_url, backend_url=backend_url, external_url=signoz_global_external_url)
     finally:
         process.terminate()
         try:
@@ -199,41 +203,3 @@ def _native_server(binary: Path, port: int, env: dict[str, str]) -> Iterator[str
             process.kill()
             process.wait(timeout=10)
         logger.info("local MCP server process stopped and reaped")
-
-
-@pytest.fixture
-def mcp_server_with_global_external_url(
-    mcp_server_binary: Path, signoz: SigNoz, signoz_global_external_url: str
-) -> Iterator[MCPServer]:
-    """Run natively so literal localhost reaches the same cast SigNoz on Linux and macOS."""
-    __tracebackhide__ = True
-    backend_url = signoz.endpoint.replace("127.0.0.1", "localhost")
-    backend_url += urlsplit(signoz_global_external_url).path.rstrip("/")
-    env = {
-        "SIGNOZ_URL": backend_url,
-        "SIGNOZ_API_KEY": signoz.access_token,
-        "SIGNOZ_CUSTOM_HEADERS": "",
-        "SIGNOZ_INSTANCE_URL_ALLOWLIST": "127.0.0.1",
-        "OAUTH_ENABLED": "false",
-    }
-    with _native_server(mcp_server_binary, _free_port(), env) as base_url:
-        yield MCPServer(base_url=base_url, backend_url=backend_url, external_url=signoz_global_external_url)
-
-
-@pytest.fixture
-def mcp_server_with_oauth(mcp_server_binary: Path, signoz: SigNoz) -> Iterator[MCPServer]:
-    """Run natively with OAuth on and no server API key, so only OAuth-issued credentials reach SigNoz."""
-    __tracebackhide__ = True
-    port = _free_port()
-    backend_url = signoz.endpoint.replace("127.0.0.1", "localhost")
-    env = {
-        "SIGNOZ_URL": backend_url,
-        "SIGNOZ_API_KEY": "",
-        "SIGNOZ_CUSTOM_HEADERS": "",
-        "SIGNOZ_INSTANCE_URL_ALLOWLIST": "127.0.0.1",
-        "OAUTH_ENABLED": "true",
-        "OAUTH_TOKEN_SECRET": secrets.token_urlsafe(48),
-        "OAUTH_ISSUER_URL": f"http://127.0.0.1:{port}",
-    }
-    with _native_server(mcp_server_binary, port, env) as base_url:
-        yield MCPServer(base_url=base_url, backend_url=backend_url)
