@@ -148,7 +148,7 @@
                 ]
               },
               "stepInterval": {
-                "description": "Time bucket size in seconds for time_series mode (optional). When omitted, the backend auto-selects an appropriate interval. Only set this if the user explicitly requests a specific granularity. Examples: '60' (1 min), '3600' (1 hour), '86400' (1 day).",
+                "description": "Bucket width in seconds for time_series. Omit for automatic sizing. To locate a change within a coarse bucket, query that interval with a smaller step, such as 60.",
                 "type": [
                   "integer",
                   "string"
@@ -329,7 +329,7 @@
                 ]
               },
               "stepInterval": {
-                "description": "Time bucket size in seconds for time_series mode (optional). When omitted, the backend auto-selects an appropriate interval. Only set this if the user explicitly requests a specific granularity. Examples: '60' (1 min), '3600' (1 hour), '86400' (1 day).",
+                "description": "Bucket width in seconds for time_series. Omit for automatic sizing. To locate a change within a coarse bucket, query that interval with a smaller step, such as 60.",
                 "type": [
                   "integer",
                   "string"
@@ -7749,7 +7749,7 @@
                 ]
               },
               "stepInterval": {
-                "description": "Step interval in seconds for time_series mode (optional). When omitted, the backend auto-selects an appropriate interval (~300 data points, min 60s). Only set this if the user explicitly requests a specific granularity. Examples: '60' (1 min), '3600' (1 hour), '86400' (1 day).",
+                "description": "Step in seconds for time_series. Omit for automatic sizing (about 300 points, at least 60 s). To locate a change within a coarse step, query that interval with a smaller step, such as 60.",
                 "type": [
                   "integer",
                   "string"
