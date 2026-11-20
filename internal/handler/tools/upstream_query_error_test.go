@@ -1,14 +1,18 @@
 package tools
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"strings"
 	"testing"
 
 	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
+	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 )
 
 // Current-generation QB v5 envelope: bare summary in error.message, per-term
@@ -192,5 +196,146 @@ func TestUpstreamQueryError_NoMissingKeyIsPlainUpstreamError(t *testing.T) {
 	}
 	if _, ok := resultStructuredMap(t, got)["missingKeys"]; ok {
 		t.Fatalf("unexpected missingKeys without a key-not-found body")
+	}
+}
+
+// telemetryDenied403 is the 403 SigNoz's authz middleware renders when a role does
+// not cover a telemetry query (pkg/http/middleware/authz.go checkResource). Its
+// querierauthz integration tests pin the `builder_query/...` selector in the message.
+func telemetryDenied403(code, message string) *signozclient.HTTPStatusError {
+	body, _ := json.Marshal(map[string]any{"status": "error", "error": map[string]any{"code": code, "message": message}})
+	return &signozclient.HTTPStatusError{StatusCode: http.StatusForbidden, Body: string(body)}
+}
+
+const deniedPrincipal = "user/0199c47d-f61b-7833-bc5f-c0730f12f046 is not authorized to perform "
+
+func TestUpstreamQueryError_TelemetryDenialExplainsScopedRoleFilters(t *testing.T) {
+	scopedRules := []string{"`resource.service.name`", "`resource.deployment.environment.name`", "inside OR or NOT", "Ask the user which services or environments"}
+	tests := []struct {
+		name    string
+		signal  string
+		code    string
+		message string
+		want    []string
+		notWant []string
+	}{
+		{
+			name:    "logs filter without a grantable condition",
+			signal:  "logs",
+			code:    "authz_forbidden",
+			message: deniedPrincipal + `logs:read on resource "builder_query/*"`,
+			want:    append([]string{"The `service` parameter adds `resource.service.name = '<value>'`"}, scopedRules...),
+		},
+		{
+			name:    "metrics filter naming a service the role does not allow",
+			signal:  "metrics",
+			code:    "authz_forbidden",
+			message: deniedPrincipal + `metrics:read on resource "builder_query/resource.service.name = 'frontend'"`,
+			want:    scopedRules,
+			notWant: []string{"`service` parameter"},
+		},
+		{
+			name:    "meter metrics kind",
+			code:    "authz_forbidden",
+			message: deniedPrincipal + `meter-metrics:read on resource "builder_query/*"`,
+			want:    scopedRules,
+		},
+		{
+			name:    "PromQL",
+			code:    "authz_forbidden",
+			message: deniedPrincipal + `metrics:read on resource "promql/*"`,
+			want:    []string{"Your role does not allow PromQL queries", "write this as a Query Builder query"},
+			notWant: []string{"inside OR or NOT"},
+		},
+		{
+			name:    "ClickHouse SQL",
+			code:    "authz_forbidden",
+			message: deniedPrincipal + `traces:read on resource "clickhouse_sql/*"`,
+			want:    []string{"Your role does not allow ClickHouse SQL queries"},
+		},
+		{
+			name:    "role gate names no query selector",
+			signal:  "logs",
+			code:    "authz_forbidden",
+			message: "only viewers/editors/admins can access this resource",
+			notWant: []string{"resource.service.name"},
+		},
+		{
+			name:    "another forbidden code",
+			signal:  "logs",
+			code:    "forbidden",
+			message: deniedPrincipal + `logs:read on resource "builder_query/*"`,
+			notWant: []string{"resource.service.name"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := telemetryDenied403(tc.code, tc.message)
+			res := upstreamQueryError(err, tc.signal)
+			if got := resultCode(t, res); got != CodePermissionDenied {
+				t.Fatalf("code = %q, want %q", got, CodePermissionDenied)
+			}
+			text := resultText(t, res)
+			if !strings.Contains(text, tc.message) {
+				t.Fatalf("text dropped the upstream denial %q: %q", tc.message, text)
+			}
+			if len(tc.want) == 0 && text != resultText(t, upstreamError(err)) {
+				t.Fatalf("text gained guidance without a telemetry denial: %q", text)
+			}
+			for _, want := range tc.want {
+				if !strings.Contains(text, want) {
+					t.Fatalf("guidance missing %q in %q", want, text)
+				}
+			}
+			for _, notWant := range tc.notWant {
+				if strings.Contains(text, notWant) {
+					t.Fatalf("text has %q, want it absent: %q", notWant, text)
+				}
+			}
+		})
+	}
+}
+
+// A denial whose wording no longer names the query selector loses the guidance,
+// so the log line says so: that is the drift signal for SigNoz's message format.
+func TestSearchLogs_TelemetryDenialGuidanceAndDriftLog(t *testing.T) {
+	tests := []struct {
+		name         string
+		message      string
+		wantGuidance bool
+	}{
+		{name: "selector named", message: deniedPrincipal + `logs:read on resource "builder_query/*"`, wantGuidance: true},
+		{name: "selector missing", message: deniedPrincipal + "logs:read", wantGuidance: false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			denial := telemetryDenied403("authz_forbidden", tc.message)
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(denial.StatusCode)
+				_, _ = w.Write([]byte(denial.Body))
+			}))
+			t.Cleanup(upstream.Close)
+			var logs bytes.Buffer
+			h := &Handler{
+				logger:         slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn})),
+				clientOverride: signozclient.NewClient(logpkg.New("error"), upstream.URL, "test-api-key", "SIGNOZ-API-KEY", nil),
+			}
+
+			res, err := h.handleSearchLogs(testCtx(), makeToolRequest("signoz_search_logs", map[string]any{"timeRange": "1h", "service": "checkout"}))
+			if err != nil {
+				t.Fatalf("handler returned Go error: %v", err)
+			}
+			if got := resultCode(t, res); got != CodePermissionDenied {
+				t.Fatalf("code = %q, want %q", got, CodePermissionDenied)
+			}
+			if got := strings.Contains(resultText(t, res), "The `service` parameter adds"); got != tc.wantGuidance {
+				t.Fatalf("guidance present = %v, want %v: %q", got, tc.wantGuidance, resultText(t, res))
+			}
+			if got := strings.Contains(logs.String(), "scoped-role guidance skipped"); got == tc.wantGuidance {
+				t.Fatalf("drift log present = %v, want %v: %q", got, !tc.wantGuidance, logs.String())
+			}
+		})
 	}
 }
