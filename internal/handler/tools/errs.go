@@ -390,16 +390,20 @@ func missingKeyGuidance(keys []string, signal string) string {
 // reports filter keys missing from the workspace's field metadata, it appends
 // signal-aware recovery guidance to the text block and surfaces the keys as
 // `missingKeys` in StructuredContent so clients can branch without string-matching.
-// signal is "logs"/"traces", or "" when the tool spans signals (execute_builder_query).
+// A 403 for a telemetry query gets the filter rules of a role scoped to services.
+// signal is "logs"/"traces"/"metrics", or "" when the tool spans signals (execute_builder_query).
 func upstreamQueryError(err error, signal string) *mcp.CallToolResult {
 	res := upstreamError(err)
 	keys := missingFilterKeys(err)
+	deniedQueryType, _ := telemetryDenial(err)
 	var guidance string
 	switch {
 	case len(keys) > 0:
 		guidance = missingKeyGuidance(keys, signal)
 	case strings.Contains(err.Error(), promQLMatcherParseError):
 		guidance = promQLMatcherGuidance
+	case deniedQueryType != "":
+		guidance = telemetryDenialGuidance(deniedQueryType, signal)
 	default:
 		return res
 	}
@@ -422,6 +426,52 @@ const (
 	promQLMatcherGuidance   = "`=~` and `!~` are PromQL matchers. Query Builder filters use REGEXP and NOT REGEXP instead, for example `k8s.pod.name REGEXP 'checkout-.*'`."
 )
 
+// SigNoz denies a telemetry query the caller's role does not cover with code
+// authz_forbidden and names the selector it checked, as in `user/<id> is not
+// authorized to perform logs:read on resource "builder_query/*"`. If SigNoz
+// rewords it, logQueryFailure reports the unmatched denial.
+const upstreamCodeAuthZForbidden = "authz_forbidden"
+
+var telemetryDenialPattern = regexp.MustCompile(`is not authorized to perform [a-z-]+:read on resource "(builder_query|builder_sub_query|builder_ai_query|promql|clickhouse_sql)/`)
+
+// telemetryDenial reports whether err is SigNoz's authz_forbidden 403 and, when
+// its message names the query selector SigNoz checked, that selector's query type.
+func telemetryDenial(err error) (queryType string, denied bool) {
+	var statusErr *signozclient.HTTPStatusError
+	if !errors.As(err, &statusErr) || statusErr.StatusCode != http.StatusForbidden {
+		return "", false
+	}
+	parsed := signozclient.ParseUpstreamErrorBody(statusErr.Body)
+	if !parsed.Recognized || parsed.Code != upstreamCodeAuthZForbidden {
+		return "", false
+	}
+	if match := telemetryDenialPattern.FindStringSubmatch(parsed.Message); match != nil {
+		return match[1], true
+	}
+	return "", true
+}
+
+// telemetryDenialGuidance explains the filter a role scoped to services or
+// environments needs, so an agent can rewrite the query instead of only asking
+// for access. signal is "logs"/"traces" for the tools with a service shortcut.
+func telemetryDenialGuidance(queryType, signal string) string {
+	switch queryType {
+	case "promql", "clickhouse_sql":
+		language := "PromQL"
+		if queryType == "clickhouse_sql" {
+			language = "ClickHouse SQL"
+		}
+		return fmt.Sprintf("Your role does not allow %s queries. If it allows Query Builder queries for some services or environments, write this as a Query Builder query that filters on one of them with `resource.service.name` or `resource.deployment.environment.name`.", language)
+	}
+	var b strings.Builder
+	b.WriteString("If your role limits which services or environments you can query, SigNoz runs a Query Builder query only when its filter has a top-level `=` or `IN` condition that names an allowed value of `resource.service.name`, `resource.deployment.environment.name`, or `signoz.workspace.key.id`, joined to the rest of the filter with AND. It denies a bare `service.name`, a condition inside OR or NOT, and an `IN` list with any value the role does not allow.")
+	if signal == "logs" || signal == "traces" {
+		b.WriteString(" The `service` parameter adds `resource.service.name = '<value>'`.")
+	}
+	b.WriteString(" Ask the user which services or environments they can query instead of guessing values.")
+	return b.String()
+}
+
 // logQueryFailure is the QB v5 tools' variant of logUpstreamFailure: a 400 whose
 // filter references keys absent from the workspace's metadata is an expected agent
 // mistake (the tool result carries the recovery guidance), so it logs at WARN with
@@ -430,6 +480,9 @@ const (
 func (h *Handler) logQueryFailure(ctx context.Context, msg string, err error, attrs ...slog.Attr) {
 	keys := missingFilterKeys(err)
 	if len(keys) == 0 {
+		if queryType, denied := telemetryDenial(err); denied && queryType == "" {
+			msg += " (permission denial names no query selector; scoped-role guidance skipped)"
+		}
 		h.logUpstreamFailure(ctx, msg, err, attrs...)
 		return
 	}

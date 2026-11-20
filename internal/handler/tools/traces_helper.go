@@ -143,7 +143,7 @@ func readTraceDurations(args map[string]any) (string, string, error) {
 func buildTraceFilterExpr(filter, service, operation string, errorFilter, errorPresent bool, minDuration, maxDuration string) string {
 	var parts []string
 	if service != "" {
-		parts = append(parts, "service.name = "+querybuilder.QuoteFilterLiteral(service))
+		parts = append(parts, serviceShortcutPredicate(service))
 	}
 	if operation != "" {
 		parts = append(parts, "name = "+querybuilder.QuoteFilterLiteral(operation))
