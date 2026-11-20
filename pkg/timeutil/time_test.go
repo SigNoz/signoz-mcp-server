@@ -123,7 +123,7 @@ func TestResolveWindowRejectionsNameTheFix(t *testing.T) {
 		{"wrong year", map[string]any{"start": "now-1h", "end": "2027-11-21T00:27:26Z"}, "Check the year"},
 		{"future start", map[string]any{"start": "2027-11-19T09:00:00Z"}, `invalid "start" 2027-11-19T09:00:00Z`},
 		{"reversed", map[string]any{"start": "2026-11-19T11:00:00Z", "end": "2026-11-19T10:30:00Z"}, `"start" 2026-11-19T11:00:00Z is after "end" 2026-11-19T10:30:00Z`},
-		{"start after now with no end", map[string]any{"start": "2026-11-19T11:00:00Z"}, "is after"},
+		{"start after now with no end", map[string]any{"start": "2026-11-19T11:00:00Z"}, `invalid "start" 2026-11-19T11:00:00Z: it is after the current time, 2026-11-19T10:00:00Z. Check its time zone offset`},
 		{"empty", map[string]any{"start": "now", "end": "now"}, "so it is empty"},
 		{"end without start", map[string]any{"end": "2026-11-19T09:00:00Z", "timeRange": "2h"}, `invalid window: "end" 2026-11-19T09:00:00Z needs "start". For the 2h before it, send start "2026-11-19T07:00:00Z" and end "2026-11-19T09:00:00Z"`},
 		{"relative end without start or timeRange", map[string]any{"end": "now-1h"}, `For the 1h before it, send start "2026-11-19T08:00:00Z" and end "2026-11-19T09:00:00Z"; for a window ending now, omit end`},

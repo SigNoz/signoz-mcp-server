@@ -140,6 +140,12 @@ func checkWindow(w Window, now time.Time) (Window, error) {
 		return Window{}, fmt.Errorf(`invalid window: "start" and "end" are both %s, so it is empty`, formatTime(w.Start))
 	}
 	if w.Start.After(w.End) {
+		// A window ending now has no end to swap; a start ahead of the clock is
+		// most often a local time written with the wrong offset.
+		if w.End.Equal(now) {
+			return Window{}, fmt.Errorf(`invalid "start" %s: it is after the current time, %s. Check its time zone offset, or give an earlier start`,
+				formatTime(w.Start), formatTime(now))
+		}
 		return Window{}, fmt.Errorf(`invalid window: "start" %s is after "end" %s. Swap them, or omit end to end the window now`,
 			formatTime(w.Start), formatTime(w.End))
 	}
