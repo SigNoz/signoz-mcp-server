@@ -25,7 +25,9 @@ grouped by `status_message`:
 | Other | 67 |
 
 Two silent behaviours on `main`: `start` without `end`, sent with a `timeRange`, was dropped;
-`end` without `start` was dropped and the window ended at the current time. A duration sent as
+`end` without `start` was dropped and the window ended at the current time, except on the three
+service tools, `signoz_get_alert_history` and `signoz_query_metrics` called without `timeRange`,
+where the window ran from six hours ago to `end`. A duration sent as
 epochs (`start=0`, `end=2592000000`) passed validation and reached SigNoz as 1970 to 2052
 (SigNoz/nerve-pod#217).
 
@@ -90,8 +92,9 @@ Not covered, by decision:
   `start`/`end` text — one shared description each for `start`, `end` and `timeRange`.
 - `pkg/instructions/instructions.go` — rule 5 names RFC 3339 for tool bounds within the
   2,048-byte budget.
-- `internal/handler/tools/tool_error_codes_test.go`, `time_window_test.go`, `params_test.go` —
-  rejection before SigNoz and the window sent upstream, per tool.
+- `internal/handler/tools/tool_error_codes_test.go`, `time_window_test.go` — rejection before
+  SigNoz and the window sent upstream, per tool. `params_test.go` drops the helper-level window
+  tests that `pkg/timeutil` covers.
 - `internal/mcp-server/testdata/wire-catalog/` — the 36 changed parameter descriptions and the
   instructions.
 - `README.md` — parameter references for the twelve tools, the window report, and the
@@ -204,7 +207,7 @@ Not covered, by decision:
 - `pkg/timeutil/time_test.go` on a fixed clock: 20 equivalent ways of writing one window resolve
   to the same bounds in ms and ns; relative ranges across a year boundary; local midnight and a
   daylight-saving change through explicit offsets; old RFC 3339 dates, old millisecond epochs
-  and an `end` five minutes ahead of the clock accepted; 32 rejections, each checked for the fix
+  and an `end` five minutes ahead of the clock accepted; 33 rejections, each checked for the fix
   its message names, including `end` without `start` (absolute and relative) and the `start`
   each message gives. An `end` of `now` with `timeRange` resolves like `timeRange` alone.
 - `TestToolHandlers_RejectInvalidArgumentsBeforeCallingSigNoz` has one row per time-windowed

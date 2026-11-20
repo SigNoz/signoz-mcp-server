@@ -131,6 +131,7 @@ func TestResolveWindowRejectsBeforeQuerying(t *testing.T) {
 		{"zero timeRange", map[string]any{"timeRange": "0h"}, `invalid "timeRange" "0h"`},
 		{"negative timeRange", map[string]any{"timeRange": "-1h"}, `invalid "timeRange" "-1h"`},
 		{"two timeRanges", map[string]any{"timeRange": "6h-4h"}, `start "now-6h" and end "now-4h"`},
+		{"two timeRanges, shorter first", map[string]any{"timeRange": "2h-24h"}, `start "now-24h" and end "now-2h"`},
 		{"timeRange object", map[string]any{"timeRange": map[string]any{"from": "now-24h", "to": "now"}}, `give a duration string such as "24h"`},
 		{"timeRange number", map[string]any{"timeRange": 24}, `give a duration string such as "24h"`},
 		{"timeRange reaching before 1970", map[string]any{"timeRange": "100000d"}, "before 1970-01-01T00:00:00Z"},

@@ -236,8 +236,11 @@ func windowLength(v any, defaultRange string) (time.Duration, string, error) {
 		return d, label, nil
 	}
 	if a, b, ok := strings.Cut(s, "-"); ok {
-		if _, errA := ParseDuration(a); errA == nil {
-			if _, errB := ParseDuration(b); errB == nil {
+		if da, errA := ParseDuration(a); errA == nil {
+			if db, errB := ParseDuration(b); errB == nil {
+				if da < db {
+					a, b = b, a // the longer duration is the older bound, start
+				}
 				return 0, "", fmt.Errorf(`invalid "timeRange" %q: give one duration. For a window that ends in the past use start "now-%s" and end "now-%s"`, s, a, b)
 			}
 		}
