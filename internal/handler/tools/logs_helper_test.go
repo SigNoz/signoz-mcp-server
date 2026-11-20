@@ -14,7 +14,7 @@ func TestQuoteLogContainsLiteralEscapesGrammarAndLIKE(t *testing.T) {
 
 func TestBuildLogFilterExpr(t *testing.T) {
 	t.Run("individual convenience filters", func(t *testing.T) {
-		require.Equal(t, "service.name = 'checkout'", buildLogFilterExpr("", "checkout", "", "", ""))
+		require.Equal(t, "resource.service.name = 'checkout'", buildLogFilterExpr("", "checkout", "", "", ""))
 		require.Equal(t, "severity_text ILIKE 'ERROR%'", buildLogFilterExpr("", "", "ERROR", "", ""))
 		require.Equal(t, "body CONTAINS 'timeout'", buildLogFilterExpr("", "", "", "timeout", ""))
 	})
@@ -26,7 +26,7 @@ func TestBuildLogFilterExpr(t *testing.T) {
 
 	t.Run("OR filter is grouped before service", func(t *testing.T) {
 		filter := "severity_text = 'ERROR' OR severity_text = 'FATAL'"
-		want := "(severity_text = 'ERROR' OR severity_text = 'FATAL') AND service.name = 'payments'"
+		want := "(severity_text = 'ERROR' OR severity_text = 'FATAL') AND resource.service.name = 'payments'"
 		require.Equal(t, want, buildLogFilterExpr(filter, "payments", "", "", ""))
 	})
 
@@ -39,7 +39,7 @@ func TestBuildLogFilterExpr(t *testing.T) {
 	t.Run("combined filter preserves inner bytes and escapes convenience literals", func(t *testing.T) {
 		filter := `search('timeout', body) AND body CONTAINS 'raw%_ \\'`
 		got := buildLogFilterExpr(filter, "payment's%_", "WARN_%", `timed out: it's C:\logs%_`, "")
-		want := "(" + filter + `) AND service.name = 'payment\'s%_' AND severity_text ILIKE 'WARN\\_\\%%' AND body CONTAINS 'timed out: it\'s C:\\\\logs\\%\\_'`
+		want := "(" + filter + `) AND resource.service.name = 'payment\'s%_' AND severity_text ILIKE 'WARN\\_\\%%' AND body CONTAINS 'timed out: it\'s C:\\\\logs\\%\\_'`
 		require.Equal(t, want, got)
 	})
 }
@@ -54,7 +54,7 @@ func TestReadLogFilterExpr(t *testing.T) {
 	t.Run("whitespace-only filter is absent when convenience filters are set", func(t *testing.T) {
 		req, err := parseSearchLogsArgs(map[string]any{"filter": "   ", "service": "api"})
 		require.NoError(t, err)
-		require.Equal(t, "service.name = 'api'", req.FilterExpression)
+		require.Equal(t, "resource.service.name = 'api'", req.FilterExpression)
 	})
 
 	t.Run("query rejected even when filter is present", func(t *testing.T) {
@@ -94,7 +94,7 @@ func TestParseSearchLogsArgs_SearchScope(t *testing.T) {
 		t.Run("scope "+scope, func(t *testing.T) {
 			req, err := parseSearchLogsArgs(map[string]any{"searchText": "it's 50%", "searchScope": scope, "service": "api"})
 			require.NoError(t, err)
-			require.Equal(t, "service.name = 'api' AND "+want, req.FilterExpression)
+			require.Equal(t, "resource.service.name = 'api' AND "+want, req.FilterExpression)
 		})
 	}
 

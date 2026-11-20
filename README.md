@@ -322,9 +322,7 @@ Client config needs just the URL, no keys:
 }
 ```
 
-The client discovers OAuth endpoints automatically, opens a browser, and handles token exchange. In the browser, users either sign in to their SigNoz instance with their own account (password or SSO), so the client acts as them, or paste a service-account API key. Revoking a token at `/oauth/revoke` ends the SigNoz session behind it.
-
-SSO sign-in needs the MCP server's origin (`OAUTH_ISSUER_URL`) to pass the SigNoz instance's `global.allowed_origins` when that list is set. Each signed-in client holds an ordinary SigNoz session, which counts toward SigNoz's per-user session limit.
+The client discovers OAuth endpoints automatically, opens a browser for credentials, and handles token exchange.
 
 #### Without OAuth (Simple Setup)
 
@@ -426,7 +424,7 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 
 > **Input validation:** calls are never rejected for schema mismatches. Arguments are validated against each tool's advertised schema; a mismatched call still runs best-effort, and the successful result carries a deterministic appended `Input validation notice:` naming the affected top-level parameter when it can be derived safely from the advertised schema. Complex root-only mismatches use a generic fallback. Mismatches are also counted in the `mcp.tool.validation.mismatches` metric. Arguments a tool's schema does not declare are not rejected either: a successful result carries an appended `Input validation notice:` naming the ones the tool ignored. Short identifier-like names are listed and any other name is only counted. An argument the handler takes on purpose draws no notice: a legacy alias it reads (`ruleId`, `viewId`, `filterExpression` on `signoz_get_alert_history`, `query` on `signoz_search_docs`); a field `signoz_create_alert`, `signoz_update_alert`, `signoz_create_dashboard`, or `signoz_create_view` sends to SigNoz in the resource body, where SigNoz decides what it means; and a read-only field of a fetched dashboard sent back to `signoz_update_dashboard`, which strips those fields before the update. That tool reports `locked: true`, because it can't lock a dashboard. A few tools reject undeclared arguments with a coded error instead, such as the retired log `query` alias or an unknown notification-channel field. Every undeclared argument is also logged at WARN with its name and counted in the same metric under path `<undeclared>` and constraint `undeclared_argument`.
 
-> **Upstream errors:** upstream SigNoz 401 and 403 tool failures carry a stable structured `code` (`UNAUTHORIZED` or `PERMISSION_DENIED`) and numeric `status`. Recognized SigNoz error envelopes may also include bounded `upstreamURL`, `upstreamSuggestions`, `upstreamDetails` (`[{message, suggestions}]`), and `upstreamRetry` (`{delay}` in nanoseconds); the same recovery guidance appears in agent-readable text. Unrecognized bodies use the local status-derived coded fallback instead of raw passthrough, and authorization failures still name the failed tool and immediate recovery action. This error-only addition does not change tool names, schemas or descriptions, success payloads, resources or templates, or prompts.
+> **Upstream errors:** upstream SigNoz 401 and 403 tool failures carry a stable structured `code` (`UNAUTHORIZED` or `PERMISSION_DENIED`) and numeric `status`. Recognized SigNoz error envelopes may also include bounded `upstreamURL`, `upstreamSuggestions`, `upstreamDetails` (`[{message, suggestions}]`), and `upstreamRetry` (`{delay}` in nanoseconds); the same recovery guidance appears in agent-readable text. Unrecognized bodies use the local status-derived coded fallback instead of raw passthrough, and authorization failures still name the failed tool and immediate recovery action. A 403 on a log, trace, metric, or Query Builder query also says which filter a role limited to some services or environments accepts: a top-level `=` or `IN` condition on `resource.service.name` or `resource.deployment.environment.name`. This error-only addition does not change tool names, schemas or descriptions, success payloads, resources or templates, or prompts.
 
 | Tool | Description |
 |------|-------------|
@@ -455,6 +453,7 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 | `signoz_list_dashboard_templates` | Search curated templates and discover an import path |
 | `signoz_list_services` | List APM services with trace activity in a time range |
 | `signoz_get_service_top_operations` | Get ranked operations for one traced service |
+| `signoz_get_service_map` | Get the service dependency graph: callers, callees, and each call edge's rate, errors, and latency |
 | `signoz_list_views` | List saved Explorer views for traces/logs/metrics/Cost Meter and discover UUIDs |
 | `signoz_get_view` | Get one saved Explorer view's complete definition by `id` |
 | `signoz_search_docs` | Find ranked official-doc matches when no exact page is selected |
@@ -735,6 +734,22 @@ Gets the built-in operation table for one traced service: the operations with th
   - `tags` (optional) - JSON-encoded `TagQueryParam` array passed as a string, for example `[{"key":"http.method","tagType":"SpanAttribute","operator":"In","stringValues":["GET"]}]`; omit for no tag filter
   - `limit` (optional) - Maximum operations to return, highest p99 first (default: 100, max: 5000; higher values are clamped)
 
+#### `signoz_get_service_map`
+
+Gets the service dependency graph that SigNoz's Service Map draws for a time window: one edge per caller (`parent`) and callee (`child`) with `callCount`, `callRate` (calls per second), `errorRate` (percent of calls that failed), and `p50` to `p99` latency in nanoseconds. Set `service` and `direction` to answer which services call a service or what it depends on in one call. Set `environment`, `cluster`, or `namespace` to narrow the graph. Databases and message systems are callees named by their system (for example `redis` or `kafka`); a message system is the child of both its producers and its consumers. Edges are sorted by parent, then child, and paginated. Edges come from per-minute rollups of traced calls, so a window shorter than a minute can return nothing, and an uninstrumented caller leaves no edge. On an edge between two services, `callCount` and `callRate` count only the calls whose caller and callee spans SigNoz paired at ingestion, so they can be lower than a span count from `signoz_aggregate_traces`; database and message-system edges count every call. When the graph is empty, or no edge touches the requested `service`, a note says which.
+
+- **Parameters**:
+  - `service` (optional) - Exact `service.name` value whose edges to keep, or a database or message system named in an edge; discover service names with `signoz_get_field_values` (`signal=traces`, `fieldContext=resource`, `name=service.name`); omit for the whole graph
+  - `direction` (optional) - `upstream` (services that call `service`), `downstream` (services, databases, and message systems it calls), or `both` (default); requires `service`
+  - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '7d'; defaults to last 6 hours; ignored when both `start` and `end` are provided)
+  - `start` (optional) - Start time in unix milliseconds (defaults to 6 hours ago)
+  - `end` (optional) - End time in unix milliseconds (defaults to now)
+  - `limit` (optional) - Maximum edges per page (default: 50, max: 1000; higher values are clamped)
+  - `offset` (optional) - Number of edges to skip for pagination (default: 0)
+  - `environment` (optional) - Keep only edges recorded with this `deployment.environment` resource value; discover values with `signoz_get_field_values` (`signal=traces`, `fieldContext=resource`, `name=deployment.environment`)
+  - `cluster` (optional) - Keep only edges recorded with this `k8s.cluster.name` resource value; discover values with `signoz_get_field_values` (`signal=traces`, `fieldContext=resource`, `name=k8s.cluster.name`)
+  - `namespace` (optional) - Keep only edges recorded with this `k8s.namespace.name` resource value; discover values with `signoz_get_field_values` (`signal=traces`, `fieldContext=resource`, `name=k8s.namespace.name`)
+
 #### `signoz_get_alert_history`
 
 Gets one configured rule's firing or state-transition history. Defaults to the last 6 hours. Use `state` and `filter` to narrow results. For the next page, pass `data.nextCursor` as `cursor` and repeat the original filters, time range, and order.
@@ -841,7 +856,7 @@ Return aggregate statistics over logs (counts, rates, averages, percentiles, or 
   - `groupBy` (optional) - Fields to group by, as an array or a comma-separated string (e.g. `["service.name", "severity_text"]`). An array of objects is rejected with a coded error naming both forms. Group by keys `signoz_get_field_keys` returns; an unknown key can come back as one empty group. A body field (`body.<path>`) can be grouped only when `signoz_get_field_keys` (`signal="logs"`, `fieldContext="body"`) lists it, which happens only on workspaces that store JSON log bodies; otherwise SigNoz rejects it with `can be filtered but not selected or grouped` or `field not found`, so filter on it instead
   - `having` (optional) - Condition on the aggregation results, applied after grouping (e.g. `count() > 100`). SigNoz validates it
   - `filter` (optional) - Filter expression using SigNoz search syntax. Pass the expression text, not `{"expression": ...}`, which is rejected with a coded error. Combine conditions with AND, OR, and parentheses. An unknown key may not fail: SigNoz can match guessed attribute and body spellings and return a `key ... not found in metadata` warning with no rows, so read that warning as an absent key. Ambiguous keys default to resource context. Log keys are workspace-specific; even `service.name` is only present when the log pipeline sets it. See `signoz://logs/query-builder-guide` There is no `key:value`, `STARTS WITH`, or `IS NULL`; use `LIKE 'prefix%'` and `EXISTS` / `NOT EXISTS`.
-  - `service` (optional) - Shortcut filter for service name (adds `service.name = '<value>'`; when the workspace's logs lack that attribute, the call usually returns no rows with a `key service.name not found in metadata` warning instead of failing)
+  - `service` (optional) - Shortcut filter for service name (adds `resource.service.name = '<value>'`; when the workspace's logs carry no resource `service.name`, the call usually returns no rows with a `key ... not found in metadata` warning instead of failing)
   - `severity` (optional) - `severity_text`, matched in any case and as a prefix, so `WARN` also matches `warning` and `Warning`; pass the short form (`ERR`, `WARN`, `INFO`). DEBUG, INFO, WARN, ERROR, and FATAL are common examples, not an exhaustive enum. Discover values with `signoz_get_field_values(signal="logs", name="severity_text", fieldContext="log")`
   - `orderBy` (optional) - Order expression and direction. The expression must be one of the call's aggregations, written exactly as in `aggregations`, or a `groupBy` key (e.g. `'count_distinct(trace_id) desc'` when aggregating `count_distinct(trace_id)`); default: the first aggregation, descending
   - `limit` (optional) - Maximum number of groups to return (default: 100, max: 10000; higher values are clamped to bound server memory)
@@ -861,7 +876,7 @@ Calls using only `searchText`, `service`, `severity`, time, or pagination parame
 
 - **Parameters**:
   - `filter` (optional) - Filter expression using SigNoz search syntax. Pass the expression text, not `{"expression": ...}`, which is rejected with a coded error. Combine conditions with AND, OR, and parentheses (e.g., "(severity_text = 'ERROR' OR body CONTAINS 'panic') AND service.name = 'payment-svc'"). Log keys are workspace-specific; even `service.name` is only present when the log pipeline sets it. See `signoz://logs/query-builder-guide` There is no `key:value`, `STARTS WITH`, or `IS NULL`; use `LIKE 'prefix%'` and `EXISTS` / `NOT EXISTS`.
-  - `service` (optional) - Service name to filter by (adds `service.name = '<value>'`; when the workspace's logs lack that attribute, the call usually returns no rows with a `key service.name not found in metadata` warning instead of failing)
+  - `service` (optional) - Service name to filter by (adds `resource.service.name = '<value>'`; when the workspace's logs carry no resource `service.name`, the call usually returns no rows with a `key ... not found in metadata` warning instead of failing)
   - `severity` (optional) - `severity_text`, matched in any case and as a prefix, so `WARN` also matches `warning` and `Warning`; pass the short form (`ERR`, `WARN`, `INFO`). DEBUG, INFO, WARN, ERROR, and FATAL are common examples, not an exhaustive enum. Discover values with `signoz_get_field_values(signal="logs", name="severity_text", fieldContext="log")`
   - `searchText` (optional) - Literal text to find, escaped automatically; combines with `filter` using AND
   - `searchScope` (optional) - Where `searchText` matches: `body` (default, `body CONTAINS`), `attribute` or `resource` (keys and values), or `all` (unscoped `search()`, slow on wide time ranges). Ignored, with a note in the result, when `searchText` is empty; an unknown scope is rejected
@@ -918,7 +933,7 @@ Return individual paginated span rows matching service, operation, error, durati
 
 - **Parameters**:
   - `filter` (optional) - Filter expression using SigNoz search syntax. Pass the expression text, not `{"expression": ...}`, which is rejected with a coded error. Combine conditions with AND, OR, and parentheses (e.g., "service.name = 'payment-svc' AND (has_error = true OR attribute.http.response.status_code >= 500)"). The former `query` alias is rejected with a coded error that names `filter`. Every condition needs a key and an operator: there is no full-text search, `key:value`, `STARTS WITH`, or `IS NULL`; use `LIKE 'prefix%'` and `EXISTS` / `NOT EXISTS`. `isRoot = true` and `isEntryPoint = true` select root and service entry spans. See `signoz://traces/query-builder-guide`
-  - `service` (optional) - Service name to filter by
+  - `service` (optional) - Service name to filter by (adds `resource.service.name = '<value>'`)
   - `operation` (optional) - Operation/span name to filter by
   - `error` (optional) - Filter by error status. Boolean (or the strings `"true"`/`"false"`). An invalid value is rejected rather than silently dropped
   - `minDuration` / `maxDuration` (optional) - Min/max span duration as a duration such as `'500ms'` or `'2s'` (units `ns`, `us`, `ms`, `s`, `m`, `h`). A bare number, string or JSON, is nanoseconds. SigNoz rejects any other value
@@ -944,7 +959,7 @@ Return custom aggregate statistics over spans (counts, rates, latency percentile
   - `groupBy` (optional) - Fields to group by, as an array or a comma-separated string (e.g. `["service.name", "name"]`). An array of objects is rejected with a coded error naming both forms. For values over time use `requestType: time_series`; grouping by `timestamp` fails
   - `having` (optional) - Condition on the aggregation results, applied after grouping (e.g. `p99(duration_nano) > 500000000`). SigNoz validates it
   - `filter` (optional) - Filter expression using SigNoz search syntax. Pass the expression text, not `{"expression": ...}`, which is rejected with a coded error. Combine conditions with AND, OR, and parentheses. An unknown key may not fail: SigNoz can match a guessed attribute and return a `key ... not found in metadata` warning with no rows, so read that warning as an absent key. Ambiguous keys default to resource context. Every condition needs a key and an operator: there is no full-text search, `key:value`, `STARTS WITH`, or `IS NULL`; use `LIKE 'prefix%'` and `EXISTS` / `NOT EXISTS`. `isRoot = true` and `isEntryPoint = true` select root and service entry spans. See `signoz://traces/query-builder-guide`
-  - `service` (optional) - Shortcut filter for service name
+  - `service` (optional) - Shortcut filter for service name (adds `resource.service.name = '<value>'`)
   - `operation` (optional) - Shortcut filter for span/operation name
   - `error` (optional) - Shortcut filter for error spans. Boolean (or the strings `"true"`/`"false"`). An invalid value is rejected rather than silently dropped
   - `minDuration` / `maxDuration` (optional) - Min/max span duration as a duration such as `'500ms'` or `'2s'` (units `ns`, `us`, `ms`, `s`, `m`, `h`). A bare number, string or JSON, is nanoseconds. SigNoz rejects any other value

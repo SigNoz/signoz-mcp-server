@@ -100,15 +100,14 @@ variables: `--reuse`, `--teardown`, `--foundry-binary-path`, `--license-key`.
   `builder_ai_query` run through `signoz_execute_builder_query`, an alert, and a
   dashboard panel.
 - `test_org_overview.py` — org overview conservation vs `GET /api/v1/stats`.
+- `test_service_map.py` — seeded caller-to-callee calls read from both ends of the
+  dependency graph, with a bounded call count, percentage error rate, and nanosecond
+  latency, plus the note for a service no edge touches.
 - `test_ai_pricing_and_mappings.py` — AI pricing envelopes for both views, a seeded
   model listed as unpriced, the shipped `gen_ai.llm` mapping group with its mappers, and an
   OpenInference span run through the saved mappings.
 - `test_upstream_errors.py` — coded NOT_FOUND and UNAUTHORIZED upstream errors
   with the uniform prefix.
-- `test_oauth_sign_in.py` — Sign in with SigNoz against the real session API on a
-  native OAuth server with no API key: password sign-in for the root user's org, code
-  exchange into an `sz1.` session token, a tool call with it, refresh rotation, revoke
-  ending the session for refresh and `/mcp`, and a wrong password re-rendering sign-in.
 - `test_logs.py` — seeded log search, explicit scoped/unscoped search grammar,
   quoted terms, body-only legacy search text, and upstream warning preservation.
 - `test_dashboards.py` — TextPanel create/get/update/patch/default/layout
