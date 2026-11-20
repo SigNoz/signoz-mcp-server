@@ -461,6 +461,140 @@ def test_area_chart_panel_round_trips_stack_and_fill_and_rejects_fill_none(mcp_c
         assert gone.get("isError", False), f"dashboard {dashboard_id} remained after cleanup"
 
 
+def _scalar_panel(name: str, plugin: dict, group_by: list[str], aggregations: list[str], ranked: bool) -> dict:
+    spec = {
+        "signal": "traces",
+        "name": "A",
+        "aggregations": [{"expression": expression} for expression in aggregations],
+        "groupBy": [
+            {"name": key, "fieldContext": "resource", "fieldDataType": "string", "signal": "traces"} for key in group_by
+        ],
+    }
+    if ranked:
+        spec["order"] = [{"key": {"name": aggregations[0]}, "direction": "desc"}]
+        spec["limit"] = 10
+    return {
+        "kind": "Panel",
+        "spec": {
+            "display": {"name": name},
+            "links": [],
+            "plugin": plugin,
+            "queries": [
+                {"kind": "scalar", "spec": {"name": "A", "plugin": {"kind": "signoz/BuilderQuery", "spec": spec}}}
+            ],
+        },
+    }
+
+
+def _panels_dashboard(title: str, panels: dict) -> dict:
+    return {
+        "searchContext": f"create a dashboard named {title} with the panels {', '.join(panels)}",
+        "schemaVersion": "v6",
+        "tags": [],
+        "spec": {
+            "display": {"name": title},
+            "variables": [],
+            "panels": panels,
+            "layouts": [
+                {
+                    "kind": "Grid",
+                    "spec": {
+                        "items": [
+                            {"x": 0, "y": 6 * i, "width": 12, "height": 6, "content": {"$ref": f"#/spec/panels/{key}"}}
+                            for i, key in enumerate(panels)
+                        ]
+                    },
+                }
+            ],
+        },
+    }
+
+
+def _scatter_plot(x: str, y: str) -> dict:
+    return {"kind": "signoz/ScatterPlotPanel", "spec": {"dimensions": {"x": x, "y": y, "colorBy": ["service.name"]}}}
+
+
+def test_top_list_scatter_plot_and_geo_map_panels_round_trip(mcp_client: MCPClient, test_id: str) -> None:
+    title = f"mcp-e2e-scalar-panels-{test_id}"
+    rate_and_latency = ["count()", "avg(duration_nano)"]
+    rejected = mcp_client.call_tool(
+        "signoz_create_dashboard",
+        _panels_dashboard(
+            f"{title}-invalid",
+            {
+                "scatter": _scalar_panel(
+                    "Rate vs Latency", _scatter_plot("A", "B"), ["service.name"], rate_and_latency, True
+                )
+            },
+        ),
+    )
+    if not rejected.get("isError", False):
+        leaked_id = _dashboard_id(first_json(rejected))
+        mcp_client.call_tool(
+            "signoz_delete_dashboard", {"searchContext": f"cleanup dashboard {leaked_id}", "id": leaked_id}
+        )
+        raise AssertionError("scatter plot accepted dimensions that name no value column of its query")
+    assert "is not a value column" in text_blocks(rejected), f"unexpected rejection: {text_blocks(rejected)}"
+
+    top_list = {
+        "kind": "signoz/TopListPanel",
+        "spec": {"appearance": {"barColor": "#E5484D", "showRank": True, "showShare": True}},
+    }
+    scatter_plot = _scatter_plot("A.count()", "A.avg(duration_nano)")
+    geo_map = {
+        "kind": "signoz/GeoMapPanel",
+        "spec": {
+            "location": {"mode": "country", "country": "geo.country.iso_code", "countryFormat": "alpha2"},
+            "map": {"layer": "bubbles", "view": "world", "projection": "equal_earth", "colorBy": "A"},
+        },
+    }
+    created = assert_tool_ok(
+        mcp_client.call_tool(
+            "signoz_create_dashboard",
+            _panels_dashboard(
+                title,
+                {
+                    "top": _scalar_panel("Busiest Services", top_list, ["service.name"], ["count()"], True),
+                    "scatter": _scalar_panel("Rate vs Latency", scatter_plot, ["service.name"], rate_and_latency, True),
+                    "geo": _scalar_panel("Requests by Country", geo_map, ["geo.country.iso_code"], ["count()"], False),
+                },
+            ),
+        )
+    )
+    dashboard_id = _dashboard_id(first_json(created))
+    try:
+        fetched = assert_tool_ok(
+            mcp_client.call_tool(
+                "signoz_get_dashboard", {"searchContext": f"get dashboard {dashboard_id}", "id": dashboard_id}
+            )
+        )
+        panels = _data(first_json(fetched))["spec"]["panels"]
+        top_plugin = panels["top"]["spec"]["plugin"]
+        assert top_plugin["kind"] == "signoz/TopListPanel"
+        assert top_plugin["spec"]["appearance"] == top_list["spec"]["appearance"]
+        scatter_plugin = panels["scatter"]["spec"]["plugin"]
+        assert scatter_plugin["kind"] == "signoz/ScatterPlotPanel"
+        for key, value in scatter_plot["spec"]["dimensions"].items():
+            assert scatter_plugin["spec"]["dimensions"][key] == value, f"scatter dimensions.{key} did not round-trip"
+        geo_plugin = panels["geo"]["spec"]["plugin"]
+        assert geo_plugin["kind"] == "signoz/GeoMapPanel"
+        for section in ("location", "map"):
+            for key, value in geo_map["spec"][section].items():
+                assert geo_plugin["spec"][section][key] == value, f"geo map {section}.{key} did not round-trip"
+    finally:
+        assert_tool_ok(
+            mcp_client.call_tool(
+                "signoz_delete_dashboard",
+                {"searchContext": f"cleanup dashboard {dashboard_id}", "id": dashboard_id},
+            )
+        )
+        gone = mcp_client.call_tool(
+            "signoz_get_dashboard",
+            {"searchContext": f"confirm dashboard {dashboard_id} is gone after cleanup", "id": dashboard_id},
+        )
+        assert gone.get("isError", False), f"dashboard {dashboard_id} remained after cleanup"
+
+
 ENVELOPE_BY_PLUGIN = {
     "signoz/BuilderQuery": "builder_query",
     "signoz/Formula": "builder_formula",

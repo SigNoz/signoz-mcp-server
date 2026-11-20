@@ -113,9 +113,22 @@ func TestGetNotificationChannel_PreservesEmptyAndUnknownFieldsSilently(t *testin
 	client := NewClient(logger, server.URL, "key", "SIGNOZ-API-KEY", nil)
 	got, err := client.GetNotificationChannel(context.Background(), clientNotificationID)
 	require.NoError(t, err)
-	require.Contains(t, string(got), `"futureRoot":{"kept":true}`)
-	require.Contains(t, string(got), `"futureSpec":"kept"`)
+	require.Contains(t, string(response), string(got), "a readback with nothing to drop is returned byte for byte")
 	require.Empty(t, logs.String())
+}
+
+// SigNoz reads back an unset Telegram apiUrl as "" and rejects that "" on
+// write, so the readback drops it to stay writable as-is.
+func TestGetNotificationChannel_DropsTelegramAPIURLReadBackEmpty(t *testing.T) {
+	response := `{"status":"success","data":{"name":"channel","displayName":"Channel","config":{"kind":"telegram","spec":{"sendResolved":false,"botToken":"token","chatId":-1001234567890123456,"apiUrl":"","title":"","message":"<b>{{ .Status }}</b> & more"}},"id":"` + clientNotificationID + `"}}`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, response) }))
+	defer server.Close()
+	client := NewClient(logpkg.New("error"), server.URL, "key", "SIGNOZ-API-KEY", nil)
+	got, err := client.GetNotificationChannel(context.Background(), clientNotificationID)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"name":"channel","displayName":"Channel","config":{"kind":"telegram","spec":{"sendResolved":false,"botToken":"token","chatId":-1001234567890123456,"title":"","message":"<b>{{ .Status }}</b> & more"}},"id":"`+clientNotificationID+`"}`, string(got))
+	require.Contains(t, string(got), `"message":"<b>{{ .Status }}</b> & more"`, "templates keep <, >, and & literal")
+	require.Contains(t, string(got), `"chatId":-1001234567890123456`, "integers keep every digit")
 }
 
 func TestGetNotificationChannel_RejectsMissingID(t *testing.T) {

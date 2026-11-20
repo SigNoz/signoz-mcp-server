@@ -27,6 +27,8 @@ CHANNEL_SPECS: dict[str, dict] = {
         "url": "https://api.incident.io/v2/alert_events/http/01M0D1JNVBGBGVTWX053EM12XV",
         "token": "e2e-incident-token",
     },
+    # A group chat id: negative, and too wide for a 32-bit integer.
+    "telegram": {"botToken": "e2e-telegram-bot-token", "chatId": -1001234567890},
 }
 
 UPDATE_FIELDS = {
@@ -40,6 +42,7 @@ UPDATE_FIELDS = {
     "jira": ("summary", "Updated Jira summary"),
     "jsmops": ("message", "Updated JSM Ops message"),
     "incidentio": ("title", "Updated incident.io title"),
+    "telegram": ("title", "Updated Telegram title"),
 }
 
 CREDENTIAL_FIELDS = {
@@ -48,6 +51,7 @@ CREDENTIAL_FIELDS = {
     "jira": ("auth",),
     "jsmops": ("apiKey",),
     "incidentio": ("token",),
+    "telegram": ("botToken",),
 }
 
 

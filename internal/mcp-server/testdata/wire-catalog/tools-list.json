@@ -133,7 +133,7 @@
                 "type": "string"
               },
               "service": {
-                "description": "Shortcut filter for service name. Equivalent to adding service.name = '\u003cvalue\u003e' to filter. When this workspace's logs lack service.name, the call usually returns no rows with a `key service.name not found in metadata` warning instead of failing; discover keys with signoz_get_field_keys(signal=\"logs\", fieldContext=\"resource\") and filter on an available key instead.",
+                "description": "Shortcut filter for service name. Equivalent to adding resource.service.name = '\u003cvalue\u003e' to filter. When this workspace's logs carry no resource service.name, the call usually returns no rows with a `key ... not found in metadata` warning instead of failing; find the key with signoz_get_field_keys(signal=\"logs\") and filter on it instead, such as attribute.service.name when it is a log attribute.",
                 "type": "string"
               },
               "severity": {
@@ -318,7 +318,7 @@
                 "type": "string"
               },
               "service": {
-                "description": "Shortcut filter for service name. Equivalent to adding service.name = '\u003cvalue\u003e' to filter.",
+                "description": "Shortcut filter for service name. Equivalent to adding resource.service.name = '\u003cvalue\u003e' to filter.",
                 "type": "string"
               },
               "start": {
@@ -598,7 +598,7 @@
                 "additionalProperties": {
                   "type": "string"
                 },
-                "description": "Labels attached to every alert the rule fires. Keys match [a-zA-Z_.][a-zA-Z0-9_.]*; values may use Go templates such as {{$labels.service_name}}. severity is the conventional routing label.",
+                "description": "Labels attached to every alert the rule fires. Keys match [a-zA-Z_.][a-zA-Z0-9_.]*; values may use Go templates such as {{$labels.service_name}}. A label named after one the engine writes, such as severity or threshold.name, is ignored.",
                 "type": [
                   "null",
                   "object"
@@ -1166,6 +1166,14 @@
                 },
                 "type": "object"
               },
+              "DashboardtypesBubbleRadius": {
+                "maximum": 64,
+                "minimum": 1,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
               "DashboardtypesBuilderQuerySpec": {
                 "discriminator": {
                   "mapping": {
@@ -1369,6 +1377,334 @@
                   "number",
                   "null"
                 ]
+              },
+              "DashboardtypesGeoMapBubbles": {
+                "properties": {
+                  "maxRadius": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesBubbleRadius"
+                      }
+                    ],
+                    "description": "Radius of the largest circle, in CSS pixels from 1 to 64. Null means 8 on the points layer, 28 otherwise."
+                  },
+                  "minRadius": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesBubbleRadius"
+                      }
+                    ],
+                    "description": "Radius of the smallest circle, in CSS pixels from 1 to 64. Null means 2 on the points layer, 3 otherwise."
+                  }
+                },
+                "type": "object"
+              },
+              "DashboardtypesGeoMapChartAppearance": {
+                "properties": {
+                  "bubbles": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesGeoMapBubbles"
+                      }
+                    ],
+                    "description": "The circle radius range of the bubbles and points layers."
+                  },
+                  "colors": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesGeoMapColors"
+                      }
+                    ],
+                    "description": "The color scale applied to the colorBy values."
+                  },
+                  "labels": {
+                    "description": "Shows country and state names once each fits inside its shape. Null shows them.",
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  }
+                },
+                "type": "object"
+              },
+              "DashboardtypesGeoMapColors": {
+                "properties": {
+                  "fill": {
+                    "description": "The hex color varied in opacity mode. Empty uses the default fill.",
+                    "type": "string"
+                  },
+                  "max": {
+                    "description": "The value mapped to the highest color. Null uses the highest value in the data.",
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "min": {
+                    "description": "The value mapped to the lowest color. Null uses the lowest value in the data. Must not exceed max.",
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "mode": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesHeatmapColorMode"
+                      }
+                    ],
+                    "description": "How values are colored: palette (default) picks a hue from palette, opacity varies the opacity of fill."
+                  },
+                  "palette": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesHeatmapPalette"
+                      }
+                    ],
+                    "description": "The named color ramp used in palette mode, such as lava (default), ice or ember."
+                  },
+                  "scale": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesHeatmapColorScale"
+                      }
+                    ],
+                    "description": "How values map onto the color range: log (default), sqrt or linear."
+                  },
+                  "steps": {
+                    "description": "The number of distinct color steps, 2 to 128. 0 uses the chart default.",
+                    "type": "integer"
+                  }
+                },
+                "type": "object"
+              },
+              "DashboardtypesGeoMapCountryFormat": {
+                "enum": [
+                  "auto",
+                  "alpha2",
+                  "alpha3",
+                  "name"
+                ],
+                "type": "string"
+              },
+              "DashboardtypesGeoMapLayer": {
+                "enum": [
+                  "regions",
+                  "bubbles",
+                  "points"
+                ],
+                "type": "string"
+              },
+              "DashboardtypesGeoMapLocation": {
+                "properties": {
+                  "country": {
+                    "description": "Group-by key holding the country, for the country and subdivision modes. Empty detects it by name, such as geo.country.iso_code.",
+                    "type": "string"
+                  },
+                  "countryFormat": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesGeoMapCountryFormat"
+                      }
+                    ],
+                    "description": "How country values are written: auto (default) detects it, alpha2, alpha3 or name."
+                  },
+                  "lat": {
+                    "description": "Group-by key holding the latitude, for the coordinates mode. Empty detects it by name.",
+                    "type": "string"
+                  },
+                  "lon": {
+                    "description": "Group-by key holding the longitude, for the coordinates mode. Empty detects it by name.",
+                    "type": "string"
+                  },
+                  "mode": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesGeoMapLocationMode"
+                      }
+                    ],
+                    "description": "How rows are placed: auto (default) detects it from the group-by keys, country, subdivision or coordinates."
+                  },
+                  "region": {
+                    "description": "Group-by key holding the ISO 3166-2 region code (e.g. geo.region.iso_code), for the subdivision mode. Empty detects it by name.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "mode",
+                  "countryFormat"
+                ],
+                "type": "object"
+              },
+              "DashboardtypesGeoMapLocationMode": {
+                "enum": [
+                  "auto",
+                  "country",
+                  "subdivision",
+                  "coordinates"
+                ],
+                "type": "string"
+              },
+              "DashboardtypesGeoMapPanelSpec": {
+                "properties": {
+                  "chartAppearance": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesGeoMapChartAppearance"
+                      }
+                    ],
+                    "description": "Color scale, bubble size and labels."
+                  },
+                  "formatting": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesTableFormatting"
+                      }
+                    ],
+                    "description": "Per-column units and decimal precision."
+                  },
+                  "legend": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesLegend"
+                      }
+                    ],
+                    "description": "Legend placement."
+                  },
+                  "location": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesGeoMapLocation"
+                      }
+                    ],
+                    "description": "The group-by columns that place each row on the map."
+                  },
+                  "map": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesGeoMapSettings"
+                      }
+                    ],
+                    "description": "Layer, view, projection and the value columns drawn."
+                  },
+                  "thresholds": {
+                    "description": "Rules that recolor a shape, bubble or point when its value compares to a threshold as specified.",
+                    "items": {
+                      "$ref": "#/$defs/DashboardtypesGeoMapThreshold"
+                    },
+                    "type": [
+                      "array",
+                      "null"
+                    ]
+                  },
+                  "visualization": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesBasicVisualization"
+                      }
+                    ],
+                    "description": "The time range the values are computed over."
+                  }
+                },
+                "type": "object"
+              },
+              "DashboardtypesGeoMapProjection": {
+                "enum": [
+                  "mercator",
+                  "equal_earth",
+                  "natural_earth"
+                ],
+                "type": "string"
+              },
+              "DashboardtypesGeoMapSettings": {
+                "properties": {
+                  "colorBy": {
+                    "description": "Value column key, as in a Table panel, that sets the color. Empty uses the first value column.",
+                    "type": "string"
+                  },
+                  "layer": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesGeoMapLayer"
+                      }
+                    ],
+                    "description": "What is drawn: regions (default) fills each shape, bubbles draws a circle per region, points a circle per coordinate."
+                  },
+                  "projection": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesGeoMapProjection"
+                      }
+                    ],
+                    "description": "The map projection: mercator (default), equal_earth or natural_earth."
+                  },
+                  "sizeBy": {
+                    "description": "Value column key, as in a Table panel, that sets the bubble or point size. Empty uses colorBy.",
+                    "type": "string"
+                  },
+                  "view": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesGeoMapView"
+                      }
+                    ],
+                    "description": "The area shown: world (default), fit to the data, a continent, or country with viewCountry."
+                  },
+                  "viewCountry": {
+                    "description": "Uppercase ISO 3166-1 alpha-2 code of the country the country view shows.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "layer",
+                  "view",
+                  "projection"
+                ],
+                "type": "object"
+              },
+              "DashboardtypesGeoMapThreshold": {
+                "properties": {
+                  "color": {
+                    "description": "The CSS color of the shape, bubble or point while the threshold is active, for example #F1575F; CSS named colors such as red also work.",
+                    "type": "string"
+                  },
+                  "operator": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesComparisonOperator"
+                      }
+                    ],
+                    "description": "The comparison that activates the threshold: above (default), below, above_or_equal, below_or_equal, equal or not_equal."
+                  },
+                  "unit": {
+                    "description": "The unit id of value, such as ms or percent. Empty means the colorBy column's unit.",
+                    "type": "string"
+                  },
+                  "value": {
+                    "description": "The value compared against, in unit.",
+                    "format": "double",
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "value",
+                  "color"
+                ],
+                "type": "object"
+              },
+              "DashboardtypesGeoMapView": {
+                "enum": [
+                  "world",
+                  "fit",
+                  "africa",
+                  "asia",
+                  "europe",
+                  "north_america",
+                  "south_america",
+                  "oceania",
+                  "country"
+                ],
+                "type": "string"
               },
               "DashboardtypesHeaderOptions": {
                 "properties": {
@@ -1890,6 +2226,7 @@
                   "mapping": {
                     "signoz/AreaChartPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesAreaChartPanelSpec",
                     "signoz/BarChartPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesBarChartPanelSpec",
+                    "signoz/GeoMapPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesGeoMapPanelSpec",
                     "signoz/HeatmapPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesHeatmapPanelSpec",
                     "signoz/HistogramPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesHistogramPanelSpec",
                     "signoz/ListPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesListPanelSpec",
@@ -1898,7 +2235,8 @@
                     "signoz/ScatterPlotPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesScatterPlotPanelSpec",
                     "signoz/TablePanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTablePanelSpec",
                     "signoz/TextPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTextPanelSpec",
-                    "signoz/TimeSeriesPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTimeSeriesPanelSpec"
+                    "signoz/TimeSeriesPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTimeSeriesPanelSpec",
+                    "signoz/TopListPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTopListPanelSpec"
                   },
                   "propertyName": "kind"
                 },
@@ -1935,6 +2273,12 @@
                   },
                   {
                     "$ref": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesScatterPlotPanelSpec"
+                  },
+                  {
+                    "$ref": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesGeoMapPanelSpec"
+                  },
+                  {
+                    "$ref": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTopListPanelSpec"
                   }
                 ],
                 "type": "object"
@@ -1970,6 +2314,27 @@
                     "allOf": [
                       {
                         "$ref": "#/$defs/DashboardtypesBarChartPanelSpec"
+                      }
+                    ],
+                    "description": "The options for this panel kind. {} accepts every default."
+                  }
+                },
+                "required": [
+                  "kind",
+                  "spec"
+                ],
+                "type": "object"
+              },
+              "DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesGeoMapPanelSpec": {
+                "properties": {
+                  "kind": {
+                    "const": "signoz/GeoMapPanel",
+                    "type": "string"
+                  },
+                  "spec": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesGeoMapPanelSpec"
                       }
                     ],
                     "description": "The options for this panel kind. {} accepts every default."
@@ -2159,6 +2524,27 @@
                     "allOf": [
                       {
                         "$ref": "#/$defs/DashboardtypesTimeSeriesPanelSpec"
+                      }
+                    ],
+                    "description": "The options for this panel kind. {} accepts every default."
+                  }
+                },
+                "required": [
+                  "kind",
+                  "spec"
+                ],
+                "type": "object"
+              },
+              "DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTopListPanelSpec": {
+                "properties": {
+                  "kind": {
+                    "const": "signoz/TopListPanel",
+                    "type": "string"
+                  },
+                  "spec": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesTopListPanelSpec"
                       }
                     ],
                     "description": "The options for this panel kind. {} accepts every default."
@@ -3125,6 +3511,65 @@
                       }
                     ],
                     "description": "The time range the panel queries: global_time (default) follows the dashboard range; last_5_min, last_15_min, last_30_min, last_1_hr, last_6_hr, last_1_day, last_3_days, last_1_week or last_1_month pin a fixed window."
+                  }
+                },
+                "type": "object"
+              },
+              "DashboardtypesTopListAppearance": {
+                "properties": {
+                  "barColor": {
+                    "description": "Hex color of every bar; a matching background threshold overrides it.",
+                    "type": "string"
+                  },
+                  "showRank": {
+                    "description": "Numbers each row by its position in the list.",
+                    "type": "boolean"
+                  },
+                  "showShare": {
+                    "description": "Shows each row's share of the listed rows' total.",
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "barColor"
+                ],
+                "type": "object"
+              },
+              "DashboardtypesTopListPanelSpec": {
+                "properties": {
+                  "appearance": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesTopListAppearance"
+                      }
+                    ],
+                    "description": "Rank, share and bar color options."
+                  },
+                  "formatting": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesPanelFormatting"
+                      }
+                    ],
+                    "description": "Unit and decimal precision of the values."
+                  },
+                  "thresholds": {
+                    "description": "Rules that recolor a row when its value compares to a threshold as specified.",
+                    "items": {
+                      "$ref": "#/$defs/DashboardtypesComparisonThreshold"
+                    },
+                    "type": [
+                      "array",
+                      "null"
+                    ]
+                  },
+                  "visualization": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesBasicVisualization"
+                      }
+                    ],
+                    "description": "The time range the rows are computed over."
                   }
                 },
                 "type": "object"
@@ -7938,7 +8383,7 @@
                 ]
               },
               "service": {
-                "description": "Optional service name to filter by (adds service.name = '\u003cvalue\u003e'). When this workspace's logs lack service.name, the call usually returns no rows with a `key service.name not found in metadata` warning instead of failing; discover keys with signoz_get_field_keys(signal=\"logs\", fieldContext=\"resource\") and filter on an available key instead.",
+                "description": "Optional service name to filter by (adds resource.service.name = '\u003cvalue\u003e'). When this workspace's logs carry no resource service.name, the call usually returns no rows with a `key ... not found in metadata` warning instead of failing; find the key with signoz_get_field_keys(signal=\"logs\") and filter on it instead, such as attribute.service.name when it is a log attribute.",
                 "type": "string"
               },
               "severity": {
@@ -8062,7 +8507,7 @@
                 ]
               },
               "service": {
-                "description": "Optional service name to filter by.",
+                "description": "Optional service name to filter by (adds resource.service.name = '\u003cvalue\u003e').",
                 "type": "string"
               },
               "start": {
@@ -8491,7 +8936,7 @@
                 "additionalProperties": {
                   "type": "string"
                 },
-                "description": "Labels attached to every alert the rule fires. Keys match [a-zA-Z_.][a-zA-Z0-9_.]*; values may use Go templates such as {{$labels.service_name}}. severity is the conventional routing label.",
+                "description": "Labels attached to every alert the rule fires. Keys match [a-zA-Z_.][a-zA-Z0-9_.]*; values may use Go templates such as {{$labels.service_name}}. A label named after one the engine writes, such as severity or threshold.name, is ignored.",
                 "type": [
                   "null",
                   "object"
@@ -9063,6 +9508,14 @@
                 },
                 "type": "object"
               },
+              "DashboardtypesBubbleRadius": {
+                "maximum": 64,
+                "minimum": 1,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
               "DashboardtypesBuilderQuerySpec": {
                 "discriminator": {
                   "mapping": {
@@ -9266,6 +9719,334 @@
                   "number",
                   "null"
                 ]
+              },
+              "DashboardtypesGeoMapBubbles": {
+                "properties": {
+                  "maxRadius": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesBubbleRadius"
+                      }
+                    ],
+                    "description": "Radius of the largest circle, in CSS pixels from 1 to 64. Null means 8 on the points layer, 28 otherwise."
+                  },
+                  "minRadius": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesBubbleRadius"
+                      }
+                    ],
+                    "description": "Radius of the smallest circle, in CSS pixels from 1 to 64. Null means 2 on the points layer, 3 otherwise."
+                  }
+                },
+                "type": "object"
+              },
+              "DashboardtypesGeoMapChartAppearance": {
+                "properties": {
+                  "bubbles": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesGeoMapBubbles"
+                      }
+                    ],
+                    "description": "The circle radius range of the bubbles and points layers."
+                  },
+                  "colors": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesGeoMapColors"
+                      }
+                    ],
+                    "description": "The color scale applied to the colorBy values."
+                  },
+                  "labels": {
+                    "description": "Shows country and state names once each fits inside its shape. Null shows them.",
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  }
+                },
+                "type": "object"
+              },
+              "DashboardtypesGeoMapColors": {
+                "properties": {
+                  "fill": {
+                    "description": "The hex color varied in opacity mode. Empty uses the default fill.",
+                    "type": "string"
+                  },
+                  "max": {
+                    "description": "The value mapped to the highest color. Null uses the highest value in the data.",
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "min": {
+                    "description": "The value mapped to the lowest color. Null uses the lowest value in the data. Must not exceed max.",
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "mode": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesHeatmapColorMode"
+                      }
+                    ],
+                    "description": "How values are colored: palette (default) picks a hue from palette, opacity varies the opacity of fill."
+                  },
+                  "palette": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesHeatmapPalette"
+                      }
+                    ],
+                    "description": "The named color ramp used in palette mode, such as lava (default), ice or ember."
+                  },
+                  "scale": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesHeatmapColorScale"
+                      }
+                    ],
+                    "description": "How values map onto the color range: log (default), sqrt or linear."
+                  },
+                  "steps": {
+                    "description": "The number of distinct color steps, 2 to 128. 0 uses the chart default.",
+                    "type": "integer"
+                  }
+                },
+                "type": "object"
+              },
+              "DashboardtypesGeoMapCountryFormat": {
+                "enum": [
+                  "auto",
+                  "alpha2",
+                  "alpha3",
+                  "name"
+                ],
+                "type": "string"
+              },
+              "DashboardtypesGeoMapLayer": {
+                "enum": [
+                  "regions",
+                  "bubbles",
+                  "points"
+                ],
+                "type": "string"
+              },
+              "DashboardtypesGeoMapLocation": {
+                "properties": {
+                  "country": {
+                    "description": "Group-by key holding the country, for the country and subdivision modes. Empty detects it by name, such as geo.country.iso_code.",
+                    "type": "string"
+                  },
+                  "countryFormat": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesGeoMapCountryFormat"
+                      }
+                    ],
+                    "description": "How country values are written: auto (default) detects it, alpha2, alpha3 or name."
+                  },
+                  "lat": {
+                    "description": "Group-by key holding the latitude, for the coordinates mode. Empty detects it by name.",
+                    "type": "string"
+                  },
+                  "lon": {
+                    "description": "Group-by key holding the longitude, for the coordinates mode. Empty detects it by name.",
+                    "type": "string"
+                  },
+                  "mode": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesGeoMapLocationMode"
+                      }
+                    ],
+                    "description": "How rows are placed: auto (default) detects it from the group-by keys, country, subdivision or coordinates."
+                  },
+                  "region": {
+                    "description": "Group-by key holding the ISO 3166-2 region code (e.g. geo.region.iso_code), for the subdivision mode. Empty detects it by name.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "mode",
+                  "countryFormat"
+                ],
+                "type": "object"
+              },
+              "DashboardtypesGeoMapLocationMode": {
+                "enum": [
+                  "auto",
+                  "country",
+                  "subdivision",
+                  "coordinates"
+                ],
+                "type": "string"
+              },
+              "DashboardtypesGeoMapPanelSpec": {
+                "properties": {
+                  "chartAppearance": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesGeoMapChartAppearance"
+                      }
+                    ],
+                    "description": "Color scale, bubble size and labels."
+                  },
+                  "formatting": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesTableFormatting"
+                      }
+                    ],
+                    "description": "Per-column units and decimal precision."
+                  },
+                  "legend": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesLegend"
+                      }
+                    ],
+                    "description": "Legend placement."
+                  },
+                  "location": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesGeoMapLocation"
+                      }
+                    ],
+                    "description": "The group-by columns that place each row on the map."
+                  },
+                  "map": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesGeoMapSettings"
+                      }
+                    ],
+                    "description": "Layer, view, projection and the value columns drawn."
+                  },
+                  "thresholds": {
+                    "description": "Rules that recolor a shape, bubble or point when its value compares to a threshold as specified.",
+                    "items": {
+                      "$ref": "#/$defs/DashboardtypesGeoMapThreshold"
+                    },
+                    "type": [
+                      "array",
+                      "null"
+                    ]
+                  },
+                  "visualization": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesBasicVisualization"
+                      }
+                    ],
+                    "description": "The time range the values are computed over."
+                  }
+                },
+                "type": "object"
+              },
+              "DashboardtypesGeoMapProjection": {
+                "enum": [
+                  "mercator",
+                  "equal_earth",
+                  "natural_earth"
+                ],
+                "type": "string"
+              },
+              "DashboardtypesGeoMapSettings": {
+                "properties": {
+                  "colorBy": {
+                    "description": "Value column key, as in a Table panel, that sets the color. Empty uses the first value column.",
+                    "type": "string"
+                  },
+                  "layer": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesGeoMapLayer"
+                      }
+                    ],
+                    "description": "What is drawn: regions (default) fills each shape, bubbles draws a circle per region, points a circle per coordinate."
+                  },
+                  "projection": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesGeoMapProjection"
+                      }
+                    ],
+                    "description": "The map projection: mercator (default), equal_earth or natural_earth."
+                  },
+                  "sizeBy": {
+                    "description": "Value column key, as in a Table panel, that sets the bubble or point size. Empty uses colorBy.",
+                    "type": "string"
+                  },
+                  "view": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesGeoMapView"
+                      }
+                    ],
+                    "description": "The area shown: world (default), fit to the data, a continent, or country with viewCountry."
+                  },
+                  "viewCountry": {
+                    "description": "Uppercase ISO 3166-1 alpha-2 code of the country the country view shows.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "layer",
+                  "view",
+                  "projection"
+                ],
+                "type": "object"
+              },
+              "DashboardtypesGeoMapThreshold": {
+                "properties": {
+                  "color": {
+                    "description": "The CSS color of the shape, bubble or point while the threshold is active, for example #F1575F; CSS named colors such as red also work.",
+                    "type": "string"
+                  },
+                  "operator": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesComparisonOperator"
+                      }
+                    ],
+                    "description": "The comparison that activates the threshold: above (default), below, above_or_equal, below_or_equal, equal or not_equal."
+                  },
+                  "unit": {
+                    "description": "The unit id of value, such as ms or percent. Empty means the colorBy column's unit.",
+                    "type": "string"
+                  },
+                  "value": {
+                    "description": "The value compared against, in unit.",
+                    "format": "double",
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "value",
+                  "color"
+                ],
+                "type": "object"
+              },
+              "DashboardtypesGeoMapView": {
+                "enum": [
+                  "world",
+                  "fit",
+                  "africa",
+                  "asia",
+                  "europe",
+                  "north_america",
+                  "south_america",
+                  "oceania",
+                  "country"
+                ],
+                "type": "string"
               },
               "DashboardtypesHeaderOptions": {
                 "properties": {
@@ -9787,6 +10568,7 @@
                   "mapping": {
                     "signoz/AreaChartPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesAreaChartPanelSpec",
                     "signoz/BarChartPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesBarChartPanelSpec",
+                    "signoz/GeoMapPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesGeoMapPanelSpec",
                     "signoz/HeatmapPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesHeatmapPanelSpec",
                     "signoz/HistogramPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesHistogramPanelSpec",
                     "signoz/ListPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesListPanelSpec",
@@ -9795,7 +10577,8 @@
                     "signoz/ScatterPlotPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesScatterPlotPanelSpec",
                     "signoz/TablePanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTablePanelSpec",
                     "signoz/TextPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTextPanelSpec",
-                    "signoz/TimeSeriesPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTimeSeriesPanelSpec"
+                    "signoz/TimeSeriesPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTimeSeriesPanelSpec",
+                    "signoz/TopListPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTopListPanelSpec"
                   },
                   "propertyName": "kind"
                 },
@@ -9832,6 +10615,12 @@
                   },
                   {
                     "$ref": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesScatterPlotPanelSpec"
+                  },
+                  {
+                    "$ref": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesGeoMapPanelSpec"
+                  },
+                  {
+                    "$ref": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTopListPanelSpec"
                   }
                 ],
                 "type": "object"
@@ -9867,6 +10656,27 @@
                     "allOf": [
                       {
                         "$ref": "#/$defs/DashboardtypesBarChartPanelSpec"
+                      }
+                    ],
+                    "description": "The options for this panel kind. {} accepts every default."
+                  }
+                },
+                "required": [
+                  "kind",
+                  "spec"
+                ],
+                "type": "object"
+              },
+              "DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesGeoMapPanelSpec": {
+                "properties": {
+                  "kind": {
+                    "const": "signoz/GeoMapPanel",
+                    "type": "string"
+                  },
+                  "spec": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesGeoMapPanelSpec"
                       }
                     ],
                     "description": "The options for this panel kind. {} accepts every default."
@@ -10056,6 +10866,27 @@
                     "allOf": [
                       {
                         "$ref": "#/$defs/DashboardtypesTimeSeriesPanelSpec"
+                      }
+                    ],
+                    "description": "The options for this panel kind. {} accepts every default."
+                  }
+                },
+                "required": [
+                  "kind",
+                  "spec"
+                ],
+                "type": "object"
+              },
+              "DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTopListPanelSpec": {
+                "properties": {
+                  "kind": {
+                    "const": "signoz/TopListPanel",
+                    "type": "string"
+                  },
+                  "spec": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesTopListPanelSpec"
                       }
                     ],
                     "description": "The options for this panel kind. {} accepts every default."
@@ -11022,6 +11853,65 @@
                       }
                     ],
                     "description": "The time range the panel queries: global_time (default) follows the dashboard range; last_5_min, last_15_min, last_30_min, last_1_hr, last_6_hr, last_1_day, last_3_days, last_1_week or last_1_month pin a fixed window."
+                  }
+                },
+                "type": "object"
+              },
+              "DashboardtypesTopListAppearance": {
+                "properties": {
+                  "barColor": {
+                    "description": "Hex color of every bar; a matching background threshold overrides it.",
+                    "type": "string"
+                  },
+                  "showRank": {
+                    "description": "Numbers each row by its position in the list.",
+                    "type": "boolean"
+                  },
+                  "showShare": {
+                    "description": "Shows each row's share of the listed rows' total.",
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "barColor"
+                ],
+                "type": "object"
+              },
+              "DashboardtypesTopListPanelSpec": {
+                "properties": {
+                  "appearance": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesTopListAppearance"
+                      }
+                    ],
+                    "description": "Rank, share and bar color options."
+                  },
+                  "formatting": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesPanelFormatting"
+                      }
+                    ],
+                    "description": "Unit and decimal precision of the values."
+                  },
+                  "thresholds": {
+                    "description": "Rules that recolor a row when its value compares to a threshold as specified.",
+                    "items": {
+                      "$ref": "#/$defs/DashboardtypesComparisonThreshold"
+                    },
+                    "type": [
+                      "array",
+                      "null"
+                    ]
+                  },
+                  "visualization": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DashboardtypesBasicVisualization"
+                      }
+                    ],
+                    "description": "The time range the rows are computed over."
                   }
                 },
                 "type": "object"

@@ -389,6 +389,74 @@ func (t *DashboardtypesPanelPlugin) MergeDashboardtypesPanelPluginVariantGithubC
 	return err
 }
 
+// AsDashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesGeoMapPanelSpec returns the union data inside the DashboardtypesPanelPlugin as a DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesGeoMapPanelSpec
+func (t DashboardtypesPanelPlugin) AsDashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesGeoMapPanelSpec() (DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesGeoMapPanelSpec, error) {
+	var body DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesGeoMapPanelSpec
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromDashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesGeoMapPanelSpec overwrites any union data inside the DashboardtypesPanelPlugin as the provided DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesGeoMapPanelSpec
+func (t *DashboardtypesPanelPlugin) FromDashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesGeoMapPanelSpec(v DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesGeoMapPanelSpec) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"kind":"signoz/GeoMapPanel"}`))
+	t.union = b
+	return err
+}
+
+// MergeDashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesGeoMapPanelSpec performs a merge with any union data inside the DashboardtypesPanelPlugin, using the provided DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesGeoMapPanelSpec
+func (t *DashboardtypesPanelPlugin) MergeDashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesGeoMapPanelSpec(v DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesGeoMapPanelSpec) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"kind":"signoz/GeoMapPanel"}`))
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsDashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTopListPanelSpec returns the union data inside the DashboardtypesPanelPlugin as a DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTopListPanelSpec
+func (t DashboardtypesPanelPlugin) AsDashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTopListPanelSpec() (DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTopListPanelSpec, error) {
+	var body DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTopListPanelSpec
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromDashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTopListPanelSpec overwrites any union data inside the DashboardtypesPanelPlugin as the provided DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTopListPanelSpec
+func (t *DashboardtypesPanelPlugin) FromDashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTopListPanelSpec(v DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTopListPanelSpec) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"kind":"signoz/TopListPanel"}`))
+	t.union = b
+	return err
+}
+
+// MergeDashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTopListPanelSpec performs a merge with any union data inside the DashboardtypesPanelPlugin, using the provided DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTopListPanelSpec
+func (t *DashboardtypesPanelPlugin) MergeDashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTopListPanelSpec(v DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTopListPanelSpec) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"kind":"signoz/TopListPanel"}`))
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
 func (t DashboardtypesPanelPlugin) Discriminator() (string, error) {
 	var discriminator struct {
 		Discriminator string `json:"kind"`
@@ -407,6 +475,8 @@ func (t DashboardtypesPanelPlugin) ValueByDiscriminator() (interface{}, error) {
 		return t.AsDashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesAreaChartPanelSpec()
 	case "signoz/BarChartPanel":
 		return t.AsDashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesBarChartPanelSpec()
+	case "signoz/GeoMapPanel":
+		return t.AsDashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesGeoMapPanelSpec()
 	case "signoz/HeatmapPanel":
 		return t.AsDashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesHeatmapPanelSpec()
 	case "signoz/HistogramPanel":
@@ -425,6 +495,8 @@ func (t DashboardtypesPanelPlugin) ValueByDiscriminator() (interface{}, error) {
 		return t.AsDashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTextPanelSpec()
 	case "signoz/TimeSeriesPanel":
 		return t.AsDashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTimeSeriesPanelSpec()
+	case "signoz/TopListPanel":
+		return t.AsDashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTopListPanelSpec()
 	default:
 		return nil, errors.New("unknown discriminator value: " + discriminator)
 	}
