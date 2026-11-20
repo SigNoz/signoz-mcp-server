@@ -6595,6 +6595,87 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
+          "description": "Use this when the user asks which services call a service, what a service depends on, or which dependency is slow or failing. It returns the dependency graph behind SigNoz's Service Map for a time window: one edge per caller (parent) and callee (child) with callCount, callRate (calls per second), errorRate (percent of calls that failed), and p50 to p99 latency in nanoseconds. Set service and direction to keep one service's edges, and environment, cluster, or namespace to narrow the graph. Databases and message systems are callees named by their system, such as redis or kafka; a message system is the child of both its producers and its consumers. Edges come from per-minute rollups of traced calls, so a window shorter than a minute can return nothing, and an uninstrumented caller leaves no edge. Use signoz_list_services for per-service totals, signoz_get_service_top_operations for one service's operations, and signoz_aggregate_traces for custom span statistics.",
+          "inputSchema": {
+            "properties": {
+              "cluster": {
+                "description": "Keep only edges recorded with this k8s.cluster.name resource value. Discover values with signoz_get_field_values with signal=\"traces\", fieldContext=\"resource\", and name=\"k8s.cluster.name\".",
+                "type": "string"
+              },
+              "direction": {
+                "default": "both",
+                "description": "Which of service's edges to keep: upstream (the services that call it), downstream (the services, databases, and message systems it calls), or both (default). Requires service.",
+                "enum": [
+                  "both",
+                  "upstream",
+                  "downstream"
+                ],
+                "type": "string"
+              },
+              "end": {
+                "description": "End time in unix milliseconds (optional, defaults to now).",
+                "type": [
+                  "integer",
+                  "string"
+                ]
+              },
+              "environment": {
+                "description": "Keep only edges recorded with this deployment.environment resource value. Discover values with signoz_get_field_values with signal=\"traces\", fieldContext=\"resource\", and name=\"deployment.environment\".",
+                "type": "string"
+              },
+              "limit": {
+                "default": "50",
+                "description": "Maximum edges per page. Default: 50; max: 1000 (higher values are clamped).",
+                "type": [
+                  "integer",
+                  "string"
+                ]
+              },
+              "namespace": {
+                "description": "Keep only edges recorded with this k8s.namespace.name resource value. Discover values with signoz_get_field_values with signal=\"traces\", fieldContext=\"resource\", and name=\"k8s.namespace.name\".",
+                "type": "string"
+              },
+              "offset": {
+                "default": "0",
+                "description": "Number of edges to skip. Default: 0; use pagination.nextOffset for the next page.",
+                "type": [
+                  "integer",
+                  "string"
+                ]
+              },
+              "searchContext": {
+                "description": "Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.",
+                "type": "string"
+              },
+              "service": {
+                "description": "Exact service.name value whose edges to keep, or a database or message system named in an edge. Discover service names with signoz_get_field_values with signal=\"traces\", fieldContext=\"resource\", and name=\"service.name\". Omit for the whole graph.",
+                "type": "string"
+              },
+              "start": {
+                "description": "Start time in unix milliseconds (optional, defaults to 6 hours ago).",
+                "type": [
+                  "integer",
+                  "string"
+                ]
+              },
+              "timeRange": {
+                "default": "6h",
+                "description": "Relative time range. Format: \u003cnumber\u003e\u003cunit\u003e where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '3d', '7d'. Ignored when both start and end are provided. Defaults to last 6 hours if not provided.",
+                "type": "string"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "name": "signoz_get_service_map"
+        },
+        {
+          "annotations": {
+            "destructiveHint": false,
+            "idempotentHint": true,
+            "openWorldHint": true,
+            "readOnlyHint": true
+          },
           "description": "Use this when the user wants the built-in operation table for one traced service in a time window. It ranks operation names by p99 latency and returns p50, p95, p99, call count, and error count. Use signoz_list_services to discover active traced service names. For custom aggregation, grouping, time series, cross-service comparison, or arbitrary trace filters, use signoz_aggregate_traces instead. The optional tags parameter is a JSON-encoded TagQueryParam array.",
           "inputSchema": {
             "properties": {

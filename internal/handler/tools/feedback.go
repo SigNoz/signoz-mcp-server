@@ -114,7 +114,7 @@ func parseFeedback(rawArgs any) (Feedback, *mcp.CallToolResult) {
 		return Feedback{}, validationError("message", "cannot be empty")
 	}
 
-	category, errResult := optionalFeedbackString(args, "category")
+	category, errResult := optionalStringArg(args, "category")
 	if errResult != nil {
 		return Feedback{}, errResult
 	}
@@ -122,7 +122,7 @@ func parseFeedback(rawArgs any) (Feedback, *mcp.CallToolResult) {
 		return Feedback{}, validationErrorf("category", "must be one of: %s", strings.Join(feedbackCategories, ", "))
 	}
 
-	toolName, errResult := optionalFeedbackString(args, "toolName")
+	toolName, errResult := optionalStringArg(args, "toolName")
 	if errResult != nil {
 		return Feedback{}, errResult
 	}
@@ -130,7 +130,7 @@ func parseFeedback(rawArgs any) (Feedback, *mcp.CallToolResult) {
 		return Feedback{}, validationErrorf("toolName", "must be at most %d characters; pass only the tool's name", feedbackToolNameMaxChars)
 	}
 
-	model, errResult := optionalFeedbackString(args, "model")
+	model, errResult := optionalStringArg(args, "model")
 	if errResult != nil {
 		return Feedback{}, errResult
 	}
@@ -139,20 +139,6 @@ func parseFeedback(rawArgs any) (Feedback, *mcp.CallToolResult) {
 	}
 
 	return Feedback{Message: message, Category: category, ToolName: strings.TrimSpace(toolName), Model: strings.TrimSpace(model)}, nil
-}
-
-// optionalFeedbackString treats a missing or empty value as absent and rejects
-// any other type, so a wrong-typed value is never dropped silently.
-func optionalFeedbackString(args map[string]any, key string) (string, *mcp.CallToolResult) {
-	raw, present := args[key]
-	if !present || raw == nil {
-		return "", nil
-	}
-	value, ok := raw.(string)
-	if !ok {
-		return "", validationError(key, "must be a string")
-	}
-	return value, nil
 }
 
 func maxLength(chars int) mcp.PropertyOption {
