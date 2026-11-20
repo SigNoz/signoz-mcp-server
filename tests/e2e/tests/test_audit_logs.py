@@ -72,7 +72,9 @@ def test_search_logs_source_audit_reads_audit_events(mcp_client: MCPClient, test
     assert {row["attributes"]["signoz.audit.verb"] for row in rows} == {"create", "delete"}
     assert {row["resource"]["attributes"]["signoz.resource.id"] for row in rows} == {dashboard}
 
-    assert _rows(_search(mcp_client, filter=by_alice)) == [], "audit events must not appear in application logs"
+    # searchText, not the attribute filter: an unknown application-log key falls back to a body
+    # JSON lookup that foundry's ClickHouse settings reject (see the allow_simdjson skip in test_logs.py).
+    assert _rows(_search(mcp_client, searchText=alice)) == [], "audit events must not appear in application logs"
 
     by_resource = _rows(
         _search(mcp_client, source="audit", filter=f"signoz.resource.kind = 'rule' AND signoz.resource.id = '{rule}'")
