@@ -107,6 +107,7 @@ func TestToolHandlers_RejectInvalidArgumentsBeforeCallingSigNoz(t *testing.T) {
 		{tool: "signoz_list_services", arguments: `{"start":"yesterday"}`, wantText: `invalid "start" "yesterday"`},
 		{tool: "signoz_get_service_top_operations", arguments: `{"service":"frontend","start":"yesterday"}`, wantText: `invalid "start" "yesterday"`},
 		{tool: "signoz_get_service_map", arguments: `{"start":"yesterday"}`, wantText: `invalid "start" "yesterday"`},
+		{tool: "signoz_get_alert_history", arguments: `{"id":"0196634d-5d66-75c4-b778-e317f49dab7a","start":"yesterday"}`, wantText: `invalid "start" "yesterday"`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.tool+" "+tt.arguments, func(t *testing.T) {
