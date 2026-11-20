@@ -204,7 +204,7 @@ Not covered, by decision:
 
 ## Verification
 
-- `pkg/timeutil/time_test.go` on a fixed clock: 20 equivalent ways of writing one window resolve
+- `pkg/timeutil/time_test.go` on a fixed clock: 21 equivalent ways of writing one window resolve
   to the same bounds in ms and ns; relative ranges across a year boundary; local midnight and a
   daylight-saving change through explicit offsets; old RFC 3339 dates, old millisecond epochs
   and an `end` five minutes ahead of the clock accepted; 33 rejections, each checked for the fix
@@ -215,11 +215,12 @@ Not covered, by decision:
   any request. `signoz_query_metrics` resolves its window before the metric metadata lookup, so
   its row omits `metricType`.
 - `TestTimeWindowedTools_SendTheResolvedWindowUpstream` sends RFC 3339 bounds with offsets to all
-  twelve tools and finds the same window in the request SigNoz receives: Unix ms, or Unix ns
-  for the three service tools. A millisecond route that sent nanoseconds would fail it. Each
-  result must succeed and report the window: the note block on ten tools, the `window` field in
-  the structured content of `signoz_list_services` and `signoz_get_service_map`. Removing the
-  report from one handler fails its row.
+  twelve tools and reads the `start` and `end` SigNoz receives, from query parameters or the top
+  of the JSON body: Unix ms, or Unix ns for the three service tools, so a wrong unit or swapped
+  bounds fail it. Each result must succeed and report the window: the note block on ten tools,
+  the `window` field, compared as JSON, on `signoz_list_services` and `signoz_get_service_map`.
+  Called without bounds, each tool must query the `timeRange` default its schema advertises;
+  changing the alert-history default from 6h to 1h fails its row.
 - e2e tests: none sends `start` without `end`, `end` without `start`, or an old or
   seconds-sized epoch, and none asserts the removed error strings.
 - `GOTOOLCHAIN=go1.26.11 make ci` passed on 2026-11-20 for both revisions, including lint, race

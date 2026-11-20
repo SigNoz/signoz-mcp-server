@@ -35,6 +35,7 @@ func TestResolveWindowAcceptsEquivalentForms(t *testing.T) {
 		{"relative start", map[string]any{"start": "now-1h"}},
 		{"relative start and end", map[string]any{"start": "now-60m", "end": "now"}},
 		{"start wins over timeRange", map[string]any{"start": "now-1h", "timeRange": "24h"}},
+		{"start wins over a malformed timeRange", map[string]any{"start": "now-1h", "timeRange": "24hours"}},
 		{"RFC 3339 with Z", map[string]any{"start": "2026-11-19T09:00:00Z", "end": "2026-11-19T10:00:00Z"}},
 		{"RFC 3339 with offsets", map[string]any{"start": "2026-11-19T14:30:00+05:30", "end": "2026-11-19T05:00:00-05:00"}},
 		{"RFC 3339 with fraction", map[string]any{"start": "2026-11-19T09:00:00.000Z", "end": "2026-11-19T10:00:00.000Z"}},
