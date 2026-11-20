@@ -115,6 +115,30 @@ func TestNoticeOnAStructuredResultStillMatchesTheOutputSchema(t *testing.T) {
 	}
 }
 
+// A map-shaped output keyed by caller-chosen names can hold an entry named
+// "notes"; declaring the notes array must not make that entry invalid.
+func TestMapOutputEntryNamedNotesStillMatchesTheOutputSchema(t *testing.T) {
+	type entry struct {
+		Count int `json:"count"`
+	}
+	var logs bytes.Buffer
+	logger := slog.New(logpkg.NewContextHandler(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn})))
+	h := &Handler{logger: logger}
+	s := newMCPTestServer()
+	tool := mcp.NewTool("map_output_notes_entry_probe", mcp.WithOutputSchema[map[string]entry]())
+	h.addTool(s, tool, func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return structuredResult([]byte(`{"notes":{"count":3}}`)), nil
+	})
+
+	result := callTestToolFromJSONRPC(context.Background(), t, s, json.RawMessage(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"map_output_notes_entry_probe","arguments":{}}}`))
+	if result.IsError {
+		t.Fatalf("unexpected error result: %s", allTextBlocks(result))
+	}
+	if strings.Contains(logs.String(), "validation mismatch") {
+		t.Fatalf("an entry named notes must match the advertised output schema. Logs: %s", logs.String())
+	}
+}
+
 func TestOutputSchemaSuccessWithoutStructuredContentFailsOpen(t *testing.T) {
 	var logs bytes.Buffer
 	logger := slog.New(logpkg.NewContextHandler(slog.NewJSONHandler(&logs, nil)))

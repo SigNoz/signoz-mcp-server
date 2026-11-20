@@ -455,11 +455,46 @@
             },
             "properties": {
               "notes": {
-                "description": "Advisory notes about this result, such as a clamped limit or an argument the tool ignored. Omitted when there are none.",
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
+                "anyOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "alerts": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": [
+                          "null",
+                          "array"
+                        ]
+                      },
+                      "dashboards": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": [
+                          "null",
+                          "array"
+                        ]
+                      },
+                      "error": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "dashboards",
+                      "alerts"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "description": "Advisory notes about this result, such as a clamped limit or an argument the tool ignored. Omitted when there are none.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                ]
               }
             },
             "required": [],

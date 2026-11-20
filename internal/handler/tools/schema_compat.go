@@ -626,11 +626,16 @@ func declareResultNotes(schema any) any {
 	if _, declared := properties[resultNotesKey]; declared {
 		return schema
 	}
-	properties[resultNotesKey] = map[string]any{
+	notes := map[string]any{
 		"type":        "array",
 		"items":       map[string]any{"type": "string"},
 		"description": resultNotesDescription,
 	}
+	// A map-shaped output can hold an entry named "notes", so the key takes both.
+	if entry, ok := object["additionalProperties"].(map[string]any); ok {
+		notes = map[string]any{"anyOf": []any{entry, notes}}
+	}
+	properties[resultNotesKey] = notes
 	object["properties"] = properties
 	b, err := json.Marshal(object)
 	if err != nil {

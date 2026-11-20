@@ -75,6 +75,8 @@ validating, and a future output-schema tool gets the property without a code cha
 
 - Decision: its output stays a map from metric name to usage. `notes` is declared as a named
   property beside `additionalProperties` (the usage object), so a result with notes validates.
+  On a map-shaped output schema the property is `anyOf` the entry schema and the notes array,
+  so a metric named `notes` still validates as a usage entry (review finding).
 - Rationale: wrapping the map under a new key would break every client on every call to fix a
   rare case. The only note this tool can carry is a decorator notice. `notes` is an array of
   strings while every metric entry is an object, so a reader can tell them apart, and a metric
