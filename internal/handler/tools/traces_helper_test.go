@@ -33,7 +33,7 @@ func TestTraceShortcutsComposeWithFilter(t *testing.T) {
 		{
 			name: "OR filter is grouped before shortcuts",
 			args: map[string]any{"filter": "service.name = 'a' OR has_error = true", "service": "checkout", "error": false},
-			want: "(service.name = 'a' OR has_error = true) AND service.name = 'checkout' AND has_error = false",
+			want: "(service.name = 'a' OR has_error = true) AND resource.service.name = 'checkout' AND has_error = false",
 		},
 		{
 			name: "standalone filter is byte-for-byte unchanged",
@@ -43,7 +43,7 @@ func TestTraceShortcutsComposeWithFilter(t *testing.T) {
 		{
 			name: "shortcut values are quoted literals",
 			args: map[string]any{"service": `pay\ments`, "operation": "SELECT * FROM users WHERE name = 'x'"},
-			want: `service.name = 'pay\\ments' AND name = 'SELECT * FROM users WHERE name = \'x\''`,
+			want: `resource.service.name = 'pay\\ments' AND name = 'SELECT * FROM users WHERE name = \'x\''`,
 		},
 	}
 	for parserName, parse := range parsers {

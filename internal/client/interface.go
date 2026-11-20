@@ -29,7 +29,7 @@ type Client interface {
 	PatchDashboardRaw(ctx context.Context, id string, patchJSON []byte) (json.RawMessage, error)
 	DeleteDashboard(ctx context.Context, id string) error
 	ListServices(ctx context.Context, start, end string) (json.RawMessage, error)
-	GetServiceTopOperations(ctx context.Context, start, end, service string, tags json.RawMessage) (json.RawMessage, error)
+	GetServiceTopOperations(ctx context.Context, start, end, service string, tags json.RawMessage, limit int) (json.RawMessage, error)
 	GetServiceMap(ctx context.Context, start, end string, tags json.RawMessage) (json.RawMessage, error)
 	QueryBuilderV5(ctx context.Context, body []byte) (json.RawMessage, error)
 	ListViews(ctx context.Context, source, name string) (json.RawMessage, error)
