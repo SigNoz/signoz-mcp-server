@@ -203,7 +203,7 @@ func buildLogFilterExpr(filter, service, severity, searchText, searchScope strin
 		parts = append(parts, "("+filter+")")
 	}
 	if service != "" {
-		parts = append(parts, "service.name = "+querybuilder.QuoteFilterLiteral(service))
+		parts = append(parts, serviceShortcutPredicate(service))
 	}
 	if severity != "" {
 		parts = append(parts, severityPredicate(severity))
@@ -212,6 +212,13 @@ func buildLogFilterExpr(filter, service, severity, searchText, searchScope strin
 		parts = append(parts, logSearchTextPredicate(searchText, searchScope))
 	}
 	return strings.Join(parts, " AND ")
+}
+
+// serviceShortcutPredicate filters the log and trace service shortcuts on the
+// resource attribute. A role scoped to services grants a query only through a
+// resource.-prefixed atom, and SigNoz denies a bare service.name with a 403.
+func serviceShortcutPredicate(service string) string {
+	return "resource.service.name = " + querybuilder.QuoteFilterLiteral(service)
 }
 
 // severityPredicate matches the severity shortcut in any case and as a prefix:

@@ -95,6 +95,12 @@ Filter examples:
 groupBy/selectFields entry:
   {"name": "service.name", "fieldDataType": "string", "signal": "logs", "fieldContext": "resource"}
 
+A role can limit which services or environments a user may query. SigNoz then runs a query only
+when its filter names an allowed value with the resource. prefix, such as
+resource.service.name = 'checkout' or resource.deployment.environment.name = 'prod', and denies
+the bare service.name = 'checkout' with a permission error. The service shortcut on the log
+tools already uses resource.service.name.
+
 --- 3. Log attributes (fieldContext: "attribute") ---
 
 Log attributes are key-value fields attached to individual log records.

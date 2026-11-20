@@ -133,7 +133,7 @@
                 "type": "string"
               },
               "service": {
-                "description": "Shortcut filter for service name. Equivalent to adding service.name = '\u003cvalue\u003e' to filter. When this workspace's logs lack service.name, the call usually returns no rows with a `key service.name not found in metadata` warning instead of failing; discover keys with signoz_get_field_keys(signal=\"logs\", fieldContext=\"resource\") and filter on an available key instead.",
+                "description": "Shortcut filter for service name. Equivalent to adding resource.service.name = '\u003cvalue\u003e' to filter, the form a role scoped to services accepts. When this workspace's logs carry no resource service.name, the call usually returns no rows with a `key ... not found in metadata` warning instead of failing; find the key with signoz_get_field_keys(signal=\"logs\") and filter on it instead, such as attribute.service.name when it is a log attribute.",
                 "type": "string"
               },
               "severity": {
@@ -318,7 +318,7 @@
                 "type": "string"
               },
               "service": {
-                "description": "Shortcut filter for service name. Equivalent to adding service.name = '\u003cvalue\u003e' to filter.",
+                "description": "Shortcut filter for service name. Equivalent to adding resource.service.name = '\u003cvalue\u003e' to filter, the form a role scoped to services accepts.",
                 "type": "string"
               },
               "start": {
@@ -8302,7 +8302,7 @@
                 ]
               },
               "service": {
-                "description": "Optional service name to filter by (adds service.name = '\u003cvalue\u003e'). When this workspace's logs lack service.name, the call usually returns no rows with a `key service.name not found in metadata` warning instead of failing; discover keys with signoz_get_field_keys(signal=\"logs\", fieldContext=\"resource\") and filter on an available key instead.",
+                "description": "Optional service name to filter by (adds resource.service.name = '\u003cvalue\u003e', the form a role scoped to services accepts). When this workspace's logs carry no resource service.name, the call usually returns no rows with a `key ... not found in metadata` warning instead of failing; find the key with signoz_get_field_keys(signal=\"logs\") and filter on it instead, such as attribute.service.name when it is a log attribute.",
                 "type": "string"
               },
               "severity": {
@@ -8426,7 +8426,7 @@
                 ]
               },
               "service": {
-                "description": "Optional service name to filter by.",
+                "description": "Optional service name to filter by (adds resource.service.name = '\u003cvalue\u003e', the form a role scoped to services accepts).",
                 "type": "string"
               },
               "start": {
