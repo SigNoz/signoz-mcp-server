@@ -486,9 +486,9 @@ def _scalar_panel(name: str, plugin: dict, group_by: list[str], aggregations: li
     }
 
 
-def _scalar_panels_dashboard(title: str, panels: dict) -> dict:
+def _panels_dashboard(title: str, panels: dict) -> dict:
     return {
-        "searchContext": f"create a dashboard named {title} with top list, scatter plot, and geo map panels",
+        "searchContext": f"create a dashboard named {title} with the panels {', '.join(panels)}",
         "schemaVersion": "v6",
         "tags": [],
         "spec": {
@@ -519,7 +519,7 @@ def test_top_list_scatter_plot_and_geo_map_panels_round_trip(mcp_client: MCPClie
     rate_and_latency = ["count()", "avg(duration_nano)"]
     rejected = mcp_client.call_tool(
         "signoz_create_dashboard",
-        _scalar_panels_dashboard(
+        _panels_dashboard(
             f"{title}-invalid",
             {
                 "scatter": _scalar_panel(
@@ -551,7 +551,7 @@ def test_top_list_scatter_plot_and_geo_map_panels_round_trip(mcp_client: MCPClie
     created = assert_tool_ok(
         mcp_client.call_tool(
             "signoz_create_dashboard",
-            _scalar_panels_dashboard(
+            _panels_dashboard(
                 title,
                 {
                     "top": _scalar_panel("Busiest Services", top_list, ["service.name"], ["count()"], True),
@@ -721,6 +721,78 @@ def test_saved_panel_queries_dry_run_unchanged_through_execute_builder_query(
                     {"searchContext": f"dry-run the saved {panel_id} panel query", "query": query},
                 )
             )
+    finally:
+        assert_tool_ok(
+            mcp_client.call_tool(
+                "signoz_delete_dashboard",
+                {"searchContext": f"cleanup dashboard {dashboard_id}", "id": dashboard_id},
+            )
+        )
+        gone = mcp_client.call_tool(
+            "signoz_get_dashboard",
+            {"searchContext": f"confirm dashboard {dashboard_id} is gone after cleanup", "id": dashboard_id},
+        )
+        assert gone.get("isError", False), f"dashboard {dashboard_id} remained after cleanup"
+
+
+def _heatmap_panel(name: str, signal: str, field: str) -> dict:
+    """A logs or traces heatmap as signoz://dashboard/widgets-instructions teaches it: one bare-field aggregation."""
+    spec = {"signal": signal, "name": "A", "aggregations": [{"expression": field}]}
+    return {
+        "kind": "Panel",
+        "spec": {
+            "display": {"name": name},
+            "links": [],
+            "plugin": {"kind": "signoz/HeatmapPanel", "spec": {}},
+            "queries": [
+                {"kind": "heatmap", "spec": {"name": "A", "plugin": {"kind": "signoz/BuilderQuery", "spec": spec}}}
+            ],
+        },
+    }
+
+
+def test_logs_and_traces_heatmaps_bucket_a_bare_field_and_reject_count(mcp_client: MCPClient, test_id: str) -> None:
+    """Logs and traces heatmap panels save and dry-run with a bare field; count() is rejected."""
+    now = int(time.time() * 1000)
+
+    def dry_run(plugin: dict, purpose: str) -> dict:
+        query = {
+            "schemaVersion": "v1",
+            "start": now - 30 * 60 * 1000,
+            "end": now,
+            "requestType": "heatmap",
+            "compositeQuery": {"queries": _execution_envelopes(plugin)},
+        }
+        return mcp_client.call_tool("signoz_execute_builder_query", {"searchContext": purpose, "query": query})
+
+    counting = _heatmap_panel("Span count", "traces", "count()")["spec"]["queries"][0]["spec"]["plugin"]
+    rejected = dry_run(counting, "dry-run a traces heatmap that aggregates count()")
+    assert rejected.get("isError"), f"a count() heatmap ran: {text_blocks(rejected)[:500]}"
+    assert "counts events by the field named as its aggregation" in text_blocks(rejected)
+
+    title = f"mcp-e2e-heatmaps-{test_id}"
+    panels = {
+        "spans": _heatmap_panel("Span latency", "traces", "duration_nano"),
+        "logs": _heatmap_panel("Log severity", "logs", "severity_number"),
+    }
+    created = assert_tool_ok(mcp_client.call_tool("signoz_create_dashboard", _panels_dashboard(title, panels)))
+    dashboard_id = _dashboard_id(first_json(created))
+    try:
+        fetched = assert_tool_ok(
+            mcp_client.call_tool(
+                "signoz_get_dashboard", {"searchContext": f"get dashboard {dashboard_id}", "id": dashboard_id}
+            )
+        )
+        saved = _data(first_json(fetched))["spec"]["panels"]
+        for key, panel in panels.items():
+            assert saved[key]["spec"]["plugin"]["kind"] == "signoz/HeatmapPanel"
+            saved_query = saved[key]["spec"]["queries"][0]
+            assert saved_query["kind"] == "heatmap"
+            sent_spec = panel["spec"]["queries"][0]["spec"]["plugin"]["spec"]
+            saved_spec = saved_query["spec"]["plugin"]["spec"]
+            assert saved_spec["aggregations"] == sent_spec["aggregations"], f"{key} heatmap aggregation changed"
+            assert "bucketOptions" not in saved_spec, f"{key} heatmap gained bucketOptions"
+            assert_tool_ok(dry_run(saved_query["spec"]["plugin"], f"dry-run the saved {key} heatmap query"))
     finally:
         assert_tool_ok(
             mcp_client.call_tool(
