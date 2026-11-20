@@ -551,12 +551,12 @@ func (s *SigNoz) ListServices(ctx context.Context, start, end string) (json.RawM
 	return s.doReplaySafePost(ctx, s.baseURL+"/api/v2/services", bodyBytes, DefaultQueryTimeout)
 }
 
-// TopOperationsLimit is the most operations SigNoz returns for one service.
-// The v2 endpoint requires a limit, and the tool lists every operation.
+// TopOperationsLimit is the most operations the tool asks SigNoz for. SigNoz
+// ranks a service's operations by p99 and keeps the first limit of them.
 const TopOperationsLimit = 5000
 
-func (s *SigNoz) GetServiceTopOperations(ctx context.Context, start, end, service string, tags json.RawMessage) (json.RawMessage, error) {
-	payload := map[string]any{"start": start, "end": end, "service": service, "tags": tags, "limit": TopOperationsLimit}
+func (s *SigNoz) GetServiceTopOperations(ctx context.Context, start, end, service string, tags json.RawMessage, limit int) (json.RawMessage, error) {
+	payload := map[string]any{"start": start, "end": end, "service": service, "tags": tags, "limit": limit}
 	bodyBytes, _ := json.Marshal(payload)
 
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching service top operations", slog.String("service", service))

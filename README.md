@@ -715,7 +715,7 @@ Applies an RFC 6902 JSON Patch to a dashboard: a partial update without re-sendi
 
 #### `signoz_list_services`
 
-Lists APM services with trace activity in a time range, sorted by service name and paginated. Absence means no trace activity in that window, not that the same `service.name` never appears in logs; use `signoz_get_field_values` with `signal="logs"` for log values.
+Lists APM services with trace activity in a time range, sorted by service name and paginated. `p99` and `avgDuration` are latencies in nanoseconds, `callRate` is calls per second, and `errorRate` and `fourXXRate` are percentages (0.5 means 0.5%). Absence means no trace activity in that window, not that the same `service.name` never appears in logs; use `signoz_get_field_values` with `signal="logs"` for log values.
 
 - **Parameters**:
   - `timeRange` (optional) - Window ending now, as a duration such as '30m', '6h', '7d', or '2w'; units are `s`, `m`, `h`, `d` (24h), and `w` (7d) (default: '6h'; ignored when `start` is set)
@@ -726,13 +726,14 @@ Lists APM services with trace activity in a time range, sorted by service name a
 
 #### `signoz_get_service_top_operations`
 
-Gets the built-in operation table for one traced service, ranked by p99 latency with each operation's p50, p95, p99, call count, and error count. Use `signoz_aggregate_traces` for custom aggregation, grouping, time series, cross-service comparison, or arbitrary trace filters.
+Gets the built-in operation table for one traced service: the operations with the highest p99 latency first, up to `limit`, each with `p50`, `p95`, and `p99` latency in nanoseconds, `numCalls`, and `errorCount`. The result is an array; when it fills `limit`, a note says the service likely has more operations. Use `signoz_aggregate_traces` for custom aggregation, grouping, time series, cross-service comparison, arbitrary trace filters, or operations ranked by calls or errors.
 
 - **Parameters**:
   - `service` (required) - Exact traced service name, typically from `signoz_list_services`
   - `timeRange` (optional) - Window ending now, as a duration such as '30m', '6h', '7d', or '2w'; units are `s`, `m`, `h`, `d` (24h), and `w` (7d) (default: '6h'; ignored when `start` is set)
   - `start`/`end` (optional) - A fixed window: an RFC 3339 date-time with `Z` or an offset, or Unix epoch milliseconds. With `start`, the window runs from `start` to `end` (default now) and `timeRange` is ignored. `end` without `start` is rejected with the `start` to add.
   - `tags` (optional) - JSON-encoded `TagQueryParam` array passed as a string, for example `[{"key":"http.method","tagType":"SpanAttribute","operator":"In","stringValues":["GET"]}]`; omit for no tag filter
+  - `limit` (optional) - Maximum operations to return, highest p99 first (default: 100, max: 5000; higher values are clamped)
 
 #### `signoz_get_service_map`
 
