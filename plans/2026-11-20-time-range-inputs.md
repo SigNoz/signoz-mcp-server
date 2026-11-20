@@ -238,4 +238,8 @@ Deferred: a reference time and timezone, and the matching change to Noz's `<time
 prompt, stay on SigNoz/nerve-pod#235. A window-length cap was declined (SigNoz/nerve-pod#217).
 Declined because agents do not send them: windows shorter than one millisecond, which collapse
 to equal bounds on millisecond routes and show equal reported bounds on the service routes;
-nanosecond rounding in `d` and `w` sums; and spellings such as `+1d`.
+nanosecond rounding in `d` and `w` sums; and spellings such as `+1d`. Also declined: a
+shifted-window report for `timeShift`. The report gives the bounds sent, and the function's
+description says shifted points come back on those timestamps; a per-query report would need
+formula handling for little gain. Review also fixed the empty AI trace search note, which told
+callers to widen `timeRange` even when `start` was set.
