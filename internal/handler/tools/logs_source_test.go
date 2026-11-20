@@ -27,16 +27,23 @@ func TestLogTools_SourceSelectsAuditEvents(t *testing.T) {
 				return h.handleAggregateLogs
 			}},
 	}
+	// A SigNoz that predates audit routing ignores source and reads application
+	// logs; the event_name condition keeps those out of an audit result.
+	const auditOnly = "event_name LIKE 'signoz.audit.%'"
 	cases := []struct {
 		name       string
 		source     any // nil leaves the argument out
+		filter     string
 		wantSource string
+		wantFilter string
 		wantNote   bool
 	}{
-		{name: "omitted reads application logs"},
+		{name: "omitted reads application logs", filter: "x = 1", wantFilter: "x = 1"},
 		{name: "empty reads application logs", source: ""},
-		{name: "audit reads audit events", source: "audit", wantSource: "audit"},
-		{name: "an unsupported value reads application logs with a note", source: "audits", wantNote: true},
+		{name: "audit reads only audit events", source: "audit", wantSource: "audit", wantFilter: auditOnly},
+		{name: "audit keeps the caller's filter", source: "audit", filter: "a = 1 OR b = 2", wantSource: "audit",
+			wantFilter: "(a = 1 OR b = 2) AND " + auditOnly},
+		{name: "an unsupported value reads application logs with a note", source: "audits", filter: "x = 1", wantFilter: "x = 1", wantNote: true},
 		{name: "a non-string value reads application logs with a note", source: true, wantNote: true},
 	}
 	for _, tool := range tools {
@@ -50,6 +57,9 @@ func TestLogTools_SourceSelectsAuditEvents(t *testing.T) {
 				if tc.source != nil {
 					args["source"] = tc.source
 				}
+				if tc.filter != "" {
+					args["filter"] = tc.filter
+				}
 				result, err := tool.handle(h)(testCtx(), makeToolRequest(tool.name, args))
 				require.NoError(t, err)
 				require.False(t, result.IsError, textContent(t, result))
@@ -62,6 +72,15 @@ func TestLogTools_SourceSelectsAuditEvents(t *testing.T) {
 					require.NotContains(t, spec, "source")
 				} else {
 					require.Equal(t, tc.wantSource, spec["source"])
+				}
+				var gotFilter any
+				if filter, ok := spec["filter"].(map[string]any); ok {
+					gotFilter = filter["expression"]
+				}
+				if tc.wantFilter == "" {
+					require.Contains(t, []any{nil, ""}, gotFilter)
+				} else {
+					require.Equal(t, tc.wantFilter, gotFilter)
 				}
 
 				require.Equal(t, tc.wantNote, strings.Contains(allTextBlocks(result),

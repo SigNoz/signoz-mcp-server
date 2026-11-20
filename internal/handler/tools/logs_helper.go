@@ -74,6 +74,22 @@ func readLogSource(args map[string]any) (source string, ignored bool) {
 	return "", true
 }
 
+// auditEventCondition matches only events SigNoz's auditor wrote. A SigNoz that
+// predates audit routing ignores source and reads application logs, which this
+// condition excludes, so they never come back as audit events.
+const auditEventCondition = "event_name LIKE 'signoz.audit.%'"
+
+// filterForLogSource adds auditEventCondition to an audit query's filter.
+func filterForLogSource(filter, source string) string {
+	if source != logSourceAudit {
+		return filter
+	}
+	if strings.TrimSpace(filter) == "" {
+		return auditEventCondition
+	}
+	return "(" + filter + ") AND " + auditEventCondition
+}
+
 // sourceIgnoredNote explains a dropped source, so the rows are not mistaken
 // for audit events.
 const sourceIgnoredNote = `note: source was ignored because only "` + logSourceAudit + `" is supported, so this result covers application logs; set source="` + logSourceAudit + `" for SigNoz audit events.`
@@ -93,6 +109,7 @@ func parseAggregateLogsArgs(args map[string]any) (*AggregateRequest, error) {
 		return nil, err
 	}
 	reqData.Source, reqData.SourceIgnored = readLogSource(args)
+	reqData.FilterExpression = filterForLogSource(reqData.FilterExpression, reqData.Source)
 	return reqData, nil
 }
 
@@ -159,7 +176,7 @@ func parseSearchLogsArgs(args map[string]any) (*SearchLogsRequest, error) {
 	source, sourceIgnored := readLogSource(args)
 
 	return &SearchLogsRequest{
-		FilterExpression:   filterExpr,
+		FilterExpression:   filterForLogSource(filterExpr, source),
 		SearchScopeIgnored: searchScope != "" && searchText == "",
 		SelectFields:       selectFields,
 		OrderKey:           orderKey,

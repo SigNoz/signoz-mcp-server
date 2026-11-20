@@ -87,6 +87,17 @@ and row shape.
   and the logs guide holds the details.
 - Alternatives rejected: trimming other rules to fit a sentence; raising the guardrail budget.
 
+### 2026-11-20: audit queries match only `signoz.audit.*` events
+
+- Decision: with `source="audit"`, the server ANDs `event_name LIKE 'signoz.audit.%'` onto the
+  filter of both log tools.
+- Rationale: SigNoz routes `source: "audit"` from v0.119.0; an older SigNoz ignores the field and
+  reads application logs, which would come back as audit events with no signal. Every audit event
+  has a `signoz.audit.*` event name, so the condition changes nothing on a current SigNoz and
+  turns the old-backend case into an empty result. Raised in review on #464.
+- Alternatives rejected: checking returned rows (cannot cover aggregates); relying on the
+  latest-release target alone (leaves the mislabelled result silent).
+
 ### 2026-11-19: cast the source until the spec lists `audit`
 
 - Decision: send `apitypes.TelemetrytypesSource("audit")` with a TODO to use the generated
@@ -101,8 +112,13 @@ and row shape.
 
 ## Verification
 
-Pending.
+- `go test ./...`, `make check-guardrails`, and `make check-repo-docs` pass. Handler tests cover
+  what reaches SigNoz for omitted, empty, `audit`, unsupported, and non-string `source` values on
+  both tools, the `signoz.audit.*` condition with and without a caller filter, and the
+  ignored-value note.
+- E2E: pending in the follow-up PR.
 
 ## Outcome
 
-Pending.
+This PR merges ahead of its e2e test. #470, stacked on it, pins the e2e collector to the first
+release with the `signoz_audit` schema, adds the e2e test, and marks this plan Done.
