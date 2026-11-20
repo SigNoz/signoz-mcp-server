@@ -111,7 +111,7 @@
           "description": "Read this when choosing or building dashboard widgets. It explains when to use each panel type, required layout and legend fields, and which detailed guide to read for each query type. Also read signoz://dashboard/instructions.",
           "mimeType": "text/markdown",
           "name": "Dashboard Widget Instructions",
-          "size": 20931,
+          "size": 21012,
           "uri": "signoz://dashboard/widgets-instructions"
         },
         {
