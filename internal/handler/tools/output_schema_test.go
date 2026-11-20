@@ -76,69 +76,6 @@ func TestOutputMismatchPassesOriginalResultThrough(t *testing.T) {
 	}
 }
 
-// A notice the decorator appends to a structured result lands in its "notes"
-// field, so every advertised output schema must declare notes, including the
-// closed struct and metric-name map shapes, or the result stops validating.
-func TestNoticeOnAStructuredResultStillMatchesTheOutputSchema(t *testing.T) {
-	type closedOutput struct {
-		Count int `json:"count"`
-	}
-	for _, tc := range []struct {
-		name    string
-		tool    mcp.Tool
-		payload string
-	}{
-		{"closed object", mcp.NewTool("closed_output_probe", mcp.WithOutputSchema[closedOutput]()), `{"count":3}`},
-		{"map keyed by name", mcp.NewTool("map_output_probe", mcp.WithOutputSchema[map[string]closedOutput]()), `{"http.requests":{"count":3}}`},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			var logs bytes.Buffer
-			logger := slog.New(logpkg.NewContextHandler(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn})))
-			h := &Handler{logger: logger}
-			s := newMCPTestServer()
-			h.addTool(s, tc.tool, func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-				return structuredResult([]byte(tc.payload)), nil
-			})
-
-			result := callTestToolFromJSONRPC(context.Background(), t, s, json.RawMessage(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"`+tc.tool.Name+`","arguments":{"stray":"x"}}}`))
-			if result.IsError {
-				t.Fatalf("unexpected error result: %s", allTextBlocks(result))
-			}
-			notes := structuredNotes(t, result)
-			if len(notes) != 1 || !strings.Contains(notes[0], `"stray"`) {
-				t.Fatalf("StructuredContent notes = %q, want the ignored-argument notice naming \"stray\"", notes)
-			}
-			if strings.Contains(logs.String(), "validation mismatch") {
-				t.Fatalf("a result carrying notes must still match its advertised output schema; declare notes on it. Logs: %s", logs.String())
-			}
-		})
-	}
-}
-
-// A map-shaped output keyed by caller-chosen names can hold an entry named
-// "notes"; declaring the notes array must not make that entry invalid.
-func TestMapOutputEntryNamedNotesStillMatchesTheOutputSchema(t *testing.T) {
-	type entry struct {
-		Count int `json:"count"`
-	}
-	var logs bytes.Buffer
-	logger := slog.New(logpkg.NewContextHandler(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn})))
-	h := &Handler{logger: logger}
-	s := newMCPTestServer()
-	tool := mcp.NewTool("map_output_notes_entry_probe", mcp.WithOutputSchema[map[string]entry]())
-	h.addTool(s, tool, func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return structuredResult([]byte(`{"notes":{"count":3}}`)), nil
-	})
-
-	result := callTestToolFromJSONRPC(context.Background(), t, s, json.RawMessage(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"map_output_notes_entry_probe","arguments":{}}}`))
-	if result.IsError {
-		t.Fatalf("unexpected error result: %s", allTextBlocks(result))
-	}
-	if strings.Contains(logs.String(), "validation mismatch") {
-		t.Fatalf("an entry named notes must match the advertised output schema. Logs: %s", logs.String())
-	}
-}
-
 func TestOutputSchemaSuccessWithoutStructuredContentFailsOpen(t *testing.T) {
 	var logs bytes.Buffer
 	logger := slog.New(logpkg.NewContextHandler(slog.NewJSONHandler(&logs, nil)))

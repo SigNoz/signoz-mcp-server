@@ -40,8 +40,6 @@ func serviceMapUpstream(t *testing.T, body string) (*Handler, *[]string) {
 	return newTestHandler(signozclient.NewClient(logpkg.New("error"), server.URL, "k", "SIGNOZ-API-KEY", nil)), &requests
 }
 
-const serviceMapClampNote = `note: limit clamped to 1000 per page to bound server memory; use "offset" to page through more results.`
-
 type serviceMapPage struct {
 	Data []struct {
 		Parent string `json:"parent"`
@@ -60,13 +58,7 @@ func callServiceMap(t *testing.T, h *Handler, args map[string]any) (*mcp.CallToo
 	require.False(t, res.IsError, "unexpected error result: %s", textContent(t, res))
 	var page serviceMapPage
 	require.NoError(t, json.Unmarshal([]byte(textContent(t, res)), &page))
-	var notes []string
-	for _, block := range res.Content[1:] {
-		if text, ok := mcp.AsTextContent(block); ok {
-			notes = append(notes, text.Text)
-		}
-	}
-	return res, page, notes
+	return res, page, trailingTextBlocks(res)
 }
 
 func serviceMapEdgeNames(page serviceMapPage) []string {
@@ -142,15 +134,28 @@ func TestServiceMapNotesWhenNoEdgeTouchesTheService(t *testing.T) {
 }
 
 // When the window or filters leave no edges at all, the note must not blame the
-// service name. A clamped limit adds its own note ahead of the graph's notes.
+// service name.
 func TestServiceMapNotesAnEmptyGraph(t *testing.T) {
 	h, _ := serviceMapUpstream(t, `[]`)
 
-	res, page, notes := callServiceMap(t, h, map[string]any{"service": "orders", "direction": "upstream", "limit": "5000"})
+	res, page, notes := callServiceMap(t, h, map[string]any{"service": "orders", "direction": "upstream"})
 
 	assert.Empty(t, page.Data)
-	assert.Equal(t, []string{serviceMapClampNote, serviceMapEmptyGraphNote, serviceMapUnitsNote}, notes)
+	assert.Equal(t, []string{serviceMapEmptyGraphNote, serviceMapUnitsNote}, notes)
 	assert.Equal(t, notes, structuredNotes(t, res), "a client that reads only StructuredContent must get the same notes")
+}
+
+// A clamped limit adds its note ahead of the graph's own notes, in the same
+// notes array.
+func TestServiceMapPutsTheClampNoteAheadOfItsOwnNotes(t *testing.T) {
+	h, _ := serviceMapUpstream(t, serviceMapGraph)
+
+	res, _, notes := callServiceMap(t, h, map[string]any{"limit": "5000"})
+
+	require.Len(t, notes, 2)
+	assert.Contains(t, notes[0], "limit clamped")
+	assert.Equal(t, serviceMapUnitsNote, notes[1])
+	assert.Equal(t, notes, structuredNotes(t, res), "StructuredContent keeps the same order")
 }
 
 // Each case is a filter the tool cannot apply as asked. None of them may reach

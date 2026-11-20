@@ -116,6 +116,21 @@ Fail-before (new tests run on unfixed production code in a temporary worktree):
 All pass after the fix. The guardrail failed at `services.go:170` with the service map's bare
 append restored, and at `schema_compat.go:269` with the decorator's bare append restored.
 
+Review brought the tests in line with `docs/testing.md`. Tests on probe tools and on the
+unexported helper were replaced by tests through registered tools:
+`TestNoticeOnAStructuredResultStillMatchesTheOutputSchema` and
+`TestMapOutputEntryNamedNotesStillMatchesTheOutputSchema` by
+`TestMetricUsageResultWithNotesMatchesItsOutputSchema` (stray argument, a metric named `notes`,
+and the collision fallback with its WARN); `TestAppendNotes_AccumulatesIntoOneNotesArrayMatchingBlock0`
+by `TestNoticeOnAStructuredResultKeepsExactNumbersAndText` plus
+`TestDecoratorNoticeJoinsHandlerNotesInStructuredContent`; `TestAppendNotes_FailsOpenToTextBlocksWithAWarning`
+by the collision case above; and `TestAppendNotes_LeavesErrorEnvelopeAlone` by
+`TestAlertHistoryNotFoundAddsRecoveryTextAndKeepsItsCodedError`. The clamp-ordering case moved
+out of `TestServiceMapNotesAnEmptyGraph` into `TestServiceMapPutsTheClampNoteAheadOfItsOwnNotes`.
+No registered tool builds a non-object structured payload, so that fallback keeps its guard and
+WARN without a test. Each replacement failed with its production line broken in a temporary
+worktree.
+
 CI, run on a clean worktree of the commit so the untracked local packages in the main checkout
 stay out of it, with `GOTOOLCHAIN=go1.26.11`:
 
