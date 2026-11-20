@@ -14,10 +14,8 @@ const (
 const (
 	startParamDescription        = `Start of a fixed window: an RFC 3339 date-time with Z or an offset (YYYY-MM-DDThh:mm:ssZ), or Unix epoch milliseconds. When set, timeRange is ignored.`
 	endParamDescription          = `End of a fixed window, in the same forms as start. Defaults to now; set it only with start.`
-	stepIntervalParamDescription = "Time bucket size in seconds for time_series mode (optional). " +
-		"When omitted, the backend auto-selects an appropriate interval. " +
-		"Only set this if the user explicitly requests a specific granularity. " +
-		"Examples: '60' (1 min), '3600' (1 hour), '86400' (1 day)."
+	stepIntervalParamDescription = "Bucket width in seconds for time_series. Omit for automatic sizing. " +
+		"To locate a change within a coarse bucket, query that interval with a smaller step, such as 60."
 	aggregateRequestTypeParamDescription = `Result shape. "scalar" (default) returns one value or a grouped/ranked table over the full time range; use it for totals, percentiles, and top lists. "time_series" returns time-bucketed values, with one series per group when grouped; use it for spikes, trends, changes over time, or questions about when something happened.`
 	aggregateLimitParamDescription       = "Maximum number of groups to return (default: 100, max: 10000; higher values are clamped). For time_series queries, groups are ranked across the entire time range, so a short-lived spike can fall outside the selected top groups."
 	havingParamDescription               = "Condition on the aggregation results, in the filter syntax, applied after grouping. " +
@@ -103,7 +101,7 @@ const (
 	spaceAggregationParamDescription      = "Aggregation across series: sum, avg, min, max, count, or p50, p75, p90, p95, p99 (histograms only). Omit for the type's default: sum, or p99 for histograms. Summary metrics have no defaults; set both aggregations."
 	metricsGroupByParamDescription        = "Label names to group by, as an array or a comma-separated string (e.g. [\"service.name\", \"k8s.pod.name\"]). Metric labels hold resource and data-point attributes in one set, so names need no context prefix. Discover them with signoz_get_field_keys (signal=\"metrics\", metricName)."
 	metricsFilterParamDescription         = "Filter expression, passed as the expression text, not {\"expression\": ...}. Example: \"k8s.cluster.name = 'prod' AND service.name = 'frontend'\". Regex matches use REGEXP, not PromQL's =~."
-	metricsStepIntervalParamDescription   = "Step interval in seconds for time_series mode (optional). When omitted, the backend auto-selects an appropriate interval (~300 data points, min 60s). Only set this if the user explicitly requests a specific granularity. Examples: '60' (1 min), '3600' (1 hour), '86400' (1 day)."
+	metricsStepIntervalParamDescription   = "Step in seconds for time_series. Omit for automatic sizing (about 300 points, at least 60 s). To locate a change within a coarse step, query that interval with a smaller step, such as 60."
 	metricsRequestTypeParamDescription    = "Response format: \"time_series\" (default) returns one value per time bucket; \"scalar\" returns a single value per series, reduced with reduceTo, which scalar requires."
 	reduceToParamDescription              = "Required when requestType is scalar: how to reduce each series to one value. Choose from the question: last for the current value, max for the peak, avg for a typical value, or sum, min, count, median. For a total count over the window, use timeAggregation increase with reduceTo sum; summing rates is not a count. Ignored for time_series."
 	formulaParamDescription               = "Formula expression over named queries. Example: 'A / B * 100'. The primary metric becomes query 'A'. Additional queries are defined in formulaQueries."
