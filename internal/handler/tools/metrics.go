@@ -43,8 +43,8 @@ func (h *Handler) RegisterMetricsHandlers(s *mcp.Server) {
 		mcp.WithString("groupBy", stringOrStringArrayType(), mcp.Description(metricsGroupByParamDescription)),
 		mcp.WithString("filter", mcp.Description(metricsFilterParamDescription)),
 		mcp.WithString("timeRange", mcp.DefaultString("1h"), mcp.Description(timeRangeParamDescription("Defaults to '1h'."))),
-		mcp.WithString("start", intOrStringType(), mcp.Description(metricsStartParamDescription)),
-		mcp.WithString("end", intOrStringType(), mcp.Description(metricsEndParamDescription)),
+		mcp.WithString("start", intOrStringType(), mcp.Description(startParamDescription)),
+		mcp.WithString("end", intOrStringType(), mcp.Description(endParamDescription)),
 		mcp.WithString("stepInterval", intOrStringType(), mcp.Description(metricsStepIntervalParamDescription)),
 		mcp.WithString("requestType", mcp.DefaultString("time_series"), mcp.Enum("scalar", "time_series"), mcp.Description(metricsRequestTypeParamDescription)),
 		mcp.WithString("reduceTo", mcp.Description(reduceToParamDescription)),
@@ -118,5 +118,5 @@ func (h *Handler) handleListMetrics(ctx context.Context, req mcp.CallToolRequest
 	// offset pagination (a caller following an offset hint would loop the page).
 	returnedRows, rowsKnown := countDataArrayRows(result, "metrics")
 	note := limitOnlyCompletenessNote(returnedRows, limit, rowsKnown, `searchText, a tighter time range, or source`)
-	return resultWithNotes(result, note), nil
+	return resultWithNotes(result, windowNote(start, end), note), nil
 }

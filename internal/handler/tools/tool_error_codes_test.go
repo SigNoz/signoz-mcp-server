@@ -93,6 +93,21 @@ func TestToolHandlers_RejectInvalidArgumentsBeforeCallingSigNoz(t *testing.T) {
 		{tool: "signoz_query_metrics", arguments: `{"metricName":"x","formulaQueries":[{"name":"B","metricName":"y","groupBy":"[\"host.name\""}]}`, wantText: `formulaQueries[0]`},
 		{tool: "signoz_search_logs", arguments: `{"filter":"{\"expression\":\"service.name = 'api'\"}"}`, wantText: `not {"expression": ...}`},
 		{tool: "signoz_list_alert_rules", arguments: `{"states":["firing",3]}`, wantText: `"states" item 3: each item must be a state string`},
+		// Every time-windowed tool resolves its window before calling SigNoz; which
+		// windows are invalid is pinned in pkg/timeutil. signoz_query_metrics omits
+		// metricType, so a metadata lookup before the window check would reach SigNoz.
+		{tool: "signoz_search_logs", arguments: `{"start":"yesterday"}`, wantText: `invalid "start" "yesterday"`},
+		{tool: "signoz_aggregate_logs", arguments: `{"aggregations":"count()","start":"yesterday"}`, wantText: `invalid "start" "yesterday"`},
+		{tool: "signoz_search_traces", arguments: `{"start":"yesterday"}`, wantText: `invalid "start" "yesterday"`},
+		{tool: "signoz_aggregate_traces", arguments: `{"aggregations":"count()","start":"yesterday"}`, wantText: `invalid "start" "yesterday"`},
+		{tool: "signoz_query_metrics", arguments: `{"metricName":"m","start":"yesterday"}`, wantText: `invalid "start" "yesterday"`},
+		{tool: "signoz_list_metrics", arguments: `{"start":"yesterday"}`, wantText: `invalid "start" "yesterday"`},
+		{tool: "signoz_get_top_metrics", arguments: `{"start":"yesterday"}`, wantText: `invalid "start" "yesterday"`},
+		{tool: "signoz_check_metric_cardinality", arguments: `{"metricName":"m","start":"yesterday"}`, wantText: `invalid "start" "yesterday"`},
+		{tool: "signoz_list_services", arguments: `{"start":"yesterday"}`, wantText: `invalid "start" "yesterday"`},
+		{tool: "signoz_get_service_top_operations", arguments: `{"service":"frontend","start":"yesterday"}`, wantText: `invalid "start" "yesterday"`},
+		{tool: "signoz_get_service_map", arguments: `{"start":"yesterday"}`, wantText: `invalid "start" "yesterday"`},
+		{tool: "signoz_get_alert_history", arguments: `{"id":"0196634d-5d66-75c4-b778-e317f49dab7a","start":"yesterday"}`, wantText: `invalid "start" "yesterday"`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.tool+" "+tt.arguments, func(t *testing.T) {

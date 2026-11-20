@@ -22,9 +22,9 @@ func (h *Handler) RegisterMetricCardinalityHandlers(s *mcp.Server) {
 		mcp.WithString("timeRange", mcp.DefaultString("7d"),
 			mcp.Description(timeRangeParamDescription("Defaults to '7d' (a cost-analysis window)."))),
 		mcp.WithString("start", intOrStringType(),
-			mcp.Description("Start time in unix milliseconds. When both start and end are provided, they override timeRange.")),
+			mcp.Description(startParamDescription)),
 		mcp.WithString("end", intOrStringType(),
-			mcp.Description("End time in unix milliseconds. When both start and end are provided, they override timeRange.")),
+			mcp.Description(endParamDescription)),
 	)
 
 	h.addTool(s, tool, h.handleCheckMetricCardinality)
@@ -57,5 +57,5 @@ func (h *Handler) handleCheckMetricCardinality(ctx context.Context, req mcp.Call
 		return upstreamError(err), nil
 	}
 
-	return mcp.NewToolResultText(string(result)), nil
+	return resultWithNotes(result, windowNote(startTime, endTime)), nil
 }

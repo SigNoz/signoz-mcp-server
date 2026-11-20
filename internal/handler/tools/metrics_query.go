@@ -48,6 +48,13 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 		slog.String("metricName", mqr.MetricName),
 		slog.String("metricType", mqr.MetricType))
 
+	// Resolve the window before the metadata lookup so an invalid one never
+	// reaches SigNoz.
+	startTime, endTime, err := resolveTimestamps(args, "1h")
+	if err != nil {
+		return errorWithCode(CodeValidationFailed, err.Error()), nil
+	}
+
 	client, err := h.GetClient(ctx)
 	if err != nil {
 		return clientError(err), nil
@@ -92,12 +99,6 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 		if mqr.Temporality != "" {
 			decisions = append(decisions, fmt.Sprintf("temporality: %s (caller-provided)", mqr.Temporality))
 		}
-	}
-
-	// Resolve timestamps
-	startTime, endTime, err := resolveTimestamps(args, mqr.TimeRange)
-	if err != nil {
-		return errorWithCode(CodeValidationFailed, err.Error()), nil
 	}
 
 	// Step interval: use caller-provided value or let the backend decide
@@ -248,7 +249,7 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 	// rather than prepended. query_metrics is a raw QB passthrough, so it stays
 	// text-only (no structuredContent) — its upstream shape is variable.
 	note := buildMetricsDecisionsNote(decisions, resolved.Warnings)
-	return resultWithNotes(result, note), nil
+	return resultWithNotes(result, windowNote(startTime, endTime), note), nil
 }
 
 // buildMetricsDecisionsNote renders the decisions/warnings advisory block that

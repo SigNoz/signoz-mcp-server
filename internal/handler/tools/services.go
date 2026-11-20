@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"log/slog"
 	"sort"
+	"strconv"
+	"time"
 
 	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
@@ -25,8 +27,8 @@ func (h *Handler) RegisterServiceHandlers(s *mcp.Server) {
 		mcp.WithString("searchContext", mcp.Description(searchContextParamDescription)),
 		mcp.WithDescription("Use this when the user wants APM services with trace activity and their call or latency summaries in a time window. It returns traced-service records sorted by name and paginated; absence means no trace activity in that window, not that a matching service.name never appears in logs. p99 and avgDuration are latencies in nanoseconds, callRate is calls per second, and errorRate and fourXXRate are percentages (0.5 means 0.5%). For log values use signoz_get_field_values with signal=\"logs\" and name=\"service.name\"; for one service's operations use signoz_get_service_top_operations. Follow pagination.nextOffset until hasMore=false before concluding a traced service is absent."),
 		mcp.WithString("timeRange", mcp.DefaultString("6h"), mcp.Description(timeRangeParamDescription("Defaults to last 6 hours if not provided."))),
-		mcp.WithString("start", intOrStringType(), mcp.Description("Start time in unix milliseconds (optional, defaults to 6 hours ago).")),
-		mcp.WithString("end", intOrStringType(), mcp.Description("End time in unix milliseconds (optional, defaults to now).")),
+		mcp.WithString("start", intOrStringType(), mcp.Description(startParamDescription)),
+		mcp.WithString("end", intOrStringType(), mcp.Description(endParamDescription)),
 		mcp.WithString("limit", mcp.DefaultString("50"), intOrStringType(), mcp.Description("Maximum services per page. Default: 50; max: 1000 (higher values are clamped).")),
 		mcp.WithString("offset", mcp.DefaultString("0"), intOrStringType(), mcp.Description("Number of services to skip. Default: 0; use pagination.nextOffset for the next page.")),
 	)
@@ -39,8 +41,8 @@ func (h *Handler) RegisterServiceHandlers(s *mcp.Server) {
 		mcp.WithDescription("Use this when the user wants the built-in operation table for one traced service in a time window. It returns operations with the highest p99 latency first, up to limit, each with p50, p95, and p99 latency in nanoseconds, numCalls, and errorCount. Use signoz_list_services to discover active traced service names. For custom aggregation, grouping, time series, cross-service comparison, arbitrary trace filters, or operations ranked by calls or errors, use signoz_aggregate_traces instead. The optional tags parameter is a JSON-encoded TagQueryParam array."),
 		mcp.WithString("service", mcp.Required(), mcp.Description("Exact traced service name, typically from signoz_list_services.")),
 		mcp.WithString("timeRange", mcp.DefaultString("6h"), mcp.Description(timeRangeParamDescription("Defaults to last 6 hours if not provided."))),
-		mcp.WithString("start", intOrStringType(), mcp.Description("Start time in unix milliseconds (optional, defaults to 6 hours ago).")),
-		mcp.WithString("end", intOrStringType(), mcp.Description("End time in unix milliseconds (optional, defaults to now).")),
+		mcp.WithString("start", intOrStringType(), mcp.Description(startParamDescription)),
+		mcp.WithString("end", intOrStringType(), mcp.Description(endParamDescription)),
 		mcp.WithString("tags", mcp.Description("JSON-encoded TagQueryParam array; omit for no tag filter. Example: [{\"key\":\"http.method\",\"tagType\":\"SpanAttribute\",\"operator\":\"In\",\"stringValues\":[\"GET\"]}]. Pass the array as a string, not as a JSON array value.")),
 		mcp.WithString("limit", mcp.DefaultString("100"), intOrStringType(), mcp.Description("Maximum operations to return, highest p99 first. Default: 100; max: 5000 (higher values are clamped).")),
 	)
@@ -54,8 +56,8 @@ func (h *Handler) RegisterServiceHandlers(s *mcp.Server) {
 		mcp.WithString("service", mcp.Description("Exact service.name value whose edges to keep, or a database or message system named in an edge. Discover service names with signoz_get_field_values with signal=\"traces\", fieldContext=\"resource\", and name=\"service.name\". Omit for the whole graph.")),
 		mcp.WithString("direction", mcp.DefaultString("both"), mcp.Enum("both", "upstream", "downstream"), mcp.Description("Which of service's edges to keep: upstream (the services that call it), downstream (the services, databases, and message systems it calls), or both (default). Requires service.")),
 		mcp.WithString("timeRange", mcp.DefaultString("6h"), mcp.Description(timeRangeParamDescription("Defaults to last 6 hours if not provided."))),
-		mcp.WithString("start", intOrStringType(), mcp.Description("Start time in unix milliseconds (optional, defaults to 6 hours ago).")),
-		mcp.WithString("end", intOrStringType(), mcp.Description("End time in unix milliseconds (optional, defaults to now).")),
+		mcp.WithString("start", intOrStringType(), mcp.Description(startParamDescription)),
+		mcp.WithString("end", intOrStringType(), mcp.Description(endParamDescription)),
 		mcp.WithString("limit", mcp.DefaultString("50"), intOrStringType(), mcp.Description("Maximum edges per page. Default: 50; max: 1000 (higher values are clamped).")),
 		mcp.WithString("offset", mcp.DefaultString("0"), intOrStringType(), mcp.Description("Number of edges to skip. Default: 0; use pagination.nextOffset for the next page.")),
 		mcp.WithString("environment", mcp.Description("Keep only edges recorded with this deployment.environment resource value. Discover values with signoz_get_field_values with signal=\"traces\", fieldContext=\"resource\", and name=\"deployment.environment\".")),
@@ -111,13 +113,11 @@ func (h *Handler) handleGetServiceMap(ctx context.Context, req mcp.CallToolReque
 		return errResult, nil
 	}
 
-	// Reject a present-but-malformed start/end loudly; otherwise
-	// GetTimestampsWithDefaults silently falls back to the default window.
-	if err := timeutil.ValidateExplicitTimestamps(args); err != nil {
-		h.logger.WarnContext(ctx, "Invalid explicit timestamp", logpkg.ErrAttr(err))
-		return errorWithCode(CodeValidationFailed, "Parameter validation failed: "+err.Error()), nil
+	window, errResult := serviceWindow(ctx, h, args)
+	if errResult != nil {
+		return errResult, nil
 	}
-	start, end := timeutil.GetTimestampsWithDefaults(args, timeutil.UnitNanos)
+	start, end := windowNanos(window)
 	limit, offset, limitClamped := paginate.ParseParamsClamped(args)
 
 	h.logger.DebugContext(ctx, "Tool called: signoz_get_service_map",
@@ -160,7 +160,7 @@ func (h *Handler) handleGetServiceMap(ctx context.Context, req mcp.CallToolReque
 		return ci < cj
 	})
 
-	resultJSON, err := paginate.Wrap(paginate.Array(edges, offset, limit), len(edges), offset, limit)
+	resultJSON, err := windowedPage(paginate.Array(edges, offset, limit), len(edges), offset, limit, window)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to wrap service map with pagination", logpkg.ErrAttr(err))
 		return InternalErrorResult("failed to marshal response: " + err.Error()), nil
@@ -261,14 +261,11 @@ func filterServiceMapEdges(edges []any, service, direction string) ([]any, bool)
 func (h *Handler) handleListServices(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args := req.GetArguments()
 
-	// Reject a present-but-malformed start/end loudly; otherwise
-	// GetTimestampsWithDefaults silently falls back to the default window.
-	if err := timeutil.ValidateExplicitTimestamps(args); err != nil {
-		h.logger.WarnContext(ctx, "Invalid explicit timestamp", logpkg.ErrAttr(err))
-		return errorWithCode(CodeValidationFailed, "Parameter validation failed: "+err.Error()), nil
+	window, errResult := serviceWindow(ctx, h, args)
+	if errResult != nil {
+		return errResult, nil
 	}
-
-	start, end := timeutil.GetTimestampsWithDefaults(args, timeutil.UnitNanos)
+	start, end := windowNanos(window)
 	limit, offset, limitClamped := paginate.ParseParamsClamped(req.Params.Arguments)
 
 	h.logger.DebugContext(ctx, "Tool called: signoz_list_services", slog.String("start", start), slog.String("end", end), slog.Int("limit", limit), slog.Int("offset", offset))
@@ -311,7 +308,7 @@ func (h *Handler) handleListServices(ctx context.Context, req mcp.CallToolReques
 	total := len(services)
 	pagedServices := paginate.Array(services, offset, limit)
 
-	resultJSON, err := paginate.Wrap(pagedServices, total, offset, limit)
+	resultJSON, err := windowedPage(pagedServices, total, offset, limit, window)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to wrap services with pagination", logpkg.ErrAttr(err))
 		return InternalErrorResult("failed to marshal response: " + err.Error()), nil
@@ -338,14 +335,11 @@ func (h *Handler) handleGetServiceTopOperations(ctx context.Context, req mcp.Cal
 		return errResult, nil
 	}
 
-	// Reject a present-but-malformed start/end loudly; otherwise
-	// GetTimestampsWithDefaults silently falls back to the default window.
-	if err := timeutil.ValidateExplicitTimestamps(args); err != nil {
-		h.logger.WarnContext(ctx, "Invalid explicit timestamp", logpkg.ErrAttr(err))
-		return errorWithCode(CodeValidationFailed, "Parameter validation failed: "+err.Error()), nil
+	window, errResult := serviceWindow(ctx, h, args)
+	if errResult != nil {
+		return errResult, nil
 	}
-
-	start, end := timeutil.GetTimestampsWithDefaults(args, timeutil.UnitNanos)
+	start, end := windowNanos(window)
 
 	// tags is passed through to SigNoz verbatim as its tag filter array; an
 	// absent or non-string value means no tag filter.
@@ -398,14 +392,42 @@ func (h *Handler) handleGetServiceTopOperations(ctx context.Context, req mcp.Cal
 	if err != nil {
 		return InternalErrorResult("failed to marshal response: " + err.Error()), nil
 	}
+	notes := []string{windowNote(window.StartMs(), window.EndMs())}
 	switch {
-	case len(operations) < limit:
-		return mcp.NewToolResultText(string(payload)), nil
-	case limit < signozclient.TopOperationsLimit:
-		return resultWithNotes(payload, fmt.Sprintf(topOperationsLimitFilledNote, len(operations), signozclient.TopOperationsLimit)), nil
-	default:
-		return resultWithNotes(payload, limitOnlyCompletenessNote(len(operations), limit, true, "a shorter time range or tags")), nil
+	case len(operations) >= limit && limit < signozclient.TopOperationsLimit:
+		notes = append(notes, fmt.Sprintf(topOperationsLimitFilledNote, len(operations), signozclient.TopOperationsLimit))
+	case len(operations) >= limit:
+		notes = append(notes, limitOnlyCompletenessNote(len(operations), limit, true, "a shorter time range or tags"))
 	}
+	return resultWithNotes(payload, notes...), nil
+}
+
+// serviceWindow resolves the service tools' window, which defaults to 6h.
+func serviceWindow(ctx context.Context, h *Handler, args map[string]any) (timeutil.Window, *mcp.CallToolResult) {
+	w, err := timeutil.ResolveWindow(args, "6h", time.Now())
+	if err != nil {
+		h.logger.WarnContext(ctx, "Invalid time window", logpkg.ErrAttr(err))
+		return timeutil.Window{}, errorWithCode(CodeValidationFailed, validationErrorPrefix+" "+err.Error())
+	}
+	return w, nil
+}
+
+// windowedPage is paginate.Wrap plus the window queried, for the structured
+// service results.
+func windowedPage(page []any, total, offset, limit int, w timeutil.Window) ([]byte, error) {
+	return json.Marshal(struct {
+		paginate.Response
+		Window resultWindow `json:"window"`
+	}{
+		Response: paginate.Response{Data: page, Pagination: paginate.NewMetadata(total, offset, limit)},
+		Window:   newResultWindow(w.StartMs(), w.EndMs()),
+	})
+}
+
+// windowNanos formats w as the service routes take it: Unix nanoseconds in
+// strings.
+func windowNanos(w timeutil.Window) (start, end string) {
+	return strconv.FormatInt(w.StartNs(), 10), strconv.FormatInt(w.EndNs(), 10)
 }
 
 const (

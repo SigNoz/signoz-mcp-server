@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"strconv"
 	"testing"
+	"time"
 
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
+	"github.com/SigNoz/signoz-mcp-server/pkg/timeutil"
 )
 
 // A schema-validating client rejects any form the advertised schema does not admit, so
@@ -91,11 +93,11 @@ func TestStringFormIntegerAboveFloat53ReachesHandlerExactly(t *testing.T) {
 				mcp.WithString("metricName", mcp.Required()),
 				mcp.WithString("start", intOrStringType()))
 			h.addTool(s, tool, func(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-				parsed, err := parseMetricsQueryArgs(req.GetArguments())
+				window, err := timeutil.ResolveWindow(req.GetArguments(), "1h", time.Now())
 				if err != nil {
 					return nil, err
 				}
-				got = parsed.Start
+				got = window.StartNs()
 				return mcp.NewToolResultText(strconv.FormatInt(got, 10)), nil
 			})
 

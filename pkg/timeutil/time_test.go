@@ -2,91 +2,178 @@ package timeutil
 
 import (
 	"encoding/json"
-	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
 
-func TestGetTimestampsWithDefaultsExplicitStartEndWinsOverTimeRange(t *testing.T) {
-	args := map[string]any{
-		"timeRange": "1h",
-		"start":     "1711123200000",
-		"end":       "1711130400000",
+func mustTime(t *testing.T, s string) time.Time {
+	t.Helper()
+	v, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		t.Fatal(err)
 	}
+	return v
+}
 
-	start, end := GetTimestampsWithDefaults(args, "ms")
+// TestResolveWindowAcceptsEquivalentForms pins that every accepted way of
+// writing the same hour resolves to the same bounds against a fixed clock.
+func TestResolveWindowAcceptsEquivalentForms(t *testing.T) {
+	now := mustTime(t, "2026-11-19T10:00:00Z")
+	want := Window{Start: mustTime(t, "2026-11-19T09:00:00Z"), End: now}
 
-	if start != "1711123200000" {
-		t.Fatalf("start = %q, want explicit start", start)
+	tests := []struct {
+		name string
+		args map[string]any
+	}{
+		{"default window", map[string]any{}},
+		{"empty strings mean default", map[string]any{"start": "", "end": "", "timeRange": ""}},
+		{"null values mean default", map[string]any{"start": nil, "end": nil, "timeRange": nil}},
+		{"timeRange", map[string]any{"timeRange": "1h"}},
+		{"timeRange written as now-1h", map[string]any{"timeRange": "now-1h"}},
+		{"compound timeRange", map[string]any{"timeRange": "30m30m"}},
+		{"relative start", map[string]any{"start": "now-1h"}},
+		{"relative start and end", map[string]any{"start": "now-60m", "end": "now"}},
+		{"start wins over timeRange", map[string]any{"start": "now-1h", "timeRange": "24h"}},
+		{"start wins over a malformed timeRange", map[string]any{"start": "now-1h", "timeRange": "24hours"}},
+		{"RFC 3339 with Z", map[string]any{"start": "2026-11-19T09:00:00Z", "end": "2026-11-19T10:00:00Z"}},
+		{"RFC 3339 with offsets", map[string]any{"start": "2026-11-19T14:30:00+05:30", "end": "2026-11-19T05:00:00-05:00"}},
+		{"RFC 3339 with fraction", map[string]any{"start": "2026-11-19T09:00:00.000Z", "end": "2026-11-19T10:00:00.000Z"}},
+		{"end of now counts as no end", map[string]any{"end": "now", "timeRange": "1h"}},
+		{"epoch milliseconds", map[string]any{"start": "1795078800000", "end": "1795082400000"}},
+		{"epoch seconds", map[string]any{"start": "1795078800", "end": "1795082400"}},
+		{"epoch nanoseconds", map[string]any{"start": "1795078800000000000", "end": "1795082400000000000"}},
+		{"json.Number epoch", map[string]any{"start": json.Number("1795078800000"), "end": json.Number("1795082400000")}},
+		{"float64 epoch", map[string]any{"start": float64(1795078800000), "end": float64(1795082400000)}},
+		{"int epoch", map[string]any{"start": 1795078800000, "end": 1795082400000}},
+		{"mixed forms", map[string]any{"start": "1795078800000", "end": "now"}},
 	}
-	if end != "1711130400000" {
-		t.Fatalf("end = %q, want explicit end", end)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ResolveWindow(tt.args, "1h", now)
+			if err != nil {
+				t.Fatalf("ResolveWindow(%v) error: %v", tt.args, err)
+			}
+			if !got.Start.Equal(want.Start) || !got.End.Equal(want.End) {
+				t.Fatalf("ResolveWindow(%v) = [%s, %s], want [%s, %s]", tt.args, got.Start, got.End, want.Start, want.End)
+			}
+			if got.StartMs() != 1795078800000 || got.EndNs() != 1795082400000000000 {
+				t.Fatalf("unit conversion: StartMs = %d, EndNs = %d", got.StartMs(), got.EndNs())
+			}
+		})
 	}
 }
 
-func TestGetTimestampsWithDefaultsNumericExplicitStartEndWinsOverTimeRange(t *testing.T) {
-	args := map[string]any{
-		"timeRange": "1h",
-		"start":     json.Number("1711123200000"),
-		"end":       float64(1711130400000),
+// TestResolveWindowCalendarEdges pins relative ranges across a year boundary and
+// explicit offsets across a daylight-saving change.
+func TestResolveWindowCalendarEdges(t *testing.T) {
+	tests := []struct {
+		name      string
+		now       string
+		args      map[string]any
+		wantStart string
+		wantEnd   string
+	}{
+		{"now-1h across new year", "2027-01-01T00:30:00Z", map[string]any{"start": "now-1h"}, "2026-12-31T23:30:00Z", "2027-01-01T00:30:00Z"},
+		{"timeRange across new year", "2027-01-01T00:30:00Z", map[string]any{"timeRange": "1d"}, "2026-12-31T00:30:00Z", "2027-01-01T00:30:00Z"},
+		{"local midnight with offset", "2026-03-09T00:00:00Z", map[string]any{"start": "2026-03-08T00:00:00-05:00", "end": "2026-03-08T12:00:00-04:00"}, "2026-03-08T05:00:00Z", "2026-03-08T16:00:00Z"},
+		{"offsets across a DST change", "2026-03-09T00:00:00Z", map[string]any{"start": "2026-03-08T01:00:00-05:00", "end": "2026-03-08T03:00:00-04:00"}, "2026-03-08T06:00:00Z", "2026-03-08T07:00:00Z"},
+		{"old millisecond epochs stay valid", "2026-11-19T10:00:00Z", map[string]any{"start": "1262304000000", "end": "1262390400000"}, "2010-01-01T00:00:00Z", "2010-01-02T00:00:00Z"},
+		{"old RFC 3339 dates stay valid", "2026-11-19T10:00:00Z", map[string]any{"start": "1999-12-31T00:00:00Z", "end": "2000-01-01T00:00:00Z"}, "1999-12-31T00:00:00Z", "2000-01-01T00:00:00Z"},
+		{"end a little ahead of this clock", "2026-11-19T10:00:00Z", map[string]any{"start": "now-1h", "end": "2026-11-19T10:05:00Z"}, "2026-11-19T09:00:00Z", "2026-11-19T10:05:00Z"},
 	}
-
-	start, end := GetTimestampsWithDefaults(args, "ms")
-
-	if start != "1711123200000" {
-		t.Fatalf("start = %q, want explicit numeric start", start)
-	}
-	if end != "1711130400000" {
-		t.Fatalf("end = %q, want explicit numeric end", end)
-	}
-}
-
-func TestGetTimestampsWithDefaultsUnsafeFloatTimestampDoesNotOverrideTimeRange(t *testing.T) {
-	args := map[string]any{
-		"timeRange": "1h",
-		"start":     float64(1711123200000000000),
-		"end":       float64(1711130400000000000),
-	}
-
-	start, end := GetTimestampsWithDefaults(args, "ns")
-
-	if start == "1711123200000000000" || end == "1711130400000000000" {
-		t.Fatalf("unsafe float timestamps should not be treated as exact explicit ns values: start=%s end=%s", start, end)
-	}
-	startInt, err := strconv.ParseInt(start, 10, 64)
-	if err != nil {
-		t.Fatalf("start should be numeric: %v", err)
-	}
-	endInt, err := strconv.ParseInt(end, 10, 64)
-	if err != nil {
-		t.Fatalf("end should be numeric: %v", err)
-	}
-	if delta := endInt - startInt; delta < int64(59*time.Minute) || delta > int64(61*time.Minute) {
-		t.Fatalf("delta = %dns, want about 1h", delta)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ResolveWindow(tt.args, "1h", mustTime(t, tt.now))
+			if err != nil {
+				t.Fatalf("ResolveWindow(%v) error: %v", tt.args, err)
+			}
+			if !got.Start.Equal(mustTime(t, tt.wantStart)) || !got.End.Equal(mustTime(t, tt.wantEnd)) {
+				t.Fatalf("ResolveWindow(%v) = [%s, %s], want [%s, %s]", tt.args, got.Start, got.End, tt.wantStart, tt.wantEnd)
+			}
+		})
 	}
 }
 
-func TestGetTimestampsWithDefaultsTimeRangeUsedForIncompleteExplicitWindow(t *testing.T) {
-	args := map[string]any{
-		"timeRange": "1h",
-		"start":     "1711123200000",
-	}
+// TestResolveWindowRejectionsNameTheFix pins each rejection and the fix its
+// message names.
+func TestResolveWindowRejectionsNameTheFix(t *testing.T) {
+	now := mustTime(t, "2026-11-19T10:00:00Z")
+	const maxExactFloat = float64(1<<53 - 1)
 
-	start, end := GetTimestampsWithDefaults(args, "ms")
+	tests := []struct {
+		name    string
+		args    map[string]any
+		wantErr string
+	}{
+		{"unparseable start", map[string]any{"start": "yesterday"}, `invalid "start" "yesterday": use an RFC 3339 date-time with Z or an offset ("2026-11-19T10:00:00Z")`},
+		{"date-time without a zone", map[string]any{"start": "2026-10-27T00:00:00"}, "add Z for UTC or an offset"},
+		{"date-time with a zone name", map[string]any{"start": "2026-10-24 09:30 IST"}, "use an RFC 3339 date-time"},
+		{"relative time without now", map[string]any{"start": "-24h"}, `write a relative time as "now-24h"`},
+		{"bad duration after now-", map[string]any{"start": "now-1x"}, `after "now-" give a duration`},
+		{"duration sent as epochs", map[string]any{"start": "0", "end": "2592000000"}, `invalid "start" 0: read as Unix seconds it is 1970-01-01T00:00:00Z`},
+		{"14 days in ms sent as start", map[string]any{"start": "1209600000"}, `read as Unix seconds it is 2008-05-01T00:00:00Z, more than a year ago`},
+		{"20 days in ms sent as end", map[string]any{"end": "1728000000"}, "more than a year ago, so it looks like a duration"},
+		{"millisecond epoch before 2001", map[string]any{"start": "500000000000"}, `as a Unix epoch it is 1985-11-05T00:53:20Z, so it looks like a duration`},
+		{"one hour sent as start", map[string]any{"start": "3600"}, "looks like a duration"},
+		{"one day sent as start", map[string]any{"start": "86400"}, "looks like a duration"},
+		{"one hour in ms sent as start", map[string]any{"start": "3600000"}, "looks like a duration"},
+		{"one day in ms sent as start", map[string]any{"start": 86400000}, "looks like a duration"},
+		{"negative epoch", map[string]any{"start": "-1711123200000"}, "looks like a duration"},
+		{"duration sent as end", map[string]any{"end": "2592000000"}, `invalid "end" 2052-02-20T00:00:00Z: it is more than 24h after the current time`},
+		{"wrong year", map[string]any{"start": "now-1h", "end": "2027-11-21T00:27:26Z"}, "Check the year"},
+		{"future start", map[string]any{"start": "2027-11-19T09:00:00Z"}, `invalid "start" 2027-11-19T09:00:00Z`},
+		{"reversed", map[string]any{"start": "2026-11-19T11:00:00Z", "end": "2026-11-19T10:30:00Z"}, `"start" 2026-11-19T11:00:00Z is after "end" 2026-11-19T10:30:00Z`},
+		{"start after now with no end", map[string]any{"start": "2026-11-19T11:00:00Z"}, `invalid "start" 2026-11-19T11:00:00Z: it is after the current time, 2026-11-19T10:00:00Z. Check its time zone offset`},
+		{"empty", map[string]any{"start": "now", "end": "now"}, "so it is empty"},
+		{"end without start", map[string]any{"end": "2026-11-19T09:00:00Z", "timeRange": "2h"}, `invalid window: "end" 2026-11-19T09:00:00Z needs "start". For the 2h before it, send start "2026-11-19T07:00:00Z" and end "2026-11-19T09:00:00Z"`},
+		{"relative end without start or timeRange", map[string]any{"end": "now-1h"}, `For the 1h before it, send start "2026-11-19T08:00:00Z" and end "2026-11-19T09:00:00Z"; for a window ending now, omit end`},
+		{"unparseable timeRange", map[string]any{"timeRange": "24hours"}, `invalid "timeRange" "24hours": give one or more`},
+		{"zero timeRange", map[string]any{"timeRange": "0h"}, `invalid "timeRange" "0h"`},
+		{"negative timeRange", map[string]any{"timeRange": "-1h"}, `invalid "timeRange" "-1h"`},
+		{"two timeRanges", map[string]any{"timeRange": "6h-4h"}, `start "now-6h" and end "now-4h"`},
+		{"two timeRanges, shorter first", map[string]any{"timeRange": "2h-24h"}, `start "now-24h" and end "now-2h"`},
+		{"timeRange object", map[string]any{"timeRange": map[string]any{"from": "now-24h", "to": "now"}}, `give a duration string such as "24h"`},
+		{"timeRange number", map[string]any{"timeRange": 24}, `give a duration string such as "24h"`},
+		{"timeRange reaching before 1970", map[string]any{"timeRange": "100000d"}, "before 1970-01-01T00:00:00Z"},
+		{"precision-lost float", map[string]any{"start": maxExactFloat + 2}, `invalid "start"`},
+		{"non-integral float", map[string]any{"start": 1711130400000.5}, `invalid "start"`},
+		{"bool", map[string]any{"start": true}, `invalid "start" true`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ResolveWindow(tt.args, "1h", now)
+			if err == nil {
+				t.Fatalf("ResolveWindow(%v) = [%s, %s], want error containing %q", tt.args, got.Start, got.End, tt.wantErr)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("ResolveWindow(%v) error = %q, want it to contain %q", tt.args, err, tt.wantErr)
+			}
+		})
+	}
+}
 
-	if start == "1711123200000" {
-		t.Fatalf("start = %q, want timeRange-derived start for incomplete explicit window", start)
+func TestParseDuration(t *testing.T) {
+	valid := map[string]time.Duration{
+		"90s":   90 * time.Second,
+		"30m":   30 * time.Minute,
+		"6h":    6 * time.Hour,
+		"1h30m": 90 * time.Minute,
+		"7d":    7 * 24 * time.Hour,
+		"1.5d":  36 * time.Hour,
+		"2d12h": 60 * time.Hour,
+		"2w":    14 * 24 * time.Hour,
+		"500ms": 500 * time.Millisecond,
 	}
-	startInt, err := strconv.ParseInt(start, 10, 64)
-	if err != nil {
-		t.Fatalf("start should be numeric: %v", err)
+	for in, want := range valid {
+		if got, err := ParseDuration(in); err != nil || got != want {
+			t.Errorf("ParseDuration(%q) = %v, %v; want %v", in, got, err, want)
+		}
 	}
-	endInt, err := strconv.ParseInt(end, 10, 64)
-	if err != nil {
-		t.Fatalf("end should be numeric: %v", err)
-	}
-	if delta := endInt - startInt; delta < 59*60*1000 || delta > 61*60*1000 {
-		t.Fatalf("delta = %dms, want about 1h", delta)
+	for _, in := range []string{"", "0h", "-1h", "1x", "24hours", "h", "5", "1h30", "1 h", "1..5h"} {
+		if got, err := ParseDuration(in); err == nil {
+			t.Errorf("ParseDuration(%q) = %v, want error", in, got)
+		}
 	}
 }
 
@@ -198,94 +285,6 @@ func TestNormalizeEpochToUnit_ExactBoundaries(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := normalizeEpochToUnit(tt.raw, tt.unit); got != tt.want {
 				t.Fatalf("normalizeEpochToUnit(%d, %q) = %d, want %d (boundary is exclusive → next band)", tt.raw, tt.unit, got, tt.want)
-			}
-		})
-	}
-}
-
-// TestGetTimestampsWithDefaultsAutoDetectsMagnitude verifies that an explicit
-// start/end pair given in any magnitude is normalized to the canonical unit.
-func TestGetTimestampsWithDefaultsAutoDetectsMagnitude(t *testing.T) {
-	tests := []struct {
-		name               string
-		start, end         any
-		unit               string
-		wantStart, wantEnd string
-	}{
-		{"seconds in ms tool", "1711123200", "1711130400", UnitMillis, "1711123200000", "1711130400000"},
-		{"ms in ms tool", "1711123200000", "1711130400000", UnitMillis, "1711123200000", "1711130400000"},
-		{"nanos in ms tool", "1711123200000000000", "1711130400000000000", UnitMillis, "1711123200000", "1711130400000"},
-		{"seconds in ns tool", "1711123200", "1711130400", UnitNanos, "1711123200000000000", "1711130400000000000"},
-		{"nanos in ns tool", "1711123200000000000", "1711130400000000000", UnitNanos, "1711123200000000000", "1711130400000000000"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			start, end := GetTimestampsWithDefaults(map[string]any{"start": tt.start, "end": tt.end}, tt.unit)
-			if start != tt.wantStart {
-				t.Fatalf("start = %q, want %q", start, tt.wantStart)
-			}
-			if end != tt.wantEnd {
-				t.Fatalf("end = %q, want %q", end, tt.wantEnd)
-			}
-		})
-	}
-}
-
-// TestValidateExplicitTimestamps pins that a PRESENT-but-malformed start/end or
-// timeRange is rejected loudly, while ABSENT and EMPTY-STRING (both mean "use
-// the default window") return nil. This guards the silent-failure regression where
-// GetTimestampsWithDefaults silently falls back to the default window for a
-// malformed value, handing back the wrong time range with no error.
-func TestValidateExplicitTimestamps(t *testing.T) {
-	const maxExactFloat = float64(1<<53 - 1)
-
-	tests := []struct {
-		name    string
-		args    map[string]any
-		wantErr bool
-	}{
-		{"malformed string start", map[string]any{"start": "yesterday"}, true},
-		{"malformed string end", map[string]any{"end": "soon"}, true},
-		{"valid string start", map[string]any{"start": "1711130400000"}, false},
-		{"valid string pair", map[string]any{"start": "1711123200000", "end": "1711130400000"}, false},
-		{"malformed timeRange", map[string]any{"timeRange": "24hours"}, true},
-		{"valid hour timeRange", map[string]any{"timeRange": "1h"}, false},
-		{"valid six hour timeRange", map[string]any{"timeRange": "6h"}, false},
-		{"valid minute timeRange", map[string]any{"timeRange": "30m"}, false},
-		{"valid day timeRange", map[string]any{"timeRange": "7d"}, false},
-		{"absent", map[string]any{}, false},
-		{"empty string start", map[string]any{"start": ""}, false},
-		{"empty string end", map[string]any{"end": ""}, false},
-		{"empty timeRange", map[string]any{"timeRange": ""}, false},
-		{"non-string (bool) timeRange rejected", map[string]any{"timeRange": true}, true},
-		{"non-string (numeric) timeRange rejected", map[string]any{"timeRange": 24}, true},
-		{
-			"malformed timeRange ignored when start end override",
-			map[string]any{"timeRange": "24hours", "start": "1711123200000", "end": "1711130400000"},
-			false,
-		},
-		{
-			"non-string timeRange ignored when start end override",
-			map[string]any{"timeRange": true, "start": "1711123200000", "end": "1711130400000"},
-			false,
-		},
-		{"nil value", map[string]any{"start": nil}, false},
-		{"valid json.Number", map[string]any{"start": json.Number("1711130400000")}, false},
-		{"malformed json.Number", map[string]any{"start": json.Number("12.5")}, true},
-		{"valid float64", map[string]any{"start": float64(1711130400000)}, false},
-		{"non-integral float64", map[string]any{"start": float64(1711130400000.5)}, true},
-		{"precision-lost float64", map[string]any{"start": maxExactFloat + 2}, true},
-		{"valid int", map[string]any{"start": 1711130400000}, false},
-		{"unsupported type bool", map[string]any{"start": true}, true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := ValidateExplicitTimestamps(tt.args)
-			if tt.wantErr && err == nil {
-				t.Fatalf("ValidateExplicitTimestamps(%#v) = nil, want error", tt.args)
-			}
-			if !tt.wantErr && err != nil {
-				t.Fatalf("ValidateExplicitTimestamps(%#v) = %v, want nil", tt.args, err)
 			}
 		})
 	}

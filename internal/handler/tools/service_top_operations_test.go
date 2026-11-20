@@ -49,9 +49,11 @@ func callTopOperations(t *testing.T, h *Handler, args map[string]any) (int, []st
 	require.False(t, res.IsError, "unexpected error result: %s", textContent(t, res))
 	var ops []map[string]any
 	require.NoError(t, json.Unmarshal([]byte(textContent(t, res)), &ops), "the result stays a bare array")
+	// The window report every time-windowed result carries is pinned in
+	// time_window_test.go; these tests cover the limit notes.
 	var notes []string
 	for _, block := range res.Content[1:] {
-		if text, ok := mcp.AsTextContent(block); ok {
+		if text, ok := mcp.AsTextContent(block); ok && !strings.HasPrefix(text.Text, "window queried: ") {
 			notes = append(notes, text.Text)
 		}
 	}

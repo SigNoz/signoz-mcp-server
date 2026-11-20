@@ -37,7 +37,7 @@
                 ]
               },
               "end": {
-                "description": "End time in unix milliseconds (optional). When both start and end are provided, they override timeRange.",
+                "description": "End of a fixed window, in the same forms as start. Defaults to now; set it only with start.",
                 "type": [
                   "integer",
                   "string"
@@ -141,7 +141,7 @@
                 "type": "string"
               },
               "start": {
-                "description": "Start time in unix milliseconds (optional). When both start and end are provided, they override timeRange.",
+                "description": "Start of a fixed window: an RFC 3339 date-time with Z or an offset (YYYY-MM-DDThh:mm:ssZ), or Unix epoch milliseconds. When set, timeRange is ignored.",
                 "type": [
                   "integer",
                   "string"
@@ -156,7 +156,7 @@
               },
               "timeRange": {
                 "default": "1h",
-                "description": "Relative time range. Format: \u003cnumber\u003e\u003cunit\u003e where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '3d', '7d'. Ignored when both start and end are provided. Defaults to '1h'.",
+                "description": "Window ending now, as a duration such as \"30m\", \"6h\", \"7d\", or \"2w\" (units s, m, h, d = 24h, w = 7d). Ignored when start is set. Defaults to '1h'.",
                 "type": "string"
               }
             },
@@ -188,7 +188,7 @@
                 ]
               },
               "end": {
-                "description": "End time in unix milliseconds (optional). When both start and end are provided, they override timeRange.",
+                "description": "End of a fixed window, in the same forms as start. Defaults to now; set it only with start.",
                 "type": [
                   "integer",
                   "string"
@@ -322,7 +322,7 @@
                 "type": "string"
               },
               "start": {
-                "description": "Start time in unix milliseconds (optional). When both start and end are provided, they override timeRange.",
+                "description": "Start of a fixed window: an RFC 3339 date-time with Z or an offset (YYYY-MM-DDThh:mm:ssZ), or Unix epoch milliseconds. When set, timeRange is ignored.",
                 "type": [
                   "integer",
                   "string"
@@ -337,7 +337,7 @@
               },
               "timeRange": {
                 "default": "1h",
-                "description": "Relative time range. Format: \u003cnumber\u003e\u003cunit\u003e where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '3d', '7d'. Ignored when both start and end are provided. Defaults to '1h'.",
+                "description": "Window ending now, as a duration such as \"30m\", \"6h\", \"7d\", or \"2w\" (units s, m, h, d = 24h, w = 7d). Ignored when start is set. Defaults to '1h'.",
                 "type": "string"
               }
             },
@@ -359,7 +359,7 @@
           "inputSchema": {
             "properties": {
               "end": {
-                "description": "End time in unix milliseconds. When both start and end are provided, they override timeRange.",
+                "description": "End of a fixed window, in the same forms as start. Defaults to now; set it only with start.",
                 "type": [
                   "integer",
                   "string"
@@ -374,7 +374,7 @@
                 "type": "string"
               },
               "start": {
-                "description": "Start time in unix milliseconds. When both start and end are provided, they override timeRange.",
+                "description": "Start of a fixed window: an RFC 3339 date-time with Z or an offset (YYYY-MM-DDThh:mm:ssZ), or Unix epoch milliseconds. When set, timeRange is ignored.",
                 "type": [
                   "integer",
                   "string"
@@ -382,7 +382,7 @@
               },
               "timeRange": {
                 "default": "7d",
-                "description": "Relative time range. Format: \u003cnumber\u003e\u003cunit\u003e where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '3d', '7d'. Ignored when both start and end are provided. Defaults to '7d' (a cost-analysis window).",
+                "description": "Window ending now, as a duration such as \"30m\", \"6h\", \"7d\", or \"2w\" (units s, m, h, d = 24h, w = 7d). Ignored when start is set. Defaults to '7d' (a cost-analysis window).",
                 "type": "string"
               }
             },
@@ -5945,7 +5945,7 @@
                 "type": "string"
               },
               "end": {
-                "description": "End timestamp in unix milliseconds (optional, defaults to now).",
+                "description": "End of a fixed window, in the same forms as start. Defaults to now; set it only with start.",
                 "type": [
                   "integer",
                   "string"
@@ -5981,7 +5981,7 @@
                 "type": "string"
               },
               "start": {
-                "description": "Start timestamp in unix milliseconds (optional, defaults to 6 hours ago).",
+                "description": "Start of a fixed window: an RFC 3339 date-time with Z or an offset (YYYY-MM-DDThh:mm:ssZ), or Unix epoch milliseconds. When set, timeRange is ignored.",
                 "type": [
                   "integer",
                   "string"
@@ -5993,7 +5993,7 @@
               },
               "timeRange": {
                 "default": "6h",
-                "description": "Relative time range. Format: \u003cnumber\u003e\u003cunit\u003e where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '3d', '7d'. Ignored when both start and end are provided. Defaults to last 6 hours if not provided.",
+                "description": "Window ending now, as a duration such as \"30m\", \"6h\", \"7d\", or \"2w\" (units s, m, h, d = 24h, w = 7d). Ignored when start is set. Defaults to last 6 hours if not provided.",
                 "type": "string"
               }
             },
@@ -7058,7 +7058,7 @@
                 "type": "string"
               },
               "end": {
-                "description": "End time in unix milliseconds (optional, defaults to now).",
+                "description": "End of a fixed window, in the same forms as start. Defaults to now; set it only with start.",
                 "type": [
                   "integer",
                   "string"
@@ -7097,7 +7097,7 @@
                 "type": "string"
               },
               "start": {
-                "description": "Start time in unix milliseconds (optional, defaults to 6 hours ago).",
+                "description": "Start of a fixed window: an RFC 3339 date-time with Z or an offset (YYYY-MM-DDThh:mm:ssZ), or Unix epoch milliseconds. When set, timeRange is ignored.",
                 "type": [
                   "integer",
                   "string"
@@ -7105,7 +7105,7 @@
               },
               "timeRange": {
                 "default": "6h",
-                "description": "Relative time range. Format: \u003cnumber\u003e\u003cunit\u003e where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '3d', '7d'. Ignored when both start and end are provided. Defaults to last 6 hours if not provided.",
+                "description": "Window ending now, as a duration such as \"30m\", \"6h\", \"7d\", or \"2w\" (units s, m, h, d = 24h, w = 7d). Ignored when start is set. Defaults to last 6 hours if not provided.",
                 "type": "string"
               }
             },
@@ -7125,7 +7125,7 @@
           "inputSchema": {
             "properties": {
               "end": {
-                "description": "End time in unix milliseconds (optional, defaults to now).",
+                "description": "End of a fixed window, in the same forms as start. Defaults to now; set it only with start.",
                 "type": [
                   "integer",
                   "string"
@@ -7148,7 +7148,7 @@
                 "type": "string"
               },
               "start": {
-                "description": "Start time in unix milliseconds (optional, defaults to 6 hours ago).",
+                "description": "Start of a fixed window: an RFC 3339 date-time with Z or an offset (YYYY-MM-DDThh:mm:ssZ), or Unix epoch milliseconds. When set, timeRange is ignored.",
                 "type": [
                   "integer",
                   "string"
@@ -7160,7 +7160,7 @@
               },
               "timeRange": {
                 "default": "6h",
-                "description": "Relative time range. Format: \u003cnumber\u003e\u003cunit\u003e where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '3d', '7d'. Ignored when both start and end are provided. Defaults to last 6 hours if not provided.",
+                "description": "Window ending now, as a duration such as \"30m\", \"6h\", \"7d\", or \"2w\" (units s, m, h, d = 24h, w = 7d). Ignored when start is set. Defaults to last 6 hours if not provided.",
                 "type": "string"
               }
             },
@@ -7182,7 +7182,7 @@
           "inputSchema": {
             "properties": {
               "end": {
-                "description": "End time in unix milliseconds. When both start and end are provided, they override timeRange.",
+                "description": "End of a fixed window, in the same forms as start. Defaults to now; set it only with start.",
                 "type": [
                   "integer",
                   "string"
@@ -7193,7 +7193,7 @@
                 "type": "string"
               },
               "start": {
-                "description": "Start time in unix milliseconds. When both start and end are provided, they override timeRange.",
+                "description": "Start of a fixed window: an RFC 3339 date-time with Z or an offset (YYYY-MM-DDThh:mm:ssZ), or Unix epoch milliseconds. When set, timeRange is ignored.",
                 "type": [
                   "integer",
                   "string"
@@ -7201,7 +7201,7 @@
               },
               "timeRange": {
                 "default": "7d",
-                "description": "Relative time range. Format: \u003cnumber\u003e\u003cunit\u003e where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '3d', '7d'. Ignored when both start and end are provided. Defaults to '7d' (a cost-analysis window); if the query times out, retry with '3d', then '24h'.",
+                "description": "Window ending now, as a duration such as \"30m\", \"6h\", \"7d\", or \"2w\" (units s, m, h, d = 24h, w = 7d). Ignored when start is set. Defaults to '7d' (a cost-analysis window); if the query times out, retry with '3d', then '24h'.",
                 "type": "string"
               }
             },
@@ -7708,7 +7708,7 @@
           "inputSchema": {
             "properties": {
               "end": {
-                "description": "End time in unix milliseconds (optional). When both start and end are provided, they override timeRange.",
+                "description": "End of a fixed window, in the same forms as start. Defaults to now; set it only with start.",
                 "type": [
                   "integer",
                   "string"
@@ -7735,7 +7735,7 @@
                 "type": "string"
               },
               "start": {
-                "description": "Start time in unix milliseconds (optional). When both start and end are provided, they override timeRange.",
+                "description": "Start of a fixed window: an RFC 3339 date-time with Z or an offset (YYYY-MM-DDThh:mm:ssZ), or Unix epoch milliseconds. When set, timeRange is ignored.",
                 "type": [
                   "integer",
                   "string"
@@ -7743,7 +7743,7 @@
               },
               "timeRange": {
                 "default": "1h",
-                "description": "Relative time range. Format: \u003cnumber\u003e\u003cunit\u003e where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '3d', '7d'. Ignored when both start and end are provided. Defaults to '1h'.",
+                "description": "Window ending now, as a duration such as \"30m\", \"6h\", \"7d\", or \"2w\" (units s, m, h, d = 24h, w = 7d). Ignored when start is set. Defaults to '1h'.",
                 "type": "string"
               }
             },
@@ -7826,7 +7826,7 @@
           "inputSchema": {
             "properties": {
               "end": {
-                "description": "End time in unix milliseconds (optional, defaults to now).",
+                "description": "End of a fixed window, in the same forms as start. Defaults to now; set it only with start.",
                 "type": [
                   "integer",
                   "string"
@@ -7853,7 +7853,7 @@
                 "type": "string"
               },
               "start": {
-                "description": "Start time in unix milliseconds (optional, defaults to 6 hours ago).",
+                "description": "Start of a fixed window: an RFC 3339 date-time with Z or an offset (YYYY-MM-DDThh:mm:ssZ), or Unix epoch milliseconds. When set, timeRange is ignored.",
                 "type": [
                   "integer",
                   "string"
@@ -7861,7 +7861,7 @@
               },
               "timeRange": {
                 "default": "6h",
-                "description": "Relative time range. Format: \u003cnumber\u003e\u003cunit\u003e where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '3d', '7d'. Ignored when both start and end are provided. Defaults to last 6 hours if not provided.",
+                "description": "Window ending now, as a duration such as \"30m\", \"6h\", \"7d\", or \"2w\" (units s, m, h, d = 24h, w = 7d). Ignored when start is set. Defaults to last 6 hours if not provided.",
                 "type": "string"
               }
             },
@@ -8003,7 +8003,7 @@
           "inputSchema": {
             "properties": {
               "end": {
-                "description": "End time in unix milliseconds. When both start and end are provided, they override timeRange.",
+                "description": "End of a fixed window, in the same forms as start. Defaults to now; set it only with start.",
                 "type": [
                   "integer",
                   "string"
@@ -8195,7 +8195,7 @@
                 "type": "string"
               },
               "start": {
-                "description": "Start time in unix milliseconds. When both start and end are provided, they override timeRange.",
+                "description": "Start of a fixed window: an RFC 3339 date-time with Z or an offset (YYYY-MM-DDThh:mm:ssZ), or Unix epoch milliseconds. When set, timeRange is ignored.",
                 "type": [
                   "integer",
                   "string"
@@ -8218,7 +8218,7 @@
               },
               "timeRange": {
                 "default": "1h",
-                "description": "Relative time range. Format: \u003cnumber\u003e\u003cunit\u003e where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '3d', '7d'. Ignored when both start and end are provided. Defaults to '1h'.",
+                "description": "Window ending now, as a duration such as \"30m\", \"6h\", \"7d\", or \"2w\" (units s, m, h, d = 24h, w = 7d). Ignored when start is set. Defaults to '1h'.",
                 "type": "string"
               }
             },
@@ -8332,7 +8332,7 @@
           "inputSchema": {
             "properties": {
               "end": {
-                "description": "End time in unix milliseconds (optional). When both start and end are provided, they override timeRange.",
+                "description": "End of a fixed window, in the same forms as start. Defaults to now; set it only with start.",
                 "type": [
                   "integer",
                   "string"
@@ -8399,7 +8399,7 @@
                 "type": "string"
               },
               "start": {
-                "description": "Start time in unix milliseconds (optional). When both start and end are provided, they override timeRange.",
+                "description": "Start of a fixed window: an RFC 3339 date-time with Z or an offset (YYYY-MM-DDThh:mm:ssZ), or Unix epoch milliseconds. When set, timeRange is ignored.",
                 "type": [
                   "integer",
                   "string"
@@ -8407,7 +8407,7 @@
               },
               "timeRange": {
                 "default": "1h",
-                "description": "Relative time range. Format: \u003cnumber\u003e\u003cunit\u003e where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '3d', '7d'. Ignored when both start and end are provided. Defaults to '1h'.",
+                "description": "Window ending now, as a duration such as \"30m\", \"6h\", \"7d\", or \"2w\" (units s, m, h, d = 24h, w = 7d). Ignored when start is set. Defaults to '1h'.",
                 "type": "string"
               }
             },
@@ -8427,7 +8427,7 @@
           "inputSchema": {
             "properties": {
               "end": {
-                "description": "End time in unix milliseconds (optional). When both start and end are provided, they override timeRange.",
+                "description": "End of a fixed window, in the same forms as start. Defaults to now; set it only with start.",
                 "type": [
                   "integer",
                   "string"
@@ -8519,7 +8519,7 @@
                 "type": "string"
               },
               "start": {
-                "description": "Start time in unix milliseconds (optional). When both start and end are provided, they override timeRange.",
+                "description": "Start of a fixed window: an RFC 3339 date-time with Z or an offset (YYYY-MM-DDThh:mm:ssZ), or Unix epoch milliseconds. When set, timeRange is ignored.",
                 "type": [
                   "integer",
                   "string"
@@ -8527,7 +8527,7 @@
               },
               "timeRange": {
                 "default": "1h",
-                "description": "Relative time range. Format: \u003cnumber\u003e\u003cunit\u003e where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '3d', '7d'. Ignored when both start and end are provided. Defaults to '1h'.",
+                "description": "Window ending now, as a duration such as \"30m\", \"6h\", \"7d\", or \"2w\" (units s, m, h, d = 24h, w = 7d). Ignored when start is set. Defaults to '1h'.",
                 "type": "string"
               }
             },
