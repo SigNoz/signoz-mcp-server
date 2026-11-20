@@ -123,7 +123,8 @@ var unsetReadbackFields = map[string][]string{
 }
 
 // dropUnsetSpecFields removes the unsetReadbackFields a channel readback holds
-// as "", so a fetched config stays writable as-is.
+// as "", so a fetched config stays writable as-is. Remove it, with
+// unsetReadbackFields, once SigNoz/pulse-pod#761 is fixed.
 func dropUnsetSpecFields(data json.RawMessage) json.RawMessage {
 	var channel, config, spec map[string]json.RawMessage
 	var kind string
