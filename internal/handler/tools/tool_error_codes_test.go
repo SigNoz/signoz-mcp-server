@@ -98,7 +98,7 @@ func TestToolHandlers_RejectInvalidArgumentsBeforeCallingSigNoz(t *testing.T) {
 		{tool: "signoz_aggregate_logs", arguments: `{"aggregations":"count()","start":"0","end":"2592000000"}`, wantText: "looks like a duration"},
 		{tool: "signoz_search_traces", arguments: `{"start":"2026-10-27T00:00:00"}`, wantText: "add Z for UTC or an offset"},
 		{tool: "signoz_aggregate_traces", arguments: `{"aggregations":"count()","timeRange":"6h-4h"}`, wantText: `start "now-6h" and end "now-4h"`},
-		{tool: "signoz_query_metrics", arguments: `{"metricName":"m","metricType":"gauge","start":"now-1h","end":"2099-01-01T00:00:00Z"}`, wantText: "Check the year"},
+		{tool: "signoz_query_metrics", arguments: `{"metricName":"m","start":"now-1h","end":"2099-01-01T00:00:00Z"}`, wantText: "Check the year"},
 		{tool: "signoz_list_metrics", arguments: `{"start":"-24h"}`, wantText: `write a relative time as "now-24h"`},
 		{tool: "signoz_get_top_metrics", arguments: `{"timeRange":{"from":"now-24h","to":"now"}}`, wantText: `give a duration string such as "24h"`},
 		{tool: "signoz_check_metric_cardinality", arguments: `{"metricName":"m","start":"3600"}`, wantText: "looks like a duration"},

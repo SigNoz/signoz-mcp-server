@@ -267,9 +267,9 @@ func newResultWindow(startMs, endMs int64) resultWindow {
 
 // parseStepInterval parses an optional stepInterval (seconds) argument for the
 // aggregate tools. It accepts a real JSON number OR a string that is ENTIRELY a
-// positive integer. It deliberately does NOT use parseIntLoose for the string
-// case: parseIntLoose scans a numeric prefix via Sscanf("%d"), so "1h"/"60s"
-// would silently become 1/60 — a wrong bucket size. A present-but-invalid value
+// positive integer. It deliberately does NOT scan a numeric prefix of a string
+// (as Sscanf("%d") would): "1h"/"60s" would silently become 1/60 — a wrong
+// bucket size. A present-but-invalid value
 // (non-numeric, suffixed, or <= 0) yields a nil interval and a warning so the
 // backend auto-selects rather than applying a silently-wrong granularity.
 //

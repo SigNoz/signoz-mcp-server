@@ -23,9 +23,6 @@ type metricsQueryRequest struct {
 	ReduceTo         string
 	GroupBy          []string
 	Filter           string
-	TimeRange        string
-	Start            int64
-	End              int64
 	StepInterval     int64
 	// StepIntervalInvalid holds the raw stepInterval value when it was present
 	// but not a valid positive integer count of seconds. The handler surfaces it
@@ -103,7 +100,6 @@ func parseMetricsQueryArgs(args map[string]any) (*metricsQueryRequest, error) {
 		SpaceAggregation: stringArg(args, "spaceAggregation"),
 		ReduceTo:         stringArg(args, "reduceTo"),
 		Filter:           filter,
-		TimeRange:        stringArg(args, "timeRange"),
 		RequestType:      requestType,
 		Formula:          stringArg(args, "formula"),
 		Source:           stringArg(args, "source"),
@@ -122,14 +118,6 @@ func parseMetricsQueryArgs(args map[string]any) (*metricsQueryRequest, error) {
 		return nil, fmt.Errorf("%s %w", validationErrorPrefix, err)
 	}
 	req.GroupBy = groupBy
-
-	// start / end
-	if s, ok := args["start"]; ok {
-		req.Start = parseIntLoose(s)
-	}
-	if e, ok := args["end"]; ok {
-		req.End = parseIntLoose(e)
-	}
 
 	// stepInterval — must be a positive base-10 integer count of SECONDS. A
 	// JSON number is taken as-is; a STRING must be entirely numeric. A
@@ -197,9 +185,6 @@ func parseMetricsQueryArgs(args map[string]any) (*metricsQueryRequest, error) {
 	if req.RequestType == "" {
 		req.RequestType = "time_series"
 	}
-	if req.TimeRange == "" && req.Start == 0 && req.End == 0 {
-		req.TimeRange = "1h"
-	}
 
 	return req, nil
 }
@@ -244,28 +229,9 @@ func stringArg(args map[string]any, key string) string {
 	return v
 }
 
-func parseIntLoose(v any) int64 {
-	switch n := v.(type) {
-	case float64:
-		return int64(n)
-	case int64:
-		return n
-	case int:
-		return int64(n)
-	case json.Number:
-		i, _ := n.Int64()
-		return i
-	case string:
-		var i int64
-		_, _ = fmt.Sscanf(n, "%d", &i)
-		return i
-	}
-	return 0
-}
-
 // parseStepIntervalSeconds parses a query_metrics stepInterval argument, which
-// must be a POSITIVE integer count of seconds. Unlike parseIntLoose it is
-// strict on strings: the ENTIRE trimmed string must be a base-10 integer, so
+// must be a POSITIVE integer count of seconds. It is strict on strings: the
+// ENTIRE trimmed string must be a base-10 integer, so
 // unit-suffixed values like "1h"/"60s" and non-numeric "abc" are rejected
 // rather than silently coerced to a wrong bucket size.
 //
