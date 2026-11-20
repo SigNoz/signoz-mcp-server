@@ -62,7 +62,11 @@ func TestTimeWindowedTools_SendTheResolvedWindowUpstream(t *testing.T) {
 		{"signoz_get_alert_history", `{"id":"0196634d-5d66-75c4-b778-e317f49dab7a",` + window + `}`, startMs, endMs},
 		{"signoz_list_services", `{` + window + `}`, startNanos, endNanos},
 		{"signoz_get_service_top_operations", `{"service":"frontend",` + window + `}`, startNanos, endNanos},
+		{"signoz_get_service_map", `{` + window + `}`, startNanos, endNanos},
 	}
+	// Structured results carry the window as a field, because a client may
+	// show the model only StructuredContent.
+	structuredTools := map[string]bool{"signoz_list_services": true, "signoz_get_service_map": true}
 	for _, tt := range tests {
 		t.Run(tt.tool, func(t *testing.T) {
 			mu.Lock()
@@ -73,9 +77,7 @@ func TestTimeWindowedTools_SendTheResolvedWindowUpstream(t *testing.T) {
 			if result.IsError {
 				t.Fatalf("result is an error: %s", allTextBlocks(result))
 			}
-			if tt.tool == "signoz_list_services" {
-				// Structured results carry the window as a field, because a client
-				// may show the model only StructuredContent.
+			if structuredTools[tt.tool] {
 				var structured struct {
 					Window resultWindow `json:"window"`
 				}

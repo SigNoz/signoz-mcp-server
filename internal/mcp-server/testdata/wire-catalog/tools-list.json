@@ -6613,7 +6613,7 @@
                 "type": "string"
               },
               "end": {
-                "description": "End time in unix milliseconds (optional, defaults to now).",
+                "description": "Window end, in the same forms as start or \"now\". Defaults to now. Without start, the window is timeRange long and ends here.",
                 "type": [
                   "integer",
                   "string"
@@ -6652,7 +6652,7 @@
                 "type": "string"
               },
               "start": {
-                "description": "Start time in unix milliseconds (optional, defaults to 6 hours ago).",
+                "description": "Window start: an RFC 3339 date-time with Z or an offset (YYYY-MM-DDThh:mm:ssZ), \"now-\u003cduration\u003e\" (\"now-2h\"), or Unix epoch milliseconds. When set, the window runs from start to end and timeRange is ignored.",
                 "type": [
                   "integer",
                   "string"
@@ -6660,7 +6660,7 @@
               },
               "timeRange": {
                 "default": "6h",
-                "description": "Relative time range. Format: \u003cnumber\u003e\u003cunit\u003e where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '3d', '7d'. Ignored when both start and end are provided. Defaults to last 6 hours if not provided.",
+                "description": "Window length ending at end (default now): one or more \u003cnumber\u003e\u003cunit\u003e terms with unit s, m, h, d (24h), or w (7d), such as \"30m\", \"6h\", \"7d\", \"2w\", or \"1h30m\". Ignored when start is set. Defaults to last 6 hours if not provided.",
                 "type": "string"
               }
             },

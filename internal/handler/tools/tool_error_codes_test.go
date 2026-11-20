@@ -104,6 +104,7 @@ func TestToolHandlers_RejectInvalidArgumentsBeforeCallingSigNoz(t *testing.T) {
 		{tool: "signoz_check_metric_cardinality", arguments: `{"metricName":"m","start":"3600"}`, wantText: "looks like a duration"},
 		{tool: "signoz_list_services", arguments: `{"start":"now","end":"now"}`, wantText: "so it is empty"},
 		{tool: "signoz_get_service_top_operations", arguments: `{"service":"frontend","timeRange":"24hours"}`, wantText: `invalid "timeRange" "24hours"`},
+		{tool: "signoz_get_service_map", arguments: `{"start":"2026-10-27T00:00:00"}`, wantText: "add Z for UTC or an offset"},
 		{tool: "signoz_get_alert_history", arguments: `{"id":"0196634d-5d66-75c4-b778-e317f49dab7a","start":"yesterday"}`, wantText: `invalid "start" "yesterday"`},
 	}
 	for _, tt := range tests {

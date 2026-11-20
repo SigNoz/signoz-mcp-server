@@ -137,10 +137,8 @@ func TestResolveTimestampsMalformedStartErrorsLoudly(t *testing.T) {
 }
 
 // TestResolveTimestampsEmptyOrAbsentUsesDefaultRange pins that empty-string / absent
-// time input — including a present-but-empty start, the case GetTimestampsWithDefaults
-// treats as absent — injects the tool's advertised default window (1h) rather than
-// silently falling through to the generic 6h fallback. The present-but-empty start
-// case is the one that regressed when the guard checked raw key presence.
+// time input — including a present-but-empty start, which counts as absent — gets
+// the tool's advertised default window (1h).
 func TestResolveTimestampsEmptyOrAbsentUsesDefaultRange(t *testing.T) {
 	cases := []struct {
 		name string

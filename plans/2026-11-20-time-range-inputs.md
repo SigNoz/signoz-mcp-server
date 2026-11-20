@@ -51,7 +51,8 @@ and a caller-supplied reference time could be added later without changing the r
   shows the format as `YYYY-MM-DDThh:mm:ssZ`, so a copied example never carries a stale year.
 - Every result reports the window queried, in RFC 3339 UTC and Unix ms: a note block on text
   results (`window queried: 2026-11-19T09:00:00Z to 2026-11-19T10:00:00Z (Unix ms 1795078800000
-  to 1795082400000)`), and a `window` field on `signoz_list_services`, the one structured result.
+  to 1795082400000)`), and a `window` field on the structured results of `signoz_list_services`
+  and `signoz_get_service_map`.
 
 Coverage:
 
@@ -60,15 +61,13 @@ Coverage:
 | `signoz_search_logs`, `signoz_aggregate_logs`, `signoz_search_traces`, `signoz_aggregate_traces`, `signoz_query_metrics`, `signoz_list_metrics` | 1h | Unix ms |
 | `signoz_get_top_metrics`, `signoz_check_metric_cardinality` | 7d | Unix ms |
 | `signoz_get_alert_history` | 6h | Unix ms |
-| `signoz_list_services`, `signoz_get_service_top_operations` | 6h | Unix ns |
+| `signoz_list_services`, `signoz_get_service_top_operations`, `signoz_get_service_map` | 6h | Unix ns |
 
 Not covered, by decision:
 
 - `signoz_execute_builder_query`: `query.start` and `query.end` are fields of the `query_range`
   body this server forwards as written, and stay Unix ms. Server instruction rule 5 says so.
 - `signoz_get_trace_details` takes no window.
-- `signoz_get_service_map` (SigNoz/signoz-mcp-server#460, not merged) parses its own window and
-  should move to `ResolveWindow` when it lands.
 - A reference time and timezone for relative ranges, which SigNoz/nerve-pod#235 asks for on
   behalf of Noz, is not added; see Key Decisions.
 
@@ -80,7 +79,7 @@ Not covered, by decision:
 - `pkg/timeutil/time_test.go` — fixed-clock tests for forms, calendar edges and rejections.
 - `internal/handler/tools/params.go` — `resolveTimestamps` calls the resolver and prefixes errors.
 - `internal/handler/tools/services.go`, `alerts.go`, `metrics_query.go` — use the resolver.
-- `internal/handler/tools/params.go` and the eleven handlers (`logs.go`, `traces.go`,
+- `internal/handler/tools/params.go` and the twelve handlers (`logs.go`, `traces.go`,
   `metrics.go`, `metrics_top.go`, `metrics_query.go`, `metric_cardinality.go`, `alerts.go`,
   `services.go`) — report the window queried.
 - `internal/handler/tools/query_param_descriptions.go` and the tools that had their own
@@ -89,10 +88,10 @@ Not covered, by decision:
   budget.
 - `internal/handler/tools/tool_error_codes_test.go`, `time_window_test.go`, `params_test.go` —
   rejection before SigNoz and the window sent upstream, per tool.
-- `internal/mcp-server/testdata/wire-catalog/` — the 33 changed parameter descriptions and the
+- `internal/mcp-server/testdata/wire-catalog/` — the 36 changed parameter descriptions and the
   instructions.
-- `README.md` — parameter references for the eleven tools, the window report, and the
-  `signoz_list_services` response.
+- `README.md` — parameter references for the twelve tools, the window report, and the
+  `signoz_list_services` and `signoz_get_service_map` responses.
 
 ## Key Decisions
 
@@ -153,15 +152,16 @@ Not covered, by decision:
 ### 2026-11-20 — Report the window queried on every result
 
 - Decision: text results append `window queried: <start> to <end> (Unix ms <start> to <end>)`;
-  `signoz_list_services` adds `window` (`start`, `end`, `startMs`, `endMs`) to its payload.
+  `signoz_list_services` and `signoz_get_service_map` add `window` (`start`, `end`, `startMs`,
+  `endMs`) to their payloads.
 - Rationale: SigNoz/nerve-pod#235 asks for the resolved bounds and units to be inspectable, and a
   caller can reuse the Unix ms values in `signoz_execute_builder_query`. Passthrough payloads stay
   verbatim (OUT-5), so the report is a separate block there. Claude Code shows the model only
-  `structuredContent` when a result has it (SigNoz/nerve-pod#654), so on the structured result the
+  `structuredContent` when a result has it (SigNoz/nerve-pod#654), so on structured results the
   report is a payload field. Relative bounds resolve on this server's clock in UTC, so no separate
   reference time or zone is reported. The service routes take nanoseconds; the report gives
   milliseconds, the unit callers send.
-- Alternatives rejected: a note on `signoz_list_services` too (some clients would see it twice);
+- Alternatives rejected: a note on the structured results too (some clients would see it twice);
   echoing inside passthrough JSON.
 
 ### 2026-11-20 — Not marked as breaking
@@ -195,12 +195,13 @@ Not covered, by decision:
   its message names.
 - `TestToolHandlers_RejectInvalidArgumentsBeforeCallingSigNoz` has one row per time-windowed
   tool; each is rejected with the validation prefix against an upstream that fails the test on
-  any request.
+  any request. `signoz_query_metrics` resolves its window before the metric metadata lookup, so
+  its row omits `metricType`.
 - `TestTimeWindowedTools_SendTheResolvedWindowUpstream` sends RFC 3339 bounds with offsets to all
-  eleven tools and finds the same window in the request SigNoz receives: Unix ms, or Unix ns
-  for `signoz_list_services` and `signoz_get_service_top_operations`. A millisecond route that
-  sent nanoseconds would fail it. Each result must succeed and report the window: the note block
-  on ten tools, the `window` field in `signoz_list_services` structured content. Removing the
+  twelve tools and finds the same window in the request SigNoz receives: Unix ms, or Unix ns
+  for the three service tools. A millisecond route that sent nanoseconds would fail it. Each
+  result must succeed and report the window: the note block on ten tools, the `window` field in
+  the structured content of `signoz_list_services` and `signoz_get_service_map`. Removing the
   report from one handler fails its row.
 - e2e tests: none sends `start` without `end`, `end` without `start`, or an old or
   seconds-sized epoch, and none asserts the removed error strings.

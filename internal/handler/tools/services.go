@@ -54,8 +54,8 @@ func (h *Handler) RegisterServiceHandlers(s *mcp.Server) {
 		mcp.WithString("service", mcp.Description("Exact service.name value whose edges to keep, or a database or message system named in an edge. Discover service names with signoz_get_field_values with signal=\"traces\", fieldContext=\"resource\", and name=\"service.name\". Omit for the whole graph.")),
 		mcp.WithString("direction", mcp.DefaultString("both"), mcp.Enum("both", "upstream", "downstream"), mcp.Description("Which of service's edges to keep: upstream (the services that call it), downstream (the services, databases, and message systems it calls), or both (default). Requires service.")),
 		mcp.WithString("timeRange", mcp.DefaultString("6h"), mcp.Description(timeRangeParamDescription("Defaults to last 6 hours if not provided."))),
-		mcp.WithString("start", intOrStringType(), mcp.Description("Start time in unix milliseconds (optional, defaults to 6 hours ago).")),
-		mcp.WithString("end", intOrStringType(), mcp.Description("End time in unix milliseconds (optional, defaults to now).")),
+		mcp.WithString("start", intOrStringType(), mcp.Description(startParamDescription)),
+		mcp.WithString("end", intOrStringType(), mcp.Description(endParamDescription)),
 		mcp.WithString("limit", mcp.DefaultString("50"), intOrStringType(), mcp.Description("Maximum edges per page. Default: 50; max: 1000 (higher values are clamped).")),
 		mcp.WithString("offset", mcp.DefaultString("0"), intOrStringType(), mcp.Description("Number of edges to skip. Default: 0; use pagination.nextOffset for the next page.")),
 		mcp.WithString("environment", mcp.Description("Keep only edges recorded with this deployment.environment resource value. Discover values with signoz_get_field_values with signal=\"traces\", fieldContext=\"resource\", and name=\"deployment.environment\".")),
@@ -111,13 +111,11 @@ func (h *Handler) handleGetServiceMap(ctx context.Context, req mcp.CallToolReque
 		return errResult, nil
 	}
 
-	// Reject a present-but-malformed start/end loudly; otherwise
-	// GetTimestampsWithDefaults silently falls back to the default window.
-	if err := timeutil.ValidateExplicitTimestamps(args); err != nil {
-		h.logger.WarnContext(ctx, "Invalid explicit timestamp", logpkg.ErrAttr(err))
-		return errorWithCode(CodeValidationFailed, "Parameter validation failed: "+err.Error()), nil
+	window, errResult := serviceWindow(ctx, h, args)
+	if errResult != nil {
+		return errResult, nil
 	}
-	start, end := timeutil.GetTimestampsWithDefaults(args, timeutil.UnitNanos)
+	start, end := windowNanos(window)
 	limit, offset, limitClamped := paginate.ParseParamsClamped(args)
 
 	h.logger.DebugContext(ctx, "Tool called: signoz_get_service_map",
@@ -160,7 +158,7 @@ func (h *Handler) handleGetServiceMap(ctx context.Context, req mcp.CallToolReque
 		return ci < cj
 	})
 
-	resultJSON, err := paginate.Wrap(paginate.Array(edges, offset, limit), len(edges), offset, limit)
+	resultJSON, err := windowedPage(paginate.Array(edges, offset, limit), len(edges), offset, limit, window)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to wrap service map with pagination", logpkg.ErrAttr(err))
 		return InternalErrorResult("failed to marshal response: " + err.Error()), nil
@@ -308,13 +306,7 @@ func (h *Handler) handleListServices(ctx context.Context, req mcp.CallToolReques
 	total := len(services)
 	pagedServices := paginate.Array(services, offset, limit)
 
-	resultJSON, err := json.Marshal(struct {
-		paginate.Response
-		Window resultWindow `json:"window"`
-	}{
-		Response: paginate.Response{Data: pagedServices, Pagination: paginate.NewMetadata(total, offset, limit)},
-		Window:   newResultWindow(window.StartMs(), window.EndMs()),
-	})
+	resultJSON, err := windowedPage(pagedServices, total, offset, limit, window)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to wrap services with pagination", logpkg.ErrAttr(err))
 		return InternalErrorResult("failed to marshal response: " + err.Error()), nil
@@ -406,6 +398,18 @@ func serviceWindow(ctx context.Context, h *Handler, args map[string]any) (timeut
 		return timeutil.Window{}, errorWithCode(CodeValidationFailed, validationErrorPrefix+" "+err.Error())
 	}
 	return w, nil
+}
+
+// windowedPage is paginate.Wrap plus the window queried, for the structured
+// service results.
+func windowedPage(page []any, total, offset, limit int, w timeutil.Window) ([]byte, error) {
+	return json.Marshal(struct {
+		paginate.Response
+		Window resultWindow `json:"window"`
+	}{
+		Response: paginate.Response{Data: page, Pagination: paginate.NewMetadata(total, offset, limit)},
+		Window:   newResultWindow(w.StartMs(), w.EndMs()),
+	})
 }
 
 // windowNanos formats w as the service routes take it: Unix nanoseconds in

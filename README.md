@@ -483,7 +483,7 @@ For detailed usage and examples, see the [full documentation](https://signoz.io/
 
 > **Resource deep links:** the resource read tools (`signoz_list_dashboards`, `signoz_get_dashboard`, `signoz_list_alerts`, `signoz_list_alert_rules`, `signoz_get_alert`, `signoz_list_services`, `signoz_search_traces`, `signoz_get_trace_details`) and the dashboard write tools (`signoz_create_dashboard`, `signoz_update_dashboard`, `signoz_patch_dashboard`, `signoz_import_dashboard`) include a `webUrl` field when the request carries a SigNoz instance URL: an absolute deep link to the resource in the SigNoz web UI (per result row for `signoz_search_traces`). The MCP server discovers the browser base from each SigNoz backend's `global.external_url`. API requests keep using the request's backend URL. See [Browser links for self-hosted SigNoz](#browser-links-for-self-hosted-signoz).
 
-> **Time windows:** the tools that take `start`, `end`, and `timeRange` (`signoz_search_logs`, `signoz_aggregate_logs`, `signoz_search_traces`, `signoz_aggregate_traces`, `signoz_query_metrics`, `signoz_list_metrics`, `signoz_get_top_metrics`, `signoz_check_metric_cardinality`, `signoz_get_alert_history`, `signoz_list_services`, and `signoz_get_service_top_operations`) report the window they queried in RFC 3339 UTC and Unix milliseconds. Text results append a note such as `window queried: 2026-11-19T09:00:00Z to 2026-11-19T10:00:00Z (Unix ms 1795078800000 to 1795082400000)`; `signoz_list_services` returns a `window` object with `start`, `end`, `startMs`, and `endMs`. `signoz_execute_builder_query` takes its window in the request body and reports none.
+> **Time windows:** the tools that take `start`, `end`, and `timeRange` (`signoz_search_logs`, `signoz_aggregate_logs`, `signoz_search_traces`, `signoz_aggregate_traces`, `signoz_query_metrics`, `signoz_list_metrics`, `signoz_get_top_metrics`, `signoz_check_metric_cardinality`, `signoz_get_alert_history`, `signoz_list_services`, `signoz_get_service_top_operations`, and `signoz_get_service_map`) report the window they queried in RFC 3339 UTC and Unix milliseconds. Text results append a note such as `window queried: 2026-11-19T09:00:00Z to 2026-11-19T10:00:00Z (Unix ms 1795078800000 to 1795082400000)`; `signoz_list_services` and `signoz_get_service_map` return a `window` object with `start`, `end`, `startMs`, and `endMs`. `signoz_execute_builder_query` takes its window in the request body and reports none.
 
 ### Agent Routing Guidance
 
@@ -743,14 +743,14 @@ Gets the service dependency graph that SigNoz's Service Map draws for a time win
 - **Parameters**:
   - `service` (optional) - Exact `service.name` value whose edges to keep, or a database or message system named in an edge; discover service names with `signoz_get_field_values` (`signal=traces`, `fieldContext=resource`, `name=service.name`); omit for the whole graph
   - `direction` (optional) - `upstream` (services that call `service`), `downstream` (services, databases, and message systems it calls), or `both` (default); requires `service`
-  - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '7d'; defaults to last 6 hours; ignored when both `start` and `end` are provided)
-  - `start` (optional) - Start time in unix milliseconds (defaults to 6 hours ago)
-  - `end` (optional) - End time in unix milliseconds (defaults to now)
+  - `timeRange` (optional) - Window length ending at `end` (default now): `<number><unit>` terms with unit `s`, `m`, `h`, `d`, or `w`, such as '30m', '6h', '7d', '2w', or '1h30m' (default: '6h'; ignored when `start` is set)
+  - `start`/`end` (optional) - Window bounds: an RFC 3339 date-time with `Z` or an offset, `now` or `now-<duration>` (such as `now-2h`), or Unix epoch milliseconds. With `start`, the window runs from `start` to `end` (default now) and `timeRange` is ignored; with only `end`, the window is `timeRange` long and ends at `end`.
   - `limit` (optional) - Maximum edges per page (default: 50, max: 1000; higher values are clamped)
   - `offset` (optional) - Number of edges to skip for pagination (default: 0)
   - `environment` (optional) - Keep only edges recorded with this `deployment.environment` resource value; discover values with `signoz_get_field_values` (`signal=traces`, `fieldContext=resource`, `name=deployment.environment`)
   - `cluster` (optional) - Keep only edges recorded with this `k8s.cluster.name` resource value; discover values with `signoz_get_field_values` (`signal=traces`, `fieldContext=resource`, `name=k8s.cluster.name`)
   - `namespace` (optional) - Keep only edges recorded with this `k8s.namespace.name` resource value; discover values with `signoz_get_field_values` (`signal=traces`, `fieldContext=resource`, `name=k8s.namespace.name`)
+- **Response**: `data` (edges), `pagination` (`total`, `offset`, `limit`, `hasMore`, `nextOffset`), and `window` (`start`, `end`, `startMs`, `endMs`), the window queried
 
 #### `signoz_get_alert_history`
 
