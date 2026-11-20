@@ -1,8 +1,8 @@
 # Plan: Notes in Structured Content
 
-Status: In Progress
-Issue: https://github.com/SigNoz/nerve-pod/issues/654
-PR:
+Status: Done
+Issue: [SigNoz/nerve-pod#654](https://github.com/SigNoz/nerve-pod/issues/654)
+PR: [SigNoz/signoz-mcp-server#472](https://github.com/SigNoz/signoz-mcp-server/pull/472)
 
 ## Context
 
@@ -135,8 +135,10 @@ block 0 carries `notes`.
 
 ## Outcome
 
-Implementation complete and verified; the plan moves to Done when the PR link is added.
-Breaking-change review (CMP-1): additive. A new optional `notes` key appears
+Shipped as planned. Review added one change: on a map-shaped output schema `notes` also accepts
+an entry, so a metric named `notes` stays valid. Follow-up outside this change: the guardrail's
+source scan does not see a result built as a composite literal with several blocks; no
+production code builds one. Breaking-change review (CMP-1): additive. A new optional `notes` key appears
 only when a note exists, and the existing text blocks are unchanged. No SigNoz/agent-skills
 companion change is needed (CMP-3).
 
