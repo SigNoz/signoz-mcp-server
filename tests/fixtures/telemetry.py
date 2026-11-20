@@ -1,10 +1,14 @@
+import json
+import subprocess
 import time
 import uuid
+from dataclasses import dataclass
 from typing import Any
 
 import pytest
 import requests
 
+from fixtures.foundry import CLICKHOUSE
 from fixtures.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -385,6 +389,71 @@ def seed_metrics(
     resp = requests.post(f"{OTLP_ENDPOINT}/v1/metrics", json=payload, timeout=30)
     resp.raise_for_status()
     logger.info("seeded %d metric point(s) for %s", count, metric_name)
+
+
+@dataclass(frozen=True)
+class AuditEvent:
+    """One SigNoz audit event; attributes and resources use the audit attribute names."""
+
+    body: str
+    event_name: str
+    attributes: dict[str, str]
+    resources: dict[str, str]
+    severity: str = "INFO"
+
+
+def seed_audit_events(events: list[AuditEvent]) -> None:
+    """Insert audit events straight into signoz_audit, as SigNoz's querier tests do.
+
+    The cast SigNoz has no license, and its auditor drops events without one, so
+    no API call records a real audit event here.
+    """
+    now = time.time_ns()
+    resource_rows: dict[str, dict] = {}
+    log_rows = []
+    for i, event in enumerate(events):
+        timestamp = now - i * 1_000_000
+        bucket = timestamp // 1_000_000_000 // 1800 * 1800
+        resources = {"service.name": "signoz", **event.resources}
+        # The querier joins rows to resources by fingerprint; any value both tables share works.
+        fingerprint = ";".join(f"{key}={resources[key]}" for key in sorted(resources))
+        resource_rows[fingerprint] = {
+            "labels": json.dumps(resources, separators=(",", ":")),
+            "fingerprint": fingerprint,
+            "seen_at_ts_bucket_start": bucket,
+        }
+        log_rows.append(
+            {
+                "ts_bucket_start": bucket,
+                "resource_fingerprint": fingerprint,
+                "timestamp": timestamp,
+                "observed_timestamp": timestamp,
+                "id": f"{timestamp:020d}-{uuid.uuid4().hex[:8]}",
+                "trace_id": "",
+                "span_id": "",
+                "trace_flags": 0,
+                "severity_text": event.severity,
+                "severity_number": 9 if event.severity == "INFO" else 17,
+                "body": {"message": event.body},
+                "scope": {"name": "signoz.audit", "version": "", "attributes": {}},
+                "attributes": event.attributes,
+                "resource": {"attributes": resources},
+                "event_name": event.event_name,
+            }
+        )
+    _clickhouse_insert("signoz_audit.distributed_logs_resource", list(resource_rows.values()))
+    _clickhouse_insert("signoz_audit.distributed_logs", log_rows)
+    logger.info("seeded %d audit event(s)", len(events))
+
+
+def _clickhouse_insert(table: str, rows: list[dict]) -> None:
+    subprocess.run(
+        ["docker", "exec", "-i", CLICKHOUSE, "clickhouse-client", "--query", f"INSERT INTO {table} FORMAT JSONEachRow"],
+        input="\n".join(json.dumps(row) for row in rows),
+        text=True,
+        capture_output=True,
+        check=True,
+    )
 
 
 def wait_for(check, description: str, timeout: float = POLL_TIMEOUT, interval: float = POLL_INTERVAL) -> Any:
