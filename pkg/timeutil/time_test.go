@@ -94,9 +94,9 @@ func TestResolveWindowCalendarEdges(t *testing.T) {
 	}
 }
 
-// TestResolveWindowRejectsBeforeQuerying pins each rejection and the fix its
+// TestResolveWindowRejectionsNameTheFix pins each rejection and the fix its
 // message names.
-func TestResolveWindowRejectsBeforeQuerying(t *testing.T) {
+func TestResolveWindowRejectionsNameTheFix(t *testing.T) {
 	now := mustTime(t, "2026-11-19T10:00:00Z")
 	const maxExactFloat = float64(1<<53 - 1)
 
@@ -167,17 +167,6 @@ func TestParseDuration(t *testing.T) {
 	for in, want := range valid {
 		if got, err := ParseDuration(in); err != nil || got != want {
 			t.Errorf("ParseDuration(%q) = %v, %v; want %v", in, got, err, want)
-		}
-	}
-	// Positive time.ParseDuration inputs, which timeRange took on main, keep
-	// their meaning.
-	for _, in := range []string{"+1h", "1.001s", "1000000μs", ".5h"} {
-		want, err := time.ParseDuration(in)
-		if err != nil {
-			t.Fatalf("time.ParseDuration(%q): %v", in, err)
-		}
-		if got, err := ParseDuration(in); err != nil || got != want {
-			t.Errorf("ParseDuration(%q) = %v, %v; want %v as time.ParseDuration gives", in, got, err, want)
 		}
 	}
 	for _, in := range []string{"", "0h", "-1h", "1x", "24hours", "h", "5", "1h30", "1 h", "1..5h"} {

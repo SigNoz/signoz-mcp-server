@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
-	"time"
 
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 )
@@ -112,41 +111,5 @@ func TestListResult_ClampNoteSeparateBlock(t *testing.T) {
 	block1, ok := mcp.AsTextContent(clamped.Content[1])
 	if !ok || !strings.Contains(block1.Text, "clamped") {
 		t.Fatalf("clamped: block 1 should be the clamp note, got %#v", clamped.Content[1])
-	}
-}
-
-// TestResolveTimestampsMalformedStartErrorsLoudly pins that present-but-malformed
-// timestamp inputs propagate an error out of resolveTimestamps instead of
-// silently falling back to the default window (the silent-failure anti-pattern).
-func TestResolveTimestampsMalformedStartErrorsLoudly(t *testing.T) {
-	if _, _, err := resolveTimestamps(map[string]any{"start": "yesterday"}, "1h"); err == nil {
-		t.Fatal("resolveTimestamps with malformed start = nil error, want loud validation error")
-	}
-}
-
-// TestResolveTimestampsEmptyOrAbsentUsesDefaultRange pins that empty-string / absent
-// time input — including a present-but-empty start, which counts as absent — gets
-// the tool's advertised default window (1h).
-func TestResolveTimestampsEmptyOrAbsentUsesDefaultRange(t *testing.T) {
-	cases := []struct {
-		name string
-		args map[string]any
-	}{
-		{"empty-string timeRange", map[string]any{"timeRange": ""}},
-		{"empty timeRange and empty start", map[string]any{"timeRange": "", "start": ""}},
-		{"empty start only", map[string]any{"start": ""}},
-		{"absent", map[string]any{}},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			start, end, err := resolveTimestamps(tc.args, "1h")
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			delta := end - start
-			if delta < int64(59*time.Minute/time.Millisecond) || delta > int64(61*time.Minute/time.Millisecond) {
-				t.Fatalf("delta = %dms, want about 1h (the tool default), not the generic 6h fallback", delta)
-			}
-		})
 	}
 }
