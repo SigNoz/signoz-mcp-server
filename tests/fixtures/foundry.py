@@ -17,6 +17,8 @@ CASTING = TESTS_DIR / "casting.yaml"
 POURS = TESTS_DIR / "pours"
 # Foundry's container name for the ClickHouse schema migrator job.
 MIGRATOR = "signoz-telemetrystore-migrator"
+# Foundry's container name for the ClickHouse server.
+CLICKHOUSE = "signoz-telemetrystore-clickhouse-0-0"
 
 
 def _wait_for_port(endpoint: str, timeout: float = 240.0) -> None:
