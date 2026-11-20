@@ -237,6 +237,10 @@ func resolveTimestamps(args map[string]any, defaultRange string) (int64, int64, 
 	if err != nil {
 		return 0, 0, fmt.Errorf("%s %w", validationErrorPrefix, err)
 	}
+	if w.StartMs() >= w.EndMs() {
+		return 0, 0, fmt.Errorf(`%s invalid window: %s to %s falls within one millisecond, so the window sent as Unix ms is empty. Widen it to at least 1ms`,
+			validationErrorPrefix, w.Start.UTC().Format(time.RFC3339Nano), w.End.UTC().Format(time.RFC3339Nano))
+	}
 	return w.StartMs(), w.EndMs(), nil
 }
 

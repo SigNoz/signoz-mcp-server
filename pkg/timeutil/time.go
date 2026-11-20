@@ -118,8 +118,8 @@ func endWithoutStart(w Window, length string, now time.Time) error {
 	if _, err := checkWindow(w, now); err != nil {
 		return err
 	}
-	return fmt.Errorf(`invalid window: "end" %s needs "start". For the %s before it, add start %q; for a window ending now, omit end and use timeRange`,
-		formatTime(w.End), length, formatTime(w.Start))
+	return fmt.Errorf(`invalid window: "end" %s needs "start". For the %s before it, send start %q and end %q; for a window ending now, omit end and use timeRange`,
+		formatTime(w.End), length, formatTime(w.Start), formatTime(w.End))
 }
 
 func checkWindow(w Window, now time.Time) (Window, error) {
@@ -245,9 +245,8 @@ func windowLength(v any, defaultRange string) (time.Duration, string, error) {
 	return 0, "", fmt.Errorf(`invalid "timeRange" %q: %v`, s, err)
 }
 
-// durationUnits are the units ParseDuration accepts. Sub-second units, including
-// both micro signs, are kept for inputs time.ParseDuration accepted before;
-// descriptions advertise s to w.
+// durationUnits are the units ParseDuration accepts in a term: time.ParseDuration's
+// units, including both micro signs, plus d and w. Descriptions advertise s to w.
 var durationUnits = []struct {
 	name string
 	d    time.Duration
@@ -268,10 +267,17 @@ var errDuration = errors.New(`give one or more <number><unit> terms with unit s,
 
 // ParseDuration parses a window length: one or more <number><unit> terms, such
 // as "90s", "6h", "1h30m", "1.5d" or "2w". d is 24 hours and w is 7 days. The
-// result must be greater than zero. A leading "+" is accepted, as
-// time.ParseDuration accepts it.
+// result must be greater than zero. Input time.ParseDuration takes, such as
+// "+1h" or "1.001s", gets its exact result; forms with d or w are summed here.
 func ParseDuration(s string) (time.Duration, error) {
-	s = strings.TrimPrefix(strings.TrimSpace(s), "+")
+	s = strings.TrimSpace(s)
+	if d, err := time.ParseDuration(s); err == nil {
+		if d <= 0 {
+			return 0, errDuration
+		}
+		return d, nil
+	}
+	s = strings.TrimPrefix(s, "+")
 	if s == "" {
 		return 0, errDuration
 	}

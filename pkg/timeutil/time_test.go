@@ -125,8 +125,8 @@ func TestResolveWindowRejectsBeforeQuerying(t *testing.T) {
 		{"reversed", map[string]any{"start": "2026-11-19T11:00:00Z", "end": "2026-11-19T10:30:00Z"}, `"start" 2026-11-19T11:00:00Z is after "end" 2026-11-19T10:30:00Z`},
 		{"start after now with no end", map[string]any{"start": "2026-11-19T11:00:00Z"}, "is after"},
 		{"empty", map[string]any{"start": "now", "end": "now"}, "so it is empty"},
-		{"end without start", map[string]any{"end": "2026-11-19T09:00:00Z", "timeRange": "2h"}, `invalid window: "end" 2026-11-19T09:00:00Z needs "start". For the 2h before it, add start "2026-11-19T07:00:00Z"`},
-		{"relative end without start or timeRange", map[string]any{"end": "now-1h"}, `For the 1h before it, add start "2026-11-19T08:00:00Z"; for a window ending now, omit end`},
+		{"end without start", map[string]any{"end": "2026-11-19T09:00:00Z", "timeRange": "2h"}, `invalid window: "end" 2026-11-19T09:00:00Z needs "start". For the 2h before it, send start "2026-11-19T07:00:00Z" and end "2026-11-19T09:00:00Z"`},
+		{"relative end without start or timeRange", map[string]any{"end": "now-1h"}, `For the 1h before it, send start "2026-11-19T08:00:00Z" and end "2026-11-19T09:00:00Z"; for a window ending now, omit end`},
 		{"unparseable timeRange", map[string]any{"timeRange": "24hours"}, `invalid "timeRange" "24hours": give one or more`},
 		{"zero timeRange", map[string]any{"timeRange": "0h"}, `invalid "timeRange" "0h"`},
 		{"negative timeRange", map[string]any{"timeRange": "-1h"}, `invalid "timeRange" "-1h"`},
@@ -162,6 +162,7 @@ func TestParseDuration(t *testing.T) {
 		"2d12h": 60 * time.Hour,
 		"2w":    14 * 24 * time.Hour,
 		"500ms": 500 * time.Millisecond,
+		"+2d":   48 * time.Hour,
 	}
 	for in, want := range valid {
 		if got, err := ParseDuration(in); err != nil || got != want {
@@ -170,7 +171,7 @@ func TestParseDuration(t *testing.T) {
 	}
 	// Positive time.ParseDuration inputs, which timeRange took before d and w
 	// were added, keep their meaning.
-	for _, in := range []string{"+1h", "+1.5h30m", "1000000μs", "1000000µs", "1000000us", "1500ns", ".5h", "5.h", "2h45m0.5s"} {
+	for _, in := range []string{"+1h", "+1.5h30m", "1.001s", "1000000μs", "1000000µs", "1000000us", "1500ns", ".5h", "5.h", "2h45m0.5s"} {
 		want, err := time.ParseDuration(in)
 		if err != nil {
 			t.Fatalf("time.ParseDuration(%q): %v", in, err)
