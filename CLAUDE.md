@@ -91,7 +91,8 @@ the PR. Budgets and CI mechanics live in `guardrails/README.md`. In the same PR:
 - Each server release targets the latest SigNoz release. Don't name SigNoz versions in tool or
   parameter descriptions, `signoz://` resources, or README tool sections.
 - Only expose features the SigNoz UI can render. An agent can save a query into a dashboard or
-  saved view, so a request type or panel the UI lacks breaks it there.
+  saved view, so a request type or panel the UI lacks (for example logs and traces heatmaps)
+  breaks it there.
 - The PR summary lists the doc and metadata updates and says whether SigNoz/agent-skills needs a
   companion change (CMP-3), with a link when it does. Changes to what skills teach need one: a
   renamed or removed tool or parameter, a payload shape, or documented behavior, like the

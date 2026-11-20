@@ -202,8 +202,8 @@
         "kind": "text",
         "uri": "signoz://dashboard/widgets-instructions",
         "mimeType": "text/markdown",
-        "serializedLength": 21550,
-        "sha256": "93d7102a38d8c936936e418dc743eaa4b3567a1b34371cc7de29b6330505ef87"
+        "serializedLength": 21342,
+        "sha256": "20dcc03c1f0ad5f323289df3a63f423747548034446aa7e218548d41a46d3037"
       }
     ]
   },
