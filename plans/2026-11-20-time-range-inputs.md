@@ -1,8 +1,8 @@
 # Plan: Relative and RFC 3339 Time Inputs
 
-Status: In Progress
+Status: Done
 Issue: https://github.com/SigNoz/nerve-pod/issues/235
-PR:
+PR: https://github.com/SigNoz/signoz-mcp-server/pull/467
 
 ## Context
 
@@ -210,4 +210,12 @@ Not covered, by decision:
 
 ## Outcome
 
-Pending.
+Implemented in SigNoz/signoz-mcp-server#467. All twelve time-windowed tools resolve their window
+through `ResolveWindow` and report the window queried. `make ci` passed, and codex-loop approved
+after three rounds; its one fix moved `signoz_query_metrics` window validation ahead of the
+metric metadata lookup.
+
+Deferred: a reference time and timezone, and the matching change to Noz's `<time_handling>`
+prompt, stay on SigNoz/nerve-pod#235. A window-length cap was declined (SigNoz/nerve-pod#217).
+Declined as minor: bounds with sub-millisecond precision can collapse into one millisecond on
+millisecond routes, and the service tools report their nanosecond bounds at millisecond precision.
