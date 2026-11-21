@@ -14,6 +14,14 @@ const (
 	MaxInputSchemaNestingDepth   = 13
 )
 
+// MaxToolResultChars is the ceiling for the default MCP_MAX_RESULT_CHARS cap on
+// the text of one tool result. Some MCP clients save a longer result to a file
+// instead of showing it (a 50,000-character rule), so an agent never reads
+// the rows. Real search_traces (124,829 characters at limit=100), search_logs
+// (61,132 at limit=100) and get_trace_details (1,175,207 for one trace)
+// results crossed it before the cap (#452).
+const MaxToolResultChars = 50000
+
 // Docs index memory budgets, enforced by TestGuardrail_DocsIndexBuildPeakHeap
 // against the embedded corpus. A single-batch build of ~750 pages peaks near
 // 325 MiB and is what OOM-killed 512Mi containers (#305); the chunked build

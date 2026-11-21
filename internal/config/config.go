@@ -50,6 +50,11 @@ type Config struct {
 
 	// MaxRequestBytes caps the size of an inbound MCP HTTP request body.
 	MaxRequestBytes int
+
+	// MaxResultChars caps the text characters of one tool result. A longer
+	// result is cut and tagged with a note. Zero or negative disables the cap
+	// (directly built configs only; the env var accepts positive values).
+	MaxResultChars int
 }
 
 const (
@@ -79,6 +84,7 @@ const (
 	DocsFullRefreshIntervalEnv = "SIGNOZ_DOCS_FULL_REFRESH_INTERVAL"
 
 	MaxRequestBytesEnv = "MCP_MAX_REQUEST_BYTES"
+	MaxResultCharsEnv  = "MCP_MAX_RESULT_CHARS"
 
 	defaultClientCacheSize       = 256
 	defaultClientCacheTTLMinutes = 30
@@ -90,6 +96,10 @@ const (
 	// defaultMaxRequestBytes bounds inbound MCP request bodies; 4 MiB is far
 	// above any legitimate tool-call payload (incl. dashboard imports).
 	defaultMaxRequestBytes = 4 << 20 // 4 MiB
+	// defaultMaxResultChars matches the 50,000-character line above which
+	// some MCP clients save a tool result to a file instead of showing it. The
+	// ceiling is pinned by guardrails.MaxToolResultChars.
+	defaultMaxResultChars = 50000
 )
 
 func LoadConfig() (*Config, error) {
@@ -153,6 +163,7 @@ func LoadConfig() (*Config, error) {
 		DocsRefreshInterval:  docsRefreshInterval,
 		DocsRefreshDisabled:  docsRefreshDisabled,
 		MaxRequestBytes:      getEnvInt(MaxRequestBytesEnv, defaultMaxRequestBytes),
+		MaxResultChars:       getEnvInt(MaxResultCharsEnv, defaultMaxResultChars),
 	}, nil
 }
 
