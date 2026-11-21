@@ -2,7 +2,7 @@
 
 Status: Done
 Issue: SigNoz/nerve-pod#667, SigNoz/nerve-pod#482
-PR:
+PR: https://github.com/SigNoz/signoz-mcp-server/pull/475
 
 ## Context
 
@@ -197,8 +197,10 @@ two rows carry two modes and the logs and AI guides row is mixed.
   - Order count passed in both builds, so the counter notes show no gain here, only no regression.
   - Two earlier rounds shaped the percentile text: an averaged-percentile note alone left models
     setting a window-long step, and a min/max bound led Haiku to report the bound.
-- `GOTOOLCHAIN=go1.26.11 make ci`, with a fresh module cache because a locally modified module
-  cache entry fails `go mod verify`.
+- `GOTOOLCHAIN=go1.26.11 make ci`: pass, with a fresh module cache because a locally modified
+  module-cache entry fails `go mod verify`, and with protocol and conformance port overrides because
+  another local process holds port 18080.
+- Full e2e suite against v0.151.0: 111 passed, 1 skipped (skipped on main as well).
 
 ## Outcome
 
