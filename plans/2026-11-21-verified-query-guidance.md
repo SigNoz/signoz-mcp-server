@@ -213,7 +213,7 @@ multi-shard cluster.
 | Trap | Status | Reason |
 |---|---|---|
 | Ungrouped count, rate, or latency over every span of one service | noted (`trace_all_spans`), `signoz_aggregate_traces` and `signoz_execute_builder_query` | the request shows it |
-| Scalar percentile reduced with avg, median, or sum | noted (`percentile_of_steps`), both metric paths | the request shows it; the same-steps bucket-count route is offered only for explicit-bucket histograms and keeps the caller's groups |
+| Scalar percentile reduced with avg, median, or sum | noted (`percentile_of_steps`), both metric paths | the request shows it; the bucket-count route is offered only for explicit-bucket histograms without having, keeps the caller's groups, and asks for a limit that returns every bucket |
 | Caller step at least as long as a window that starts mid-step | noted (`step_alignment`), both metric paths | found in the eval; behaviour pinned in e2e |
 | Scalar rate reduced with sum | noted (`rate_summed`), both metric paths | the request shows it |
 | Cumulative counter read without rate or increase | noted (`counter_running_total`), `signoz_query_metrics`; text only for `signoz_execute_builder_query` | needs monotonicity, which only the metadata lookup has |
@@ -285,7 +285,7 @@ An independent review of the first pass raised fourteen findings; each was check
 and SigNoz source.
 
 - C1: the bucket-count route covers the same aligned steps as the result, not the exact window;
-  the note says "over the same steps".
+  the note said "over the same steps" (superseded in the second review round below).
 - C2: a grouped percentile keeps its groups; the route adds le to the caller's groupBy keys and
   interpolates per group.
 - C3: the route is offered only for an explicit-bucket histogram (type histogram, or type unknown
@@ -308,6 +308,44 @@ and SigNoz source.
 - C13 and C14 (a sentence that predates this PR; a limit-plus-offset formula input) are declined
   as nits and left as follow-ups.
 
+### 2026-11-21 — Second review round
+
+The second round left C1 and C10 open and raised C15 to C24; each was checked against the code and
+SigNoz source.
+
+- C1: "the same steps" is not always true either (a cumulative percentile with no timeAggregation
+  can lose its first step, while the increase retry reads a preceding step and keeps it). The
+  recipe now offers a single percentile from each bucket's count and promises no steps or window,
+  in the note, the reduceTo description, and the guide.
+- C10: "is left out" became "can be left out" in the stepInterval description, guide, and README.
+- C15: SigNoz applies the limit after reduceTo, and with le in groupBy each bucket is a series, so
+  the recipe asks for a limit that returns every bucket of every group.
+- C16: SigNoz rewrites a histogram query that is not a percentile to increase with sum
+  (`rewriteQueryForHistogramCTE`), so rate with sum returns counts. rate_summed skips histograms
+  on both paths. e2e now pins the absolute counts (+Inf = 6 for six observations), and the guide's
+  "the le="+Inf" series is the total observation rate" now says count.
+- C17: a filter with NOT names no service, as with OR.
+- C18: with only the service argument the trace note says to set filter to the entry-span condition
+  and keep the service argument; with a filter it says to add it with AND. The span-metric notes
+  name the service in the trace call they suggest.
+- C19: a query with having gets the measurement sentence but no bucket recipe.
+- C20: SigNoz names the routing policies that use a channel; an alert rule's own policy is named
+  with the rule's ID. The delete description and recovery text say a UUID name is an alert rule and
+  any other name a routing policy in SigNoz settings.
+- C21: the alert guide scopes "can fire only a nodata alert" to an evaluation that returns no
+  series, and says an empty dry-run can be expected for a rare event.
+- C22: signoz_patch_dashboard, signoz_update_alert, and signoz_update_view carry the dry-run or
+  signal rule for changed queries or source; signoz_update_alert is at 1,024 bytes after rewording.
+- C23: the alert-unit e2e test gives the converted rule a below comparison and waits for both rules
+  to fire, with cleanup registered after each creation.
+- C24: declined as a nit; "also match" is the instructions' long-standing wording.
+- On a fresh cast the negative-filter e2e test failed: a key SigNoz has not indexed yet also matches
+  as a body JSON path, which the e2e ClickHouse rejects. The test now uses a per-run key scoped by
+  the service argument and waits until SigNoz answers, so every run takes that path.
+- The C16 count assertion failed once with 1, 2, 3: its two histogram points, 10 seconds apart and
+  not aged, could fall on either side of the last step boundary, so only one was read. The test now
+  ages them as the counter test does, so both sit in completed steps.
+
 ### 2026-11-21 — Mutation-side rules on the tools, schema pointers kept
 
 - Decision: rules that prevent a wrong result with no error go on the tool: the alert unit rule,
@@ -327,7 +365,7 @@ and SigNoz source.
 
 ## Verification
 
-- Handler tests: `measurement_notes_test.go` (47 cases: each note fires and its legitimate
+- Handler tests: `measurement_notes_test.go` (52 cases: each note fires and its legitimate
   neighbour does not, and the counter records tool and rule), the channel-in-use and older
   request-shape recovery texts.
 - e2e against v0.151.0, first pass: `test_entry_spans_count_each_request_once` (extended),
@@ -341,24 +379,26 @@ and SigNoz source.
   `test_channel_an_alert_routes_to_cannot_be_deleted`, `test_view_with_a_mismatched_signal_saves`,
   `test_older_request_shape_error_names_the_queries_list`.
 - EVL-1, origin/main against this branch, Claude Code CLI 2.1.330 with tool search on; the PR has
-  the setup and every row. Second-pass round on the final text: Haiku request p95 3/6 → 6/6,
-  request rate 3/6 → 6/6, histogram p95 0/6 → 6/6; Sonnet histogram p95 0/3 → 3/3; the span-count
-  and worst-minute negatives held in both builds. The new alert prompt passed in both builds
-  (main 17 of 18, branch 18 of 18 across two rounds); dry-running the query before creating the
-  rule went from 1 of 18 to 14 of 18, at about one more turn per session.
+  the setup and every row. Third-pass round on the final text: Haiku request p95 3/6 → 6/6,
+  histogram p95 0/6 → 6/6; Sonnet histogram p95 0/3 → 3/3; request rate passed in both builds this
+  round (the second-pass round had Haiku 3/6 → 6/6); the span-count and worst-minute negatives held.
+  The alert prompt passed in both builds; dry-running the query before creating the rule went from
+  1 of 9 to 7 of 9, at about one more turn per session.
 - `GOTOOLCHAIN=go1.26.11 make ci` with a temporary module cache (a locally modified cache entry
   fails `go mod verify`) and protocol and conformance port overrides (another local process holds
   port 18080). Full e2e suite against v0.151.0.
 
 ## Outcome
 
-Shipped as planned, plus the `step_alignment` rule the eval found, the review narrowing (C1 to
-C12), and the second audit pass with its fixes. Deferred:
+Shipped as planned, plus the `step_alignment` rule the eval found, the fixes from two
+review rounds (C1 to C23, less the declined C13 and C14), and the second audit pass with its
+fixes. Deferred:
 
 - `GLOBAL IN` for ClickHouse SQL: not verifiable on the single-shard e2e cast.
 - The other 10 claims marked not verified in this pass (alert top-N, severity labels, first aggregation,
   metric defaults for alerts, evaluation formats, patch rejections, heatmap rules, list-filter
   rules, Alertmanager matchers, explorer rendering of mismatched views), and an alertType that does
   not match its query signal.
-- Review findings C13 and C14 (a sentence that predates this PR; a limit-plus-offset formula input).
+- Review findings C13, C14, and C24 (a sentence that predates this PR; a limit-plus-offset formula
+  input; wording the instructions have long used).
 - Skill changes are tracked in SigNoz/nerve-pod#436; behaviour bugs are in SigNoz/nerve-pod#674.

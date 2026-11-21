@@ -60,14 +60,15 @@ metric type cannot say what the question asks:
 Summing a rate series is not a total count: use timeAggregation increase with reduceTo sum for the
 count, or reduceTo avg for the average per-second rate. Averaging per-step percentiles is not a
 whole-window percentile; the window's percentile lies between what reduceTo min and max return.
-For one percentile of an explicit-bucket histogram over the same steps, read each bucket's count with
-timeAggregation increase, spaceAggregation sum, reduceTo sum, and le added to groupBy, then
-interpolate within the first bucket whose count reaches the percentile's share of the total, per
-group when the query is grouped. An exponential histogram has no le buckets for this.
+For a single percentile of an explicit-bucket histogram, read each bucket's count with
+timeAggregation increase, spaceAggregation sum, reduceTo sum, le added to groupBy, and a limit that
+returns every bucket of every group (SigNoz applies the limit to the reduced series, one per bucket),
+then interpolate within the first bucket whose count reaches the percentile's share of the total,
+per group when the query is grouped. An exponential histogram has no le buckets for this.
 A step as long as the window does not give one window-wide value either: SigNoz starts steps at
 multiples of the step since the Unix epoch, so unless the window starts on such a multiple, the first
 step reaches back before the window or, for a cumulative histogram percentile with no
-timeAggregation, is left out.
+timeAggregation, can be left out.
 For a cumulative histogram, PromQL through signoz_execute_builder_query with requestType scalar
 also returns the window's percentile, with the window length as the range:
 
@@ -88,7 +89,7 @@ needs its own reduceTo.
 
 1. **Counters**: rate gives per-second throughput and increase gives the count added per bucket. latest, max, min, avg, or sum on a cumulative counter works on its running total, not activity in the window, and count counts its samples.
 2. **Gauges**: avg, max, or latest. rate and increase run but measure how the value changed, which is rarely what a gauge question asks.
-3. **Histograms**: SigNoz stores a histogram named X as X.bucket (type histogram) plus the counters X.count and X.sum; query X.bucket, not X. Leave timeAggregation empty and pick a percentile for latency. To read the buckets instead, use timeAggregation rate with spaceAggregation sum: the result is grouped by le, and the le="+Inf" series is the total observation rate.
+3. **Histograms**: SigNoz stores a histogram named X as X.bucket (type histogram) plus the counters X.count and X.sum; query X.bucket, not X. Leave timeAggregation empty and pick a percentile for latency. To read the buckets instead, use spaceAggregation sum grouped by le: SigNoz reads a histogram's buckets as the increase per step whatever timeAggregation says, so each le series is a count and the le="+Inf" series is the total observation count.
 4. **Summaries**: query the .quantile series with both aggregations set, for example avg and max, grouped by quantile; the .count and .sum series are counters.
 5. **Providing only metricType for a counter** → This bypasses metadata auto-fetch and can leave temporality or monotonicity unspecified. Either omit metricType so all metadata is fetched, or pass the matching values from signoz_list_metrics.
 6. **Span metrics**: signoz_calls_total and signoz_latency come from every span, labelled with span.kind and operation, so a request that records several spans counts several times. For a service's request count, rate, or latency use signoz_list_services, or signoz_aggregate_traces with isEntryPoint = true OR isRoot = true.

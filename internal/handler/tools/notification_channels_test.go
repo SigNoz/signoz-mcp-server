@@ -107,8 +107,8 @@ func TestNotificationChannelFailuresKeepTheProviderSecretOutOfLogs(t *testing.T)
 	})
 }
 
-// SigNoz lists an alert rule that routes to the channel as a routing policy,
-// so the error gains the step that re-routes the rule.
+// SigNoz names an alert rule's own routing policy with the rule's ID, so the
+// error says how to tell a rule from a routing policy and re-route each.
 func TestDeleteNotificationChannel_InUseSaysTheIDsCanBeAlertRules(t *testing.T) {
 	h, _ := newAIToolsHandler(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
@@ -127,7 +127,7 @@ func TestDeleteNotificationChannel_InUseSaysTheIDsCanBeAlertRules(t *testing.T) 
 			text.WriteString(block.Text + "\n")
 		}
 	}
-	for _, want := range []string{"used by the following routing policies", "an ID in that list can be an alert rule's; check it with signoz_get_alert"} {
+	for _, want := range []string{"used by the following routing policies", "a name in that list that is a UUID is an alert rule's own routing policy; check it with signoz_get_alert", "Any other name is a routing policy in SigNoz settings"} {
 		if !strings.Contains(text.String(), want) {
 			t.Fatalf("delete error lacks %q:\n%s", want, text.String())
 		}

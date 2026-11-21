@@ -265,10 +265,10 @@ func (h *Handler) RegisterDashboardHandlers(s *mcp.Server) {
 			"Apply a partial update to a v2 dashboard using an RFC 6902 JSON Patch, without re-sending the whole dashboard. "+
 				"Supply the dashboard 'id' and 'patch' (an array of {op, path, value} operations). Paths are JSON Pointers into the dashboard's postable shape, "+
 				"e.g. /spec/display/name, /spec/panels/<panelId>, /spec/panels/<panelId>/spec/queries/0, /spec/variables/0, /tags/-. "+
-				"Prefer this over signoz_update_dashboard for targeted changes (renaming, adding/editing one panel or query, tweaking a variable); it is far cheaper than rebuilding the full dashboard. "+
+				"Prefer this over signoz_update_dashboard for targeted changes (renaming, adding/editing one panel or query, tweaking a variable). "+
 				"Apply is lenient (remove on a missing path is a no-op; add creates missing parents) but the result is still validated; locked dashboards are rejected. "+
 				"Adding a panel takes two ops, the panel and a grid item at /spec/layouts/0/spec/items/-; SigNoz saves a panel with no grid item but leaves it out of the layout. "+
-				"signoz://dashboard/patch-instructions has worked recipes and exact paths.",
+				"SigNoz saves a query with no data, so dry-run changed queries through signoz_execute_builder_query. signoz://dashboard/patch-instructions has worked recipes and exact paths.",
 		),
 		rawInputSchema(patchDashboardSchema),
 	)

@@ -126,7 +126,7 @@ func (h *Handler) handleAggregateTraces(ctx context.Context, req mcp.CallToolReq
 	}
 
 	notes := []string{windowNote(reqData.StartTime, reqData.EndTime)}
-	if note, ok := traceAllSpansNote(reqData.FilterExpression, len(reqData.GroupBy), reqData.Aggregations, reqData.QueryType); ok {
+	if note, ok := traceAllSpansNote(reqData.FilterExpression, stringValue(args["filter"]), len(reqData.GroupBy), reqData.Aggregations, reqData.QueryType); ok {
 		notes = append(notes, h.recordMeasurementNotes(ctx, "signoz_aggregate_traces", []measurementNote{note})...)
 	}
 	notes = append(notes, aggregateNotes(reqData)...)

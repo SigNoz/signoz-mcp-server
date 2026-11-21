@@ -483,7 +483,7 @@ For detailed usage and examples, see the [full documentation](https://signoz.io/
 
 > **Resource deep links:** the resource read tools (`signoz_list_dashboards`, `signoz_get_dashboard`, `signoz_list_alerts`, `signoz_list_alert_rules`, `signoz_get_alert`, `signoz_list_services`, `signoz_search_traces`, `signoz_get_trace_details`) and the dashboard write tools (`signoz_create_dashboard`, `signoz_update_dashboard`, `signoz_patch_dashboard`, `signoz_import_dashboard`) include a `webUrl` field when the request carries a SigNoz instance URL: an absolute deep link to the resource in the SigNoz web UI (per result row for `signoz_search_traces`). The MCP server discovers the browser base from each SigNoz backend's `global.external_url`. API requests keep using the request's backend URL. See [Browser links for self-hosted SigNoz](#browser-links-for-self-hosted-signoz).
 
-> **Measurement notes:** when a successful query has a shape that often answers a different question than asked, the result carries a note saying what it measured, and the fix where it was checked against SigNoz. `signoz_aggregate_traces` and `signoz_execute_builder_query` note an ungrouped count, rate, or latency over every span of one service. `signoz_query_metrics` and `signoz_execute_builder_query` note a scalar percentile reduced with `avg`, `median`, or `sum` (with the bucket-count route to one percentile over the same steps for an explicit-bucket histogram), a caller-set step at least as long as a window that does not start on a multiple of it, a summed rate, and `signoz_calls_total` or `signoz_latency` for one service; `signoz_query_metrics` also notes a cumulative counter read with anything but `rate` or `increase`, and `signoz_execute_builder_query` a formula input with its own limit. The server counts each note in the `mcp.tool.result.measurement_notes` metric by tool and rule.
+> **Measurement notes:** when a successful query has a shape that often answers a different question than asked, the result carries a note saying what it measured, and the fix where it was checked against SigNoz. `signoz_aggregate_traces` and `signoz_execute_builder_query` note an ungrouped count, rate, or latency over every span of one service. `signoz_query_metrics` and `signoz_execute_builder_query` note a scalar percentile reduced with `avg`, `median`, or `sum` (with the bucket-count route to a single percentile for an explicit-bucket histogram), a caller-set step at least as long as a window that does not start on a multiple of it, a summed rate, and `signoz_calls_total` or `signoz_latency` for one service; `signoz_query_metrics` also notes a cumulative counter read with anything but `rate` or `increase`, and `signoz_execute_builder_query` a formula input with its own limit. The server counts each note in the `mcp.tool.result.measurement_notes` metric by tool and rule.
 
 > **Time windows:** the tools that take `start`, `end`, and `timeRange` (`signoz_search_logs`, `signoz_aggregate_logs`, `signoz_search_traces`, `signoz_aggregate_traces`, `signoz_query_metrics`, `signoz_list_metrics`, `signoz_get_top_metrics`, `signoz_check_metric_cardinality`, `signoz_get_alert_history`, `signoz_list_services`, `signoz_get_service_top_operations`, and `signoz_get_service_map`) report the window they queried in RFC 3339 UTC and Unix milliseconds. Text results append a note such as `window queried: 2026-11-19T09:00:00Z to 2026-11-19T10:00:00Z (Unix ms 1795078800000 to 1795082400000)`; `signoz_list_services` and `signoz_get_service_map` return a `window` object with `start`, `end`, `startMs`, and `endMs`. `signoz_execute_builder_query` takes its window in the request body and reports none.
 
@@ -573,9 +573,9 @@ Query a known metric for values, trends, breakdowns, or formulas. The tool appli
   - `filter` (optional) - Filter expression. Pass the expression text, not `{"expression": ...}`, which is rejected with a coded error. Regex matches use `REGEXP`, not PromQL's `=~`; a `=~` or `!~` that SigNoz rejects comes back with that hint. The former `query` alias is rejected with a coded error that names `filter`
   - `timeRange` (optional) - Window ending now, as a duration such as '30m', '6h', '7d', or '2w'; units are `s`, `m`, `h`, `d` (24h), and `w` (7d) (default: '1h'; ignored when `start` is set)
   - `start`/`end` (optional) - A fixed window: an RFC 3339 date-time with `Z` or an offset, or Unix epoch milliseconds. With `start`, the window runs from `start` to `end` (default now) and `timeRange` is ignored. `end` without `start` is rejected with the `start` to add.
-  - `stepInterval` (optional) - Step in seconds (auto-calculated if omitted); a scalar request reduces one value per step. SigNoz starts steps at multiples of the step since the Unix epoch, so a step as long as the window is one step only when the window starts on such a multiple; otherwise the first step reaches back before the window or, for a cumulative histogram percentile, is left out
+  - `stepInterval` (optional) - Step in seconds (auto-calculated if omitted); a scalar request reduces one value per step. SigNoz starts steps at multiples of the step since the Unix epoch, so a step as long as the window is one step only when the window starts on such a multiple; otherwise the first step reaches back before the window or, for a cumulative histogram percentile, can be left out
   - `requestType` (optional) - Response format. Enum: `time_series` (default), `scalar`. Unknown values are rejected.
-  - `reduceTo` (required when `requestType` is `scalar`) - How to reduce each series, which holds one value per step, to one value: `last`, `max`, `min`, `avg`, `sum`, `count`, `median`. It has no default; SigNoz rejects a scalar request without it. For a total count use `timeAggregation: increase` with `reduceTo: sum`; summing rates is not a count. With a percentile, every reducer works on per-step percentiles, so none gives the window's percentile; for one percentile of an explicit-bucket histogram over the same steps, read each bucket's count with `timeAggregation: increase`, `spaceAggregation: sum`, `reduceTo: sum`, and `le` added to `groupBy`, then interpolate
+  - `reduceTo` (required when `requestType` is `scalar`) - How to reduce each series, which holds one value per step, to one value: `last`, `max`, `min`, `avg`, `sum`, `count`, `median`. It has no default; SigNoz rejects a scalar request without it. For a total count use `timeAggregation: increase` with `reduceTo: sum`; summing rates is not a count. With a percentile, every reducer works on per-step percentiles, so none gives the window's percentile; for a single percentile of an explicit-bucket histogram, read each bucket's count with `timeAggregation: increase`, `spaceAggregation: sum`, `reduceTo: sum`, `le` added to `groupBy`, and a `limit` that returns every bucket, then interpolate
   - `formula` (optional) - Expression over named queries (e.g., "A / B * 100")
   - `formulaQueries` (optional) - Array of additional named metric queries for `formula`, or a JSON-encoded string of that array. The item schema is typed: `name` and `metricName` are required; `metricType`, `isMonotonic`, `temporality`, `timeAggregation`, `spaceAggregation`, `reduceTo`, `groupBy` (array or comma-separated string), and `filter` mirror the top-level parameters and are auto-fetched or defaulted the same way.
   - `limit` (optional) - Maximum number of groups (series) in the result (default: 100, max: 10000; higher values are clamped). With a formula, limit applies to the formula result; formula inputs are not limited
@@ -711,7 +711,7 @@ Fully replaces an existing dashboard. Fetch it with `signoz_get_dashboard`, take
 
 #### `signoz_patch_dashboard`
 
-Applies an RFC 6902 JSON Patch to a dashboard: a partial update without re-sending the entire dashboard. Prefer this over `signoz_update_dashboard` for targeted edits (rename, add/edit one panel or query, tweak a variable). Adding a panel takes two ops, the panel and a grid item at `/spec/layouts/0/spec/items/-`; SigNoz saves a panel with no grid item but leaves it out of the layout. `signoz://dashboard/patch-instructions` has worked recipes and exact paths.
+Applies an RFC 6902 JSON Patch to a dashboard: a partial update without re-sending the entire dashboard. Prefer this over `signoz_update_dashboard` for targeted edits (rename, add/edit one panel or query, tweak a variable). Adding a panel takes two ops, the panel and a grid item at `/spec/layouts/0/spec/items/-`; SigNoz saves a panel with no grid item but leaves it out of the layout. SigNoz also saves a query with no data, so dry-run changed queries through `signoz_execute_builder_query`. `signoz://dashboard/patch-instructions` has worked recipes and exact paths.
 
 - **Parameters:**
   - `id` (required) – Dashboard id (the legacy `uuid` key is also accepted)
@@ -835,7 +835,7 @@ Save one reusable Explorer query spec. Use `signoz_create_dashboard` for a multi
 
 #### `signoz_update_view`
 
-Fully replace an existing saved Explorer view. Fetch it with `signoz_get_view`, modify its returned `data` object, preserve every unrequested field, and pass that full object as `view`. Upstream keeps `name` immutable on update; the display label lives in `spec.displayName`.
+Fully replace an existing saved Explorer view. Fetch it with `signoz_get_view`, modify its returned `data` object, preserve every unrequested field, and pass that full object as `view`. Upstream keeps `name` immutable on update; the display label lives in `spec.displayName`. When changing source or queries, keep every `builder_query` signal equal to `source` (metrics for a Cost Meter view); SigNoz saves a mismatch.
 
 - **Parameters**:
   - `id` (required) - UUID of the view to replace
@@ -1029,7 +1029,7 @@ Create a new alert rule in SigNoz via `POST /api/v2/rules`.
 
 #### `signoz_update_alert`
 
-Update an existing alert rule via `PUT /api/v2/rules/{id}`. This fully replaces the rule: reuse `signoz_get_alert`, `signoz://alert/instructions`, `signoz://alert/examples`, and fully paginated `signoz_list_notification_channels` results only from the same still-current prepared operation; otherwise read/call them, refreshing only if state may have changed, then preserve unchanged fields. Direct v2 needs an exact listed displayName on every tier; confirmed v2 policy routing may omit them.
+Update an existing alert rule via `PUT /api/v2/rules/{id}`. This fully replaces the rule: reuse `signoz_get_alert`, `signoz://alert/instructions`, `signoz://alert/examples`, and fully paginated `signoz_list_notification_channels` results only from the same still-current prepared operation; otherwise read/call them, refreshing only if state may have changed, then preserve unchanged fields. Direct v2 needs an exact listed displayName on every tier; confirmed v2 policy routing may omit them. SigNoz saves a rule whose query has no data, so dry-run changed queries through `signoz_execute_builder_query`.
 
 - **Parameters**:
   - `id` (required) - UUIDv7 of the rule to update (obtain from `signoz_list_alert_rules` / `signoz_get_alert`).
@@ -1123,8 +1123,9 @@ for updates without displaying or logging secrets. **Parameter**: `id`.
 Permanently delete a confirmed channel by `id`. Resolve and confirm the exact
 channel first; call directly when those steps are already complete. SigNoz
 rejects deleting a channel that an alert rule or routing policy routes to and
-lists their IDs as routing policies; an ID there can be an alert rule's, so the
-error adds a recovery note to check it with `signoz_get_alert` and re-route it.
+names those routing policies. A name that is a UUID is an alert rule's own
+policy, which `signoz_get_alert` reads; any other name is a routing policy in
+SigNoz settings. The error adds a recovery note saying so.
 
 #### `signoz_submit_feedback`
 

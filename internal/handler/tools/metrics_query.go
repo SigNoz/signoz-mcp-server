@@ -268,6 +268,7 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 			StepSeconds:      effectiveStep,
 			CallerStep:       callerProvidedStep,
 			HasFunctions:     len(mqr.Functions) > 0,
+			HasHaving:        strings.TrimSpace(mqr.Having) != "",
 			StartMs:          startTime,
 			EndMs:            endTime,
 		}))...)

@@ -333,12 +333,14 @@ def test_negative_filters_also_match_rows_missing_the_field(
     mcp_client: MCPClient, test_id: str, telemetry: None
 ) -> None:
     """Pins the negative-filter rule the instructions and guides teach: != and NOT IN keep rows with no such key."""
+    service = f"mcp-e2e-{test_id}"
+    # A key SigNoz has not indexed yet also matches as a body JSON path, which the e2e ClickHouse rejects;
+    # a per-run key takes that path every run, so the wait below covers it.
+    key = f"mcp_e2e_team_{test_id.replace('-', '_')}"
     now = time.time_ns()
     records = []
     for i, team in enumerate(["a", "a", "b", None, None]):
-        attributes = [{"key": "e2e.case", "value": {"stringValue": test_id}}]
-        if team:
-            attributes.append({"key": "e2e.team", "value": {"stringValue": team}})
+        attributes = [{"key": key, "value": {"stringValue": team}}] if team else []
         records.append(
             {
                 "timeUnixNano": str(now - i * 1_000_000_000),
@@ -350,30 +352,32 @@ def test_negative_filters_also_match_rows_missing_the_field(
     payload = {
         "resourceLogs": [
             {
-                "resource": {"attributes": [{"key": "service.name", "value": {"stringValue": f"mcp-e2e-{test_id}"}}]},
+                "resource": {"attributes": [{"key": "service.name", "value": {"stringValue": service}}]},
                 "scopeLogs": [{"scope": {"name": "signoz-mcp-e2e"}, "logRecords": records}],
             }
         ]
     }
     requests.post(f"{OTLP_ENDPOINT}/v1/logs", json=payload, timeout=30).raise_for_status()
 
-    def count(condition: str) -> int:
-        result = assert_tool_ok(
-            mcp_client.call_tool(
-                "signoz_aggregate_logs",
-                {
-                    "searchContext": "count rows outside team a",
-                    "aggregations": "count()",
-                    "filter": f"e2e.case = '{test_id}' AND ({condition})",
-                    "timeRange": "1h",
-                },
-            )
+    def count(condition: str) -> int | None:
+        result = mcp_client.call_tool(
+            "signoz_aggregate_logs",
+            {
+                "searchContext": "count rows outside team a",
+                "aggregations": "count()",
+                "service": service,
+                "filter": condition,
+                "timeRange": "1h",
+            },
         )
-        payload = json.loads(first_text_block(result))
-        rows = [row for r in payload["data"]["data"]["results"] for row in r.get("data") or []]
+        if result.get("isError"):
+            return None
+        rows = [
+            row for r in json.loads(first_text_block(result))["data"]["data"]["results"] for row in r.get("data") or []
+        ]
         return int(rows[0][-1]) if rows else 0
 
-    wait_for(lambda: count("e2e.team EXISTS") == 3, "the rows with a team")
-    assert count("e2e.team != 'a'") == 3, "!= keeps team b and both rows with no team"
-    assert count("e2e.team NOT IN ('a')") == 3, "NOT IN keeps rows with no team too"
-    assert count("e2e.team EXISTS AND e2e.team != 'a'") == 1, "EXISTS drops the rows with no team"
+    wait_for(lambda: count(f"{key} EXISTS") == 3, "the rows with a team, once SigNoz has indexed the key")
+    assert count(f"{key} != 'a'") == 3, "!= keeps team b and both rows with no team"
+    assert count(f"{key} NOT IN ('a')") == 3, "NOT IN keeps rows with no team too"
+    assert count(f"{key} EXISTS AND {key} != 'a'") == 1, "EXISTS drops the rows with no team"

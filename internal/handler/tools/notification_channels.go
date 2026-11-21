@@ -40,7 +40,7 @@ func (h *Handler) RegisterNotificationChannelHandlers(server *mcp.Server) {
 	), h.handleGetNotificationChannel)
 	h.addTool(server, mcp.NewTool("signoz_delete_notification_channel",
 		withDeleteToolAnnotations(),
-		mcp.WithDescription("Permanently delete one notification channel by ID after the user has confirmed the exact channel. SigNoz rejects deleting a channel that an alert rule or routing policy routes to and lists their IDs as routing policies; an ID there can be an alert rule's (signoz_get_alert), so re-route those first."),
+		mcp.WithDescription("Permanently delete one notification channel by ID after the user has confirmed the exact channel. SigNoz rejects deleting a channel that an alert rule or routing policy routes to and names those routing policies: a name that is a UUID is an alert rule's own policy (check it with signoz_get_alert); any other name is a routing policy in SigNoz settings. Re-route them first."),
 		notificationSchemaOption(notificationIDSchema()),
 	), h.handleDeleteNotificationChannel)
 
@@ -121,11 +121,11 @@ func (h *Handler) handleGetNotificationChannel(ctx context.Context, req mcp.Call
 	return structuredResult(channel), nil
 }
 
-// SigNoz refuses to delete a channel that routes alerts and lists what uses
-// it as routing policies, although the IDs include alert rules' own IDs.
+// SigNoz refuses to delete a channel that routes alerts and names the routing
+// policies that use it; an alert rule's own policy is named with the rule's ID.
 const (
 	channelInUseError    = "cannot be deleted because it is used by the following routing policies"
-	channelInUseRecovery = "recovery: an ID in that list can be an alert rule's; check it with signoz_get_alert and route that rule to another channel with signoz_update_alert before deleting this one."
+	channelInUseRecovery = "recovery: a name in that list that is a UUID is an alert rule's own routing policy; check it with signoz_get_alert and route that rule to another channel with signoz_update_alert. Any other name is a routing policy in SigNoz settings; change it there. Then delete the channel."
 )
 
 func (h *Handler) handleDeleteNotificationChannel(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

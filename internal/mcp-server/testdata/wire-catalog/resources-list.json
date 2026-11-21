@@ -34,7 +34,7 @@
           "description": "Read this before creating or updating an alert unless its current content was already read for the same prepared operation. It explains the query envelopes, threshold tiers, and evaluation specs the input schema does not describe, anomaly scoring, and when to reuse or call signoz_list_notification_channels. Read signoz://alert/examples only when examples are still needed.",
           "mimeType": "text/markdown",
           "name": "Alert Rule Instructions",
-          "size": 22066,
+          "size": 22195,
           "uri": "signoz://alert/instructions"
         },
         {
@@ -132,7 +132,7 @@
           "description": "Read this before choosing aggregations for signoz_query_metrics or building metrics Query Builder JSON. It explains timeAggregation, spaceAggregation, and reduceTo by metric type; formulas and limits; groupBy and filter label names; top-N selection across the full window; step intervals; examples; and Cost Meter queries.",
           "mimeType": "text/markdown",
           "name": "Metrics Aggregation Guide",
-          "size": 14018,
+          "size": 14202,
           "uri": "signoz://metrics-aggregation-guide"
         },
         {

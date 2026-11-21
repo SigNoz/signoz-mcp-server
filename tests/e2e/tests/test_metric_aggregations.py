@@ -1,9 +1,10 @@
 """query_metrics forwards aggregation combinations for SigNoz to validate.
 
 Pins the combinations signoz://metrics-aggregation-guide teaches beyond the
-type defaults: a running total from a counter, and histogram buckets read
-with rate and sum. Also pins what scalar reducers measure, which the result
-notes state: per-step percentiles and summed rates are not window values.
+type defaults: a running total from a counter, and histogram buckets, which
+SigNoz returns as counts even when timeAggregation is rate. Also pins what
+scalar reducers measure, which the result notes state: per-step percentiles
+and summed rates are not window values.
 """
 
 import json
@@ -70,8 +71,9 @@ def _bucket_rates(body: str) -> dict[str, float]:
 
 def test_histogram_buckets_read_with_rate_and_sum(mcp_client: MCPClient, test_id: str, telemetry: None) -> None:
     name = f"mcp_e2e_hist_{test_id.replace('-', '_')}"
-    # One observation per bucket, so the cumulative le buckets hold 1, 2, and 3.
-    seed_metrics(f"mcp-e2e-{test_id}", name, count=2, kind="histogram")
+    # One observation per bucket per point, so each point's cumulative le buckets hold 1, 2, and 3.
+    # Aged so both points sit in completed steps and are read together.
+    seed_metrics(f"mcp-e2e-{test_id}", name, count=2, kind="histogram", age_seconds=120)
     # SigNoz stores the buckets as <name>.bucket, as the guide teaches.
     metric = f"{name}.bucket"
 
@@ -94,10 +96,9 @@ def test_histogram_buckets_read_with_rate_and_sum(mcp_client: MCPClient, test_id
         return rates if len(rates) == 3 and all(rate > 0 for rate in rates.values()) else {}
 
     rates = wait_for(buckets, f"histogram {metric} rates for all three buckets")
-    # Ratios hold for any window and step; +Inf is the total observation rate.
-    lowest = rates["10"]
-    assert rates["100"] == pytest.approx(2 * lowest), f"bucket rates: {rates}"
-    assert rates["+Inf"] == pytest.approx(3 * lowest), f"bucket rates: {rates}"
+    # SigNoz reads a histogram's buckets with increase whatever timeAggregation says, so rate
+    # returns counts: two points of one observation per bucket, cumulative by le.
+    assert rates == {"10": 2, "100": 4, "+Inf": 6}, f"bucket counts: {rates}"
 
 
 def test_metadata_lookup_matches_the_exact_name(mcp_client: MCPClient, test_id: str, telemetry: None) -> None:
@@ -207,7 +208,7 @@ def test_window_percentile_is_not_the_mean_of_step_percentiles(
         averaged = wait_for(lambda m=metric: all_minutes(m), f"all ten minutes of {metric}")
         notes = note_blocks(averaged)
         assert "reduceTo avg combined the p95 of each 60s step" in notes, notes
-        assert "groupBy le, which returns each bucket's count over the same steps" in notes, notes
+        assert "groupBy le, and a limit that returns every bucket of every group" in notes, notes
         low = _scalar_values(first_text_block(p95(metric, "min")))
         high = _scalar_values(first_text_block(p95(metric, "max")))
         assert low == [16.667] and high == [96.875], f"{metric}: min {low}, max {high}"

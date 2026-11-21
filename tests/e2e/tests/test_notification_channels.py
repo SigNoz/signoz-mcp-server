@@ -301,7 +301,7 @@ def test_update_unsets_template_field_by_omission_never_by_blanking(mcp_client: 
 
 
 def test_channel_an_alert_routes_to_cannot_be_deleted(mcp_client: MCPClient, test_id: str) -> None:
-    """Pins the delete tool's rule: SigNoz refuses, listing the alert rule's ID as a routing policy."""
+    """Pins the delete tool's rule: SigNoz refuses, naming the rule's own routing policy with the rule's ID."""
     name = f"mcp-e2e-{test_id}-routed"
     channel_id = create_channel(mcp_client, name, {"kind": "webhook", "spec": {"url": "http://example.invalid/routed"}})
     rule_id = ""
@@ -313,7 +313,7 @@ def test_channel_an_alert_routes_to_cannot_be_deleted(mcp_client: MCPClient, tes
         assert refused.get("isError", False), "a channel an alert routes to was deleted"
         text = text_blocks(refused)
         assert rule_id in text and "routing policies" in text, text
-        assert "check it with signoz_get_alert" in text, text
+        assert "a name in that list that is a UUID is an alert rule's own routing policy" in text, text
     finally:
         if rule_id:
             delete_rule(mcp_client, rule_id)

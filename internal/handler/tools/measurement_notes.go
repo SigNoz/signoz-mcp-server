@@ -67,7 +67,7 @@ var (
 	// One service.name (optionally resource.-prefixed) with = or a one-value IN.
 	singleServicePattern = regexp.MustCompile(`(?i)(?:resource\.)?service\.name\s*(?:=\s*'((?:[^'\\]|\\.)*)'|IN\s*\(\s*'((?:[^'\\]|\\.)*)'\s*\))`)
 	serviceKeyPattern    = regexp.MustCompile(`(?i)\bservice\.name\b`)
-	orPattern            = regexp.MustCompile(`(?i)\bOR\b`)
+	widenPattern         = regexp.MustCompile(`(?i)\b(?:OR|NOT)\b`)
 	// A predicate on the span name narrows to chosen operations; service.name
 	// and other dotted keys ending in name are excluded by the leading boundary.
 	spanNamePredicatePattern = regexp.MustCompile(`(?i)(?:^|[\s(])(?:span\.)?name\s*(?:=|!=|<>|\bIN\b|\bNOT\b|\bLIKE\b|\bILIKE\b|\bCONTAINS\b|\bREGEXP\b|\bEXISTS\b)`)
@@ -76,9 +76,9 @@ var (
 )
 
 // filterService returns the one service a filter is scoped to, or "" when it
-// names none or more than one, or has an OR that can widen the scope.
+// names none or more than one, or has an OR or NOT that can widen the scope.
 func filterService(filter string) string {
-	if len(serviceKeyPattern.FindAllStringIndex(filter, -1)) != 1 || orPattern.MatchString(filter) {
+	if len(serviceKeyPattern.FindAllStringIndex(filter, -1)) != 1 || widenPattern.MatchString(filter) {
 		return ""
 	}
 	match := singleServicePattern.FindStringSubmatch(filter)
@@ -95,8 +95,9 @@ func filterService(filter string) string {
 // traceAllSpansNote fires on an ungrouped count, rate, or latency over every
 // span of one service. SigNoz counts each matching span, so a request that
 // records several spans counts several times; signoz_list_services scopes the
-// same question to entry spans.
-func traceAllSpansNote(filter string, groupBy int, aggregations []string, queryType string) (measurementNote, bool) {
+// same question to entry spans. callerFilter is the filter argument as sent,
+// without the service shortcut, which decides how the fix reads.
+func traceAllSpansNote(filter, callerFilter string, groupBy int, aggregations []string, queryType string) (measurementNote, bool) {
 	if groupBy > 0 || queryType == querybuilder.QueryTypeBuilderAI {
 		return measurementNote{}, false
 	}
@@ -128,10 +129,14 @@ func traceAllSpansNote(filter string, groupBy int, aggregations []string, queryT
 	if !matched {
 		return measurementNote{}, false
 	}
+	fix := "add AND (isEntryPoint = true OR isRoot = true) to the filter"
+	if strings.TrimSpace(callerFilter) == "" {
+		fix = "set filter to isEntryPoint = true OR isRoot = true and keep the service argument"
+	}
 	return measurementNote{rule: ruleTraceAllSpans, text: fmt.Sprintf(
 		"note: this aggregates every span of service %q that matches the filter, not its requests; one request can record several spans, including a server span nested inside another. "+
-			"For the service's requests (request count, rate, or latency), add AND (isEntryPoint = true OR isRoot = true) to the filter, as signoz_list_services does.",
-		service)}, true
+			"For the service's requests (request count, rate, or latency), %s, as signoz_list_services does.",
+		service, fix)}, true
 }
 
 // --- metrics ---
@@ -151,6 +156,7 @@ type metricMeasurement struct {
 	StepSeconds      int64
 	CallerStep       bool // the caller set stepInterval
 	HasFunctions     bool // post-query functions change what each step holds
+	HasHaving        bool // a having filter drops buckets the percentile needs
 	StartMs, EndMs   int64
 }
 
@@ -193,9 +199,10 @@ func stepPhrase(step int64) string {
 // percentileOfStepsNote fires when a scalar request reduces per-step
 // percentiles with avg, median, or sum. SigNoz computes the percentile within
 // each step and then reduces the series, so the result is not the percentile
-// of the window. For an explicit-bucket histogram, each bucket's count over the
-// same steps, read with increase and summed by le, gives one percentile over
-// them by interpolation.
+// of the window. For an explicit-bucket histogram, each bucket's count, read
+// with increase and summed by le, gives a single percentile by interpolation;
+// the limit must return every bucket of every group, because SigNoz applies it
+// to the reduced series. A having filter can drop buckets, so it gets no recipe.
 func percentileOfStepsNote(m metricMeasurement) (measurementNote, bool) {
 	match := percentilePattern.FindStringSubmatch(strings.ToLower(m.SpaceAggregation))
 	if m.RequestType != "scalar" || match == nil {
@@ -214,17 +221,21 @@ func percentileOfStepsNote(m metricMeasurement) (measurementNote, bool) {
 	text := fmt.Sprintf(
 		"note: reduceTo %s combined the %s of each %s, so this is not the %s over the whole window.",
 		reduce, percentile, stepPhrase(m.StepSeconds), percentile)
-	if m.MetricType == "histogram" || m.MetricType == "" && strings.HasSuffix(m.MetricName, ".bucket") {
+	if explicitBucketHistogram(m) && !m.HasHaving {
 		keys := append(append([]string(nil), m.GroupBy...), "le")
 		perGroup := ""
 		if len(m.GroupBy) > 0 {
 			perGroup = " within each group"
 		}
 		text += fmt.Sprintf(
-			" For one %s over the same steps, query %s again with timeAggregation increase, spaceAggregation sum, reduceTo sum, and groupBy %s, which returns each bucket's count over the same steps, and interpolate%s within the first bucket whose count reaches %s%% of the total.",
+			" For a single %s, query %s again with timeAggregation increase, spaceAggregation sum, reduceTo sum, groupBy %s, and a limit that returns every bucket of every group, then interpolate%s within the first bucket whose count reaches %s%% of the total.",
 			percentile, m.MetricName, strings.Join(keys, ", "), perGroup, match[1])
 	}
 	return measurementNote{rule: rulePercentileOfSteps, text: text}, true
+}
+
+func explicitBucketHistogram(m metricMeasurement) bool {
+	return m.MetricType == "histogram" || m.MetricType == "" && strings.HasSuffix(m.MetricName, ".bucket")
 }
 
 // stepAlignmentNote fires when the caller sets a scalar step at least as long
@@ -259,10 +270,14 @@ func stepAlignmentNote(m metricMeasurement) (measurementNote, bool) {
 // rateSummedNote fires when a scalar request sums per-step rates. Each step
 // holds a per-second rate summed across series, so their sum depends on the
 // step count and is neither a count nor a rate. Another spaceAggregation, such
-// as count, makes each step something other than a rate.
+// as count, makes each step something other than a rate, and SigNoz reads a
+// histogram's buckets with increase whatever timeAggregation says.
 func rateSummedNote(m metricMeasurement) (measurementNote, bool) {
 	space := strings.ToLower(m.SpaceAggregation)
 	if m.RequestType != "scalar" || !strings.EqualFold(m.TimeAggregation, "rate") || !strings.EqualFold(m.ReduceTo, "sum") || space != "sum" && space != "" {
+		return measurementNote{}, false
+	}
+	if m.MetricType == "exponential_histogram" || explicitBucketHistogram(m) {
 		return measurementNote{}, false
 	}
 	return measurementNote{rule: ruleRateSummed, text: fmt.Sprintf(
@@ -320,8 +335,8 @@ func spanMetricsAllSpansNote(m metricMeasurement) (measurementNote, bool) {
 	if calls {
 		return measurementNote{rule: ruleSpanMetricsAllSpans, text: fmt.Sprintf(
 			"note: %s counts every span of service %q, one per span, so one request that records several spans counts several times. "+
-				"For the service's requests, use signoz_list_services (numCalls, callRate), or signoz_aggregate_traces with the filter (isEntryPoint = true OR isRoot = true).",
-			m.MetricName, service)}, true
+				"For the service's requests, use signoz_list_services (numCalls, callRate), or signoz_aggregate_traces with service %q and filter isEntryPoint = true OR isRoot = true.",
+			m.MetricName, service, service)}, true
 	}
 	percentile := "p95"
 	if match := percentilePattern.FindStringSubmatch(strings.ToLower(m.SpaceAggregation)); match != nil {
@@ -329,8 +344,8 @@ func spanMetricsAllSpansNote(m metricMeasurement) (measurementNote, bool) {
 	}
 	return measurementNote{rule: ruleSpanMetricsAllSpans, text: fmt.Sprintf(
 		"note: %s records the duration of every span of service %q, including spans inside each request. "+
-			"For the service's request latency, use signoz_aggregate_traces with %s(duration_nano) and the filter (isEntryPoint = true OR isRoot = true).",
-		m.MetricName, service, percentile)}, true
+			"For the service's request latency, use signoz_aggregate_traces with %s(duration_nano), service %q, and filter isEntryPoint = true OR isRoot = true.",
+		m.MetricName, service, percentile, service)}, true
 }
 
 // --- signoz_execute_builder_query ---
@@ -381,7 +396,7 @@ func builderQueryMeasurementNotes(request map[string]any, response json.RawMessa
 					}
 				}
 			}
-			if note, ok := traceAllSpansNote(filter, len(groupBy), expressions, ""); ok {
+			if note, ok := traceAllSpansNote(filter, filter, len(groupBy), expressions, ""); ok {
 				notes = append(notes, note)
 			}
 		case "metrics":
@@ -406,6 +421,7 @@ func builderQueryMeasurementNotes(request map[string]any, response json.RawMessa
 				StepSeconds:      steps[name],
 				CallerStep:       spec["stepInterval"] != nil,
 				HasFunctions:     hasItems(spec["functions"]),
+				HasHaving:        havingExpression(spec["having"]) != "",
 				StartMs:          startMs,
 				EndMs:            endMs,
 			})...)
@@ -427,6 +443,17 @@ func numberValue(value any) float64 {
 		return float64(v)
 	}
 	return 0
+}
+
+func havingExpression(raw any) string {
+	switch having := raw.(type) {
+	case string:
+		return strings.TrimSpace(having)
+	case map[string]any:
+		expression, _ := having["expression"].(string)
+		return strings.TrimSpace(expression)
+	}
+	return ""
 }
 
 func hasItems(raw any) bool {
