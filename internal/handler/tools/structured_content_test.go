@@ -3,11 +3,15 @@ package tools
 import (
 	"bytes"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"strings"
 	"testing"
 
+	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
+	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 )
 
 // Two-tier structuredContent rule:
@@ -146,6 +150,37 @@ func TestStructuredResult_FailsOpenOnTrailingData(t *testing.T) {
 	res := structuredResult([]byte("{\"id\":\"a\"}\n  \t"))
 	if res.StructuredContent == nil {
 		t.Fatalf("single value with trailing whitespace must keep StructuredContent")
+	}
+}
+
+// A notice rewrites a structured result's block 0 to carry its notes. The
+// rewrite must keep an integer above 2^53 to the digit and leave "<" unescaped,
+// as SigNoz sent them.
+func TestNoticeOnAStructuredResultKeepsExactNumbersAndText(t *testing.T) {
+	const bigInt = "9007199254740993" // 2^53 + 1, which float64 rounds to ...992
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"success","data":{"id":"rule-1","alert":"cpu < 90%","version":` + bigInt + `}}`))
+	}))
+	t.Cleanup(upstream.Close)
+	h := newTestHandler(signozclient.NewClient(logpkg.New("error"), upstream.URL, "k", "SIGNOZ-API-KEY", nil))
+	server := newMCPTestServer()
+	h.RegisterAllToolHandlers(server)
+
+	result := callRegisteredTool(t, server, "signoz_get_alert", `{"id":"rule-1","stray":"x"}`)
+
+	if result.IsError {
+		t.Fatalf("unexpected error result: %s", allTextBlocks(result))
+	}
+	if notes := structuredNotes(t, result); len(notes) != 1 || !strings.Contains(notes[0], `"stray"`) {
+		t.Fatalf("StructuredContent notes = %q, want the notice naming \"stray\"", notes)
+	}
+	block0 := textContent(t, result)
+	if !strings.Contains(block0, `"version":`+bigInt) {
+		t.Fatalf("block 0 must keep the exact integer %s: %s", bigInt, block0)
+	}
+	if !strings.Contains(block0, `"cpu < 90%"`) {
+		t.Fatalf("block 0 must keep \"<\" unescaped: %s", block0)
 	}
 }
 

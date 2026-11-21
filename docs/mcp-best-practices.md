@@ -184,6 +184,19 @@ evolution.
   open, but MUST pair with a WARN log or metric (see `CLAUDE.md`, "Testing
   across external contracts").
 
+- **[OUT-6] Notes reach structured readers.** Some clients (Claude Code) show
+  the model only `structuredContent` and drop every text block. A note on a
+  successful structured result MUST also appear in its `notes` array of
+  strings, beside the payload fields; text block 0 stays the serialized
+  `structuredContent`, and each note still follows as its own text block for
+  clients that read `content`. Add every note, handler or decorator, through
+  `appendNotes` (directly or via `structuredResultWithNotes` and `listResult`);
+  `TestGuardrail_StructuredResultNotesGoThroughAppendNotes` rejects any other
+  write to a result's content. Every object output schema declares `notes`.
+  A payload that is not a JSON object, or that already owns a top-level
+  `notes` field, keeps the note as text only and logs a WARN. Text-only
+  results keep notes as text blocks.
+
 ## 8. Errors and recovery
 
 - **[ERR-1]** Every tool error result MUST carry a stable machine-readable
@@ -321,6 +334,7 @@ For any PR touching a client-visible MCP surface, review the applicable items:
 **Results**
 - [ ] Handles returned where they save a lookup; reads write back cleanly (OUT-1, OUT-2)
 - [ ] Truncation/pagination explicit with next step; partial success only for independent items (OUT-3, OUT-4)
+- [ ] Notes on a structured result also appear in `structuredContent.notes`, added through `appendNotes` (OUT-6)
 
 **Errors**
 - [ ] Stable tool-error `code`; validation text names field, problem, accepted forms, next action (ERR-1, ERR-2)

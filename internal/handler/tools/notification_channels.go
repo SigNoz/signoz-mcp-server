@@ -197,7 +197,7 @@ func (h *Handler) handleCreateNotificationChannel(ctx context.Context, req mcp.C
 	if err != nil {
 		return InternalErrorResult("failed to marshal notification channel result"), nil
 	}
-	return structuredResultWithNotes(payload, notes...), nil
+	return structuredResultWithNotes(ctx, h.logger, payload, notes...), nil
 }
 
 func (h *Handler) handleUpdateNotificationChannel(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -265,7 +265,7 @@ func (h *Handler) handleUpdateNotificationChannel(ctx context.Context, req mcp.C
 	if err != nil {
 		return InternalErrorResult("failed to marshal notification channel result"), nil
 	}
-	return structuredResultWithNotes(payload, notes...), nil
+	return structuredResultWithNotes(ctx, h.logger, payload, notes...), nil
 }
 
 func decodeNotificationIDArgs(req mcp.CallToolRequest) (notificationIDArgs, *mcp.CallToolResult) {

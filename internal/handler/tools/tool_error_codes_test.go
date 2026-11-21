@@ -415,3 +415,34 @@ func uncodedToolErrorConstructorUses(fileset *token.FileSet, file *ast.File, pat
 	})
 	return bypasses, nil
 }
+
+// A missing rule's history comes back as the coded NOT_FOUND error, its
+// StructuredContent left as the error envelope, with the recovery steps added
+// as a text block after the error message.
+func TestAlertHistoryNotFoundAddsRecoveryTextAndKeepsItsCodedError(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"status":"error","error":{"type":"not-found","code":"not_found","message":"rule does not exist","errors":[],"suggestions":[]}}`))
+	}))
+	t.Cleanup(upstream.Close)
+	h := newTestHandler(signozclient.NewClient(logpkg.New("error"), upstream.URL, "k", "SIGNOZ-API-KEY", nil))
+	server := newMCPTestServer()
+	h.RegisterAllToolHandlers(server)
+
+	result := callRegisteredTool(t, server, "signoz_get_alert_history", `{"id":"0196634d-5d66-75c4-b778-e317f49dab7a"}`)
+
+	if !result.IsError || resultCode(t, result) != CodeNotFound {
+		t.Fatalf("want a %s error, got isError=%v: %s", CodeNotFound, result.IsError, allTextBlocks(result))
+	}
+	if structured, _ := result.StructuredContent.(map[string]any); structured["notes"] != nil {
+		t.Fatalf("an error envelope must not gain notes: %#v", result.StructuredContent)
+	}
+	if !strings.Contains(textContent(t, result), "rule does not exist") {
+		t.Fatalf("block 0 must stay the error message: %s", textContent(t, result))
+	}
+	last, ok := mcp.AsTextContent(result.Content[len(result.Content)-1])
+	if len(result.Content) < 2 || !ok || !strings.HasPrefix(last.Text, `recovery: Verify "id"`) {
+		t.Fatalf("the recovery steps must follow the error as their own text block: %s", allTextBlocks(result))
+	}
+}

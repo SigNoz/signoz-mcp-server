@@ -2,10 +2,15 @@ package tools
 
 import (
 	"encoding/json"
-	"strings"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
+	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
+	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 )
 
 // TestParseLimit_NumberAndString pins that the shared docs-limit parser accepts
@@ -86,30 +91,51 @@ func TestValidateRequestType(t *testing.T) {
 	}
 }
 
-// TestListResult_ClampNoteSeparateBlock pins that the clamp note is a separate
-// trailing block and the JSON payload is content block 0.
-func TestListResult_ClampNoteSeparateBlock(t *testing.T) {
-	payload := []byte(`{"data":[],"pagination":{}}`)
+// A client may show the model only StructuredContent, so the clamp note on a
+// list result travels in its "notes" field as well as in a trailing text block.
+func TestListToolCarriesTheClampNoteInStructuredContent(t *testing.T) {
+	const clampNote = `note: limit clamped to 1000 per page to bound server memory; use "offset" to page through more results.`
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"success","data":[{"serviceName":"frontend"}]}`))
+	}))
+	t.Cleanup(upstream.Close)
+	h := newTestHandler(signozclient.NewClient(logpkg.New("error"), upstream.URL, "k", "SIGNOZ-API-KEY", nil))
+	server := newMCPTestServer()
+	h.RegisterAllToolHandlers(server)
 
-	if n := len(listResult(payload, false).Content); n != 1 {
-		t.Fatalf("not-clamped: want 1 content block, got %d", n)
-	}
+	clamped := callRegisteredTool(t, server, "signoz_list_services", `{"limit":5000}`)
+	require.False(t, clamped.IsError, allTextBlocks(clamped))
+	require.Equal(t, []string{clampNote}, structuredNotes(t, clamped), "the clamp note must reach clients that read only StructuredContent")
+	require.Equal(t, []string{clampNote}, trailingTextBlocks(clamped), "clients that read content keep the note as its own block")
+	require.True(t, sameJSONValue(t, []byte(textContent(t, clamped)), clamped.StructuredContent),
+		"block 0 must carry the same JSON as StructuredContent, notes included: %s", textContent(t, clamped))
 
-	clamped := listResult(payload, true)
-	if len(clamped.Content) != 2 {
-		t.Fatalf("clamped: want 2 content blocks, got %d", len(clamped.Content))
+	unclamped := callRegisteredTool(t, server, "signoz_list_services", `{"limit":50}`)
+	require.False(t, unclamped.IsError, allTextBlocks(unclamped))
+	require.NotContains(t, unclamped.StructuredContent, "notes", "a result without notes has no notes field")
+	require.Empty(t, trailingTextBlocks(unclamped))
+}
+
+// structuredNotes returns the "notes" field of a result's StructuredContent.
+func structuredNotes(t *testing.T, result *mcp.CallToolResult) []string {
+	t.Helper()
+	raw, err := json.Marshal(result.StructuredContent)
+	require.NoError(t, err)
+	var structured struct {
+		Notes []string `json:"notes"`
 	}
-	// Block 0 must remain parseable JSON.
-	block0, ok := mcp.AsTextContent(clamped.Content[0])
-	if !ok {
-		t.Fatalf("clamped: block 0 is not text")
+	require.NoError(t, json.Unmarshal(raw, &structured), "StructuredContent: %s", raw)
+	return structured.Notes
+}
+
+// trailingTextBlocks returns the text of every content block after block 0.
+func trailingTextBlocks(result *mcp.CallToolResult) []string {
+	var texts []string
+	for _, block := range result.Content[1:] {
+		if text, ok := mcp.AsTextContent(block); ok {
+			texts = append(texts, text.Text)
+		}
 	}
-	var parsed map[string]any
-	if err := json.Unmarshal([]byte(block0.Text), &parsed); err != nil {
-		t.Fatalf("clamped: block 0 must be valid JSON: %v", err)
-	}
-	block1, ok := mcp.AsTextContent(clamped.Content[1])
-	if !ok || !strings.Contains(block1.Text, "clamped") {
-		t.Fatalf("clamped: block 1 should be the clamp note, got %#v", clamped.Content[1])
-	}
+	return texts
 }
