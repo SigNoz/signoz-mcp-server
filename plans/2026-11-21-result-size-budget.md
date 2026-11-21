@@ -1,6 +1,6 @@
 # Plan: Result Size Budget for the Raw Searches
 
-Status: In Progress
+Status: Done
 Issue: [SigNoz/nerve-pod#673](https://github.com/SigNoz/nerve-pod/issues/673)
 PR: https://github.com/SigNoz/signoz-mcp-server/pull/476
 
@@ -211,23 +211,29 @@ restored after) and failed:
   modern scenarios): pass, with `MCP_PROTOCOL_PORT=18090` because Docker holds 18080.
 - `check-deps`: `go mod tidy -diff` is clean and `go.mod`/`go.sum` are unchanged; `go mod verify`
   fails only because the local module cache copy of `github.com/shirou/gopsutil/v4@v4.25.5`
-  reports "dir has been modified". A machine problem, not this change; unverified locally.
+  reports "dir has been modified". A machine problem, not this change: CI's `deps / go` passes.
 - The wire-catalog diff is the `maxResultBytes` property of the two tools, 14 lines, added by
   hand; `TestGuardrail_WireCatalogGoldens` passes.
 
-Not run: the e2e suite, including the new `test_result_budget.py` and the `test_ai_traces.py`
-helper change. `foundryctl` is not installed on this machine, and the suite seeds telemetry on
-the fixed OTLP port 4318, which a SigNoz stack this session did not start already holds. No live
-SigNoz instance was called. The e2e run is left to CI (`make test-e2e`).
+CI on the PR (commit 574fd07): all 13 checks pass. The e2e job, against a foundry cast of the
+pinned SigNoz release, ran 109 tests with 1 skipped (the existing skip in `test_logs.py`). It
+includes `test_search_logs_pages_by_result_size` and `test_search_traces_pages_by_result_size`
+from the new `test_result_budget.py`, and the `test_ai_traces.py` tests whose helper now sends
+`maxResultBytes`.
+
+Not run locally: the e2e suite. `foundryctl` is not installed on the development machine.
 
 ## Outcome
 
-Implemented as planned; status stays In Progress until the e2e suite passes in CI. Breaking
-change (CMP-1): with the default budget, a page can hold fewer rows than
-`limit` while more exist, and every row result gains a top-level `pagination` key. The
-compatibility path (CMP-2) is `pagination.nextOffset`, or `maxResultBytes` up to 500,000 per
-call, or a higher `MCP_MAX_RESULT_BYTES` for the server. SigNoz/agent-skills needs a companion
-change (CMP-3): `signoz-generating-queries` treats a raw search with fewer rows than `limit` as
-complete.
+Implemented as planned. Breaking change (CMP-1): with the default budget, a page can hold fewer
+rows than `limit` while more exist, and every row result gains a top-level `pagination` key.
+The compatibility path (CMP-2) is `pagination.nextOffset`, or `maxResultBytes` up to 500,000
+per call, or a higher `MCP_MAX_RESULT_BYTES` for the server. SigNoz/agent-skills needs a
+companion change (CMP-3): `signoz-generating-queries` treats a raw search with fewer rows than
+`limit` as complete.
 
-Deferred to the issue's later PRs: the series tools, the list tools, and the dashboard tools.
+Not done yet: the before-and-after prompt runs (EVL-1). SigNoz/nerve-pod#673 commits to evals
+before its final PR merges. The SigNoz/agent-skills companion change is not opened yet.
+
+Deferred to the later PRs of SigNoz/nerve-pod#673: the series tools, the list tools, and the
+dashboard tools. `signoz_get_trace_details` is left to SigNoz/nerve-pod#651.
