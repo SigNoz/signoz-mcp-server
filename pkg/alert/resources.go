@@ -140,7 +140,7 @@ Combine with AND / OR and parentheses for grouping:
 - service.name = 'frontend' AND http.status_code >= 500
 - (severity_text = 'ERROR' AND service.name = 'payments-api') OR service.name = 'billing-api'
 
-Negative operators (!=, NOT IN, NOT LIKE) also match rows where the field is missing. To exclude rows that lack the field, pair them with EXISTS:
+Negative operators (!=, NOT IN, NOT LIKE) can also match rows where the field is missing. To exclude rows that lack the field, pair them with EXISTS:
 - k8s.namespace.name EXISTS AND k8s.namespace.name != 'kube-system'
 
 Common compositeQuery.unit values: percent, percentunit, ms, s, ns, bytes, kbytes, mbytes, gbytes, reqps, ops, cps.

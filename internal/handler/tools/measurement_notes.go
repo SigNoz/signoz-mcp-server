@@ -170,6 +170,8 @@ func metricMeasurementNotes(m metricMeasurement) []measurementNote {
 	if m.HasFunctions {
 		return nil
 	}
+	// The aggregation defaults accept any letter case for the type.
+	m.MetricType = strings.ToLower(m.MetricType)
 	var notes []measurementNote
 	if note, ok := percentileOfStepsNote(m); ok {
 		notes = append(notes, note)

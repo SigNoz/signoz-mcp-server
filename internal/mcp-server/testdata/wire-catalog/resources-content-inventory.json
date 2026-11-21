@@ -33,8 +33,8 @@
         "kind": "text",
         "uri": "signoz://alert/instructions",
         "mimeType": "text/markdown",
-        "serializedLength": 23005,
-        "sha256": "56f9f3f05af034bd58641e7ff9c46febf31d2861d336683fa4195082cb1e945b"
+        "serializedLength": 23009,
+        "sha256": "f02a6801c12318f9f19835ff1b37a0079ddbf915f298869a7cfcc83673321e86"
       }
     ]
   },
@@ -242,7 +242,7 @@
         "uri": "signoz://metrics-aggregation-guide",
         "mimeType": "text/markdown",
         "serializedLength": 15056,
-        "sha256": "f0c8b1cad8e2a1cf286b74cfbce51f08d17c903a3aa671a9a82f85c6d4aeaec7"
+        "sha256": "2f92bb303e369531191505ac29436075195a5b2cf41acbec8050e6c0dc55ec26"
       }
     ]
   },

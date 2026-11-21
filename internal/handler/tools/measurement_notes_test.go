@@ -255,6 +255,7 @@ func TestQueryMetrics_SaysWhatAScalarReductionMeasured(t *testing.T) {
 		},
 		{name: "summed rate counted across series", metadata: cumulativeCounter, args: map[string]any{"metricName": "http.requests", "spaceAggregation": "count", "reduceTo": "sum"}},
 		{name: "summed rate after a function", metadata: cumulativeCounter, args: map[string]any{"metricName": "http.requests", "reduceTo": "sum", "functions": []any{map[string]any{"name": "cutOffMin", "args": []any{map[string]any{"value": 0}}}}}},
+		{name: "summed rate of a histogram typed in capitals", metadata: cumulativeCounter, args: map[string]any{"metricType": "Histogram", "temporality": "cumulative", "timeAggregation": "rate", "spaceAggregation": "sum", "reduceTo": "sum"}},
 		{name: "summed increase", metadata: cumulativeCounter, args: map[string]any{"metricName": "http.requests", "timeAggregation": "increase", "reduceTo": "sum"}},
 		{name: "average rate", metadata: cumulativeCounter, args: map[string]any{"metricName": "http.requests", "reduceTo": "avg"}},
 		{
@@ -366,6 +367,7 @@ func TestExecuteBuilderQuery_SaysWhatEachQueryMeasured(t *testing.T) {
 		queries     []any
 		wantRule    string
 		want        string
+		absent      string
 	}{
 		{name: "limited formula input", requestType: "scalar", queries: []any{metricsQuery("A", map[string]any{"limit": 1}), metricsQuery("B", nil), formula}, wantRule: "formula_input_limit", want: `query "A" is a formula input with limit 1`},
 		{name: "unlimited formula inputs", requestType: "scalar", queries: []any{metricsQuery("A", nil), metricsQuery("B", nil), formula}},
@@ -380,7 +382,7 @@ func TestExecuteBuilderQuery_SaysWhatEachQueryMeasured(t *testing.T) {
 		{name: "averaged percentile with having", requestType: "scalar", queries: []any{map[string]any{"type": "builder_query", "spec": map[string]any{
 			"name": "A", "signal": "metrics", "having": map[string]any{"expression": "__result > 1"},
 			"aggregations": []any{map[string]any{"metricName": "latency.bucket", "spaceAggregation": "p95", "reduceTo": "avg"}},
-		}}}, wantRule: "percentile_of_steps", want: "so this is not the p95 over the whole window."},
+		}}}, wantRule: "percentile_of_steps", want: "so this is not the p95 over the whole window.", absent: "timeAggregation increase"},
 		{name: "averaged percentile after a function", requestType: "scalar", queries: []any{map[string]any{"type": "builder_query", "spec": map[string]any{
 			"name": "A", "signal": "metrics", "functions": []any{map[string]any{"name": "ewma3"}},
 			"aggregations": []any{map[string]any{"metricName": "latency.bucket", "spaceAggregation": "p95", "reduceTo": "avg"}},
@@ -403,6 +405,9 @@ func TestExecuteBuilderQuery_SaysWhatEachQueryMeasured(t *testing.T) {
 			notes := resultNotes(t, result)
 			if tc.want != "" && !strings.Contains(notes, tc.want) {
 				t.Errorf("notes lack %q:\n%s", tc.want, notes)
+			}
+			if tc.absent != "" && strings.Contains(notes, tc.absent) {
+				t.Errorf("notes must not contain %q:\n%s", tc.absent, notes)
 			}
 			want := map[string]int64{}
 			if tc.wantRule != "" {

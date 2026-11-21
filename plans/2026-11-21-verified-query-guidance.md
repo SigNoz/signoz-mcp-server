@@ -346,6 +346,23 @@ SigNoz source.
   not aged, could fall on either side of the last step boundary, so only one was read. The test now
   ages them as the counter test does, so both sit in completed steps.
 
+### 2026-11-21 — Third review round
+
+The third round resolved C1, C10, C15, C17 to C19 and C21 to C23, kept C16, C20 and C24 open, and
+raised C25 to C27. Each was checked against the code and the SigNoz source.
+
+- C16: the metric rules compare the type in lower case, as the aggregation defaults do, so a
+  caller-typed "Histogram" no longer gets the summed-rate note.
+- C24: accepted. The alert guide says negative operators "can also match" rows without the field;
+  SigNoz reads a missing numeric trace attribute as zero, so `field != 0` leaves that row out.
+- C25: the guide's bucket-read recipe names timeAggregation increase, as the note and the reduceTo
+  description do. `AdjustedMetricTimeRange` fetches the step before the window only for an explicit
+  rate or increase on a cumulative metric.
+- C27: the builder having test asserts the bucket recipe is absent.
+- C20 is declined as a rare case: a user-created routing policy can also be named with a UUID, and
+  the text already says to check such a name with signoz_get_alert.
+- C26 is declined as a nit: an offset carried into the retried bucket query.
+
 ### 2026-11-21 — Mutation-side rules on the tools, schema pointers kept
 
 - Decision: rules that prevent a wrong result with no error go on the tool: the alert unit rule,
