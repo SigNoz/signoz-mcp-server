@@ -10,6 +10,7 @@ the items/total envelope the completeness note parses.
 
 from fixtures.mcpclient import MCPClient, assert_tool_ok
 from fixtures.results import first_block_json, first_text_block, note_blocks
+from fixtures.telemetry import seed_metrics, wait_for
 
 SERVER_POPULATED_FIELDS = ("id", "state", "createdAt", "updatedAt", "createdBy", "updatedBy", "webUrl")
 
@@ -196,3 +197,48 @@ def test_list_alert_rules_filters_in_signoz(mcp_client: MCPClient, test_id: str)
             except AssertionError as exc:
                 failures.append(f"{rule_id}: {exc}")
         assert not failures, f"rules left behind: {failures}"
+
+
+def test_threshold_unit_converts_only_with_a_query_unit(mcp_client: MCPClient, test_id: str, telemetry: None) -> None:
+    """Pins the alert-unit rule: a targetUnit converts only to a set compositeQuery.unit.
+
+    The series holds 2 (nanoseconds). A 1 s target converts to 1e9 ns when the query unit is ns,
+    so that rule stays quiet; with no query unit the target stays 1 and the rule fires.
+    """
+    metric = f"mcp_e2e_alert_unit_{test_id.replace('-', '_')}"
+    seed_metrics(f"mcp-e2e-{test_id}", metric, value=2.0, count=24)
+
+    def rule(name: str, unit: str) -> dict:
+        body = threshold_rule(name)
+        query = body["condition"]["compositeQuery"]
+        query["queries"][0]["spec"]["aggregations"] = [
+            {"metricName": metric, "timeAggregation": "max", "spaceAggregation": "max"}
+        ]
+        query["unit"] = unit
+        body["condition"]["thresholds"]["spec"][0].update({"target": 1, "targetUnit": "s"})
+        return body
+
+    converted = create_rule(mcp_client, rule(f"mcp-e2e-{test_id}-ns", "ns"))
+    unconverted = create_rule(mcp_client, rule(f"mcp-e2e-{test_id}-none", ""))
+    try:
+
+        def state(rule_id: str) -> str:
+            result = mcp_client.call_tool("signoz_get_alert", {"searchContext": "alert state", "id": rule_id})
+            return (first_block_json(result).get("data") or {}).get("state") or ""
+
+        # The ruler evaluates every minute; the unconverted 1 compares against the series as 1 ns.
+        wait_for(lambda: state(unconverted) == "firing", "the rule with no query unit to fire", timeout=300)
+        # Evaluated in the same cycle, the converted 1e9 ns target is not breached.
+        wait_for(lambda: state(converted) == "inactive", "the rule with an ns query unit to evaluate", timeout=120)
+    finally:
+        delete_rule(mcp_client, converted)
+        delete_rule(mcp_client, unconverted)
+
+
+def test_rule_on_a_missing_metric_saves(mcp_client: MCPClient, test_id: str) -> None:
+    """Pins why the alert tools say to dry-run the query: SigNoz saves a rule whose query has no data."""
+    rule = threshold_rule(f"mcp-e2e-{test_id}-missing")
+    aggregation = rule["condition"]["compositeQuery"]["queries"][0]["spec"]["aggregations"][0]
+    aggregation["metricName"] = f"mcp_e2e_missing_{test_id.replace('-', '_')}"
+    rule_id = create_rule(mcp_client, rule)
+    delete_rule(mcp_client, rule_id)

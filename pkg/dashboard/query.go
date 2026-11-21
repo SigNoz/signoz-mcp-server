@@ -693,11 +693,11 @@ Examples by Metric Type:
 
   Gauge Metrics (no suffix needed):
     - system_memory_usage
-    - process_cpu_seconds_total
+    - process_resident_memory_bytes
 
   Histogram Metrics (use .sum, .count, .bucket):
     - signoz_latency.sum          (total latency)
-    - signoz_latency.count        (number of requests)
+    - signoz_latency.count        (number of spans, not requests)
     - signoz_latency.bucket       (for percentiles)
     - http_request_duration.sum
     - http_request_duration.count

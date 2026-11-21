@@ -33,8 +33,8 @@
         "kind": "text",
         "uri": "signoz://alert/instructions",
         "mimeType": "text/markdown",
-        "serializedLength": 22423,
-        "sha256": "a33d4591545ae95828935edbf0d90231f1fed0ab964f6ea198460d95ae7ef1f4"
+        "serializedLength": 22876,
+        "sha256": "144ed2e8c86f10e9f3e4af521c9b8bbef87026220a285b7817dae4ba5d1e48c4"
       }
     ]
   },
@@ -176,8 +176,8 @@
         "kind": "text",
         "uri": "signoz://dashboard/query-builder-example",
         "mimeType": "text/markdown",
-        "serializedLength": 17751,
-        "sha256": "e4174aac51850acd8c0904f9e192e2fb7ae31d525028d16b4ac6ee92fc680e67"
+        "serializedLength": 17766,
+        "sha256": "7efa335aede1ebd1d6ca1c1a0bf3f4cc800f88820c34e0c3cc58a24687de0de2"
       }
     ]
   },
@@ -241,8 +241,8 @@
         "kind": "text",
         "uri": "signoz://metrics-aggregation-guide",
         "mimeType": "text/markdown",
-        "serializedLength": 14698,
-        "sha256": "5c103dfdd0c0af9de01d3e47288c208780e3d11e2783edfdb8fd1feb942abde7"
+        "serializedLength": 14871,
+        "sha256": "017ac59466a71cfea637d1416dc04856280ca530ce59d2d59d89ed184a355ffc"
       }
     ]
   },

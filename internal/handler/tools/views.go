@@ -43,7 +43,7 @@ func (h *Handler) RegisterViewHandlers(s *mcp.Server) {
 	createTool := mcp.NewTool("signoz_create_view",
 		withCreateToolAnnotations(),
 		mcp.WithDescription(
-			"Use this when the user wants to save one reusable query spec for Logs, Traces, Metrics, or Cost Meter; use signoz_create_dashboard for a multi-widget dashboard. Before composing any payload, you must read both signoz://view/instructions and signoz://view/examples. Do not send server-populated IDs or timestamps.",
+			"Use this when the user wants to save one reusable query spec for Logs, Traces, Metrics, or Cost Meter; use signoz_create_dashboard for a multi-widget dashboard. Set every builder_query signal to the view's source (metrics, with source meter, for a Cost Meter view); SigNoz saves a mismatched view without complaint. signoz://view/instructions and signoz://view/examples have the spec fields and complete payloads. Do not send server-populated IDs or timestamps.",
 		),
 		mcp.WithInputSchema[types.CreateViewInput](),
 	)

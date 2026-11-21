@@ -13,7 +13,8 @@ Every rule type (threshold_rule, promql_rule, anomaly_rule) uses schemaVersion *
 1. Read signoz://alert/examples for complete payloads unless already read for the same prepared operation.
 2. Update is a full replacement. Reuse signoz_get_alert only from the same still-current prepared operation; refresh if state may have changed, then preserve unchanged fields.
 3. Use signoz_get_field_keys to discover filter/groupBy attributes, reusing results from that operation.
-4. NOTIFICATION ROUTING: Reuse a fully paginated signoz_list_notification_channels result only from the same still-current prepared operation; otherwise call it, refreshing only if state may have changed. The list is config-free, defaults to 20 rows, and accepts at most 200 per page; follow its filtered total. The immutable routing identity is displayName, not machine name. For v2 direct routing, every threshold tier needs an exact returned displayName: SigNoz rejects a tier with no channels and a channel name that does not exist. If no direct channel fits, show the returned choices and ask; if none exists, offer signoz_create_notification_channel with settings the user provides. Never guess or create automatically. Channel create and update default test to false; set test=true only when the user asks to send a test. Confirmed v2 policy routing sets notificationSettings.usePolicy=true and may omit tier channels.
+4. Dry-run the rule's queries through signoz_execute_builder_query and check they return series: send {start, end, requestType: "time_series", compositeQuery: {queries: <condition.compositeQuery.queries>}}, without queryType, panelType, or unit, which query_range does not take. SigNoz saves a rule whose query returns no data, such as one on a metric name the workspace lacks, and that rule can only fire a nodata alert, when alertOnAbsent is set.
+5. NOTIFICATION ROUTING: Reuse a fully paginated signoz_list_notification_channels result only from the same still-current prepared operation; otherwise call it, refreshing only if state may have changed. The list is config-free, defaults to 20 rows, and accepts at most 200 per page; follow its filtered total. The immutable routing identity is displayName, not machine name. For v2 direct routing, every threshold tier needs an exact returned displayName: SigNoz rejects a tier with no channels and a channel name that does not exist. If no direct channel fits, show the returned choices and ask; if none exists, offer signoz_create_notification_channel with settings the user provides. Never guess or create automatically. Channel create and update default test to false; set test=true only when the user asks to send a test. Confirmed v2 policy routing sets notificationSettings.usePolicy=true and may omit tier channels.
 
 ## Quick Workflow: From User Intent to Payload
 A repeatable mental model for going from a user request ("alert me when login p99 > 2s") to a valid payload:
@@ -139,7 +140,7 @@ Combine with AND / OR and parentheses for grouping:
 - service.name = 'frontend' AND http.status_code >= 500
 - (severity_text = 'ERROR' AND service.name = 'payments-api') OR service.name = 'billing-api'
 
-Negative operators (!=, NOT IN, NOT LIKE) only match rows where the field is present. To also exclude rows that lack the field entirely, pair with EXISTS:
+Negative operators (!=, NOT IN, NOT LIKE) also match rows where the field is missing. To exclude rows that lack the field, pair them with EXISTS:
 - k8s.namespace.name EXISTS AND k8s.namespace.name != 'kube-system'
 
 Common compositeQuery.unit values: percent, percentunit, ms, s, ns, bytes, kbytes, mbytes, gbytes, reqps, ops, cps.

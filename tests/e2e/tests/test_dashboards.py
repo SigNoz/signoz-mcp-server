@@ -774,3 +774,38 @@ def test_template_catalog_import_lifecycle(mcp_client: MCPClient) -> None:
             {"searchContext": f"confirm imported dashboard {dashboard_id} is gone", "id": dashboard_id},
         )
         assert gone.get("isError", False), f"imported dashboard {dashboard_id} remained after cleanup"
+
+
+def test_panels_save_without_data_or_a_grid_item(mcp_client: MCPClient, test_id: str) -> None:
+    """Pins the dashboard tools' rules: a panel on a missing key saves, and a patched panel needs its grid item."""
+    title = f"mcp-e2e-{test_id}-no-data"
+    dashboard = _area_dashboard(title, {"visualization": {"stack": "normal"}})
+    query = dashboard["spec"]["panels"]["volume"]["spec"]["queries"][0]["spec"]["plugin"]["spec"]
+    query["filter"] = {"expression": f"mcp_e2e_missing_{test_id.replace('-', '_')} = 'x'"}
+    dashboard_id = _dashboard_id(first_json(assert_tool_ok(mcp_client.call_tool("signoz_create_dashboard", dashboard))))
+    try:
+        orphan = deepcopy(dashboard["spec"]["panels"]["volume"])
+        assert_tool_ok(
+            mcp_client.call_tool(
+                "signoz_patch_dashboard",
+                {
+                    "searchContext": "add a panel without a grid item",
+                    "id": dashboard_id,
+                    "patch": [{"op": "add", "path": "/spec/panels/orphan", "value": orphan}],
+                },
+            )
+        )
+        data = _data(
+            first_json(
+                assert_tool_ok(
+                    mcp_client.call_tool("signoz_get_dashboard", {"searchContext": "get it", "id": dashboard_id})
+                )
+            )
+        )
+        assert "orphan" in data["spec"]["panels"], "SigNoz keeps a panel added without a grid item"
+        refs = [item["content"]["$ref"] for item in data["spec"]["layouts"][0]["spec"]["items"]]
+        assert refs == ["#/spec/panels/volume"], f"the panel without a grid item is not in the layout: {refs}"
+    finally:
+        assert_tool_ok(
+            mcp_client.call_tool("signoz_delete_dashboard", {"searchContext": "clean up", "id": dashboard_id})
+        )

@@ -147,7 +147,7 @@
     },
     {
       "name": "signoz_create_view",
-      "description": "Save one reusable Explorer query spec after reading both view authoring resources; use signoz_create_dashboard for a multi-widget dashboard"
+      "description": "Save one reusable Explorer query spec whose builder query signals match its source; use signoz_create_dashboard for a multi-widget dashboard"
     },
     {
       "name": "signoz_update_view",
@@ -211,7 +211,7 @@
     },
     {
       "name": "signoz_delete_notification_channel",
-      "description": "Permanently delete a confirmed channel by ID; resolve backend routing-policy dependency errors before retrying"
+      "description": "Permanently delete a confirmed channel by ID; SigNoz refuses while an alert rule or routing policy routes to it, so re-route those first"
     },
     {
       "name": "signoz_submit_feedback",

@@ -667,7 +667,7 @@ Gets one known tenant dashboard's complete layout, variables, panels, and querie
 
 #### `signoz_create_dashboard`
 
-Creates a custom multi-panel dashboard. Use `signoz_import_dashboard` when a curated template fits, or `signoz_create_view` to save one Explorer query. Read `signoz://dashboard/instructions`, `signoz://dashboard/widgets-instructions`, and `signoz://dashboard/widgets-examples` before composing the payload.
+Creates a custom multi-panel dashboard. Use `signoz_import_dashboard` when a curated template fits, or `signoz_create_view` to save one Explorer query. Read `signoz://dashboard/instructions`, `signoz://dashboard/widgets-instructions`, and `signoz://dashboard/widgets-examples` before composing the payload. SigNoz saves a panel whose query returns no data, such as one on a key the workspace lacks, so dry-run each panel's query through `signoz_execute_builder_query` before saving; `signoz_update_dashboard` says the same for changed panels.
 
 - **Parameters:**
   - `schemaVersion` (required) – Must be `"v6"`
@@ -711,7 +711,7 @@ Fully replaces an existing dashboard. Fetch it with `signoz_get_dashboard`, take
 
 #### `signoz_patch_dashboard`
 
-Applies an RFC 6902 JSON Patch to a dashboard: a partial update without re-sending the entire dashboard. Prefer this over `signoz_update_dashboard` for targeted edits (rename, add/edit one panel or query, tweak a variable). Read `signoz://dashboard/patch-instructions` for worked recipes and exact paths; notably, adding a panel needs two ops (the panel plus its grid item) or it won't render.
+Applies an RFC 6902 JSON Patch to a dashboard: a partial update without re-sending the entire dashboard. Prefer this over `signoz_update_dashboard` for targeted edits (rename, add/edit one panel or query, tweak a variable). Adding a panel takes two ops, the panel and a grid item at `/spec/layouts/0/spec/items/-`; SigNoz saves a panel with no grid item but leaves it out of the layout. `signoz://dashboard/patch-instructions` has worked recipes and exact paths.
 
 - **Parameters:**
   - `id` (required) – Dashboard id (the legacy `uuid` key is also accepted)
@@ -823,7 +823,7 @@ Fetch one known official SigNoz docs page's full Markdown or a requested heading
 
 #### `signoz_create_view`
 
-Save one reusable Explorer query spec. Use `signoz_create_dashboard` for a multi-panel dashboard. Cost Meter views use `source="meter"` with `signal="metrics"` and builder-spec `source="meter"`.
+Save one reusable Explorer query spec. Use `signoz_create_dashboard` for a multi-panel dashboard. Set every `builder_query` signal to the view's `source`; SigNoz saves a mismatched view without complaint. Cost Meter views use `source="meter"` with `signal="metrics"` and builder-spec `source="meter"`.
 
 - **Parameters** (v2 typed shape):
   - `name` (optional) - View name (DNS-1123 label). Required unless `generateName` is true
@@ -1020,6 +1020,8 @@ Run sample spans through the mapping groups in a sandbox and return each span as
 
 Create a new alert rule in SigNoz via `POST /api/v2/rules`.
 
+- **Units and data**: when a threshold sets `targetUnit`, set `condition.compositeQuery.unit` to the series unit; without it SigNoz compares the target unconverted, so a 1 s target meets a nanosecond series as 1. SigNoz saves a rule whose query returns no data, such as one on a metric the workspace lacks, so dry-run its queries through `signoz_execute_builder_query` first, as a `query_range` request whose `compositeQuery` holds only `queries`. `signoz_update_alert` carries the same unit rule.
+
 - **Parameters**: JSON payload matching the SigNoz alert rule schema.
 - **Schema**: every `ruleType` (`threshold_rule`, `promql_rule`, `anomaly_rule`) uses **v2alpha1**: structured `condition.thresholds`, `evaluation`, `notificationSettings`, and `schemaVersion: "v2alpha1"` set explicitly, since SigNoz rejects a rule that omits it. `anomaly_rule` is metrics only, adds `condition.seasonality`, and compares each tier's signed target with the anomaly score (`below` with target `-2` fires on a drop of more than 2 standard deviations; `outside_bounds` with target `2` fires on a move of more than 2 either way).
 - **Notification routing**: For direct routing, reuse a fully paginated `signoz_list_notification_channels` result only from the same still-current prepared operation; otherwise call it, refreshing only if state may have changed. V2 needs an exact returned displayName on every tier: SigNoz rejects a tier with no channels or a channel name that does not exist. If none fits, ask the user or offer `signoz_create_notification_channel` with user-provided config; never create automatically. Confirmed v2 policy routing may omit tier channels.
@@ -1119,9 +1121,10 @@ for updates without displaying or logging secrets. **Parameter**: `id`.
 #### `signoz_delete_notification_channel`
 
 Permanently delete a confirmed channel by `id`. Resolve and confirm the exact
-channel first; call directly when those steps are already complete. The backend
-may reject deletion while a routing policy references the channel. Propagate
-that dependency error and resolve references before retrying.
+channel first; call directly when those steps are already complete. SigNoz
+rejects deleting a channel that an alert rule or routing policy routes to and
+lists their IDs as routing policies; an ID there can be an alert rule's, so the
+error adds a recovery note to check it with `signoz_get_alert` and re-route it.
 
 #### `signoz_submit_feedback`
 
@@ -1148,7 +1151,7 @@ Runs a SigNoz Query Builder v5 request that the dedicated tools cannot express, 
   - `promql`: `{name, query, disabled, step?, legend?}`. PromQL for OTel metrics requires the Prometheus 3.x UTF-8 quoted-selector form `{"metric.name.with.dots"}`; read the `signoz://promql/instructions` resource for details.
   - `clickhouse_sql`: `{name, query, disabled, legend?}`.
 - **Builder result bounds**: for predictable authored queries, explicitly supply a positive `spec.limit` and non-empty v5 `spec.order` (not dashboard/editor `orderBy`) on every `builder_formula` and on each `builder_query` no formula references. When omitted, null, or zero, standalone limits and formula-result limits default to `100`. A builder query referenced by a formula gets no inserted limit or order, because SigNoz applies base-query limits before formula evaluation and they drop groups from the result. Raw logs order by `timestamp desc, id desc`; raw traces by `timestamp desc`; metric scalar/time-series queries and formulas by `__result desc`; and log/trace scalar/time-series queries by the primary aggregation descending. A `builder_ai_query` gets the same default limit as a `builder_query` of its request type and no default order, because SigNoz orders AI trace rows by last activity. Caller-supplied values are forwarded unchanged. The response appends a decisions note when defaults are inserted.
-- **Validation**: apart from inserted bounds, the request reaches SigNoz verbatim and SigNoz validates it. `requestType` has no default (`raw`, `trace`, `time_series`, or `scalar`), and `start` and `end` are required Unix-millisecond timestamps.
+- **Validation**: apart from inserted bounds, the request reaches SigNoz verbatim and SigNoz validates it. `requestType` has no default (`raw`, `trace`, `time_series`, or `scalar`), and `start` and `end` are required Unix-millisecond timestamps. A request in the older `builderQueries`, `promQueries`, or `chQueries` shape fails with SigNoz's `atleast one query is required`, and the error adds that `compositeQuery.queries` takes `{type, spec}` envelopes.
 - **Guide routing**: read `signoz://logs/query-builder-guide` for logs, `signoz://traces/query-builder-guide` for traces, `signoz://ai/query-builder-guide` for `builder_ai_query`, `signoz://metrics-aggregation-guide` for metrics/formulas, and `signoz://promql/instructions` for PromQL.
 - **Time-series ranking caveat**: top-N groups are ranked over the entire requested window. A short-lived spike can be omitted even when it dominates one bucket; narrow the window or adjust the limit when that matters.
 - **Backend warnings**: non-fatal warnings the backend returns (e.g. ambiguous-key resolution) stay in the response's `data.warning` block and are WARN-logged, as in the search, aggregate, and query_metrics tools. They are not repeated in a note.

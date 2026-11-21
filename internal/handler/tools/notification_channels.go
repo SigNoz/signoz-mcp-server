@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/client"
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
@@ -39,7 +40,7 @@ func (h *Handler) RegisterNotificationChannelHandlers(server *mcp.Server) {
 	), h.handleGetNotificationChannel)
 	h.addTool(server, mcp.NewTool("signoz_delete_notification_channel",
 		withDeleteToolAnnotations(),
-		mcp.WithDescription("Permanently delete one notification channel by ID after the user has confirmed the exact channel. This tool does not check alert-rule references."),
+		mcp.WithDescription("Permanently delete one notification channel by ID after the user has confirmed the exact channel. SigNoz rejects deleting a channel that an alert rule or routing policy routes to and lists their IDs as routing policies; an ID there can be an alert rule's (signoz_get_alert), so re-route those first."),
 		notificationSchemaOption(notificationIDSchema()),
 	), h.handleDeleteNotificationChannel)
 
@@ -120,6 +121,13 @@ func (h *Handler) handleGetNotificationChannel(ctx context.Context, req mcp.Call
 	return structuredResult(channel), nil
 }
 
+// SigNoz refuses to delete a channel that routes alerts and lists what uses
+// it as routing policies, although the IDs include alert rules' own IDs.
+const (
+	channelInUseError    = "cannot be deleted because it is used by the following routing policies"
+	channelInUseRecovery = "recovery: an ID in that list can be an alert rule's; check it with signoz_get_alert and route that rule to another channel with signoz_update_alert before deleting this one."
+)
+
 func (h *Handler) handleDeleteNotificationChannel(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args, result := decodeNotificationIDArgs(req)
 	if result != nil {
@@ -132,7 +140,11 @@ func (h *Handler) handleDeleteNotificationChannel(ctx context.Context, req mcp.C
 	}
 	if err := upstream.DeleteNotificationChannel(ctx, args.ID); err != nil {
 		h.logUpstreamFailure(ctx, "Failed to delete notification channel", err, slog.String("id", args.ID))
-		return upstreamError(err), nil
+		result := upstreamError(err)
+		if strings.Contains(err.Error(), channelInUseError) {
+			appendNotes(ctx, h.logger, result, channelInUseRecovery)
+		}
+		return result, nil
 	}
 	payload, _ := json.Marshal(map[string]any{"status": "success", "id": args.ID})
 	return structuredResult(payload), nil

@@ -96,8 +96,9 @@ func (h *Handler) RegisterAlertsHandlers(s *mcp.Server) {
 		withCreateToolAnnotations(),
 		mcp.WithDescription(
 			"Use this when the user wants a new SigNoz alert rule; use signoz_update_alert to change an existing rule. "+
-				"Supports v2alpha1 threshold, PromQL, and metric anomaly alerts. Read signoz://alert/instructions and signoz://alert/examples before composing any payload, unless already read in the same prepared operation; for PromQL also read signoz://promql/instructions. "+
-				"For direct routing, reuse a fully paginated signoz_list_notification_channels result only from the same still-current prepared operation; otherwise call it, refreshing only if state may have changed. Use exact returned immutable routing displayName values, not machine name. If none fits, ask the user or offer signoz_create_notification_channel with settings the user provides; never guess or create automatically. SigNoz rejects a threshold tier with no channels or an unknown channel name; confirmed v2 policy routing may omit tier channels.",
+				"Read signoz://alert/instructions and signoz://alert/examples before composing any payload, unless already read in the same prepared operation; for PromQL also read signoz://promql/instructions. "+
+				"For direct routing, reuse a fully paginated signoz_list_notification_channels result only from the same still-current prepared operation; otherwise call it, refreshing only if state may have changed. Use the exact returned displayName, not name. If none fits, ask or offer signoz_create_notification_channel with user settings; never create one unasked. SigNoz rejects a threshold tier with no channels or an unknown channel name; confirmed v2 policy routing may omit tier channels. "+
+				"When a threshold sets targetUnit, set condition.compositeQuery.unit to the series unit; without it SigNoz compares the target unconverted. SigNoz saves a rule whose query has no data; dry-run its queries with signoz_execute_builder_query.",
 		),
 		mcp.WithInputSchema[types.CreateAlertInput](),
 	)
@@ -107,7 +108,7 @@ func (h *Handler) RegisterAlertsHandlers(s *mcp.Server) {
 		"signoz_update_alert",
 		withUpdateToolAnnotations(),
 		mcp.WithDescription(
-			"Use this when the user wants to change an existing SigNoz alert rule; use signoz_create_alert for a new rule. This is a full replacement: call signoz_get_alert unless its complete result is available from the same still-current prepared operation, then preserve every unchanged field. Likewise reuse signoz://alert/instructions, signoz://alert/examples, and a fully paginated signoz_list_notification_channels result only from that operation; otherwise read/call them, refreshing only if state may have changed. Use exact returned immutable routing displayName values, not machine name. If no direct channel fits, ask the user or offer signoz_create_notification_channel with settings the user provides; never create automatically. SigNoz rejects a threshold tier with no channels or an unknown channel name; confirmed v2 policy routing may omit tier channels.",
+			"Use this when the user wants to change an existing SigNoz alert rule; use signoz_create_alert for a new rule. This is a full replacement: call signoz_get_alert unless its complete result is available from the same still-current prepared operation, then preserve every unchanged field. Likewise reuse signoz://alert/instructions, signoz://alert/examples, and a fully paginated signoz_list_notification_channels result only from that operation; otherwise read/call them, refreshing only if state may have changed. Use the exact returned displayName, not name. If no direct channel fits, ask, or offer signoz_create_notification_channel with the user's settings; never create one automatically. SigNoz rejects a threshold tier with no channels or an unknown channel name; confirmed v2 policy routing may omit tier channels. When a threshold sets targetUnit, set condition.compositeQuery.unit to the series' unit; without it SigNoz compares the target unconverted.",
 		),
 		mcp.WithInputSchema[types.UpdateAlertInput](),
 	)
@@ -438,7 +439,7 @@ func (h *Handler) handleGetAlertHistory(ctx context.Context, req mcp.CallToolReq
 		if errors.As(err, &statusErr) && statusErr.StatusCode == http.StatusNotFound {
 			result := upstreamError(err)
 			appendNotes(ctx, h.logger, result,
-				`recovery: Verify "id" in the SigNoz UI or, on SigNoz v0.120.0+, with signoz_list_alert_rules. If the rule exists, upgrade SigNoz to v0.118.0 or later; older versions do not support this tool.`)
+				`recovery: Verify "id" with signoz_list_alert_rules.`)
 			return result, nil
 		}
 		return upstreamError(err), nil

@@ -185,6 +185,19 @@ func TestUpstreamQueryError_TracesAndGenericSignalWording(t *testing.T) {
 	}
 }
 
+// SigNoz rejects a request with no compositeQuery.queries, such as the older
+// builderQueries shape, without naming the shape it takes.
+func TestUpstreamQueryError_NoQueriesNamesTheRequestShape(t *testing.T) {
+	err := keyNotFound400(`{"status":"error","error":{"type":"invalid-input","code":"invalid_input","message":"atleast one query is required","errors":[],"suggestions":[]}}`)
+
+	text := resultText(t, upstreamQueryError(err, ""))
+	for _, want := range []string{"atleast one query is required", "query_range takes compositeQuery.queries, a list of {type, spec} envelopes", "builderQueries, promQueries, and chQueries are an older request shape"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("error text lacks %q: %q", want, text)
+		}
+	}
+}
+
 func TestUpstreamQueryError_NoMissingKeyIsPlainUpstreamError(t *testing.T) {
 	err := keyNotFound400(`{"status":"error","error":{"type":"invalid-input","code":"invalid_input","message":"bad step interval","errors":[],"suggestions":[]}}`)
 

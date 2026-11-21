@@ -110,18 +110,116 @@ Totals over the 45 rows above: 21 accurate, 10 missing, 13 stale or misleading (
 "imperative only" guide pointers), and 1 not verified. By failure mode: 27 W, 9 EF, 4 EN, and 6 C;
 two rows carry two modes and the logs and AI guides row is mixed.
 
+## Audit, second pass: mutation tools, remaining tools, prompts, errors, manifest
+
+Same columns and failure modes. Many nested alert, view, and dashboard parameter descriptions are
+generated from the pinned SigNoz OpenAPI spec (`internal/apiclient/apitypes`), so they are SigNoz's
+own text; they were spot-checked, not edited.
+
+### Alerts
+
+| Claim | Status | Checked against | Mode | Was taught | Now |
+|---|---|---|---|---|---|
+| schemaVersion v2alpha1 required | accurate | `ruletypes/api_params.go` `validateSchemaVersion` | EF | guide, schema | unchanged |
+| thresholds, evaluation, notificationSettings required for v2alpha1 | accurate | `api_params.go` | EF | guide | unchanged |
+| panelType must be value, table, or graph | accurate | `ruletypes/alerting.go` `PanelType.Validate` | EF | guide, schema | unchanged |
+| unknown keys rejected at the top level and in condition | accurate | `api_params.go` `WithDisallowUnknownFields` | EF | guide | unchanged |
+| a tier with no channels or an unknown channel is rejected | accurate | e2e `test_create_alert_unknown_channel_rejected` | EF | descriptions, guide | unchanged |
+| targetUnit converts to compositeQuery.unit; with no unit the target is compared unconverted | accurate | `ruletypes/threshold.go` `convertToRuleUnit`, `units/converter_time.go`; new e2e `test_threshold_unit_converts_only_with_a_query_unit` | W | guide only | create and update descriptions, guide |
+| SigNoz saves a rule whose query returns no data | missing | new e2e `test_rule_on_a_missing_metric_saves` | W | nowhere | create description, guide step |
+| negative operators "only match rows where the field is present" | stale | `querybuildertypesv5/builder_elements.go` `AddDefaultExistsFilter`; new e2e `test_negative_filters_also_match_rows_missing_the_field` | W | guide | fixed |
+| order and limit on a grouped alert query cap evaluation to the top N | not verified in this pass | none | W | guide | unchanged |
+| labels.severity does not set a fired alert's severity | not verified in this pass | none | C | guide | unchanged |
+| alerts evaluate the first aggregation | not verified in this pass | none | W | guide | unchanged |
+| metric timeAggregation defaults by type for alerts | not verified in this pass | none | W | guide | unchanged |
+| evaluation windows are Go durations, largest unit h | not verified in this pass | none | EF | guide | unchanged |
+| PromQL uses the quoted selector for dotted names | accurate | e2e PromQL with `{"X.bucket", "service.name"=...}` | EN (no data) | guide, PromQL guide | unchanged |
+| an alertType that does not match the query signal | missing | probe: SigNoz saves it; its effect on evaluation not verified | unknown | nowhere | not addressed |
+| generated condition and notificationSettings descriptions | accurate where spot-checked | `compositeQuery.unit` against `threshold.go` | mixed | schema (generated) | unchanged |
+| alert-history 404 recovery names SigNoz v0.118.0 and v0.120.0 | stale against the version policy | `CLAUDE.md` | C | coded error | fixed |
+
+### Dashboards
+
+| Claim | Status | Checked against | Mode | Was taught | Now |
+|---|---|---|---|---|---|
+| the server derives name from spec.display.name on create | accurate | `dashboards.go` sets `generateName` | C | guide, schema | unchanged |
+| only source=user dashboards can be written | accurate | e2e `test_system_dashboard_is_hidden_but_gettable...` | EF | descriptions | unchanged |
+| update is a full replacement; the {status, data} envelope is rejected | accurate | e2e `test_text_panel_create_get_update_patch...` | EF | description | unchanged |
+| a panel with no grid item is accepted but never renders | accepted: accurate; renders: UI, not verified | new e2e `test_panels_save_without_data_or_a_grid_item` | W | patch guide, a parenthesis on the tool | rule on `signoz_patch_dashboard` |
+| a panel whose query returns no data saves | missing on the tools | new e2e (same test) | W | widgets guide dry-run rule | create and update descriptions |
+| removing a panel without its grid item is rejected; overlapping items are rejected; one query per panel | not verified in this pass | none | EF | patch guide | unchanged |
+| TextPanel queries must be [], not null | accurate | e2e text-panel lifecycle | EF | widgets guide | unchanged |
+| a saved panel query dry-runs unchanged through signoz_execute_builder_query | accurate | e2e `test_saved_panel_queries_dry_run_unchanged...` | EN | widgets guide | unchanged |
+| area, top list, scatter, and geo map panel rules | accurate | e2e panel round-trip tests | EF | widgets guide | unchanged |
+| heatmap panel rules | not verified in this pass | none | EF | widgets guide | unchanged |
+| query-builder guide: negative operators match missing fields | accurate | new e2e | W | guide | unchanged |
+| query-builder guide: signoz_latency.count is the number of requests | stale | e2e span metrics (one sample per span) | W | guide | fixed: spans, not requests |
+| query-builder guide: process_cpu_seconds_total listed as a gauge | stale | counter by name | C | guide | replaced |
+| histogram suffixes are dotted (.bucket, .count, .sum) | accurate | e2e histogram tests | EF | guide | unchanged |
+| ClickHouse examples use GLOBAL IN | not verifiable here | the pinned single-shard cast answers a plain IN subquery without error | EN on multi-shard | ClickHouse guides | unchanged (see Outcome) |
+| list-filter guide: REGEXP rejected; EXISTS only on tag keys | not verified in this pass | none | EF | guide | unchanged |
+| dashboard examples create, replace, and patch | accurate | e2e `test_dashboard_examples_create_replace_patch_and_delete` | EF | examples | unchanged |
+| widget examples match the create schema | accurate | `dashboard_schema_test.go` | EF | examples | unchanged |
+
+### Views and notification channels
+
+| Claim | Status | Checked against | Mode | Was taught | Now |
+|---|---|---|---|---|---|
+| create_view: "you must read both" guides | imperative only | decision 4, SUR-10 wording | W | description | rule and pointer |
+| a view whose builder query signal differs from source still saves | accurate | new e2e `test_view_with_a_mismatched_signal_saves` | W | view guide | create description |
+| the explorer shows only views whose signal matches | not verified (UI) | none | W | view guide | unchanged |
+| view name is immutable; update is a full replacement | accurate | e2e `test_saved_views.py` | EF | descriptions, schema | unchanged |
+| view examples | accurate | e2e `test_view_examples_create_replace_and_delete` | EF | examples | unchanged |
+| delete channel: "does not check alert-rule references" | stale | `signozalertmanager/provider.go` `DeleteChannelByID`; new e2e `test_channel_an_alert_routes_to_cannot_be_deleted` | EN (rule IDs labelled routing policies) | description | rule in description, recovery note on the error |
+| channel name is an immutable DNS-1123 label; routing uses displayName | accurate | e2e channel lifecycle | EF | descriptions | unchanged |
+| test defaults to false; the channel stays if the test fails | accurate | e2e `test_local_webhook_test_is_opt_in...` | C | descriptions | unchanged |
+| omit a template field to unset it; an empty string is rejected | accurate | e2e `test_update_unsets_template_field_by_omission...` | EF | description | unchanged |
+| channel examples | accurate | e2e `test_channel_examples_create_replace_and_delete` | EF | examples | unchanged |
+
+### Remaining tools, prompts, errors, and manifest
+
+| Surface | Claim | Status | Checked against | Mode | Now |
+|---|---|---|---|---|---|
+| `signoz_list_metrics` | active in the window; no offset pagination | accurate | e2e `test_list_metrics_path` | C | unchanged |
+| `signoz_get_top_metrics` | a fixed top 100 | accurate | `metrics_top.go` `topMetricsLimit` | C | unchanged |
+| `signoz_check_metric_usage` | up to 50 names per call | accurate | `client.MaxMetricUsageNames` | EF | unchanged |
+| `signoz_check_metric_cardinality` | keys sorted by cardinality with samples | accurate | `client/metric_cardinality.go`; e2e `test_metric_cardinality_resolves_seeded_metric` | C | unchanged |
+| `signoz_get_field_keys`, `signoz_get_field_values` | no time range; data.complete=false when cut | accurate | e2e `test_field_lookups_honor_limit_and_say_when_cut` | W | unchanged |
+| `signoz_get_trace_details` | found by ID alone | accurate | e2e `test_trace_details_finds_a_trace_by_id_alone` | C | unchanged |
+| `signoz_get_service_map` | paired calls only; a window under a minute can be empty | accurate | e2e `test_service_map.py` | W | unchanged |
+| `signoz_get_org_overview` | missing fields are unreported, not zero | accurate | e2e `test_org_overview` | W | unchanged |
+| AI pricing and mapping tools | views, unpriced models in the last hour, mapping groups | accurate | e2e `test_ai_pricing_and_mappings.py` | C | unchanged |
+| `signoz_search_docs`, `signoz_fetch_doc` | ranking, sections, headings | accurate | `internal/docs` golden tests | C | unchanged |
+| `signoz_list_alerts` | Alertmanager label matchers =, !=, =~, !~ | not verified in this pass | none | EF | unchanged |
+| `signoz_list_alert_rules` | filter keys and label matching | accurate | e2e `test_list_alert_rules_filters_in_signoz` | EF | unchanged |
+| `signoz_get_alert_history` | cursor paging and envelope | accurate | e2e `test_alert_history_envelope` | C | unchanged |
+| prompts `debug_service_errors` steps 1 and 3, `latency_analysis` steps 1, 3, 4, `compare_metrics`, `incident_triage` | tool names, parameters, and steps | accurate | tool schemas; e2e log and trace tests | C | unchanged |
+| `signoz_execute_builder_query` error | the older builderQueries shape gets "atleast one query is required", which does not name the shape | missing | probe; new e2e `test_older_request_shape_error_names_the_queries_list` | EN | recovery text added |
+| `signoz_execute_builder_query` error | an unknown top-level field such as queryType or panelType names the valid fields | accurate | probe | EF | unchanged |
+| `signoz_query_metrics` error | a scalar query without reduceTo is rejected | accurate | e2e `test_scalar_requires_an_explicit_reduce_to` | EF | unchanged |
+| `manifest.json` | `signoz_create_view` "after reading both view authoring resources" | stale against its description | descriptions | C | updated |
+| `manifest.json` | `signoz_delete_notification_channel` routing-policy wording | incomplete | e2e | C | updated |
+| `manifest.json` | the other 46 entries | accurate against their tools | descriptions | C | unchanged |
+
+Totals over the 65 rows above: 41 accurate, 1 accurate in part (the patched panel saves; the "never
+renders" half is UI), 4 missing, 8 stale or misleading, and 11 not verified in this pass. By failure
+mode: 16 W, 26 EF, 5 EN, and 16 C; one row is mixed and one unknown. Every stale or missing claim
+above is fixed except the alertType mismatch, whose effect on evaluation is not established. The
+not-verified rows keep their text; checking them needs an alert to fire, a UI to render, or a
+multi-shard cluster.
+
 ## Silent traps
 
 | Trap | Status | Reason |
 |---|---|---|
 | Ungrouped count, rate, or latency over every span of one service | noted (`trace_all_spans`), `signoz_aggregate_traces` and `signoz_execute_builder_query` | the request shows it |
-| Scalar percentile reduced with avg, median, or sum | noted (`percentile_of_steps`), both metric paths | the request shows it; bucket-count route and PromQL verified |
+| Scalar percentile reduced with avg, median, or sum | noted (`percentile_of_steps`), both metric paths | the request shows it; the same-steps bucket-count route is offered only for explicit-bucket histograms and keeps the caller's groups |
 | Caller step at least as long as a window that starts mid-step | noted (`step_alignment`), both metric paths | found in the eval; behaviour pinned in e2e |
 | Scalar rate reduced with sum | noted (`rate_summed`), both metric paths | the request shows it |
 | Cumulative counter read without rate or increase | noted (`counter_running_total`), `signoz_query_metrics`; text only for `signoz_execute_builder_query` | needs monotonicity, which only the metadata lookup has |
 | `signoz_calls_total` or `signoz_latency` for one service | noted (`span_metrics_all_spans`), both metric paths | the request shows it |
 | Formula input with its own limit | noted (`formula_input_limit`), `signoz_execute_builder_query` | `signoz_query_metrics` never limits inputs |
-| Negative filters match missing fields | text only (instructions rule 4) | the request cannot say whether a key is ever missing; a note would fire on most negative filters |
+| Negative filters match missing fields | text only (instructions rule 4, guides; the alert guide's opposite claim fixed) | the request cannot say whether a key is ever missing; a note would fire on most negative filters; pinned in e2e |
 | Grouped top-N ranked over the whole window | text only (limit descriptions, decisions note) | whether a spike group was dropped is not visible in the result |
 | rate on a gauge | text only (metrics guide) | a rate of change is a legitimate question; no evidence it is common |
 | Pinned temporality that returns no data | text only (metrics guide) | the result is empty, not a plausible number; not re-verified here |
@@ -129,7 +227,10 @@ two rows carry two modes and the logs and AI guides row is mixed.
 | Absent service means no trace activity | text only (`signoz_list_services`) | accurate as written |
 | Default time windows | existing window note on every windowed result | already covered |
 | Nanoseconds and percentages in results | text only (parameter and tool descriptions) | units are stated where values appear |
-| Units in alert thresholds; panels and alerts that save but never show data or fire | not addressed | needs a query at save time, which is new behaviour |
+| A threshold targetUnit with no query unit | text on `signoz_create_alert`, `signoz_update_alert`, and the alert guide | SigNoz compares the target unconverted; pinned in e2e by a rule that fires and one that does not |
+| An alert or panel saved on a query with no data | text on the alert and dashboard tools and the alert guide (dry-run first) | SigNoz saves both; detecting it would need a query at save time |
+| A patched panel without its grid item | text on `signoz_patch_dashboard` | SigNoz saves it outside the layout; pinned in e2e |
+| A view whose query signal differs from its source | text on `signoz_create_view` | SigNoz saves it; pinned in e2e; the explorer side is not verified |
 
 ## Files to Modify
 
@@ -144,6 +245,9 @@ two rows carry two modes and the logs and AI guides row is mixed.
 - `internal/mcp-server/testdata/wire-catalog/` — the changed entries only.
 - `README.md`, `manifest.json`, `docs/mcp-best-practices.md` (SUR-11, OUT-7, RES-5).
 - e2e: `tests/e2e/tests/test_{trace_fields,metric_aggregations,result_shaping}.py`, `tests/fixtures/telemetry.py`.
+- Second pass: alert, dashboard, view, and channel descriptions; `internal/handler/tools/errs.go`
+  and `notification_channels.go` recovery text; `pkg/alert/resources.go`, `pkg/dashboard/query.go`;
+  e2e in `test_{alerts,dashboards,logs,notification_channels,saved_views,query_response_paths}.py`.
 
 ## Key Decisions
 
@@ -175,39 +279,86 @@ two rows carry two modes and the logs and AI guides row is mixed.
 - Rationale: their content is payload schema that cannot fit a 1,024-byte description, and those
   flows read the guides when skills name them (SigNoz/nerve-pod#667).
 
+### 2026-11-21 — Narrow the notes after review
+
+An independent review of the first pass raised fourteen findings; each was checked against the code
+and SigNoz source.
+
+- C1: the bucket-count route covers the same aligned steps as the result, not the exact window;
+  the note says "over the same steps".
+- C2: a grouped percentile keeps its groups; the route adds le to the caller's groupBy keys and
+  interpolates per group.
+- C3: the route is offered only for an explicit-bucket histogram (type histogram, or type unknown
+  and a `.bucket` name); an exponential histogram gets only the sentence saying what was measured.
+- C4: the note no longer offers PromQL. No final-round session used it, and the bucket route passed
+  every session; the guide keeps its PromQL paragraph, pinned in e2e by a literal query.
+- C5: a filter with OR names no service, so it gets no service-scoped note.
+- C6: the trace note says to add `AND (isEntryPoint = true OR isRoot = true)`; unparenthesised,
+  the OR admits root spans of every service. The span-metric notes parenthesise the filter too.
+- C7: notes use the step SigNoz reports, which can differ from a caller's (SigNoz raises a step
+  below its 60 s minimum).
+- C8: `rate_summed` needs spaceAggregation sum (or unset on the builder path); with count the steps
+  are series counts.
+- C9: a query with post-query functions gets no metric notes, on both tool paths.
+- C10: the step-alignment note says a cumulative histogram's first step is left out only when
+  timeAggregation is empty; with an explicit rate SigNoz reads the preceding step.
+- C11: the latency text covers only `signoz_latency.bucket` and keeps the caller's percentile;
+  `signoz_latency.count` gets the calls text; other `signoz_latency.*` names get no note.
+- C12: `count_distinct` no longer counts as a sample count.
+- C13 and C14 (a sentence that predates this PR; a limit-plus-offset formula input) are declined
+  as nits and left as follow-ups.
+
+### 2026-11-21 — Mutation-side rules on the tools, schema pointers kept
+
+- Decision: rules that prevent a wrong result with no error go on the tool: the alert unit rule,
+  dry-running alert and panel queries, the patched panel's grid item, and the view signal. Payload
+  schema stays in the guides, with pointers.
+- Rationale: each rule is pinned in e2e; the guides hold schema that cannot fit a description.
+
+### 2026-11-21 — GLOBAL IN not taught
+
+- Decision: no `GLOBAL IN` rule or recovery text.
+- Rationale: the pinned e2e cast is single-shard and answers a plain `IN` subquery over the
+  distributed tables without error, so neither the failure nor its error text can be verified here.
+
 ## Reference Links
 
 - SigNoz/nerve-pod#667, SigNoz/nerve-pod#482, SigNoz/signoz-mcp-server#474
 
 ## Verification
 
-- Handler tests in `measurement_notes_test.go`: each note fires and its legitimate neighbour does
-  not, and the counter records tool and rule (36 cases).
-- e2e against v0.151.0: `test_entry_spans_count_each_request_once` (extended),
+- Handler tests: `measurement_notes_test.go` (47 cases: each note fires and its legitimate
+  neighbour does not, and the counter records tool and rule), the channel-in-use and older
+  request-shape recovery texts.
+- e2e against v0.151.0, first pass: `test_entry_spans_count_each_request_once` (extended),
   `test_span_metrics_count_every_span_and_say_so`,
-  `test_window_percentile_is_not_the_mean_of_step_percentiles`,
-  `test_counter_reducers_say_what_they_measured`, and
-  `test_formula_input_limit_drops_series_and_says_so` pass; the full suite result is in the PR.
-- EVL-1, final round, origin/main against this branch, Claude Code CLI 2.1.330 with tool search on
-  (pass counts on the final number; the PR has the setup and every row):
-  - Haiku request p95 3/6 → 6/6, request rate 4/6 → 6/6, histogram p95 0/6 → 6/6.
-  - Sonnet histogram p95 0/3 → 3/3; its request p95 and rate were 3/3 in both builds.
-  - The direct prompt and the negative prompts (span count, worst minute, order rate) passed in
-    both builds, and no run narrowed a span count to requests.
-  - Order count passed in both builds, so the counter notes show no gain here, only no regression.
-  - Two earlier rounds shaped the percentile text: an averaged-percentile note alone left models
-    setting a window-long step, and a min/max bound led Haiku to report the bound.
-- `GOTOOLCHAIN=go1.26.11 make ci`: pass, with a fresh module cache because a locally modified
-  module-cache entry fails `go mod verify`, and with protocol and conformance port overrides because
-  another local process holds port 18080.
-- Full e2e suite against v0.151.0: 111 passed, 1 skipped (skipped on main as well).
+  `test_window_percentile_is_not_the_mean_of_step_percentiles` (now with the grouped bucket route
+  and the guide's literal PromQL), `test_counter_reducers_say_what_they_measured`,
+  `test_formula_input_limit_drops_series_and_says_so`.
+- e2e, second pass: `test_threshold_unit_converts_only_with_a_query_unit`,
+  `test_rule_on_a_missing_metric_saves`, `test_panels_save_without_data_or_a_grid_item`,
+  `test_negative_filters_also_match_rows_missing_the_field`,
+  `test_channel_an_alert_routes_to_cannot_be_deleted`, `test_view_with_a_mismatched_signal_saves`,
+  `test_older_request_shape_error_names_the_queries_list`.
+- EVL-1, origin/main against this branch, Claude Code CLI 2.1.330 with tool search on; the PR has
+  the setup and every row. Second-pass round on the final text: Haiku request p95 3/6 → 6/6,
+  request rate 3/6 → 6/6, histogram p95 0/6 → 6/6; Sonnet histogram p95 0/3 → 3/3; the span-count
+  and worst-minute negatives held in both builds. The new alert prompt passed in both builds
+  (main 17 of 18, branch 18 of 18 across two rounds); dry-running the query before creating the
+  rule went from 1 of 18 to 14 of 18, at about one more turn per session.
+- `GOTOOLCHAIN=go1.26.11 make ci` with a temporary module cache (a locally modified cache entry
+  fails `go mod verify`) and protocol and conformance port overrides (another local process holds
+  port 18080). Full e2e suite against v0.151.0.
 
 ## Outcome
 
-Shipped as planned, plus the `step_alignment` rule, which the eval found. Deferred: the
-`signoz_execute_builder_query` ClickHouse `GLOBAL IN` and request-shape rules from
-SigNoz/nerve-pod#667 (no room in the description and not verified here); the prose of the
-dashboard, alert, view, and channel resources, which this pass did not re-verify claim by claim;
-alert-threshold units and saved panels or alerts that can never show data, which need a query at
-save time; the stale SigNoz version names in the alert-history recovery text. Skill changes are
-tracked in SigNoz/nerve-pod#436.
+Shipped as planned, plus the `step_alignment` rule the eval found, the review narrowing (C1 to
+C12), and the second audit pass with its fixes. Deferred:
+
+- `GLOBAL IN` for ClickHouse SQL: not verifiable on the single-shard e2e cast.
+- The other 10 claims marked not verified in this pass (alert top-N, severity labels, first aggregation,
+  metric defaults for alerts, evaluation formats, patch rejections, heatmap rules, list-filter
+  rules, Alertmanager matchers, explorer rendering of mismatched views), and an alertType that does
+  not match its query signal.
+- Review findings C13 and C14 (a sentence that predates this PR; a limit-plus-offset formula input).
+- Skill changes are tracked in SigNoz/nerve-pod#436; behaviour bugs are in SigNoz/nerve-pod#674.
