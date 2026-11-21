@@ -66,7 +66,12 @@ def seeded(mcp_client: MCPClient, telemetry: None) -> Seeded:
 
 
 def search_rows(client: MCPClient, arguments: dict) -> list[dict]:
-    result = assert_tool_ok(client.call_tool("signoz_search_traces", {"timeRange": "1h", "limit": "50", **arguments}))
+    # The assertions need every row in one page; complete span records can exceed the default size budget.
+    result = assert_tool_ok(
+        client.call_tool(
+            "signoz_search_traces", {"timeRange": "1h", "limit": "50", "maxResultBytes": "500000", **arguments}
+        )
+    )
     return query_range_rows(first_text_block(result))
 
 

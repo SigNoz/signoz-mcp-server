@@ -96,13 +96,15 @@ var GrandfatheredWideSchemaProperties = map[string][]string{
 	},
 	// orderBy, queryType, and requestType take search to 16 on purpose: a
 	// separate trace-list or AI search tool would repeat the filter, time, and
-	// paging parameters.
+	// paging parameters. maxResultBytes (17) is the per-call result size
+	// budget signoz_search_logs also takes; it belongs beside limit and offset.
 	"signoz_search_traces": {
 		"end",
 		"error",
 		"filter",
 		"limit",
 		"maxDuration",
+		"maxResultBytes",
 		"minDuration",
 		"offset",
 		"operation",

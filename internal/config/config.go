@@ -50,6 +50,10 @@ type Config struct {
 
 	// MaxRequestBytes caps the size of an inbound MCP HTTP request body.
 	MaxRequestBytes int
+
+	// MaxResultBytes is the default size budget, in UTF-8 bytes of text, of a
+	// result from the tools that page rows by size.
+	MaxResultBytes int
 }
 
 const (
@@ -79,6 +83,7 @@ const (
 	DocsFullRefreshIntervalEnv = "SIGNOZ_DOCS_FULL_REFRESH_INTERVAL"
 
 	MaxRequestBytesEnv = "MCP_MAX_REQUEST_BYTES"
+	MaxResultBytesEnv  = "MCP_MAX_RESULT_BYTES"
 
 	defaultClientCacheSize       = 256
 	defaultClientCacheTTLMinutes = 30
@@ -90,6 +95,9 @@ const (
 	// defaultMaxRequestBytes bounds inbound MCP request bodies; 4 MiB is far
 	// above any legitimate tool-call payload (incl. dashboard imports).
 	defaultMaxRequestBytes = 4 << 20 // 4 MiB
+	// DefaultMaxResultBytes stays under the smallest result a common MCP client
+	// shows its model whole (Gemini CLI cuts above 40,000 characters).
+	DefaultMaxResultBytes = 32000
 )
 
 func LoadConfig() (*Config, error) {
@@ -153,6 +161,7 @@ func LoadConfig() (*Config, error) {
 		DocsRefreshInterval:  docsRefreshInterval,
 		DocsRefreshDisabled:  docsRefreshDisabled,
 		MaxRequestBytes:      getEnvInt(MaxRequestBytesEnv, defaultMaxRequestBytes),
+		MaxResultBytes:       getEnvInt(MaxResultBytesEnv, DefaultMaxResultBytes),
 	}, nil
 }
 

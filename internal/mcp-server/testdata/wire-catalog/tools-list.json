@@ -8428,6 +8428,13 @@
                   "string"
                 ]
               },
+              "maxResultBytes": {
+                "description": "Size budget for this result in UTF-8 bytes of text, counting the JSON and its notes (default: 32000 unless the server sets another). Rows that do not fit move to the next page, so a page can hold fewer rows than limit: read pagination.hasMore and continue from pagination.nextOffset. To fit more rows in a page, name fewer fields in selectFields. Raise this only if your client can show a larger result. Values below 1000 or above 500000 (or the server default, when higher) are clamped, with a note.",
+                "type": [
+                  "integer",
+                  "string"
+                ]
+              },
               "offset": {
                 "default": "0",
                 "description": "Offset for pagination (default: 0)",
@@ -8532,6 +8539,13 @@
               },
               "maxDuration": {
                 "description": "Maximum span duration, such as '500ms' or '2s' (units ns, us, ms, s, m, h). A bare number is nanoseconds: 500 means 500ns, not 500ms.",
+                "type": [
+                  "integer",
+                  "string"
+                ]
+              },
+              "maxResultBytes": {
+                "description": "Size budget for this result in UTF-8 bytes of text, counting the JSON and its notes (default: 32000 unless the server sets another). Rows that do not fit move to the next page, so a page can hold fewer rows than limit: read pagination.hasMore and continue from pagination.nextOffset. To fit more rows in a page, name fewer fields in selectFields. Raise this only if your client can show a larger result. Values below 1000 or above 500000 (or the server default, when higher) are clamped, with a note.",
                 "type": [
                   "integer",
                   "string"

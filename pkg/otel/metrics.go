@@ -27,6 +27,7 @@ type Meters struct {
 	ToolValidationMismatches           metric.Int64Counter
 	ToolSchemaCompileFailures          metric.Int64Counter
 	ToolOutputMissingStructuredContent metric.Int64Counter
+	ToolResultBudgetEvents             metric.Int64Counter
 }
 
 func NewMeters(mp metric.MeterProvider) (*Meters, error) {
@@ -180,6 +181,13 @@ func NewMeters(mp metric.MeterProvider) (*Meters, error) {
 	if err != nil {
 		return nil, err
 	}
+	toolResultBudgetEvents, err := meter.Int64Counter(
+		"mcp.tool.result.budget.events",
+		metric.WithDescription("Count of tool results the result size budget changed or could not bound, by mcp.tool.result.budget.event"),
+	)
+	if err != nil {
+		return nil, err
+	}
 	return &Meters{
 		ToolCalls:                          toolCalls,
 		ToolCallDuration:                   toolCallDuration,
@@ -203,5 +211,6 @@ func NewMeters(mp metric.MeterProvider) (*Meters, error) {
 		ToolValidationMismatches:           toolValidationMismatches,
 		ToolSchemaCompileFailures:          toolSchemaCompileFailures,
 		ToolOutputMissingStructuredContent: toolOutputMissingStructuredContent,
+		ToolResultBudgetEvents:             toolResultBudgetEvents,
 	}, nil
 }

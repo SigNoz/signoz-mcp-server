@@ -800,7 +800,10 @@ func (m *MCPServer) completeToolObservation(ctx context.Context, request mcp.Req
 	// Always emit the result size — even zero — so it matches the log
 	// field and downstream aggregations (avg, histogram) don't drop
 	// empty-result tool calls as nulls.
-	span.SetAttributes(otelpkg.MCPToolResultBytesKey.Int64(resultBytes))
+	span.SetAttributes(
+		otelpkg.MCPToolResultBytesKey.Int64(resultBytes),
+		otelpkg.MCPToolResultTextBytesKey.Int64(resultTextBytes(result)),
+	)
 	if err != nil {
 		observableErr := observableToolError(toolName, err)
 		span.RecordError(observableErr)
@@ -986,6 +989,21 @@ func toolAnalyticsErrorType(errorType, errorCode string) string {
 		return strings.ToLower(errorCode)
 	}
 	return errorType
+}
+
+// resultTextBytes sums the UTF-8 bytes of a result's text blocks, the text a
+// client shows its model and the size result budgets bound.
+func resultTextBytes(result *mcp.CallToolResult) int64 {
+	if result == nil {
+		return 0
+	}
+	var total int64
+	for _, content := range result.Content {
+		if text, ok := content.(*mcp.TextContent); ok {
+			total += int64(len(text.Text))
+		}
+	}
+	return total
 }
 
 func serializedResultBytes(result *mcp.CallToolResult) (int64, error) {

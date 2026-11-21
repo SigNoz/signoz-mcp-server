@@ -57,7 +57,7 @@ func testServerWithTelemetry(t *testing.T, logger *slog.Logger) (*MCPServer, *sd
 	return NewMCPServer(logger, tools.NewHandler(logger, cfg), cfg, noopanalytics.New(), meters), reader, exporter
 }
 
-func assertToolResultBytes(t *testing.T, result *mcp.CallToolResult) {
+func assertToolResultBytes(t *testing.T, result *mcp.CallToolResult, wantTextBytes int64) {
 	t.Helper()
 
 	server, _, exporter := testServerWithTelemetry(t, logpkg.New("error"))
@@ -84,18 +84,27 @@ func assertToolResultBytes(t *testing.T, result *mcp.CallToolResult) {
 	if got, want := size.AsInt64(), int64(len(encoded)); got != want {
 		t.Fatalf("%s = %d, want exact serialized size %d for %s", otelpkg.MCPToolResultBytesKey, got, want, encoded)
 	}
+	// Result budgets bound the text a client shows its model, so the span also
+	// carries that number: text blocks only, without structuredContent.
+	textSize, ok := spanAttrValue(spans[0].Attributes, otelpkg.MCPToolResultTextBytesKey)
+	if !ok {
+		t.Fatalf("span missing %s", otelpkg.MCPToolResultTextBytesKey)
+	}
+	if got := textSize.AsInt64(); got != wantTextBytes {
+		t.Fatalf("%s = %d, want %d, the summed UTF-8 bytes of the text blocks", otelpkg.MCPToolResultTextBytesKey, got, wantTextBytes)
+	}
 }
 
 func TestGuardrail_ToolCallSpanHasSerializedResultBytes(t *testing.T) {
 	body := strings.Repeat("x", 512)
 	assertToolResultBytes(t, &mcp.CallToolResult{
-		Content:           []mcp.Content{&mcp.TextContent{Text: body}},
+		Content:           []mcp.Content{&mcp.TextContent{Text: body}, &mcp.TextContent{Text: "note: é"}},
 		StructuredContent: map[string]any{"body": body},
-	})
+	}, 512+8) // "note: é" is 8 bytes: é takes two
 }
 
 func TestGuardrail_EmptyToolResultIncludesSerializedEnvelopeBytes(t *testing.T) {
-	assertToolResultBytes(t, &mcp.CallToolResult{})
+	assertToolResultBytes(t, &mcp.CallToolResult{}, 0)
 }
 
 func TestReceivingMiddlewareKeepsClientMetadataOutOfMetricLabels(t *testing.T) {

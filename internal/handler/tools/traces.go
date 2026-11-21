@@ -71,6 +71,7 @@ func (h *Handler) RegisterTracesHandlers(s *mcp.Server) {
 		mcp.WithString("orderBy", mcp.Description(searchTracesOrderByParamDescription)),
 		mcp.WithString("queryType", mcp.DefaultString(querybuilder.QueryTypeBuilder), mcp.Enum(querybuilder.QueryTypeBuilder, querybuilder.QueryTypeBuilderAI), mcp.Description(searchTracesQueryTypeParamDescription)),
 		mcp.WithString("requestType", mcp.DefaultString(requestTypeRaw), mcp.Enum(requestTypeRaw, requestTypeTrace), mcp.Description(searchTracesRequestTypeParamDescription)),
+		mcp.WithString(maxResultBytesParam, intOrStringType(), mcp.Description(maxResultBytesParamDescription)),
 	)
 
 	h.addTool(s, searchTracesTool, h.handleSearchTraces)
@@ -157,6 +158,10 @@ func (h *Handler) handleSearchTraces(ctx context.Context, req mcp.CallToolReques
 	if err != nil {
 		return errorWithCode(CodeValidationFailed, err.Error()), nil
 	}
+	budget, errResult := h.parseResultBudget(args)
+	if errResult != nil {
+		return errResult, nil
+	}
 
 	// Out-of-enum requestType and queryType values run best-effort (span rows,
 	// builder_query) and the schema validation notice flags them.
@@ -200,7 +205,15 @@ func (h *Handler) handleSearchTraces(ctx context.Context, req mcp.CallToolReques
 
 	result = h.enrichSearchTracesWebURL(ctx, base, result)
 	notes := append([]string{windowNote(reqData.StartTime, reqData.EndTime)}, aiSearchNotes(reqData, result)...)
-	return rawSearchResult(ctx, h.logger, "signoz_search_traces", result, reqData.Limit, reqData.Offset, reqData.LimitClamped, "", notes...), nil
+	// Cut after enrichment, so the budget measures each row's webUrl too.
+	return h.rawSearchResult(ctx, "signoz_search_traces", result, rawSearchRequest{
+		limit:        reqData.Limit,
+		offset:       reqData.Offset,
+		limitClamped: reqData.LimitClamped,
+		budget:       budget,
+		// selectFields does not apply to trace rows.
+		ignoresSelectFields: reqData.RequestType == requestTypeTrace,
+	}, notes...), nil
 }
 
 // aiSearchNotes explains builder_ai_query results; other query types get none.
