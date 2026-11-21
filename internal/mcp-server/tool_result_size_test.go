@@ -113,8 +113,15 @@ func rowsOf(n int, build func(int) map[string]any) []map[string]any {
 // returns the decoded tools/call result for toolName.
 func callToolOverProductionHTTP(t *testing.T, upstreamBody []byte, toolName string, arguments map[string]any, env map[string]string) map[string]any {
 	t.Helper()
+	return callToolOverProductionHTTPAt(t, "/api/v5/query_range", upstreamBody, toolName, arguments, env)
+}
+
+// callToolOverProductionHTTPAt serves upstreamBody for every POST to
+// upstreamPath and returns the decoded tools/call result for toolName.
+func callToolOverProductionHTTPAt(t *testing.T, upstreamPath string, upstreamBody []byte, toolName string, arguments map[string]any, env map[string]string) map[string]any {
+	t.Helper()
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/api/v5/query_range" {
+		if r.Method != http.MethodPost || r.URL.Path != upstreamPath {
 			http.Error(w, "unexpected request "+r.Method+" "+r.URL.Path, http.StatusInternalServerError)
 			return
 		}
@@ -141,6 +148,7 @@ func callToolOverProductionHTTP(t *testing.T, upstreamBody []byte, toolName stri
 	sdkServer := server.newSDKServer()
 	handler.RegisterTracesHandlers(sdkServer)
 	handler.RegisterLogsHandlers(sdkServer)
+	handler.RegisterServiceHandlers(sdkServer)
 	httpHandler := server.buildHTTP(sdkServer).Handler
 
 	response := protocolPOST(t, httpHandler, protocolRequestJSON(t, 900, "tools/call", map[string]any{
@@ -277,5 +285,82 @@ func TestToolResultCapFollowsEnvironment(t *testing.T) {
 		map[string]string{config.MaxResultCharsEnv: "400000"}))
 	if !json.Valid([]byte(large[0])) {
 		t.Fatalf("with %s=400000 the 100-row result was still cut: %.200s", config.MaxResultCharsEnv, large[0])
+	}
+}
+
+// topOperationsBody builds the /api/v2/service/top_operations response for n
+// operations. A real gateway with 980 operations returned 115,526 characters
+// (about 118 per row, #452), so the row uses route-shaped names and the
+// nanosecond latencies SigNoz reports.
+func topOperationsBody(t *testing.T, n int) []byte {
+	t.Helper()
+	operations := make([]map[string]any, n)
+	for i := range operations {
+		operations[i] = map[string]any{
+			"name":       fmt.Sprintf("GET /api/v1/orders/{id}/items/%04d", i),
+			"p50":        float64(11_400_000 + i*1013),
+			"p95":        float64(48_700_000 + i*2711),
+			"p99":        float64(91_300_000 + i*4973),
+			"numCalls":   120_000 - i*97,
+			"errorCount": i % 13,
+		}
+	}
+	body, err := json.Marshal(map[string]any{"status": "success", "data": operations})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return body
+}
+
+// TestToolResultCapAppliesToServiceTopOperations pins the fourth tool the
+// same instance showed over the line besides the span and log tools:
+// signoz_get_service_top_operations returned 115,751 characters for 980
+// operations at limit=5000.
+func TestToolResultCapAppliesToServiceTopOperations(t *testing.T) {
+	upstream := topOperationsBody(t, 980)
+	if got := utf8.RuneCount(upstream); got < 100_000 {
+		t.Fatalf("fixture is %d characters, want at least 100000 so it is as large as the real 980-operation table", got)
+	}
+
+	result := callToolOverProductionHTTPAt(t, "/api/v2/service/top_operations", upstream,
+		"signoz_get_service_top_operations",
+		map[string]any{"service": "gateway", "timeRange": "1h", "limit": "5000"}, nil)
+	blocks := resultTextBlocks(t, result)
+	if got := totalChars(blocks); got > guardrails.MaxToolResultChars {
+		t.Fatalf("result text is %d characters, want at most %d", got, guardrails.MaxToolResultChars)
+	}
+	if note := blocks[len(blocks)-1]; !strings.Contains(note, "result truncated") {
+		t.Fatalf("last block = %q, want the truncation note", note)
+	}
+}
+
+// TestToolResultBetweenHalfAndFullCapIsReturnedWhole pins that the default cap
+// does not cut a result that fits. The same instance had query_metrics at
+// 42,397 characters, list_dashboard_templates at 34,087 and
+// check_metric_cardinality at 32,661: under 50,000, so they must reach the
+// agent complete rather than with a note and a missing tail.
+func TestToolResultBetweenHalfAndFullCapIsReturnedWhole(t *testing.T) {
+	// 360 operations come to about 42,000 characters.
+	upstream := topOperationsBody(t, 360)
+	result := callToolOverProductionHTTPAt(t, "/api/v2/service/top_operations", upstream,
+		"signoz_get_service_top_operations",
+		map[string]any{"service": "gateway", "timeRange": "1h", "limit": "5000"}, nil)
+
+	blocks := resultTextBlocks(t, result)
+	got := totalChars(blocks)
+	if got < 40_000 || got > guardrails.MaxToolResultChars {
+		t.Fatalf("result text is %d characters, want between 40000 and %d", got, guardrails.MaxToolResultChars)
+	}
+	var operations []map[string]any
+	if err := json.Unmarshal([]byte(blocks[0]), &operations); err != nil {
+		t.Fatalf("first block is not complete JSON: %v", err)
+	}
+	if len(operations) != 360 {
+		t.Fatalf("got %d operations, want all 360", len(operations))
+	}
+	for _, block := range blocks {
+		if strings.Contains(block, "result truncated") {
+			t.Fatalf("a result under the cap got a truncation note: %q", block)
+		}
 	}
 }
