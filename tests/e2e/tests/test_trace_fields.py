@@ -10,7 +10,7 @@ import json
 
 from fixtures.mcpclient import MCPClient, assert_tool_ok, text_blocks
 from fixtures.results import aggregate_columns_and_row_count, first_text_block, note_blocks, query_range_rows
-from fixtures.telemetry import seed_traces, wait_for
+from fixtures.telemetry import seed_service_calls, seed_traces, wait_for
 
 # SigNoz adds these to every explicit search_traces field list.
 ALWAYS_SELECTED_SPAN_FIELDS = {"timestamp", "trace_id", "span_id"}
@@ -256,6 +256,46 @@ def test_is_root_selects_root_spans(mcp_client: MCPClient, test_id: str, telemet
     assert sorted(r.get("name") for r in rows) == ["e2e-operation", "e2e-operation"], (
         f"isRoot = true must return only the two roots: {rows}"
     )
+
+
+ENTRY_SPANS = "isEntryPoint = true OR isRoot = true"
+
+
+def test_entry_spans_count_each_request_once(mcp_client: MCPClient, test_id: str, telemetry: None) -> None:
+    """Pins the request-rate rule the aggregate_traces aggregations parameter teaches.
+
+    Each request reaches the caller as a root server span with a second server span
+    inside it, and reaches the callee as one server span under a remote parent.
+    """
+    caller, callee = f"mcp-e2e-{test_id}-web", f"mcp-e2e-{test_id}-api"
+    calls = 3
+    seed_service_calls(
+        caller,
+        callee,
+        count=calls,
+        callee_duration_ns=50_000_000,
+        environment=f"mcp-e2e-{test_id}",
+        inner_server_span=True,
+    )
+
+    def count(service: str, filter_expr: str | None = None) -> int | None:
+        args = {"searchContext": f"request count of {service}", "service": service, "aggregations": "count()"}
+        if filter_expr:
+            args["filter"] = filter_expr
+        result = mcp_client.call_tool("signoz_aggregate_traces", {**args, "timeRange": "1h"})
+        if result.get("isError", False):
+            return None
+        payload = json.loads(first_text_block(result))
+        rows = [row for r in payload["data"]["data"]["results"] for row in r.get("data") or []]
+        return int(rows[0][-1]) if rows else 0
+
+    # Wait for every span, then for the entry-point index, so both counts below can fail.
+    wait_for(lambda: count(caller) == 3 * calls, f"root, inner server and client spans for {caller}")
+    wait_for(lambda: count(callee, ENTRY_SPANS) == calls, f"entry spans for {callee}")
+
+    assert count(caller, ENTRY_SPANS) == calls, "the caller's root span is its entry span"
+    assert count(caller, "kind_string = 'Server'") == 2 * calls, "server spans count each request twice"
+    assert count(callee, "isRoot = true") == 0, "a span under a remote parent is an entry point, not a root"
 
 
 def test_group_by_resolves_custom_and_intrinsic_trace_fields(
