@@ -41,8 +41,9 @@ func structuredResultWithNotes(payload []byte, notes ...string) *mcp.CallToolRes
 // rawSearchResult is the result wrapper for raw row tools (search_logs /
 // search_traces), which support offset pagination. It appends a completeness
 // note (hasMore + nextOffset) inferred from the returned row count so callers
-// never silently assume a truncated page is complete.
-func rawSearchResult(ctx context.Context, logger *slog.Logger, toolName string, payload []byte, limit, offset int, limitClamped bool, extraNotes ...string) *mcp.CallToolResult {
+// never silently assume a truncated page is complete. A non-empty emptyNote is
+// appended when the first page has no rows.
+func rawSearchResult(ctx context.Context, logger *slog.Logger, toolName string, payload []byte, limit, offset int, limitClamped bool, emptyNote string, extraNotes ...string) *mcp.CallToolResult {
 	notes := append([]string(nil), extraNotes...)
 	if limitClamped {
 		notes = append(notes, fmt.Sprintf(
@@ -52,6 +53,9 @@ func rawSearchResult(ctx context.Context, logger *slog.Logger, toolName string, 
 	returnedRows, rowsKnown := countQueryRangeRows(payload)
 	warnRowCountUnknown(ctx, logger, toolName, payload, rowsKnown)
 	notes = append(notes, completenessNote(returnedRows, limit, offset, rowsKnown))
+	if rowsKnown && returnedRows == 0 && offset == 0 {
+		notes = append(notes, emptyNote)
+	}
 	warnings := extractBackendWarningMessages(payload)
 	warnBackendWarnings(ctx, logger, toolName, warnings)
 	warnUnparsedWarningEnvelope(ctx, logger, toolName, payload, len(warnings))

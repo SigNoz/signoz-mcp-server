@@ -199,7 +199,7 @@ func (h *Handler) handleSearchTraces(ctx context.Context, req mcp.CallToolReques
 
 	result = h.enrichSearchTracesWebURL(ctx, base, result)
 	notes := append([]string{windowNote(reqData.StartTime, reqData.EndTime)}, aiSearchNotes(reqData, result)...)
-	return rawSearchResult(ctx, h.logger, "signoz_search_traces", result, reqData.Limit, reqData.Offset, reqData.LimitClamped, notes...), nil
+	return rawSearchResult(ctx, h.logger, "signoz_search_traces", result, reqData.Limit, reqData.Offset, reqData.LimitClamped, "", notes...), nil
 }
 
 // aiSearchNotes explains builder_ai_query results; other query types get none.
