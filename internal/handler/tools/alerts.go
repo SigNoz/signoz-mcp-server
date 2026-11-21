@@ -224,7 +224,7 @@ func (h *Handler) handleListAlerts(ctx context.Context, req mcp.CallToolRequest)
 		return InternalErrorResult("failed to marshal response: " + err.Error()), nil
 	}
 
-	return listResult(resultJSON, limitClamped), nil
+	return listResult(ctx, h.logger, resultJSON, limitClamped), nil
 }
 
 // alertRulesUpstreamPageSize is the most rules GET /api/v3/rules returns per
@@ -311,7 +311,7 @@ func (h *Handler) handleListAlertRules(ctx context.Context, req mcp.CallToolRequ
 		return InternalErrorResult("failed to marshal response: " + err.Error()), nil
 	}
 
-	return listResult(resultJSON, limitClamped), nil
+	return listResult(ctx, h.logger, resultJSON, limitClamped), nil
 }
 
 func (h *Handler) handleGetAlert(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -437,8 +437,8 @@ func (h *Handler) handleGetAlertHistory(ctx context.Context, req mcp.CallToolReq
 		var statusErr *signozclient.HTTPStatusError
 		if errors.As(err, &statusErr) && statusErr.StatusCode == http.StatusNotFound {
 			result := upstreamError(err)
-			result.Content = append(result.Content, mcp.NewTextContent(
-				`recovery: Verify "id" in the SigNoz UI or, on SigNoz v0.120.0+, with signoz_list_alert_rules. If the rule exists, upgrade SigNoz to v0.118.0 or later; older versions do not support this tool.`))
+			appendNotes(ctx, h.logger, result,
+				`recovery: Verify "id" in the SigNoz UI or, on SigNoz v0.120.0+, with signoz_list_alert_rules. If the rule exists, upgrade SigNoz to v0.118.0 or later; older versions do not support this tool.`)
 			return result, nil
 		}
 		return upstreamError(err), nil

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -17,14 +18,14 @@ import (
 // listResult wraps a paginated list payload (a code-controlled envelope) as a
 // structured tool result, so list tools keep StructuredContent alongside the
 // text block. When the requested per-page limit was clamped to paginate.MaxLimit
-// it appends a trailing advisory note.
-func listResult(payload []byte, limitClamped bool) *mcp.CallToolResult {
-	if !limitClamped {
-		return structuredResult(payload)
+// a clamp note comes first, ahead of the tool's own notes.
+func listResult(ctx context.Context, logger *slog.Logger, payload []byte, limitClamped bool, notes ...string) *mcp.CallToolResult {
+	if limitClamped {
+		notes = append([]string{fmt.Sprintf(
+			"note: limit clamped to %d per page to bound server memory; use \"offset\" to page through more results.",
+			paginate.MaxLimit)}, notes...)
 	}
-	return structuredResultWithNotes(payload, fmt.Sprintf(
-		"note: limit clamped to %d per page to bound server memory; use \"offset\" to page through more results.",
-		paginate.MaxLimit))
+	return structuredResultWithNotes(ctx, logger, payload, notes...)
 }
 
 // looseInt parses a limit/offset-style integer that may arrive as a JSON number

@@ -21,7 +21,7 @@
     "result": {
       "content": [
         {
-          "text": "{\"dashboards\":[],\"tags\":[],\"total\":0}",
+          "text": "{\"dashboards\":[],\"notes\":[\"Input validation notice: parameter \\\"limit\\\" did not fully match its advertised schema. The call still ran best-effort: mismatched values may have been ignored or replaced with defaults. Adjust the flagged parameter(s) and re-call if the results look off.\"],\"tags\":[],\"total\":0}",
           "type": "text"
         },
         {
@@ -31,6 +31,9 @@
       ],
       "structuredContent": {
         "dashboards": [],
+        "notes": [
+          "Input validation notice: parameter \"limit\" did not fully match its advertised schema. The call still ran best-effort: mismatched values may have been ignored or replaced with defaults. Adjust the flagged parameter(s) and re-call if the results look off."
+        ],
         "tags": [],
         "total": 0
       }
