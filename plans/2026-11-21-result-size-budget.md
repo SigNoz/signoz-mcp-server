@@ -2,7 +2,7 @@
 
 Status: In Progress
 Issue: [SigNoz/nerve-pod#673](https://github.com/SigNoz/nerve-pod/issues/673)
-PR:
+PR: https://github.com/SigNoz/signoz-mcp-server/pull/476
 
 ## Context
 
@@ -200,9 +200,8 @@ restored after) and failed:
 - `TestRowSearchShortensLongStringsUntilTheRowFits`: the 32-character floor restored.
 - `TestRowSearchCountsEveryBodyItLeavesWhole`: a body with two results paged, and an empty
   body left uncounted.
-
-`TestSearchTracesBudgetNotesSkipSelectFieldsForTraceRows` was added in review and not
-mutation-checked.
+- `TestSearchTracesBudgetNotesSkipSelectFieldsForTraceRows`: `selectFields` advice kept for
+  trace rows.
 
 `GOTOOLCHAIN=go1.26.11`, each `make ci` step run separately:
 
@@ -223,8 +222,8 @@ SigNoz instance was called. The e2e run is left to CI (`make test-e2e`).
 
 ## Outcome
 
-Implemented as planned; status stays In Progress until the e2e suite passes in CI and the PR
-exists. Breaking change (CMP-1): with the default budget, a page can hold fewer rows than
+Implemented as planned; status stays In Progress until the e2e suite passes in CI. Breaking
+change (CMP-1): with the default budget, a page can hold fewer rows than
 `limit` while more exist, and every row result gains a top-level `pagination` key. The
 compatibility path (CMP-2) is `pagination.nextOffset`, or `maxResultBytes` up to 500,000 per
 call, or a higher `MCP_MAX_RESULT_BYTES` for the server. SigNoz/agent-skills needs a companion
