@@ -156,7 +156,15 @@ def seed_traces(
     return trace_ids
 
 
-def seed_service_calls(caller: str, callee: str, *, count: int, callee_duration_ns: int, environment: str) -> None:
+def seed_service_calls(
+    caller: str,
+    callee: str,
+    *,
+    count: int,
+    callee_duration_ns: int,
+    environment: str,
+    inner_server_span: bool = False,
+) -> None:
     """Push `count` traces in which `caller` calls `callee` and every call fails.
 
     Each trace is a caller server span, a caller client span under it, and a
@@ -164,7 +172,8 @@ def seed_service_calls(caller: str, callee: str, *, count: int, callee_duration_
     records a caller -> callee edge. Every span goes out in one export, because
     the graph pairs a parent and child span only when they are ingested together.
     Both services carry `environment` as deployment.environment, the key the
-    graph stores for filtering.
+    graph stores for filtering. `inner_server_span` adds a second caller server
+    span between the root and the client span, as a web framework's own span does.
     """
     now = time.time_ns()
     caller_spans, callee_spans = [], []
@@ -173,7 +182,7 @@ def seed_service_calls(caller: str, callee: str, *, count: int, callee_duration_
         root_id, client_id = uuid.uuid4().hex[:16], uuid.uuid4().hex[:16]
         start = now - (count - i) * 1_000_000_000
         end = start + callee_duration_ns + 20_000_000
-        caller_spans += [
+        caller_spans.append(
             {
                 "traceId": trace_id,
                 "spanId": root_id,
@@ -182,11 +191,28 @@ def seed_service_calls(caller: str, callee: str, *, count: int, callee_duration_
                 "startTimeUnixNano": str(start),
                 "endTimeUnixNano": str(end),
                 "status": {"code": 1},
-            },
+            }
+        )
+        client_parent = root_id
+        if inner_server_span:
+            client_parent = uuid.uuid4().hex[:16]
+            caller_spans.append(
+                {
+                    "traceId": trace_id,
+                    "spanId": client_parent,
+                    "parentSpanId": root_id,
+                    "name": "handle checkout",
+                    "kind": 2,  # SPAN_KIND_SERVER
+                    "startTimeUnixNano": str(start + 1_000_000),
+                    "endTimeUnixNano": str(end - 1_000_000),
+                    "status": {"code": 1},
+                }
+            )
+        caller_spans += [
             {
                 "traceId": trace_id,
                 "spanId": client_id,
-                "parentSpanId": root_id,
+                "parentSpanId": client_parent,
                 "name": "POST /reserve",
                 "kind": 3,  # SPAN_KIND_CLIENT
                 "startTimeUnixNano": str(start + 5_000_000),

@@ -178,7 +178,7 @@
           "inputSchema": {
             "properties": {
               "aggregations": {
-                "description": "Aggregation expressions to compute, written as the Query Builder writes them: count(), count_distinct(name), avg(duration_nano), sum(x), min(x), max(x), p50(duration_nano) to p99(duration_nano), rate(), or a conditional such as countIf(has_error = true). duration_nano is span latency in nanoseconds. One expression or an array; results come back as __result_0, __result_1, ... in that order. Example: [\"count()\", \"p99(duration_nano)\"]. SigNoz validates the expressions.",
+                "description": "Aggregation expressions to compute, written as the Query Builder writes them: count(), count_distinct(name), avg(duration_nano), sum(x), min(x), max(x), p50(duration_nano) to p99(duration_nano), rate(), or a conditional such as countIf(has_error = true). duration_nano is span latency in nanoseconds. For a service's request rate, filter on its entry spans with isEntryPoint = true OR isRoot = true, as signoz_list_services does; counting all its spans or all its server spans can count one request more than once. One expression or an array; results come back as __result_0, __result_1, ... in that order. Example: [\"count()\", \"p99(duration_nano)\"]. SigNoz validates the expressions.",
                 "items": {
                   "type": "string"
                 },
