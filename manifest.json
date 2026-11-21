@@ -163,7 +163,7 @@
     },
     {
       "name": "signoz_search_logs",
-      "description": "Search individual log records with field filters or explicit search() across log contexts; searchText matches only body text"
+      "description": "Search individual log records with field filters or explicit search() across log contexts; searchText matches only body text by default"
     },
     {
       "name": "signoz_aggregate_traces",

@@ -183,7 +183,7 @@ func TestRawSearchResult_KeepsRawJSONFirstAndAppendsNoteBlocks(t *testing.T) {
 	var logs bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn}))
 
-	unclamped := rawSearchResult(testCtx(), logger, "signoz_search_logs", payload, 100, 0, false)
+	unclamped := rawSearchResult(testCtx(), logger, "signoz_search_logs", payload, 100, 0, false, "")
 	if len(unclamped.Content) != 2 {
 		t.Fatalf("unclamped content block count = %d, want raw JSON + completeness note", len(unclamped.Content))
 	}
@@ -191,7 +191,7 @@ func TestRawSearchResult_KeepsRawJSONFirstAndAppendsNoteBlocks(t *testing.T) {
 		t.Fatalf("unclamped block 1 = %q, want no clamp note", note)
 	}
 
-	result := rawSearchResult(testCtx(), logger, "signoz_search_logs", payload, 100, 0, true)
+	result := rawSearchResult(testCtx(), logger, "signoz_search_logs", payload, 100, 0, true, "")
 	if len(result.Content) != 3 {
 		t.Fatalf("content block count = %d, want raw JSON + clamp note + completeness note", len(result.Content))
 	}

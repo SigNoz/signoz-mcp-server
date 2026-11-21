@@ -171,5 +171,9 @@ func (h *Handler) handleSearchLogs(ctx context.Context, req mcp.CallToolRequest)
 	if reqData.SearchScopeIgnored {
 		notes = append(notes, searchScopeIgnoredNote)
 	}
-	return rawSearchResult(ctx, h.logger, "signoz_search_logs", result, reqData.Limit, reqData.Offset, reqData.LimitClamped, notes...), nil
+	var emptyNote string
+	if reqData.BodyOnlySearchText {
+		emptyNote = bodyOnlySearchTextNote
+	}
+	return rawSearchResult(ctx, h.logger, "signoz_search_logs", result, reqData.Limit, reqData.Offset, reqData.LimitClamped, emptyNote, notes...), nil
 }

@@ -74,6 +74,9 @@ type SearchLogsRequest struct {
 	// SearchScopeIgnored is set when searchScope arrived without searchText;
 	// the scope only says where text matches, so the call runs without it.
 	SearchScopeIgnored bool
+	// BodyOnlySearchText is set when searchText matched only the log body, so an
+	// empty first page can point at the wider scopes.
+	BodyOnlySearchText bool
 	// SelectFields is nil when the caller named none, so SigNoz returns each
 	// row's complete record.
 	SelectFields []querybuilder.FieldKey
@@ -128,6 +131,7 @@ func parseSearchLogsArgs(args map[string]any) (*SearchLogsRequest, error) {
 	return &SearchLogsRequest{
 		FilterExpression:   filterExpr,
 		SearchScopeIgnored: searchScope != "" && searchText == "",
+		BodyOnlySearchText: searchText != "" && (searchScope == "" || searchScope == "body"),
 		SelectFields:       selectFields,
 		OrderKey:           orderKey,
 		OrderDir:           orderDir,
@@ -244,6 +248,10 @@ func validateLogSearchScope(scope string) error {
 
 // searchScopeIgnoredNote explains a searchScope that had no searchText to scope.
 const searchScopeIgnoredNote = "note: searchScope was ignored because searchText is empty; pass searchText to search for text in that scope."
+
+// bodyOnlySearchTextNote explains an empty first page from a body-scoped
+// searchText: text kept in an attribute value never matches body CONTAINS.
+const bodyOnlySearchTextNote = "note: searchText searched only the log body. Set searchScope to attribute to search attribute values, or all to search every searchable field; those scopes scan more, so narrow the time range if SigNoz rejects the query."
 
 func logSearchTextPredicate(searchText, scope string) string {
 	switch scope {

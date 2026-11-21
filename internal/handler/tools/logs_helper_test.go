@@ -1,10 +1,55 @@
 package tools
 
 import (
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
+	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 )
+
+// A body-scoped searchText misses text kept in attribute values, so an empty
+// first page points at the wider scopes. Other scopes, later pages, and pages
+// with rows get no such note.
+func TestSearchLogs_EmptyBodyOnlySearchTextPointsAtWiderScopes(t *testing.T) {
+	const (
+		emptyPage = `{"status":"success","data":{"type":"raw","data":{"results":[{"queryName":"A","rows":[]}]}}}`
+		onePage   = `{"status":"success","data":{"type":"raw","data":{"results":[{"queryName":"A","rows":[{"data":{"body":"timeout"}}]}]}}}`
+	)
+	tests := []struct {
+		name     string
+		args     map[string]any
+		response string
+		wantNote bool
+	}{
+		{name: "default scope, empty first page", args: map[string]any{"searchText": "order-42"}, response: emptyPage, wantNote: true},
+		{name: "all scope, empty first page", args: map[string]any{"searchText": "order-42", "searchScope": "all"}, response: emptyPage},
+		{name: "default scope, empty later page", args: map[string]any{"searchText": "order-42", "offset": "20"}, response: emptyPage},
+		{name: "default scope, rows returned", args: map[string]any{"searchText": "timeout"}, response: onePage},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(tc.response))
+			}))
+			t.Cleanup(upstream.Close)
+			h := &Handler{
+				logger:         logpkg.New("error"),
+				clientOverride: signozclient.NewClient(logpkg.New("error"), upstream.URL, "test-api-key", "SIGNOZ-API-KEY", nil),
+			}
+
+			result, err := h.handleSearchLogs(testCtx(), makeToolRequest("signoz_search_logs", tc.args))
+			require.NoError(t, err)
+			require.False(t, result.IsError, allTextBlocks(result))
+			require.Equal(t, tc.wantNote, strings.Contains(allTextBlocks(result), bodyOnlySearchTextNote), allTextBlocks(result))
+		})
+	}
+}
 
 func TestQuoteLogContainsLiteralEscapesGrammarAndLIKE(t *testing.T) {
 	value := `timed out: it's C:\logs%_`

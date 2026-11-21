@@ -187,6 +187,7 @@ def test_explicit_search_scopes_quoting_and_warning_round_trip(
         )
     )
     assert not query_range_rows(first_text_block(missed)), "body-only searchText matched an attribute-only token"
+    assert "searchText searched only the log body" in note_blocks(missed), note_blocks(missed)
 
     composed = assert_tool_ok(
         search(
