@@ -413,6 +413,87 @@ def seed_metrics(
     logger.info("seeded %d metric point(s) for %s", count, metric_name)
 
 
+def _post_metric(service_name: str, metric: dict) -> None:
+    payload = {
+        "resourceMetrics": [
+            {
+                "resource": {"attributes": [_attr("service.name", service_name)]},
+                "scopeMetrics": [{"scope": {"name": "signoz-mcp-e2e"}, "metrics": [metric]}],
+            }
+        ]
+    }
+    resp = requests.post(f"{OTLP_ENDPOINT}/v1/metrics", json=payload, timeout=30)
+    resp.raise_for_status()
+
+
+def seed_histogram_minutes(
+    service_name: str, metric_name: str, minutes: list[list[int]], bounds: list[float], *, cumulative: bool
+) -> int:
+    """Push one histogram point per minute, `minutes[i]` holding that minute's bucket counts.
+
+    The points sit mid-minute in completed minutes that end two minutes ago, so a 60s step
+    puts each in its own bucket. A cumulative histogram starts with an all-zero point
+    and then carries running totals; a delta one carries each minute's counts.
+    Returns the start of the first minute in Unix nanoseconds.
+    """
+    first = int((time.time() // 60 - len(minutes) - 2) * 60) * 1_000_000_000
+    started = first - 60_000_000_000
+    attributes = [_attr("service.name", service_name)]
+
+    def point(at_ns: int, counts: list[int], start_ns: int) -> dict:
+        return {
+            "startTimeUnixNano": str(start_ns),
+            "timeUnixNano": str(at_ns),
+            "count": str(sum(counts)),
+            "sum": 0.0,
+            "bucketCounts": [str(c) for c in counts],
+            "explicitBounds": bounds,
+            "attributes": attributes,
+        }
+
+    points = [point(first - 30_000_000_000, [0] * len(minutes[0]), started)] if cumulative else []
+    running = [0] * len(minutes[0])
+    for i, counts in enumerate(minutes):
+        at = first + (i * 60 + 30) * 1_000_000_000
+        running = [a + b for a, b in zip(running, counts)]
+        if cumulative:
+            points.append(point(at, running, started))
+        else:
+            points.append(point(at, counts, at - 60_000_000_000))
+    temporality = 2 if cumulative else 1
+    _post_metric(
+        service_name,
+        {"name": metric_name, "unit": "ms", "histogram": {"dataPoints": points, "aggregationTemporality": temporality}},
+    )
+    logger.info("seeded %d histogram minute(s) for %s", len(minutes), metric_name)
+    return first
+
+
+def seed_steady_counter(service_name: str, metric_name: str, *, per_second: float, minutes: int) -> None:
+    """Push a cumulative counter rising `per_second` with a point every 10s for `minutes` minutes up to one minute ago."""
+    end = int(time.time() - 60) * 1_000_000_000
+    count = minutes * 6 + 1
+    first = end - (count - 1) * 10_000_000_000
+    points = [
+        {
+            "asDouble": per_second * 10 * i,
+            "startTimeUnixNano": str(first - 10_000_000_000),
+            "timeUnixNano": str(first + i * 10_000_000_000),
+            "attributes": [_attr("service.name", service_name)],
+        }
+        for i in range(count)
+    ]
+    _post_metric(
+        service_name,
+        {
+            "name": metric_name,
+            "unit": "1",
+            "sum": {"dataPoints": points, "aggregationTemporality": 2, "isMonotonic": True},
+        },
+    )
+    logger.info("seeded %d counter point(s) for %s", count, metric_name)
+
+
 def wait_for(check, description: str, timeout: float = POLL_TIMEOUT, interval: float = POLL_INTERVAL) -> Any:
     """Poll `check` until it returns a truthy value; fail with the last value."""
     deadline = time.monotonic() + timeout

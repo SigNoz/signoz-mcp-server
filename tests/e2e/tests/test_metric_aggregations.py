@@ -2,16 +2,18 @@
 
 Pins the combinations signoz://metrics-aggregation-guide teaches beyond the
 type defaults: a running total from a counter, and histogram buckets read
-with rate and sum.
+with rate and sum. Also pins what scalar reducers measure, which the result
+notes state: per-step percentiles and summed rates are not window values.
 """
 
 import json
+import time
 
 import pytest
 
 from fixtures.mcpclient import MCPClient
 from fixtures.results import first_text_block, note_blocks, result_code
-from fixtures.telemetry import seed_metrics, wait_for
+from fixtures.telemetry import seed_histogram_minutes, seed_metrics, seed_steady_counter, wait_for
 
 
 def _scalar_values(body: str) -> list[float]:
@@ -145,3 +147,195 @@ def test_scalar_requires_an_explicit_reduce_to(mcp_client: MCPClient, test_id: s
     )
     assert result.get("isError", False), f"a scalar query without reduceTo ran: {first_text_block(result)[:400]}"
     assert "reduceTo is required" in first_text_block(result), first_text_block(result)[:400]
+
+
+# Nine fast minutes and one slow one, in buckets (0,10], (10,50], (50,100], (100,500], +Inf.
+# Each minute's p95 is 16.667 (fast) or 96.875 (slow); the p95 of all 1,000
+# observations is 68.75, which the mean of the step values (24.687) misses.
+HISTOGRAM_BOUNDS = [10.0, 50.0, 100.0, 500.0]
+HISTOGRAM_MINUTES = [[94, 6, 0, 0, 0]] * 9 + [[0, 20, 80, 0, 0]]
+WINDOW_P95 = 68.75
+
+
+def _execute(mcp_client: MCPClient, query: str) -> list[float]:
+    now = int(time.time() * 1000)
+    request = {
+        "schemaVersion": "v1",
+        "start": now - 3_600_000,
+        "end": now,
+        "requestType": "scalar",
+        "compositeQuery": {"queries": [{"type": "promql", "spec": {"name": "A", "query": query}}]},
+    }
+    result = mcp_client.call_tool("signoz_execute_builder_query", {"searchContext": "window p95", "query": request})
+    assert not result.get("isError", False), f"PromQL was rejected: {first_text_block(result)[:400]}"
+    return _scalar_values(first_text_block(result))
+
+
+def test_window_percentile_is_not_the_mean_of_step_percentiles(
+    mcp_client: MCPClient, test_id: str, telemetry: None
+) -> None:
+    """Pins the percentile note: its bounds hold, and its PromQL returns the window's p95 for a cumulative histogram."""
+    service = f"mcp-e2e-{test_id}"
+    slug = test_id.replace("-", "_")
+    cumulative, delta = f"mcp_e2e_latency_c_{slug}", f"mcp_e2e_latency_d_{slug}"
+    first_minute_ns = seed_histogram_minutes(service, cumulative, HISTOGRAM_MINUTES, HISTOGRAM_BOUNDS, cumulative=True)
+    seed_histogram_minutes(service, delta, HISTOGRAM_MINUTES, HISTOGRAM_BOUNDS, cumulative=False)
+
+    def p95_with(metric: str, extra: dict) -> dict:
+        return mcp_client.call_tool(
+            "signoz_query_metrics",
+            {
+                "searchContext": f"p95 of {metric}",
+                "metricName": f"{metric}.bucket",
+                "filter": f"service.name = '{service}'",
+                "spaceAggregation": "p95",
+                "requestType": "scalar",
+                **extra,
+            },
+        )
+
+    def p95(metric: str, reduce_to: str) -> dict:
+        return p95_with(metric, {"reduceTo": reduce_to, "timeRange": "1h"})
+
+    def all_minutes(metric: str) -> dict:
+        result = p95(metric, "avg")
+        return (
+            result if not result.get("isError", False) and _scalar_values(first_text_block(result)) == [24.687] else {}
+        )
+
+    for metric in (cumulative, delta):
+        averaged = wait_for(lambda m=metric: all_minutes(m), f"all ten minutes of {metric}")
+        notes = note_blocks(averaged)
+        assert "reduceTo avg combined the p95 of each 60s step" in notes, notes
+        assert "groupBy le, which returns each bucket's count over the window" in notes, notes
+        low = _scalar_values(first_text_block(p95(metric, "min")))
+        high = _scalar_values(first_text_block(p95(metric, "max")))
+        assert low == [16.667] and high == [96.875], f"{metric}: min {low}, max {high}"
+        assert low[0] <= WINDOW_P95 <= high[0], "the window p95 lies between the step minimum and maximum"
+        if metric == delta:
+            assert "PromQL" not in notes, f"the delta note must not offer PromQL: {notes}"
+            continue
+        promql = notes.split("requestType scalar also returns it: ", 1)[1].split("\n", 1)[0].strip()
+        assert f'"service.name"="{service}"' in promql, promql
+        assert _execute(mcp_client, promql) == [WINDOW_P95], f"the note's PromQL: {promql}"
+
+    # Each bucket's count over the window, which the note's same-tool route reads, gives the
+    # window's p95 by interpolation for either temporality: 950 falls in (50, 100] at 68.75.
+    for metric in (cumulative, delta):
+        buckets = p95_with(
+            metric,
+            {
+                "spaceAggregation": "sum",
+                "timeAggregation": "increase",
+                "reduceTo": "sum",
+                "groupBy": ["le"],
+                "timeRange": "1h",
+            },
+        )
+        counts = {}
+        for result in json.loads(first_text_block(buckets))["data"]["data"]["results"]:
+            names = [column["name"] for column in result.get("columns") or []]
+            for row in result.get("data") or []:
+                counts[row[names.index("le")]] = row[-1]
+        assert counts == {"10": 846, "50": 920, "100": 1000, "500": 1000, "+Inf": 1000}, f"{metric} bucket counts"
+
+    # Steps start at multiples of the step since the Unix epoch, so a window-long step that starts
+    # mid-step does not cover the window: the cumulative histogram's first partial step has no
+    # earlier sample and is left out, and the delta histogram's first step reaches back before it.
+    # The window straddles a 300s boundary with samples on both sides.
+    first_s = first_minute_ns // 1_000_000_000
+    boundary_s = -(-(first_s + 180) // 300) * 300
+    window = {"start": str((boundary_s - 150) * 1000), "end": str((boundary_s + 150) * 1000), "stepInterval": "300"}
+
+    def step_timestamps(metric: str) -> list[int]:
+        result = mcp_client.call_tool(
+            "signoz_query_metrics",
+            {
+                "searchContext": "p95 over five minutes",
+                "metricName": f"{metric}.bucket",
+                "spaceAggregation": "p95",
+                "requestType": "time_series",
+                **window,
+            },
+        )
+        return [
+            point["timestamp"]
+            for result in json.loads(first_text_block(result))["data"]["data"]["results"]
+            for aggregation in result.get("aggregations") or []
+            for series in aggregation.get("series") or []
+            for point in series.get("values") or []
+        ]
+
+    boundary_ms = boundary_s * 1000
+    assert step_timestamps(cumulative) == [boundary_ms], f"cumulative steps over a window around {boundary_ms}"
+    assert step_timestamps(delta) == [boundary_ms - 300_000, boundary_ms], f"delta steps around {boundary_ms}"
+    peak = note_blocks(p95_with(cumulative, {"reduceTo": "max", **window}))
+    assert "so this 300s step does not cover the window as one step: for this cumulative histogram" in peak, peak
+
+    # SigNoz's PromQL reads no data from a delta histogram, so its note offers none.
+    assert _execute(mcp_client, f'histogram_quantile(0.95, sum by (le) (increase({{"{delta}.bucket"}}[3600s])))') == []
+
+
+def test_counter_reducers_say_what_they_measured(mcp_client: MCPClient, test_id: str, telemetry: None) -> None:
+    """Pins the rate and running-total notes: their fixes return the count and the rate in the window."""
+    service = f"mcp-e2e-{test_id}"
+    metric = f"mcp_e2e_requests_{test_id.replace('-', '_')}"
+    # 0.5 per second for 70 minutes, so the 1h window starts mid-series.
+    seed_steady_counter(service, metric, per_second=0.5, minutes=70)
+
+    def scalar(time_aggregation: str | None, reduce_to: str) -> dict:
+        args = {"searchContext": f"requests of {metric}", "metricName": metric, "reduceTo": reduce_to}
+        args.update({"requestType": "scalar", "timeRange": "1h"})
+        if time_aggregation:
+            args["timeAggregation"] = time_aggregation
+        return mcp_client.call_tool("signoz_query_metrics", args)
+
+    def ingested() -> dict:
+        result = scalar(None, "avg")
+        values = [] if result.get("isError", False) else _scalar_values(first_text_block(result))
+        return result if values and values[0] == pytest.approx(0.5, rel=0.05) else {}
+
+    wait_for(ingested, f"counter {metric} at 0.5 per second")
+
+    summed = scalar(None, "sum")
+    assert "reduceTo sum added up the per-second rate of each 60s step" in note_blocks(summed), note_blocks(summed)
+    assert _scalar_values(first_text_block(summed))[0] > 20, "a sum of per-step rates grows with the step count"
+    total = _scalar_values(first_text_block(scalar("increase", "sum")))
+    # The window holds about 3,540 seconds of the series; SigNoz aligns it to the step.
+    assert total[0] == pytest.approx(0.5 * 3540, rel=0.05), f"increase with sum: {total}"
+
+    latest = scalar("latest", "last")
+    assert f"{metric} is a cumulative counter, so timeAggregation latest reads its running total" in note_blocks(latest)
+    assert _scalar_values(first_text_block(latest))[0] == pytest.approx(0.5 * 70 * 60, rel=0.01), "the running total"
+    samples = scalar("count", "sum")
+    assert "counts the counter's samples" in note_blocks(samples), note_blocks(samples)
+
+    # A window-long step that starts mid-step reaches back before the window for a counter rate.
+    boundary_s = int(time.time() - 1800) // 600 * 600
+    window = {"start": str((boundary_s - 300) * 1000), "end": str((boundary_s + 300) * 1000), "stepInterval": "600"}
+    series = mcp_client.call_tool(
+        "signoz_query_metrics",
+        {"searchContext": f"rate of {metric}", "metricName": metric, "requestType": "time_series", **window},
+    )
+    timestamps = [
+        point["timestamp"]
+        for result in json.loads(first_text_block(series))["data"]["data"]["results"]
+        for aggregation in result.get("aggregations") or []
+        for one in aggregation.get("series") or []
+        for point in one.get("values") or []
+    ]
+    assert timestamps == [(boundary_s - 600) * 1000, boundary_s * 1000], f"counter steps around {boundary_s}"
+    note = note_blocks(
+        mcp_client.call_tool(
+            "signoz_query_metrics",
+            {
+                "searchContext": f"requests of {metric}",
+                "metricName": metric,
+                "timeAggregation": "increase",
+                "reduceTo": "sum",
+                "requestType": "scalar",
+                **window,
+            },
+        )
+    )
+    assert "the first step starts at" in note and "before the window, and counts data from before it" in note, note

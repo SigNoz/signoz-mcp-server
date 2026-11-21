@@ -262,7 +262,7 @@ ENTRY_SPANS = "isEntryPoint = true OR isRoot = true"
 
 
 def test_entry_spans_count_each_request_once(mcp_client: MCPClient, test_id: str, telemetry: None) -> None:
-    """Pins the request-rate rule the aggregate_traces aggregations parameter teaches.
+    """Pins the request-rate rule the aggregate_traces aggregations parameter and its note teach.
 
     Each request reaches the caller as a root server span with a second server span
     inside it, and reaches the callee as one server span under a remote parent.
@@ -296,6 +296,68 @@ def test_entry_spans_count_each_request_once(mcp_client: MCPClient, test_id: str
     assert count(caller, ENTRY_SPANS) == calls, "the caller's root span is its entry span"
     assert count(caller, "kind_string = 'Server'") == 2 * calls, "server spans count each request twice"
     assert count(callee, "isRoot = true") == 0, "a span under a remote parent is an entry point, not a root"
+
+    # The all-span count says what it measured and names the entry-span filter; the entry count does not.
+    def notes(filter_expr: str | None) -> str:
+        args = {"searchContext": "request count", "service": caller, "aggregations": "count()", "timeRange": "1h"}
+        if filter_expr:
+            args["filter"] = filter_expr
+        return note_blocks(assert_tool_ok(mcp_client.call_tool("signoz_aggregate_traces", args)))
+
+    all_spans_notes = notes(None)
+    assert f'aggregates every span of service "{caller}"' in all_spans_notes, all_spans_notes
+    assert "isEntryPoint = true OR isRoot = true" in all_spans_notes, all_spans_notes
+    assert "every span of service" not in notes(ENTRY_SPANS), notes(ENTRY_SPANS)
+
+
+def test_span_metrics_count_every_span_and_say_so(mcp_client: MCPClient, test_id: str, telemetry: None) -> None:
+    """signoz_calls_total counts one call per span; signoz_list_services counts requests."""
+    caller, callee = f"mcp-e2e-{test_id}-web", f"mcp-e2e-{test_id}-api"
+    calls = 4
+    seed_service_calls(
+        caller,
+        callee,
+        count=calls,
+        callee_duration_ns=50_000_000,
+        environment=f"mcp-e2e-{test_id}",
+        inner_server_span=True,
+    )
+
+    def span_metric_count() -> dict | None:
+        result = mcp_client.call_tool(
+            "signoz_query_metrics",
+            {
+                "searchContext": f"request count of {caller}",
+                "metricName": "signoz_calls_total",
+                "filter": f"service.name = '{caller}'",
+                "timeAggregation": "increase",
+                "reduceTo": "sum",
+                "requestType": "scalar",
+                "timeRange": "1h",
+            },
+        )
+        if result.get("isError", False):
+            return None
+        payload = json.loads(first_text_block(result))
+        rows = [row for r in payload["data"]["data"]["results"] for row in r.get("data") or []]
+        return result if rows and rows[0][-1] == 3 * calls else None
+
+    # The collector flushes span metrics on an interval, so wait for all three spans per request.
+    result = wait_for(span_metric_count, f"signoz_calls_total for {caller} counting every span", timeout=300)
+    assert f'counts every span of service "{caller}"' in note_blocks(result), note_blocks(result)
+
+    services = json.loads(
+        first_text_block(
+            assert_tool_ok(
+                mcp_client.call_tool(
+                    "signoz_list_services", {"searchContext": "services", "timeRange": "1h", "limit": "1000"}
+                )
+            )
+        )
+    )
+    entries = services if isinstance(services, list) else services.get("data") or []
+    numbers = [entry.get("numCalls") for entry in entries if entry.get("serviceName") == caller]
+    assert numbers == [calls], f"signoz_list_services numCalls for {caller}: {numbers}"
 
 
 def test_group_by_resolves_custom_and_intrinsic_trace_fields(

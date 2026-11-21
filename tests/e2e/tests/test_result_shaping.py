@@ -320,3 +320,54 @@ def test_query_metrics_limit_order_having_and_typed_formula_queries(
         f"having on query A must leave one formula group: {formula_rows(filtered_ratio)}"
     )
     assert "having (on query A" in note_blocks(filtered_ratio), note_blocks(filtered_ratio)
+
+
+def test_formula_input_limit_drops_series_and_says_so(mcp_client: MCPClient, test_id: str, telemetry: None) -> None:
+    """Pins the formula-input note: a limit on an input applies before the formula and drops its other series."""
+    metric = f"mcp_e2e_{test_id.replace('-', '_')}_formula_gauge"
+    services = [f"mcp-e2e-{test_id}-{i}" for i in range(3)]
+    for i, service in enumerate(services):
+        seed_metrics(service, metric, value=float(i + 1), count=2)
+
+    def request(limit_on_input: bool) -> dict:
+        now = int(time.time() * 1000)
+        spec = {
+            "signal": "metrics",
+            "aggregations": [
+                {"metricName": metric, "timeAggregation": "avg", "spaceAggregation": "sum", "reduceTo": "avg"}
+            ],
+            "groupBy": [{"name": "service.name"}],
+            "filter": {"expression": f"service.name LIKE 'mcp-e2e-{test_id}-%'"},
+        }
+        first = {**spec, "name": "A"}
+        if limit_on_input:
+            first.update({"limit": 1, "order": [{"key": {"name": "__result"}, "direction": "desc"}]})
+        return {
+            "schemaVersion": "v1",
+            "start": now - 3_600_000,
+            "end": now,
+            "requestType": "scalar",
+            "compositeQuery": {
+                "queries": [
+                    {"type": "builder_query", "spec": first},
+                    {"type": "builder_query", "spec": {**spec, "name": "B"}},
+                    {"type": "builder_formula", "spec": {"name": "F", "expression": "A + B"}},
+                ]
+            },
+        }
+
+    def formula_groups(limit_on_input: bool) -> tuple[int, str]:
+        result = mcp_client.call_tool(
+            "signoz_execute_builder_query",
+            {"searchContext": "sum two queries per service", "query": request(limit_on_input)},
+        )
+        assert not result.get("isError", False), first_text_block(result)[:400]
+        results = first_block_json(result)["data"]["data"]["results"]
+        rows = [row for r in results if r.get("queryName") == "F" for row in r.get("data") or []]
+        return len(rows), note_blocks(result)
+
+    wait_for(lambda: formula_groups(False)[0] == len(services), f"all {len(services)} services through the formula")
+    groups, notes = formula_groups(True)
+    assert groups == 1, f"a limit of 1 on input A must leave one formula group, got {groups}"
+    assert 'query "A" is a formula input with limit 1' in notes, notes
+    assert "is a formula input" not in formula_groups(False)[1]

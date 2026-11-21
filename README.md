@@ -453,7 +453,7 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 | `signoz_delete_dashboard` | Permanently delete a confirmed dashboard by `id` |
 | `signoz_import_dashboard` | Create a dashboard from a known curated template path |
 | `signoz_list_dashboard_templates` | Search curated templates and discover an import path |
-| `signoz_list_services` | List APM services with trace activity in a time range |
+| `signoz_list_services` | A service's request rate, error rate, and latency; APM services with trace activity in a time range |
 | `signoz_get_service_top_operations` | Get ranked operations for one traced service |
 | `signoz_get_service_map` | Get the service dependency graph: callers, callees, and each call edge's rate, errors, and latency |
 | `signoz_list_views` | List saved Explorer views for traces/logs/metrics/Cost Meter and discover UUIDs |
@@ -482,6 +482,8 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 For detailed usage and examples, see the [full documentation](https://signoz.io/docs/ai/signoz-mcp-server/).
 
 > **Resource deep links:** the resource read tools (`signoz_list_dashboards`, `signoz_get_dashboard`, `signoz_list_alerts`, `signoz_list_alert_rules`, `signoz_get_alert`, `signoz_list_services`, `signoz_search_traces`, `signoz_get_trace_details`) and the dashboard write tools (`signoz_create_dashboard`, `signoz_update_dashboard`, `signoz_patch_dashboard`, `signoz_import_dashboard`) include a `webUrl` field when the request carries a SigNoz instance URL: an absolute deep link to the resource in the SigNoz web UI (per result row for `signoz_search_traces`). The MCP server discovers the browser base from each SigNoz backend's `global.external_url`. API requests keep using the request's backend URL. See [Browser links for self-hosted SigNoz](#browser-links-for-self-hosted-signoz).
+
+> **Measurement notes:** when a successful query has a shape that often answers a different question than asked, the result carries a note saying what it measured, and the fix where it was checked against SigNoz. `signoz_aggregate_traces` and `signoz_execute_builder_query` note an ungrouped count, rate, or latency over every span of one service. `signoz_query_metrics` and `signoz_execute_builder_query` note a scalar percentile reduced with `avg`, `median`, or `sum` (with the bucket-count route to the window's percentile, and a PromQL query for a cumulative histogram), a caller-set step at least as long as a window that does not start on a multiple of it, a summed rate, and `signoz_calls_total` or `signoz_latency` for one service; `signoz_query_metrics` also notes a cumulative counter read with anything but `rate` or `increase`, and `signoz_execute_builder_query` a formula input with its own limit. The server counts each note in the `mcp.tool.result.measurement_notes` metric by tool and rule.
 
 > **Time windows:** the tools that take `start`, `end`, and `timeRange` (`signoz_search_logs`, `signoz_aggregate_logs`, `signoz_search_traces`, `signoz_aggregate_traces`, `signoz_query_metrics`, `signoz_list_metrics`, `signoz_get_top_metrics`, `signoz_check_metric_cardinality`, `signoz_get_alert_history`, `signoz_list_services`, `signoz_get_service_top_operations`, and `signoz_get_service_map`) report the window they queried in RFC 3339 UTC and Unix milliseconds. Text results append a note such as `window queried: 2026-11-19T09:00:00Z to 2026-11-19T10:00:00Z (Unix ms 1795078800000 to 1795082400000)`; `signoz_list_services` and `signoz_get_service_map` return a `window` object with `start`, `end`, `startMs`, and `endMs`. `signoz_execute_builder_query` takes its window in the request body and reports none.
 
@@ -558,22 +560,22 @@ Discover metric names and catalog metadata such as type, temporality, unit, and 
 
 #### `signoz_query_metrics`
 
-Query a known metric for values, trends, breakdowns, or formulas. The tool applies metric-aware defaults and auto-fetches omitted metadata; call it directly when `metricName` is known. Use `signoz_list_metrics` only to discover a name or inspect catalog metadata.
+Query a known metric for values, trends, breakdowns, or formulas. The tool applies metric-aware defaults and auto-fetches omitted metadata; call it directly when `metricName` is known. Use `signoz_list_metrics` only to discover a name or inspect catalog metadata. For a service's request rate or latency, use `signoz_list_services`, or `signoz_aggregate_traces` with `isEntryPoint = true OR isRoot = true`; the span metrics `signoz_calls_total` and `signoz_latency` count every span, not requests.
 
 - **Parameters**:
-  - `metricName` (required) - Metric name to query
+  - `metricName` (required) - Metric name to query. A histogram named X is queried as `X.bucket`. SigNoz's span metrics `signoz_calls_total` and `signoz_latency` record one sample per span, so one request with several spans counts several times
   - `metricType` (optional) - gauge, sum, histogram, exponential_histogram, summary (auto-fetched if absent)
   - `isMonotonic` (optional) - Boolean (or the strings `"true"`/`"false"`); auto-fetched if absent. An invalid value is rejected rather than silently treated as false
   - `temporality` (optional) - cumulative, delta, unspecified (auto-fetched if absent)
-  - `timeAggregation` (optional) - Aggregation within each series per time bucket (defaulted by type when omitted; SigNoz validates the combination)
+  - `timeAggregation` (optional) - Aggregation within each series per time bucket (defaulted by type when omitted; SigNoz validates the combination). On a cumulative counter, `latest`, `max`, `min`, `avg`, and `sum` work on its running total since it started, and `count` counts its samples; use `increase` for the count in each bucket or `rate` for per second
   - `spaceAggregation` (optional) - Aggregation across series (defaulted by type when omitted; percentiles are histogram-only). Summary metrics need both aggregations set
   - `groupBy` (optional) - Label names to group by, as an array or a comma-separated string. Metric labels hold resource and data-point attributes in one set, so names need no context prefix. An array item that is not a string is rejected with a coded error
   - `filter` (optional) - Filter expression. Pass the expression text, not `{"expression": ...}`, which is rejected with a coded error. Regex matches use `REGEXP`, not PromQL's `=~`; a `=~` or `!~` that SigNoz rejects comes back with that hint. The former `query` alias is rejected with a coded error that names `filter`
   - `timeRange` (optional) - Window ending now, as a duration such as '30m', '6h', '7d', or '2w'; units are `s`, `m`, `h`, `d` (24h), and `w` (7d) (default: '1h'; ignored when `start` is set)
   - `start`/`end` (optional) - A fixed window: an RFC 3339 date-time with `Z` or an offset, or Unix epoch milliseconds. With `start`, the window runs from `start` to `end` (default now) and `timeRange` is ignored. `end` without `start` is rejected with the `start` to add.
-  - `stepInterval` (optional) - Step in seconds (auto-calculated if omitted)
+  - `stepInterval` (optional) - Step in seconds (auto-calculated if omitted); a scalar request reduces one value per step. SigNoz starts steps at multiples of the step since the Unix epoch, so a step as long as the window is one step only when the window starts on such a multiple; otherwise the first step reaches back before the window or, for a cumulative histogram percentile, is left out
   - `requestType` (optional) - Response format. Enum: `time_series` (default), `scalar`. Unknown values are rejected.
-  - `reduceTo` (required when `requestType` is `scalar`) - How to reduce each series to one value: `last`, `max`, `min`, `avg`, `sum`, `count`, `median`. It has no default; SigNoz rejects a scalar request without it. For a total count use `timeAggregation: increase` with `reduceTo: sum`
+  - `reduceTo` (required when `requestType` is `scalar`) - How to reduce each series, which holds one value per step, to one value: `last`, `max`, `min`, `avg`, `sum`, `count`, `median`. It has no default; SigNoz rejects a scalar request without it. For a total count use `timeAggregation: increase` with `reduceTo: sum`; summing rates is not a count. With a percentile, every reducer works on per-step percentiles, so none gives the window's percentile; for that, read each bucket's count over the window with `timeAggregation: increase`, `spaceAggregation: sum`, `reduceTo: sum`, and `groupBy: le`, then interpolate
   - `formula` (optional) - Expression over named queries (e.g., "A / B * 100")
   - `formulaQueries` (optional) - Array of additional named metric queries for `formula`, or a JSON-encoded string of that array. The item schema is typed: `name` and `metricName` are required; `metricType`, `isMonotonic`, `temporality`, `timeAggregation`, `spaceAggregation`, `reduceTo`, `groupBy` (array or comma-separated string), and `filter` mirror the top-level parameters and are auto-fetched or defaulted the same way.
   - `limit` (optional) - Maximum number of groups (series) in the result (default: 100, max: 10000; higher values are clamped). With a formula, limit applies to the formula result; formula inputs are not limited
@@ -717,7 +719,7 @@ Applies an RFC 6902 JSON Patch to a dashboard: a partial update without re-sendi
 
 #### `signoz_list_services`
 
-Lists APM services with trace activity in a time range, sorted by service name and paginated. `p99` and `avgDuration` are latencies in nanoseconds, `callRate` is calls per second, and `errorRate` and `fourXXRate` are percentages (0.5 means 0.5%). Absence means no trace activity in that window, not that the same `service.name` never appears in logs; use `signoz_get_field_values` with `signal="logs"` for log values.
+Answers a service's request rate, error rate, or latency, and lists the APM services with trace activity in a time range, sorted by service name and paginated. It counts each service's requests at its entry spans (`isEntryPoint = true OR isRoot = true`), so `numCalls` is the request count and `callRate` is requests per second. `p99` and `avgDuration` are latencies in nanoseconds, and `errorRate` and `fourXXRate` are percentages (0.5 means 0.5%). Absence means no trace activity in that window, not that the same `service.name` never appears in logs; use `signoz_get_field_values` with `signal="logs"` for log values.
 
 - **Parameters**:
   - `timeRange` (optional) - Window ending now, as a duration such as '30m', '6h', '7d', or '2w'; units are `s`, `m`, `h`, `d` (24h), and `w` (7d) (default: '6h'; ignored when `start` is set)
@@ -851,7 +853,7 @@ Permanently delete a confirmed saved Explorer view by UUID. Use `signoz_list_vie
 
 #### `signoz_aggregate_logs`
 
-Return aggregate statistics over logs (counts, rates, averages, percentiles, or grouped/top-N breakdowns) rather than individual records. Use `signoz_search_logs` for log rows and message inspection.
+Return log counts, error counts, rates, averages, percentiles, or grouped/top-N breakdowns over logs rather than individual records. Use `signoz_search_logs` for log rows and message inspection. Discover unfamiliar keys with `signoz_get_field_keys` before filtering on them; `signoz://logs/query-builder-guide` has the filter grammar.
 
 - **Parameters**:
   - `aggregations` (required) - Aggregation expressions as the Query Builder writes them: `count()`, `count_distinct(user_id)`, `avg(duration)`, `p99(duration)`, `rate()`, or a conditional such as `countIf(severity_text = 'ERROR')`. One expression or an array (e.g. `["count()", "p95(duration)", "p99(duration)"]`); results come back as `__result_0`, `__result_1`, ... in that order. SigNoz validates the expressions. The former `aggregation` and `aggregateOn` inputs return a coded error naming this replacement
@@ -874,7 +876,7 @@ Return aggregate statistics over logs (counts, rates, averages, percentiles, or 
 
 Return individual paginated log records matching text, service, severity, or field filters. Use `signoz_aggregate_logs` for counts, trends, or grouped breakdowns.
 
-Calls using only `searchText`, `service`, `severity`, time, or pagination parameters need no guide read. Read `signoz://logs/query-builder-guide` only before composing `filter` with unfamiliar workspace fields.
+Discover unfamiliar workspace fields with `signoz_get_field_keys` before filtering on them; `signoz://logs/query-builder-guide` has the filter grammar.
 
 - **Parameters**:
   - `filter` (optional) - Filter expression using SigNoz search syntax. Pass the expression text, not `{"expression": ...}`, which is rejected with a coded error. Combine conditions with AND, OR, and parentheses (e.g., "(severity_text = 'ERROR' OR body CONTAINS 'panic') AND service.name = 'payment-svc'"). Log keys are workspace-specific; even `service.name` is only present when the log pipeline sets it. See `signoz://logs/query-builder-guide` There is no `key:value`, `STARTS WITH`, or `IS NULL`; use `LIKE 'prefix%'` and `EXISTS` / `NOT EXISTS`.
@@ -955,7 +957,7 @@ Return individual paginated span rows matching service, operation, error, durati
 
 #### `signoz_aggregate_traces`
 
-Return custom aggregate statistics over spans (counts, rates, latency percentiles, grouped/top-N breakdowns, or time series) rather than individual rows or a full trace hierarchy. For one row per trace, such as the most expensive AI traces, use `signoz_search_traces` with `requestType: trace`. For one traced service's built-in operation table ranked by p99, use `signoz_get_service_top_operations`. Read `signoz://traces/query-builder-guide` before calling this tool. For AI cost, token, or call-count statistics per trace, set `queryType: builder_ai_query` (see `signoz://ai/query-builder-guide`).
+Return request counts, rates, latency percentiles, error counts, grouped/top-N breakdowns, or time series over spans rather than individual rows or a full trace hierarchy. SigNoz aggregates every span the filter matches: for a service's requests, filter on `isEntryPoint = true OR isRoot = true`, as `signoz_list_services` does. For one row per trace, such as the most expensive AI traces, use `signoz_search_traces` with `requestType: trace`. For one traced service's built-in operation table ranked by p99, use `signoz_get_service_top_operations`. `signoz://traces/query-builder-guide` has the filter grammar and span fields. For AI cost, token, or call-count statistics per trace, set `queryType: builder_ai_query` (see `signoz://ai/query-builder-guide`).
 
 - **Parameters**:
   - `aggregations` (required) - Aggregation expressions as the Query Builder writes them: `count()`, `count_distinct(name)`, `avg(duration_nano)`, `p99(duration_nano)`, `rate()`, or a conditional such as `countIf(has_error = true)`; `duration_nano` is span latency in nanoseconds. For a service's request rate, filter on its entry spans with `isEntryPoint = true OR isRoot = true`, as `signoz_list_services` does; counting all its spans or all its server spans can count one request more than once. One expression or an array (e.g. `["count()", "p95(duration_nano)", "p99(duration_nano)"]`); results come back as `__result_0`, `__result_1`, ... in that order. SigNoz validates the expressions. The former `aggregation` and `aggregateOn` inputs return a coded error naming this replacement
@@ -1136,7 +1138,7 @@ Lets the agent send feedback to the SigNoz team in two cases. The agent hit a pr
 
 #### `signoz_execute_builder_query`
 
-Runs a SigNoz Query Builder v5 request that the dedicated tools cannot express, including multi-query requests, formulas, PromQL, and ClickHouse SQL. Prefer `signoz_search_logs` / `signoz_search_traces` for rows, `signoz_aggregate_logs` / `signoz_aggregate_traces` for grouped results, and `signoz_query_metrics` for ordinary metrics.
+Runs a SigNoz Query Builder v5 request that the dedicated tools cannot express, such as multi-query requests, formulas, PromQL, or ClickHouse SQL. Prefer `signoz_search_logs` / `signoz_search_traces` for rows, `signoz_aggregate_logs` / `signoz_aggregate_traces` for grouped results, and `signoz_query_metrics` for ordinary metrics. A trace count, rate, or latency for one service covers every span unless the filter has `isEntryPoint = true OR isRoot = true`, and scalar metric queries reduce one value per step: `reduceTo: avg` of a percentile is not the window's percentile, and `reduceTo: sum` of a rate is not a count.
 
 - **Parameters**: `query` (required) - the complete `query_range` request. The input schema describes its top-level fields (`start`, `end`, `requestType`, `compositeQuery`, `variables`, `formatOptions`, `noCache`) with the descriptions from the SigNoz OpenAPI spec; the query envelopes inside `compositeQuery.queries` are open objects the guides and `signoz://query-builder/examples` cover.
 - **Query types**: the per-envelope `compositeQuery.queries[i].type` selects the spec shape:

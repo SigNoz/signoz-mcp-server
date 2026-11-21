@@ -235,8 +235,10 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 	}
 
 	// Extract backend-determined stepInterval from response if caller didn't provide one
+	effectiveStep := stepInterval
 	if !callerProvidedStep {
 		if si := extractStepInterval(result); si > 0 {
+			effectiveStep = si
 			decisions = append(decisions, fmt.Sprintf("stepInterval: %ds (backend-determined)", si))
 		}
 	}
@@ -248,8 +250,28 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 	// aggregate siblings); decisions/warnings go into a SEPARATE note block
 	// rather than prepended. query_metrics is a raw QB passthrough, so it stays
 	// text-only (no structuredContent) — its upstream shape is variable.
-	note := buildMetricsDecisionsNote(decisions, resolved.Warnings)
-	return resultWithNotes(result, windowNote(startTime, endTime), note), nil
+	notes := []string{windowNote(startTime, endTime)}
+	// A formula result combines its inputs, so the per-query rules stay off.
+	if mqr.Formula == "" {
+		notes = append(notes, h.recordMeasurementNotes(ctx, "signoz_query_metrics", metricMeasurementNotes(metricMeasurement{
+			MetricName:       mqr.MetricName,
+			MetricType:       mqr.MetricType,
+			IsMonotonic:      mqr.IsMonotonic,
+			Temporality:      mqr.Temporality,
+			TimeAggregation:  resolved.TimeAggregation,
+			SpaceAggregation: resolved.SpaceAggregation,
+			ReduceTo:         resolved.ReduceTo,
+			Filter:           mqr.Filter,
+			GroupBy:          mqr.GroupBy,
+			RequestType:      mqr.RequestType,
+			StepSeconds:      effectiveStep,
+			CallerStep:       callerProvidedStep,
+			StartMs:          startTime,
+			EndMs:            endTime,
+		}))...)
+	}
+	notes = append(notes, buildMetricsDecisionsNote(decisions, resolved.Warnings))
+	return resultWithNotes(result, notes...), nil
 }
 
 // buildMetricsDecisionsNote renders the decisions/warnings advisory block that

@@ -119,7 +119,7 @@
     },
     {
       "name": "signoz_list_services",
-      "description": "List paginated APM services with trace activity in a time window; use field-value discovery for arbitrary service.name values in logs"
+      "description": "Get a service's request rate, error rate, or latency, counted at its entry spans, or list paginated APM services with trace activity in a time window"
     },
     {
       "name": "signoz_get_service_top_operations",
@@ -159,7 +159,7 @@
     },
     {
       "name": "signoz_aggregate_logs",
-      "description": "Return aggregate log statistics and grouped or top-N breakdowns, not individual records; use signoz_search_logs for log rows and messages"
+      "description": "Return log counts, error counts, rates, percentiles, or grouped or top-N breakdowns, not individual records; use signoz_search_logs for log rows and messages"
     },
     {
       "name": "signoz_search_logs",
@@ -167,7 +167,7 @@
     },
     {
       "name": "signoz_aggregate_traces",
-      "description": "Return custom aggregate span or per-AI-trace statistics, groups, or time series; use signoz_get_service_top_operations for one service's built-in p99-ranked operation table"
+      "description": "Return request counts, rates, latency percentiles, groups, or time series over spans or AI traces; filter a service's entry spans for its requests; use signoz_get_service_top_operations for one service's built-in p99-ranked operation table"
     },
     {
       "name": "signoz_search_traces",

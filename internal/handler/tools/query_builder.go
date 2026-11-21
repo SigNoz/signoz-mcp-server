@@ -21,10 +21,11 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *mcp.Server) {
 	executeQuery := mcp.NewTool("signoz_execute_builder_query",
 		withReadOnlyToolAnnotations(),
 		mcp.WithDescription(
-			"Use this only when dedicated log, trace, and metric tools cannot express the request, including multi-query requests, formulas, PromQL, and ClickHouse SQL. "+
+			"Use this only when dedicated log, trace, and metric tools cannot express the request, such as multi-query requests, formulas, PromQL, or ClickHouse SQL. "+
 				"Use signoz_search_logs/signoz_search_traces for raw rows, signoz_aggregate_logs/signoz_aggregate_traces for grouped or top-N analysis, and signoz_query_metrics for ordinary metrics queries. "+
-				"Read the matching signoz://logs/query-builder-guide, signoz://traces/query-builder-guide, signoz://ai/query-builder-guide, or signoz://metrics-aggregation-guide; formulas require the metrics guide, and PromQL requires signoz://promql/instructions. signoz://query-builder/examples holds a complete request per query type and request type. "+
-				"Leave limit unset on each builder_query a formula references, because SigNoz applies an input's limit before the formula runs and drops series from its result. Give every other builder_query and each builder_formula a positive limit (100 for results) and non-empty spec.order (not dashboard orderBy); the server fills in omitted ones.",
+				"A trace count, rate, or latency for one service covers every span unless the filter has isEntryPoint = true OR isRoot = true. Scalar metric queries reduce one value per step: reduceTo avg of a percentile is not the window's percentile, and reduceTo sum of a rate is not a count. "+
+				"Leave limit unset on each builder_query a formula references, because SigNoz applies it before the formula runs and drops the other series. "+
+				"signoz://query-builder/examples has full requests; signoz://traces/query-builder-guide, signoz://logs/query-builder-guide, signoz://ai/query-builder-guide, signoz://metrics-aggregation-guide, and signoz://promql/instructions have the grammar.",
 		),
 		mcp.WithInputSchema[types.ExecuteBuilderQueryInput](),
 	)
@@ -152,6 +153,7 @@ func (h *Handler) handleExecuteBuilderQuery(ctx context.Context, req mcp.CallToo
 		requestType, _ := queryObj["requestType"].(string)
 		notes = append(notes, queryBoundsDecisionsNote(applied, requestType))
 	}
+	notes = append(notes, h.recordMeasurementNotes(ctx, "signoz_execute_builder_query", builderQueryMeasurementNotes(queryObj, data))...)
 	warnings := extractBackendWarningMessages(data)
 	warnBackendWarnings(ctx, h.logger, "signoz_execute_builder_query", warnings)
 	warnUnparsedWarningEnvelope(ctx, h.logger, "signoz_execute_builder_query", data, len(warnings))

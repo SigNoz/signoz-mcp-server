@@ -33,6 +33,11 @@ Examples:
 
 Both accept only "= true". To exclude root spans, filter parent_span_id != '' instead.
 
+A service's requests are its entry spans. For a request count, rate, or latency, filter
+isEntryPoint = true OR isRoot = true, as signoz_list_services does. Without it, count(), rate(),
+and duration percentiles cover every span the service records, and a request with a server
+span nested inside another counts twice.
+
 == FIELD DISCOVERY ==
 
 An unknown key may not fail: SigNoz can match a guessed attribute, return the warning
@@ -200,7 +205,7 @@ matters more than response size.
   "variables": {}
 }
 
---- Example 3: Time series — P99 latency over time (requestType: "time_series") ---
+--- Example 3: Time series — P99 request latency over time (requestType: "time_series") ---
 
 {
   "schemaVersion": "v1",
@@ -220,7 +225,7 @@ matters more than response size.
           "offset": 0,
           "order": [{"key": {"name": "p99(duration_nano)"}, "direction": "desc"}],
           "having": {"expression": ""},
-          "filter": {"expression": "service.name = 'checkout'"},
+          "filter": {"expression": "service.name = 'checkout' AND (isEntryPoint = true OR isRoot = true)"},
           "aggregations": [
             {"expression": "p99(duration_nano)"}
           ]
