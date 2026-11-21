@@ -306,7 +306,7 @@ def test_entry_spans_count_each_request_once(mcp_client: MCPClient, test_id: str
 
     all_spans_notes = notes(None)
     assert f'aggregates every span of service "{caller}"' in all_spans_notes, all_spans_notes
-    assert "isEntryPoint = true OR isRoot = true" in all_spans_notes, all_spans_notes
+    assert "add AND (isEntryPoint = true OR isRoot = true) to the filter" in all_spans_notes, all_spans_notes
     assert "every span of service" not in notes(ENTRY_SPANS), notes(ENTRY_SPANS)
 
 

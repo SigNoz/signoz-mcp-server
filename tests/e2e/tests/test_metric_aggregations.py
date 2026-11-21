@@ -174,7 +174,7 @@ def _execute(mcp_client: MCPClient, query: str) -> list[float]:
 def test_window_percentile_is_not_the_mean_of_step_percentiles(
     mcp_client: MCPClient, test_id: str, telemetry: None
 ) -> None:
-    """Pins the percentile note: its bounds hold, and its PromQL returns the window's p95 for a cumulative histogram."""
+    """Pins the percentile note and its bucket-count route, and the guide's PromQL for a cumulative histogram."""
     service = f"mcp-e2e-{test_id}"
     slug = test_id.replace("-", "_")
     cumulative, delta = f"mcp_e2e_latency_c_{slug}", f"mcp_e2e_latency_d_{slug}"
@@ -207,17 +207,17 @@ def test_window_percentile_is_not_the_mean_of_step_percentiles(
         averaged = wait_for(lambda m=metric: all_minutes(m), f"all ten minutes of {metric}")
         notes = note_blocks(averaged)
         assert "reduceTo avg combined the p95 of each 60s step" in notes, notes
-        assert "groupBy le, which returns each bucket's count over the window" in notes, notes
+        assert "groupBy le, which returns each bucket's count over the same steps" in notes, notes
         low = _scalar_values(first_text_block(p95(metric, "min")))
         high = _scalar_values(first_text_block(p95(metric, "max")))
         assert low == [16.667] and high == [96.875], f"{metric}: min {low}, max {high}"
         assert low[0] <= WINDOW_P95 <= high[0], "the window p95 lies between the step minimum and maximum"
-        if metric == delta:
-            assert "PromQL" not in notes, f"the delta note must not offer PromQL: {notes}"
-            continue
-        promql = notes.split("requestType scalar also returns it: ", 1)[1].split("\n", 1)[0].strip()
-        assert f'"service.name"="{service}"' in promql, promql
-        assert _execute(mcp_client, promql) == [WINDOW_P95], f"the note's PromQL: {promql}"
+
+    # The metrics guide's PromQL returns the window's p95 for a cumulative histogram, and nothing for
+    # a delta one.
+    guide_query = 'histogram_quantile(0.95, sum by (le) (increase({{"{}.bucket", "service.name"="{}"}}[3600s])))'
+    assert _execute(mcp_client, guide_query.format(cumulative, service)) == [WINDOW_P95]
+    assert _execute(mcp_client, guide_query.format(delta, service)) == []
 
     # Each bucket's count over the window, which the note's same-tool route reads, gives the
     # window's p95 by interpolation for either temporality: 950 falls in (50, 100] at 68.75.
@@ -238,6 +238,24 @@ def test_window_percentile_is_not_the_mean_of_step_percentiles(
             for row in result.get("data") or []:
                 counts[row[names.index("le")]] = row[-1]
         assert counts == {"10": 846, "50": 920, "100": 1000, "500": 1000, "+Inf": 1000}, f"{metric} bucket counts"
+
+    # A grouped percentile keeps its groups: le joins the caller's groupBy keys.
+    grouped = p95_with(
+        cumulative,
+        {
+            "spaceAggregation": "sum",
+            "timeAggregation": "increase",
+            "reduceTo": "sum",
+            "groupBy": ["service.name", "le"],
+            "timeRange": "1h",
+        },
+    )
+    per_group = {}
+    for result in json.loads(first_text_block(grouped))["data"]["data"]["results"]:
+        names = [column["name"] for column in result.get("columns") or []]
+        for row in result.get("data") or []:
+            per_group[(row[names.index("service.name")], row[names.index("le")])] = row[-1]
+    assert per_group[(service, "50")] == 920 and per_group[(service, "+Inf")] == 1000, f"grouped counts: {per_group}"
 
     # Steps start at multiples of the step since the Unix epoch, so a window-long step that starts
     # mid-step does not cover the window: the cumulative histogram's first partial step has no
@@ -271,9 +289,6 @@ def test_window_percentile_is_not_the_mean_of_step_percentiles(
     assert step_timestamps(delta) == [boundary_ms - 300_000, boundary_ms], f"delta steps around {boundary_ms}"
     peak = note_blocks(p95_with(cumulative, {"reduceTo": "max", **window}))
     assert "so this 300s step does not cover the window as one step: for this cumulative histogram" in peak, peak
-
-    # SigNoz's PromQL reads no data from a delta histogram, so its note offers none.
-    assert _execute(mcp_client, f'histogram_quantile(0.95, sum by (le) (increase({{"{delta}.bucket"}}[3600s])))') == []
 
 
 def test_counter_reducers_say_what_they_measured(mcp_client: MCPClient, test_id: str, telemetry: None) -> None:

@@ -60,14 +60,16 @@ metric type cannot say what the question asks:
 Summing a rate series is not a total count: use timeAggregation increase with reduceTo sum for the
 count, or reduceTo avg for the average per-second rate. Averaging per-step percentiles is not a
 whole-window percentile; the window's percentile lies between what reduceTo min and max return.
-For the window's percentile, read each bucket's count over the window with timeAggregation increase,
-spaceAggregation sum, reduceTo sum, and groupBy le, then interpolate within the first bucket whose
-count reaches the percentile's share of the total.
+For one percentile of an explicit-bucket histogram over the same steps, read each bucket's count with
+timeAggregation increase, spaceAggregation sum, reduceTo sum, and le added to groupBy, then
+interpolate within the first bucket whose count reaches the percentile's share of the total, per
+group when the query is grouped. An exponential histogram has no le buckets for this.
 A step as long as the window does not give one window-wide value either: SigNoz starts steps at
 multiples of the step since the Unix epoch, so unless the window starts on such a multiple, the first
-step reaches back before the window or, for a cumulative histogram percentile, is left out.
+step reaches back before the window or, for a cumulative histogram percentile with no
+timeAggregation, is left out.
 For a cumulative histogram, PromQL through signoz_execute_builder_query with requestType scalar
-also returns it, with the window length as the range:
+also returns the window's percentile, with the window length as the range:
 
     histogram_quantile(0.95, sum by (le) (increase({"http.server.duration.bucket", "service.name"="checkout"}[3600s])))
 

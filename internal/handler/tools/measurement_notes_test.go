@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -21,18 +22,33 @@ import (
 )
 
 // notesHandler runs the real client against a fake SigNoz that answers every
-// query with an empty scalar result on a 60s step, and metric metadata with
-// the given body. It returns the handler and a reader for its counters.
+// query with an empty scalar result and metric metadata with the given body.
+// Like SigNoz, it reports the step it used: the first query's stepInterval,
+// raised to 60s. It returns the handler and a reader for its counters.
 func notesHandler(t *testing.T, metadata string) (*Handler, *sdkmetric.ManualReader) {
 	t.Helper()
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = io.Copy(io.Discard, r.Body)
+		body, _ := io.ReadAll(r.Body)
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/api/v2/metrics/metadata":
 			_, _ = w.Write([]byte(`{"status":"success","data":` + metadata + `}`))
 		case "/api/v5/query_range":
-			_, _ = w.Write([]byte(`{"status":"success","data":{"type":"scalar","meta":{"stepIntervals":{"A":60}},"data":{"results":[]}}}`))
+			var request struct {
+				CompositeQuery struct {
+					Queries []struct {
+						Spec struct {
+							StepInterval float64 `json:"stepInterval"`
+						} `json:"spec"`
+					} `json:"queries"`
+				} `json:"compositeQuery"`
+			}
+			_ = json.Unmarshal(body, &request)
+			step := 60.0
+			if queries := request.CompositeQuery.Queries; len(queries) > 0 && queries[0].Spec.StepInterval > step {
+				step = queries[0].Spec.StepInterval
+			}
+			_, _ = fmt.Fprintf(w, `{"status":"success","data":{"type":"scalar","meta":{"stepIntervals":{"A":%d}},"data":{"results":[]}}}`, int(step))
 		default:
 			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
 			w.WriteHeader(http.StatusNotFound)
@@ -105,6 +121,7 @@ func TestAggregateTraces_SaysWhenItCountsEverySpanOfAService(t *testing.T) {
 		{name: "distinct traces", args: map[string]any{"service": "frontend", "aggregations": "count_distinct(trace_id)"}},
 		{name: "every service", args: map[string]any{"aggregations": "count()"}},
 		{name: "two services", args: map[string]any{"filter": "service.name IN ('frontend', 'cart')", "aggregations": "count()"}},
+		{name: "an OR that widens the scope", args: map[string]any{"filter": "service.name = 'frontend' OR has_error = true", "aggregations": "count()"}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -117,7 +134,7 @@ func TestAggregateTraces_SaysWhenItCountsEverySpanOfAService(t *testing.T) {
 			if got := strings.Contains(notes, note); got != tc.wantNote {
 				t.Fatalf("all-span note present = %t, want %t; notes:\n%s", got, tc.wantNote, notes)
 			}
-			if tc.wantNote && !strings.Contains(notes, "add isEntryPoint = true OR isRoot = true to the filter") {
+			if tc.wantNote && !strings.Contains(notes, "add AND (isEntryPoint = true OR isRoot = true) to the filter") {
 				t.Fatalf("the note must name the entry-span filter; notes:\n%s", notes)
 			}
 			want := map[string]int64{}
@@ -154,23 +171,29 @@ func TestQueryMetrics_SaysWhatAScalarReductionMeasured(t *testing.T) {
 			args:     map[string]any{"spaceAggregation": "p95", "reduceTo": "avg", "filter": "service.name = 'frontend'"},
 			wantRule: "percentile_of_steps",
 			want: []string{
-				"reduceTo avg combined the p95 of each 60s step, so this is not the p95 over the whole window",
-				"query http.server.duration.bucket again with timeAggregation increase, spaceAggregation sum, reduceTo sum, and groupBy le",
-				`For this cumulative histogram, this PromQL through signoz_execute_builder_query with requestType scalar also returns it: histogram_quantile(0.95, sum by (le) (increase({"http.server.duration.bucket", "service.name"="frontend"}[3600s])))`,
+				"reduceTo avg combined the p95 of each 60s step, so this is not the p95 over the whole window.",
+				"For one p95 over the same steps, query http.server.duration.bucket again with timeAggregation increase, spaceAggregation sum, reduceTo sum, and groupBy le, which returns each bucket's count over the same steps, and interpolate within the first bucket whose count reaches 95% of the total.",
 			},
+			absent: []string{"PromQL", "within each group"},
 		},
 		{
 			name: "default p99 of a delta histogram", metadata: deltaHistogram,
 			args:     map[string]any{"reduceTo": "avg"},
 			wantRule: "percentile_of_steps",
-			want:     []string{"reduceTo avg combined the p99 of each 60s step"},
-			absent:   []string{"PromQL"},
+			want:     []string{"reduceTo avg combined the p99 of each 60s step", "groupBy le"},
 		},
 		{
-			name: "a filter PromQL cannot take", metadata: cumulativeHistogram,
-			args:     map[string]any{"spaceAggregation": "p90", "reduceTo": "median", "filter": "service.name IN ('a', 'b')"},
+			name: "a grouped percentile keeps its groups", metadata: cumulativeHistogram,
+			args:     map[string]any{"spaceAggregation": "p90", "reduceTo": "median", "groupBy": "service.name"},
 			wantRule: "percentile_of_steps",
-			want:     []string{`increase({"http.server.duration.bucket"}[3600s]))), adding your filter's conditions as label matchers`},
+			want:     []string{"and groupBy service.name, le, which returns", "interpolate within each group within the first bucket whose count reaches 90% of the total"},
+		},
+		{
+			name: "an exponential histogram has no le buckets", metadata: `{"type":"exponentialhistogram","temporality":"delta","isMonotonic":false}`,
+			args:     map[string]any{"metricName": "http.server.duration", "spaceAggregation": "p95", "reduceTo": "avg"},
+			wantRule: "percentile_of_steps",
+			want:     []string{"so this is not the p95 over the whole window."},
+			absent:   []string{"groupBy"},
 		},
 		{
 			name: "a step as long as a window that starts mid-step", metadata: cumulativeHistogram,
@@ -179,15 +202,20 @@ func TestQueryMetrics_SaysWhatAScalarReductionMeasured(t *testing.T) {
 			alsoRule: "step_alignment",
 			want: []string{
 				"SigNoz starts steps at multiples of 1200s since the Unix epoch, so this 1200s step does not cover the window as one step: for this cumulative histogram the result starts at 2026-11-21T14:00:00Z and leaves out the window before it",
-				"[1200s]",
 			},
+		},
+		{
+			name: "a rate on a cumulative histogram reads the step before", metadata: cumulativeHistogram,
+			args:     map[string]any{"spaceAggregation": "p95", "timeAggregation": "rate", "reduceTo": "max", "stepInterval": "1200", "start": "2026-11-21T13:56:00Z", "end": "2026-11-21T14:16:00Z"},
+			wantRule: "step_alignment",
+			want:     []string{"the first step starts at 2026-11-21T13:40:00Z, before the window, and counts data from before it, or, for a cumulative histogram percentile, the result starts at 2026-11-21T14:00:00Z"},
 		},
 		{name: "one step that is the window", metadata: cumulativeHistogram, args: map[string]any{"spaceAggregation": "p95", "reduceTo": "avg", "stepInterval": "1200", "start": "2026-11-21T14:00:00Z", "end": "2026-11-21T14:20:00Z"}},
 		{
 			name: "metric type from the caller", metadata: `{}`,
 			args:     map[string]any{"metricType": "histogram", "spaceAggregation": "p95", "reduceTo": "avg"},
 			wantRule: "percentile_of_steps",
-			want:     []string{"If this histogram is cumulative, this PromQL through signoz_execute_builder_query with requestType scalar also returns it", "returns no data for a delta histogram"},
+			want:     []string{"groupBy le, which returns each bucket's count over the same steps"},
 		},
 		{name: "peak percentile", metadata: cumulativeHistogram, args: map[string]any{"spaceAggregation": "p95", "reduceTo": "max"}},
 		{
@@ -209,6 +237,14 @@ func TestQueryMetrics_SaysWhatAScalarReductionMeasured(t *testing.T) {
 			wantRule: "rate_summed",
 			want:     []string{"reduceTo sum added up the per-second rate of each 60s step", "use timeAggregation increase with reduceTo sum"},
 		},
+		{
+			name: "the step SigNoz used, not the one asked for", metadata: cumulativeCounter,
+			args:     map[string]any{"metricName": "http.requests", "reduceTo": "sum", "stepInterval": "10"},
+			wantRule: "rate_summed",
+			want:     []string{"the per-second rate of each 60s step"},
+		},
+		{name: "summed rate counted across series", metadata: cumulativeCounter, args: map[string]any{"metricName": "http.requests", "spaceAggregation": "count", "reduceTo": "sum"}},
+		{name: "summed rate after a function", metadata: cumulativeCounter, args: map[string]any{"metricName": "http.requests", "reduceTo": "sum", "functions": []any{map[string]any{"name": "cutOffMin", "args": []any{map[string]any{"value": 0}}}}}},
 		{name: "summed increase", metadata: cumulativeCounter, args: map[string]any{"metricName": "http.requests", "timeAggregation": "increase", "reduceTo": "sum"}},
 		{name: "average rate", metadata: cumulativeCounter, args: map[string]any{"metricName": "http.requests", "reduceTo": "avg"}},
 		{
@@ -223,6 +259,7 @@ func TestQueryMetrics_SaysWhatAScalarReductionMeasured(t *testing.T) {
 			wantRule: "counter_running_total",
 			want:     []string{"timeAggregation count counts the counter's samples"},
 		},
+		{name: "distinct values of a cumulative counter", metadata: cumulativeCounter, args: map[string]any{"metricName": "http.requests", "timeAggregation": "count_distinct", "reduceTo": "max"}},
 		{name: "latest of an up-down counter", metadata: upDownCounter, args: map[string]any{"metricName": "queue.size", "timeAggregation": "latest", "reduceTo": "last"}},
 		{name: "max of a delta counter", metadata: deltaCounter, args: map[string]any{"metricName": "http.requests", "timeAggregation": "max", "reduceTo": "max"}},
 		{
@@ -231,6 +268,19 @@ func TestQueryMetrics_SaysWhatAScalarReductionMeasured(t *testing.T) {
 			wantRule: "span_metrics_all_spans",
 			want:     []string{`signoz_calls_total counts every span of service "frontend"`, "signoz_list_services (numCalls, callRate)"},
 		},
+		{
+			name: "span latency count for one service", metadata: deltaCounter,
+			args:     map[string]any{"metricName": "signoz_latency.count", "filter": "service.name = 'frontend'", "timeAggregation": "increase", "reduceTo": "sum"},
+			wantRule: "span_metrics_all_spans",
+			want:     []string{`signoz_latency.count counts every span of service "frontend"`, "signoz_aggregate_traces with the filter (isEntryPoint = true OR isRoot = true)"},
+		},
+		{
+			name: "span latency percentile for one service", metadata: deltaHistogram,
+			args:     map[string]any{"metricName": "signoz_latency.bucket", "filter": "service.name = 'frontend'", "spaceAggregation": "p99", "reduceTo": "max"},
+			wantRule: "span_metrics_all_spans",
+			want:     []string{`signoz_latency.bucket records the duration of every span of service "frontend"`, "signoz_aggregate_traces with p99(duration_nano) and the filter (isEntryPoint = true OR isRoot = true)"},
+		},
+		{name: "span latency sum", metadata: deltaCounter, args: map[string]any{"metricName": "signoz_latency.sum", "filter": "service.name = 'frontend'", "timeAggregation": "increase", "reduceTo": "sum"}},
 		{name: "span metrics per operation", metadata: deltaCounter, args: map[string]any{"metricName": "signoz_calls_total", "filter": "service.name = 'frontend'", "groupBy": "operation", "timeAggregation": "increase", "reduceTo": "sum"}},
 		{name: "a formula", metadata: cumulativeCounter, args: map[string]any{"metricName": "http.requests", "reduceTo": "sum", "formula": "A / B", "formulaQueries": []any{map[string]any{"name": "B", "metricName": "http.requests", "metricType": "sum", "isMonotonic": true, "temporality": "cumulative", "reduceTo": "sum"}}}},
 	}
@@ -313,6 +363,10 @@ func TestExecuteBuilderQuery_SaysWhatEachQueryMeasured(t *testing.T) {
 		{name: "a disabled trace query", requestType: "time_series", queries: []any{traces(map[string]any{"disabled": true})}},
 		{name: "averaged percentile", requestType: "scalar", queries: []any{percentile}, wantRule: "percentile_of_steps", want: "reduceTo avg combined the p95 of each 60s step"},
 		{name: "percentile over time", requestType: "time_series", queries: []any{percentile}},
+		{name: "averaged percentile after a function", requestType: "scalar", queries: []any{map[string]any{"type": "builder_query", "spec": map[string]any{
+			"name": "A", "signal": "metrics", "functions": []any{map[string]any{"name": "ewma3"}},
+			"aggregations": []any{map[string]any{"metricName": "latency.bucket", "spaceAggregation": "p95", "reduceTo": "avg"}},
+		}}}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

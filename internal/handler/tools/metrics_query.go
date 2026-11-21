@@ -234,11 +234,12 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 		return upstreamQueryError(err, "metrics"), nil
 	}
 
-	// Extract backend-determined stepInterval from response if caller didn't provide one
+	// The notes use the step SigNoz reports, which can differ from a caller's
+	// (SigNoz raises a step below its minimum).
 	effectiveStep := stepInterval
-	if !callerProvidedStep {
-		if si := extractStepInterval(result); si > 0 {
-			effectiveStep = si
+	if si := extractStepInterval(result); si > 0 {
+		effectiveStep = si
+		if !callerProvidedStep {
 			decisions = append(decisions, fmt.Sprintf("stepInterval: %ds (backend-determined)", si))
 		}
 	}
@@ -266,6 +267,7 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 			RequestType:      mqr.RequestType,
 			StepSeconds:      effectiveStep,
 			CallerStep:       callerProvidedStep,
+			HasFunctions:     len(mqr.Functions) > 0,
 			StartMs:          startTime,
 			EndMs:            endTime,
 		}))...)
