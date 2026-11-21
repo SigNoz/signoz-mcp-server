@@ -348,7 +348,7 @@ func (h *Handler) handleListDashboards(ctx context.Context, req mcp.CallToolRequ
 	}
 
 	if limitClamped {
-		return structuredResultWithNotes(resultJSON, fmt.Sprintf(
+		return structuredResultWithNotes(ctx, h.logger, resultJSON, fmt.Sprintf(
 			"Requested limit exceeded the maximum of %d and was clamped. Use offset to page through the rest.",
 			dashboardListMaxLimit)), nil
 	}

@@ -424,6 +424,8 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 
 > **Input validation:** calls are never rejected for schema mismatches. Arguments are validated against each tool's advertised schema; a mismatched call still runs best-effort, and the successful result carries a deterministic appended `Input validation notice:` naming the affected top-level parameter when it can be derived safely from the advertised schema. Complex root-only mismatches use a generic fallback. Mismatches are also counted in the `mcp.tool.validation.mismatches` metric. Arguments a tool's schema does not declare are not rejected either: a successful result carries an appended `Input validation notice:` naming the ones the tool ignored. Short identifier-like names are listed and any other name is only counted. An argument the handler takes on purpose draws no notice: a legacy alias it reads (`ruleId`, `viewId`, `filterExpression` on `signoz_get_alert_history`, `query` on `signoz_search_docs`); a field `signoz_create_alert`, `signoz_update_alert`, `signoz_create_dashboard`, or `signoz_create_view` sends to SigNoz in the resource body, where SigNoz decides what it means; and a read-only field of a fetched dashboard sent back to `signoz_update_dashboard`, which strips those fields before the update. That tool reports `locked: true`, because it can't lock a dashboard. A few tools reject undeclared arguments with a coded error instead, such as the retired log `query` alias or an unknown notification-channel field. Every undeclared argument is also logged at WARN with its name and counted in the same metric under path `<undeclared>` and constraint `undeclared_argument`.
 
+> **Result notes:** a note on a result, such as a clamped limit or an input validation notice, follows the JSON as its own text block. A tool that returns `structuredContent` also lists every note in its `notes` array of strings, and text block 0 carries the same JSON, because some clients show the model only `structuredContent`. `notes` is omitted when there are none, and every tool output schema declares it.
+
 > **Upstream errors:** upstream SigNoz 401 and 403 tool failures carry a stable structured `code` (`UNAUTHORIZED` or `PERMISSION_DENIED`) and numeric `status`. Recognized SigNoz error envelopes may also include bounded `upstreamURL`, `upstreamSuggestions`, `upstreamDetails` (`[{message, suggestions}]`), and `upstreamRetry` (`{delay}` in nanoseconds); the same recovery guidance appears in agent-readable text. Unrecognized bodies use the local status-derived coded fallback instead of raw passthrough, and authorization failures still name the failed tool and immediate recovery action. A 403 on a log, trace, metric, or Query Builder query also says which filter a role limited to some services or environments accepts: a top-level `=` or `IN` condition on `resource.service.name` or `resource.deployment.environment.name`. This error-only addition does not change tool names, schemas or descriptions, success payloads, resources or templates, or prompts.
 
 | Tool | Description |
@@ -722,7 +724,7 @@ Lists APM services with trace activity in a time range, sorted by service name a
   - `start`/`end` (optional) - A fixed window: an RFC 3339 date-time with `Z` or an offset, or Unix epoch milliseconds. With `start`, the window runs from `start` to `end` (default now) and `timeRange` is ignored. `end` without `start` is rejected with the `start` to add.
   - `limit` (optional) - Maximum services per page (default: 50, max: 1000; higher values are clamped)
   - `offset` (optional) - Number of results to skip for pagination (default: 0)
-- **Response**: `data` (services with `webUrl` when available), `pagination` (`total`, `offset`, `limit`, `hasMore`, `nextOffset`), and `window` (`start`, `end`, `startMs`, `endMs`), the window queried
+- **Response**: `data` (services with `webUrl` when available), `pagination` (`total`, `offset`, `limit`, `hasMore`, `nextOffset`), `window` (`start`, `end`, `startMs`, `endMs`), the window queried, and `notes` when the limit was clamped
 
 #### `signoz_get_service_top_operations`
 
@@ -749,7 +751,7 @@ Gets the service dependency graph that SigNoz's Service Map draws for a time win
   - `environment` (optional) - Keep only edges recorded with this `deployment.environment` resource value; discover values with `signoz_get_field_values` (`signal=traces`, `fieldContext=resource`, `name=deployment.environment`)
   - `cluster` (optional) - Keep only edges recorded with this `k8s.cluster.name` resource value; discover values with `signoz_get_field_values` (`signal=traces`, `fieldContext=resource`, `name=k8s.cluster.name`)
   - `namespace` (optional) - Keep only edges recorded with this `k8s.namespace.name` resource value; discover values with `signoz_get_field_values` (`signal=traces`, `fieldContext=resource`, `name=k8s.namespace.name`)
-- **Response**: `data` (edges), `pagination` (`total`, `offset`, `limit`, `hasMore`, `nextOffset`), and `window` (`start`, `end`, `startMs`, `endMs`), the window queried
+- **Response**: `data` (edges), `pagination` (`total`, `offset`, `limit`, `hasMore`, `nextOffset`), `window` (`start`, `end`, `startMs`, `endMs`), the window queried, and `notes`, which always states the units of the edge numbers
 
 #### `signoz_get_alert_history`
 

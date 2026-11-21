@@ -165,11 +165,7 @@ func (h *Handler) handleGetServiceMap(ctx context.Context, req mcp.CallToolReque
 		h.logger.ErrorContext(ctx, "Failed to wrap service map with pagination", logpkg.ErrAttr(err))
 		return InternalErrorResult("failed to marshal response: " + err.Error()), nil
 	}
-	res := listResult(resultJSON, limitClamped)
-	for _, note := range append(notes, serviceMapUnitsNote) {
-		res.Content = append(res.Content, mcp.NewTextContent(note))
-	}
-	return res, nil
+	return listResult(ctx, h.logger, resultJSON, limitClamped, append(notes, serviceMapUnitsNote)...), nil
 }
 
 // serviceMapTags builds SigNoz's tag filter from the environment, cluster, and
@@ -314,7 +310,7 @@ func (h *Handler) handleListServices(ctx context.Context, req mcp.CallToolReques
 		return InternalErrorResult("failed to marshal response: " + err.Error()), nil
 	}
 
-	return listResult(resultJSON, limitClamped), nil
+	return listResult(ctx, h.logger, resultJSON, limitClamped), nil
 }
 
 func serviceItemName(item any) string {
