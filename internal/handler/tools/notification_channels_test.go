@@ -127,7 +127,7 @@ func TestDeleteNotificationChannel_InUseSaysTheIDsCanBeAlertRules(t *testing.T) 
 			text.WriteString(block.Text + "\n")
 		}
 	}
-	for _, want := range []string{"used by the following routing policies", "a name in that list that is a UUID is an alert rule's own routing policy; check it with signoz_get_alert", "Any other name is a routing policy in SigNoz settings"} {
+	for _, want := range []string{"used by the following routing policies", "for a name in that list that is a UUID, use signoz_get_alert to check whether that rule routes to this channel", "for any other name, change the routing policy in SigNoz settings"} {
 		if !strings.Contains(text.String(), want) {
 			t.Fatalf("delete error lacks %q:\n%s", want, text.String())
 		}

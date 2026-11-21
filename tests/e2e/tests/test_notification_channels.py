@@ -313,7 +313,7 @@ def test_channel_an_alert_routes_to_cannot_be_deleted(mcp_client: MCPClient, tes
         assert refused.get("isError", False), "a channel an alert routes to was deleted"
         text = text_blocks(refused)
         assert rule_id in text and "routing policies" in text, text
-        assert "a name in that list that is a UUID is an alert rule's own routing policy" in text, text
+        assert "use signoz_get_alert to check whether that rule routes to this channel" in text, text
     finally:
         if rule_id:
             delete_rule(mcp_client, rule_id)

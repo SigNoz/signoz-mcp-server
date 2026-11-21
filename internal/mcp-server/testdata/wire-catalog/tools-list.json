@@ -5625,7 +5625,7 @@
             "openWorldHint": true,
             "readOnlyHint": false
           },
-          "description": "Permanently delete one notification channel by ID after the user has confirmed the exact channel. SigNoz rejects deleting a channel that an alert rule or routing policy routes to and names those routing policies: a name that is a UUID is an alert rule's own policy (check it with signoz_get_alert); any other name is a routing policy in SigNoz settings. Re-route them first.",
+          "description": "Permanently delete one notification channel by ID after the user has confirmed the exact channel. SigNoz rejects deleting a channel that an alert rule or routing policy routes to and names those routing policies. For a name that is a UUID, use signoz_get_alert to check whether that rule routes to this channel; if it does not, or for any other name, it is a routing policy in SigNoz settings. Re-route them first.",
           "inputSchema": {
             "additionalProperties": false,
             "properties": {

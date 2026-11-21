@@ -359,9 +359,19 @@ raised C25 to C27. Each was checked against the code and the SigNoz source.
   description do. `AdjustedMetricTimeRange` fetches the step before the window only for an explicit
   rate or increase on a cumulative metric.
 - C27: the builder having test asserts the bucket recipe is absent.
-- C20 is declined as a rare case: a user-created routing policy can also be named with a UUID, and
-  the text already says to check such a name with signoz_get_alert.
+- C20 was declined here as a rare case and fixed in the fourth round (below).
 - C26 is declined as a nit: an offset carried into the retried bucket query.
+
+### 2026-11-21 — Fourth review round
+
+A fourth round, limited to the third round's fixes and the two disputed findings, resolved C16, C24,
+C25 and C27, accepted C26 as declined, and kept C20 open.
+
+- C20: a user-created routing policy can share an alert rule's ID as its name, so finding the rule
+  with signoz_get_alert does not show the policy is that rule's own. The delete description and the
+  recovery text now say to check whether the rule routes to the channel, and to treat the name as a
+  routing policy in SigNoz settings when it does not.
+- C28: this plan's deferred list no longer names C24.
 
 ### 2026-11-21 — Mutation-side rules on the tools, schema pointers kept
 
@@ -407,8 +417,8 @@ raised C25 to C27. Each was checked against the code and the SigNoz source.
 
 ## Outcome
 
-Shipped as planned, plus the `step_alignment` rule the eval found, the fixes from two
-review rounds (C1 to C23, less the declined C13 and C14), and the second audit pass with its
+Shipped as planned, plus the `step_alignment` rule the eval found, the fixes from four
+review rounds (C1 to C28, less the declined C13, C14 and C26), and the second audit pass with its
 fixes. Deferred:
 
 - `GLOBAL IN` for ClickHouse SQL: not verifiable on the single-shard e2e cast.
@@ -416,6 +426,6 @@ fixes. Deferred:
   metric defaults for alerts, evaluation formats, patch rejections, heatmap rules, list-filter
   rules, Alertmanager matchers, explorer rendering of mismatched views), and an alertType that does
   not match its query signal.
-- Review findings C13, C14, and C24 (a sentence that predates this PR; a limit-plus-offset formula
-  input; wording the instructions have long used).
+- Review findings C13, C14, and C26 (a sentence that predates this PR; a limit-plus-offset formula
+  input; an offset carried into the retried bucket query).
 - Skill changes are tracked in SigNoz/nerve-pod#436; behaviour bugs are in SigNoz/nerve-pod#674.

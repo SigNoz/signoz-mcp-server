@@ -1123,9 +1123,10 @@ for updates without displaying or logging secrets. **Parameter**: `id`.
 Permanently delete a confirmed channel by `id`. Resolve and confirm the exact
 channel first; call directly when those steps are already complete. SigNoz
 rejects deleting a channel that an alert rule or routing policy routes to and
-names those routing policies. A name that is a UUID is an alert rule's own
-policy, which `signoz_get_alert` reads; any other name is a routing policy in
-SigNoz settings. The error adds a recovery note saying so.
+names those routing policies. For a name that is a UUID, `signoz_get_alert`
+shows whether that rule routes to the channel; if it does not, or for any other
+name, it is a routing policy in SigNoz settings. The error adds a recovery note
+saying so.
 
 #### `signoz_submit_feedback`
 
