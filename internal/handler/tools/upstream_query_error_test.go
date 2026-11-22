@@ -191,7 +191,8 @@ func TestUpstreamQueryError_NoQueriesNamesTheRequestShape(t *testing.T) {
 	err := keyNotFound400(`{"status":"error","error":{"type":"invalid-input","code":"invalid_input","message":"atleast one query is required","errors":[],"suggestions":[]}}`)
 
 	text := resultText(t, upstreamQueryError(err, ""))
-	for _, want := range []string{"atleast one query is required", "query_range takes compositeQuery.queries, a list of {type, spec} envelopes", "builderQueries, promQueries, and chQueries are an older request shape"} {
+	// SigNoz's message is kept; the guidance names the field and envelope it takes and the older shape.
+	for _, want := range []string{"atleast one query is required", "compositeQuery.queries", "{type, spec}", "builderQueries"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("error text lacks %q: %q", want, text)
 		}

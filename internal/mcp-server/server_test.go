@@ -894,10 +894,17 @@ func TestResourceReadSpansNameOnlyRegisteredResources(t *testing.T) {
 		otel.SetTracerProvider(previousTracerProvider)
 		_ = traceProvider.Shutdown(context.Background())
 	})
+	reader := sdkmetric.NewManualReader()
+	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	t.Cleanup(func() { _ = meterProvider.Shutdown(context.Background()) })
+	meters, err := otelpkg.NewMeters(meterProvider)
+	if err != nil {
+		t.Fatal(err)
+	}
 	const guide = "signoz://metrics-aggregation-guide"
 	madeUp := "signoz://" + strings.Repeat("x", 4096)
 
-	client, err := newIntegrationClient(t, buildTestServer(t))
+	client, err := newIntegrationClient(t, buildTestServerWithDocsAndMeters(t, nil, meters))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -922,32 +929,26 @@ func TestResourceReadSpansNameOnlyRegisteredResources(t *testing.T) {
 		t.Fatalf("mcp.resource.uri on resources/read spans = %q, want %q", recorded, want)
 	}
 
-	reader := sdkmetric.NewManualReader()
-	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
-	t.Cleanup(func() { _ = meterProvider.Shutdown(context.Background()) })
-	meters, err := otelpkg.NewMeters(meterProvider)
-	if err != nil {
-		t.Fatal(err)
-	}
-	logger := logpkg.New("error")
-	cfg := &config.Config{ClientCacheSize: 1, ClientCacheTTL: time.Minute}
-	server := NewMCPServer(logger, tools.NewHandler(logger, cfg), cfg, noopanalytics.New(), meters)
-	read := server.receivingMiddleware(nil, func(uri string) bool { return uri == guide })(func(context.Context, string, mcp.Request) (mcp.Result, error) {
-		return &mcp.ReadResourceResult{}, nil
-	})
-	if _, err := read(context.Background(), "resources/read", &mcp.ReadResourceRequest{Params: &mcp.ReadResourceParams{URI: guide}}); err != nil {
-		t.Fatal(err)
-	}
+	// The same two reads are counted, and no metric attribute carries a URI.
 	var metrics metricdata.ResourceMetrics
 	if err := reader.Collect(context.Background(), &metrics); err != nil {
 		t.Fatal(err)
 	}
 	methodCalls, found := oteltest.FindInt64SumMetric(metrics, "mcp.method.calls")
-	if !found || len(methodCalls.DataPoints) != 1 {
-		t.Fatalf("mcp.method.calls = %#v, found=%t; want one datapoint", methodCalls.DataPoints, found)
+	if !found {
+		t.Fatal("mcp.method.calls was not recorded")
 	}
-	if strings.Contains(methodCalls.DataPoints[0].Attributes.Encoded(attribute.DefaultEncoder()), guide) {
-		t.Fatal("metric attributes carry the resource URI")
+	var reads int64
+	for _, point := range methodCalls.DataPoints {
+		if method, _ := point.Attributes.Value(otelpkg.MCPMethodKey); method.AsString() == "resources/read" {
+			reads += point.Value
+		}
+		if encoded := point.Attributes.Encoded(attribute.DefaultEncoder()); strings.Contains(encoded, "signoz://") {
+			t.Fatalf("mcp.method.calls attributes carry a resource URI: %s", encoded)
+		}
+	}
+	if reads != 2 {
+		t.Fatalf("mcp.method.calls counted %d resources/read calls, want the 2 the client made", reads)
 	}
 }
 

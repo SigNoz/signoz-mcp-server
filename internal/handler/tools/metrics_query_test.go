@@ -192,8 +192,9 @@ func TestQueryMetrics_ReportsIsMonotonicSigNozDidNotReturn(t *testing.T) {
 }
 
 // A caller who sends metricType gets the temporality and monotonicity they
-// left out from the metadata, and keeps every value they sent. A lookup that
-// fails leaves the query running on the caller's values, logged and noted.
+// left out from the metadata, and keeps every value they sent; an isMonotonic
+// that is not a boolean is rejected before any lookup. A lookup that fails
+// leaves the query running on the caller's values, logged and noted.
 func TestQueryMetrics_FillsOnlyTheMetadataACallerLeftOut(t *testing.T) {
 	const cumulativeCounter = `{"type":"sum","temporality":"cumulative","isMonotonic":true}`
 	type aggregation struct {
@@ -230,6 +231,12 @@ func TestQueryMetrics_FillsOnlyTheMetadataACallerLeftOut(t *testing.T) {
 			wantLookups: 1,
 			want:        []string{"metricType: sum (auto-fetched)", "isMonotonic: false (caller-provided)", "timeAggregation: avg"},
 			wantSent:    map[string]aggregation{"A": {"cumulative", "avg"}},
+		},
+		{
+			name: "an isMonotonic that is not a boolean is rejected", metadataStatus: http.StatusOK,
+			args:     map[string]any{"metricType": "sum", "isMonotonic": "yes"},
+			wantCode: CodeValidationFailed,
+			want:     []string{`"isMonotonic"`, `"yes"`},
 		},
 		{
 			name: "a metadata lookup the caller may not make", metadataStatus: http.StatusForbidden,
@@ -344,6 +351,9 @@ func TestQueryMetrics_FillsOnlyTheMetadataACallerLeftOut(t *testing.T) {
 			require.NoError(t, err)
 			if tc.wantCode != "" {
 				require.Equal(t, tc.wantCode, resultCode(t, result))
+				for _, text := range tc.want {
+					require.Contains(t, textContent(t, result), text)
+				}
 				require.Equal(t, tc.wantLookups, lookups, "metadata lookups")
 				require.Empty(t, sent, "no query is sent")
 				return

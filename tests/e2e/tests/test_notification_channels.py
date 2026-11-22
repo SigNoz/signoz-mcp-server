@@ -312,8 +312,9 @@ def test_channel_an_alert_routes_to_cannot_be_deleted(mcp_client: MCPClient, tes
         )
         assert refused.get("isError", False), "a channel an alert routes to was deleted"
         text = text_blocks(refused)
-        assert rule_id in text and "routing policies" in text, text
-        assert "use signoz_get_alert to check whether that rule routes to this channel" in text, text
+        # SigNoz's own refusal names the rule's ID, and the recovery the tool adds to it names the tool to check it.
+        assert "used by the following routing policies" in text and rule_id in text, text
+        assert "signoz_get_alert" in text, text
     finally:
         if rule_id:
             delete_rule(mcp_client, rule_id)

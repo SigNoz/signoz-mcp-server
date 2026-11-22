@@ -120,24 +120,26 @@ func countedNotes(t *testing.T, reader *sdkmetric.ManualReader) map[string]int64
 }
 
 func TestAggregateTraces_SaysWhenItCountsEverySpanOfAService(t *testing.T) {
-	const note = `this aggregates every span of service "frontend" that matches the filter, not its requests`
+	const note = `every span of service "frontend"`
+	// The fix with only the service argument sets filter; with a filter, it adds to it.
+	const setFilter, addToFilter = "set filter to isEntryPoint = true OR isRoot = true", "AND (isEntryPoint = true OR isRoot = true)"
 	tests := []struct {
 		name     string
 		args     map[string]any
 		wantNote bool
 		wantFix  string
 	}{
-		{name: "count of one service", args: map[string]any{"service": "frontend", "aggregations": "count()"}, wantNote: true, wantFix: "set filter to isEntryPoint = true OR isRoot = true and keep the service argument"},
-		{name: "p95 latency from the filter", args: map[string]any{"filter": "service.name = 'frontend'", "aggregations": []any{"p95(duration_nano)"}}, wantNote: true, wantFix: "add AND (isEntryPoint = true OR isRoot = true) to the filter"},
-		{name: "server spans still nest", args: map[string]any{"service": "frontend", "filter": "kind_string = 'Server'", "aggregations": "rate()"}, wantNote: true, wantFix: "add AND (isEntryPoint = true OR isRoot = true) to the filter"},
+		{name: "count of one service", args: map[string]any{"service": "frontend", "aggregations": "count()"}, wantNote: true, wantFix: setFilter},
+		{name: "p95 latency from the filter", args: map[string]any{"filter": "service.name = 'frontend'", "aggregations": []any{"p95(duration_nano)"}}, wantNote: true, wantFix: addToFilter},
+		{name: "server spans still nest", args: map[string]any{"service": "frontend", "filter": "kind_string = 'Server'", "aggregations": "rate()"}, wantNote: true, wantFix: addToFilter},
 		{name: "entry spans", args: map[string]any{"service": "frontend", "filter": "isEntryPoint = true OR isRoot = true", "aggregations": "count()"}},
 		{name: "root spans by a qualified key", args: map[string]any{"service": "frontend", "filter": "span.isRoot = true", "aggregations": "count()"}},
 		{name: "root spans by the older context name", args: map[string]any{"service": "frontend", "filter": "spanfield.isRoot = true", "aggregations": "count()"}},
-		{name: "an instrumentation scope is not an operation", args: map[string]any{"service": "frontend", "filter": "scope.name = 'otel-http'", "aggregations": "count()"}, wantNote: true, wantFix: "add AND (isEntryPoint = true OR isRoot = true) to the filter"},
+		{name: "an instrumentation scope is not an operation", args: map[string]any{"service": "frontend", "filter": "scope.name = 'otel-http'", "aggregations": "count()"}, wantNote: true, wantFix: addToFilter},
 		{name: "operations picked with the singular operator", args: map[string]any{"service": "frontend", "filter": "name CONTAIN 'checkout'", "aggregations": "count()"}},
-		{name: "server spans by kind number", args: map[string]any{"service": "frontend", "filter": "kind IN [2]", "aggregations": "count()"}, wantNote: true, wantFix: "add AND (isEntryPoint = true OR isRoot = true) to the filter"},
+		{name: "server spans by kind number", args: map[string]any{"service": "frontend", "filter": "kind IN [2]", "aggregations": "count()"}, wantNote: true, wantFix: addToFilter},
 		{name: "client spans by kind number", args: map[string]any{"service": "frontend", "filter": "kind = 3", "aggregations": "count()"}},
-		{name: "an unquoted value that reads like a key", args: map[string]any{"filter": "service.name = 'frontend' AND http.target == name", "aggregations": "count()"}, wantNote: true, wantFix: "add AND (isEntryPoint = true OR isRoot = true) to the filter"},
+		{name: "an unquoted value that reads like a key", args: map[string]any{"filter": "service.name = 'frontend' AND http.target == name", "aggregations": "count()"}, wantNote: true, wantFix: addToFilter},
 		{name: "grouped by operation", args: map[string]any{"service": "frontend", "aggregations": "count()", "groupBy": "name"}},
 		{name: "one operation", args: map[string]any{"service": "frontend", "operation": "GET /cart", "aggregations": "count()"}},
 		{name: "client spans on purpose", args: map[string]any{"service": "frontend", "filter": "kind_string = 'Client'", "aggregations": "count()"}},
@@ -150,14 +152,14 @@ func TestAggregateTraces_SaysWhenItCountsEverySpanOfAService(t *testing.T) {
 		{name: "the peer service a span calls", args: map[string]any{"filter": "attribute.peer.service.name = 'frontend'", "aggregations": "count()"}},
 		{name: "service.name inside a quoted value", args: map[string]any{"filter": `attribute.message = "service.name = 'frontend'"`, "aggregations": "count()"}},
 		{name: "every kind but server", args: map[string]any{"service": "frontend", "filter": "kind_string != 'Server'", "aggregations": "count()"}},
-		{name: "an unquoted server kind", args: map[string]any{"service": "frontend", "filter": "kind_string = Server", "aggregations": "count()"}, wantNote: true, wantFix: "add AND (isEntryPoint = true OR isRoot = true) to the filter"},
-		{name: "server kind as a one-value list", args: map[string]any{"service": "frontend", "filter": "kind_string IN ('Server')", "aggregations": "count()"}, wantNote: true, wantFix: "add AND (isEntryPoint = true OR isRoot = true) to the filter"},
+		{name: "an unquoted server kind", args: map[string]any{"service": "frontend", "filter": "kind_string = Server", "aggregations": "count()"}, wantNote: true, wantFix: addToFilter},
+		{name: "server kind as a one-value list", args: map[string]any{"service": "frontend", "filter": "kind_string IN ('Server')", "aggregations": "count()"}, wantNote: true, wantFix: addToFilter},
 		{name: "server and client kinds", args: map[string]any{"service": "frontend", "filter": "kind_string IN ('Server', 'Client')", "aggregations": "count()"}},
-		{name: "the service in brackets, as the filter picker writes it", args: map[string]any{"filter": "service.name IN ['frontend']", "aggregations": "count()"}, wantNote: true, wantFix: "add AND (isEntryPoint = true OR isRoot = true) to the filter"},
-		{name: "an unquoted service with ==", args: map[string]any{"filter": "service.name == frontend", "aggregations": "count()"}, wantNote: true, wantFix: "add AND (isEntryPoint = true OR isRoot = true) to the filter"},
-		{name: "a span ID key in a quoted value", args: map[string]any{"filter": "service.name = 'frontend' AND http.route = '/lookup/:trace_id'", "aggregations": "count()"}, wantNote: true, wantFix: "add AND (isEntryPoint = true OR isRoot = true) to the filter"},
+		{name: "the service in brackets, as the filter picker writes it", args: map[string]any{"filter": "service.name IN ['frontend']", "aggregations": "count()"}, wantNote: true, wantFix: addToFilter},
+		{name: "an unquoted service with ==", args: map[string]any{"filter": "service.name == frontend", "aggregations": "count()"}, wantNote: true, wantFix: addToFilter},
+		{name: "a span ID key in a quoted value", args: map[string]any{"filter": "service.name = 'frontend' AND http.route = '/lookup/:trace_id'", "aggregations": "count()"}, wantNote: true, wantFix: addToFilter},
 		{name: "one trace", args: map[string]any{"service": "frontend", "filter": "trace_id = 'abc'", "aggregations": "count()"}},
-		{name: "the service beside a longer key", args: map[string]any{"filter": "k8s.service.name = 'web' AND service.name = 'frontend'", "aggregations": "count()"}, wantNote: true, wantFix: "add AND (isEntryPoint = true OR isRoot = true) to the filter"},
+		{name: "the service beside a longer key", args: map[string]any{"filter": "k8s.service.name = 'web' AND service.name = 'frontend'", "aggregations": "count()"}, wantNote: true, wantFix: addToFilter},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -208,7 +210,7 @@ func TestQueryMetrics_SaysWhatAScalarReductionMeasured(t *testing.T) {
 			wantRule: "percentile_of_steps",
 			want: []string{
 				"reduceTo avg", "the p95 of each 60s step",
-				"query http.server.duration.bucket again with timeAggregation increase, spaceAggregation sum, reduceTo sum, groupBy le",
+				"query http.server.duration.bucket again", "timeAggregation increase", "groupBy le,",
 				"every bucket of every group", "95% of the total", "+Inf", "highest finite bound",
 			},
 			absent: []string{"PromQL", "within each group"},
@@ -223,7 +225,7 @@ func TestQueryMetrics_SaysWhatAScalarReductionMeasured(t *testing.T) {
 			name: "a grouped percentile keeps its groups", metadata: cumulativeHistogram,
 			args:     map[string]any{"spaceAggregation": "p90", "reduceTo": "median", "groupBy": "service.name"},
 			wantRule: "percentile_of_steps",
-			want:     []string{"groupBy service.name, le, and a limit that returns every bucket of every group", "interpolate within each group within the first bucket whose count reaches 90% of the total"},
+			want:     []string{"groupBy service.name, le,", "every bucket of every group", "within each group", "90% of the total"},
 		},
 		{
 			name: "an exponential histogram has no le buckets", metadata: `{"type":"exponentialhistogram","temporality":"delta","isMonotonic":false}`,
@@ -237,15 +239,14 @@ func TestQueryMetrics_SaysWhatAScalarReductionMeasured(t *testing.T) {
 			args:     map[string]any{"spaceAggregation": "p95", "reduceTo": "avg", "stepInterval": "1200", "start": "2026-11-21T13:56:00Z", "end": "2026-11-21T14:16:00Z"},
 			wantRule: "percentile_of_steps",
 			alsoRule: "step_alignment",
-			want: []string{
-				"SigNoz starts steps at multiples of 1200s since the Unix epoch, so this 1200s step does not cover the window as one step: for this cumulative histogram the result starts at 2026-11-21T14:00:00Z and leaves out the window before it",
-			},
+			want:     []string{"this 1200s step", "for this cumulative histogram", "the result starts at 2026-11-21T14:00:00Z", "leaves out the window before it"},
+			absent:   []string{"2026-11-21T13:40:00Z"},
 		},
 		{
 			name: "a rate on a cumulative histogram reads the step before", metadata: cumulativeHistogram,
 			args:     map[string]any{"spaceAggregation": "p95", "timeAggregation": "rate", "reduceTo": "max", "stepInterval": "1200", "start": "2026-11-21T13:56:00Z", "end": "2026-11-21T14:16:00Z"},
 			wantRule: "step_alignment",
-			want:     []string{"the first step starts at 2026-11-21T13:40:00Z, before the window, and counts data from before it, or, for a cumulative histogram percentile, the result starts at 2026-11-21T14:00:00Z"},
+			want:     []string{"the first step starts at 2026-11-21T13:40:00Z", "for a cumulative histogram percentile", "the result starts at 2026-11-21T14:00:00Z"},
 		},
 		{name: "one step that is the window", metadata: cumulativeHistogram, args: map[string]any{"spaceAggregation": "p95", "reduceTo": "avg", "stepInterval": "1200", "start": "2026-11-21T14:00:00Z", "end": "2026-11-21T14:20:00Z"}},
 		{
@@ -288,7 +289,8 @@ func TestQueryMetrics_SaysWhatAScalarReductionMeasured(t *testing.T) {
 			name: "a counter over a window-long step", metadata: cumulativeCounter,
 			args:     map[string]any{"metricName": "http.requests", "timeAggregation": "increase", "reduceTo": "sum", "stepInterval": "3600", "start": "2026-11-21T13:30:00Z", "end": "2026-11-21T14:30:00Z"},
 			wantRule: "step_alignment",
-			want:     []string{"the first step starts at 2026-11-21T13:00:00Z, before the window, and counts data from before it.", "stepInterval: 3600s (caller-provided)"},
+			want:     []string{"the first step starts at 2026-11-21T13:00:00Z", "stepInterval: 3600s (caller-provided)"},
+			absent:   []string{"cumulative histogram"},
 		},
 		{name: "a counter over an aligned window-long step", metadata: cumulativeCounter, args: map[string]any{"metricName": "http.requests", "timeAggregation": "increase", "reduceTo": "sum", "stepInterval": "3600", "start": "2026-11-21T13:00:00Z", "end": "2026-11-21T14:00:00Z"}},
 		{
@@ -329,7 +331,7 @@ func TestQueryMetrics_SaysWhatAScalarReductionMeasured(t *testing.T) {
 			name: "sample count of a cumulative counter", metadata: cumulativeCounter,
 			args:     map[string]any{"metricName": "http.requests", "timeAggregation": "count", "reduceTo": "max", "requestType": "time_series"},
 			wantRule: "counter_running_total",
-			want:     []string{"timeAggregation count counts the counter's samples", "increase, and for the per-second rate, rate, each with spaceAggregation sum"},
+			want:     []string{"timeAggregation count counts the counter's samples", "count per step", "timeAggregation increase", "spaceAggregation sum"},
 			absent:   []string{"reduceTo"},
 		},
 		{name: "distinct values of a cumulative counter", metadata: cumulativeCounter, args: map[string]any{"metricName": "http.requests", "timeAggregation": "count_distinct", "reduceTo": "max"}},
@@ -379,7 +381,7 @@ func TestQueryMetrics_SaysWhatAScalarReductionMeasured(t *testing.T) {
 			name: "span metrics for one service and more", metadata: deltaCounter,
 			args:     map[string]any{"metricName": "signoz_calls_total", "filter": "service.name = 'frontend' AND status.code = 'STATUS_CODE_ERROR'", "timeAggregation": "increase", "reduceTo": "sum"},
 			wantRule: "span_metrics_all_spans",
-			want:     []string{"(isEntryPoint = true OR isRoot = true) AND this query's other conditions", "Write those conditions as span fields", "status_code_string 'Error'"},
+			want:     []string{"(isEntryPoint = true OR isRoot = true) AND", "other conditions", "span fields", "status_code_string 'Error'"},
 			absent:   []string{"signoz_list_services"},
 		},
 		{
@@ -392,7 +394,7 @@ func TestQueryMetrics_SaysWhatAScalarReductionMeasured(t *testing.T) {
 			name: "span latency percentile for one service", metadata: deltaHistogram,
 			args:     map[string]any{"metricName": "signoz_latency.bucket", "filter": "service.name = 'frontend'", "spaceAggregation": "p99", "reduceTo": "max"},
 			wantRule: "span_metrics_all_spans",
-			want:     []string{`signoz_latency.bucket records the duration of every span of service "frontend"`, "p99(duration_nano)", "isEntryPoint = true OR isRoot = true"},
+			want:     []string{`duration of every span of service "frontend"`, "p99(duration_nano)", "isEntryPoint = true OR isRoot = true"},
 			absent:   []string{"signoz_list_services", "span fields"},
 		},
 		{
@@ -573,7 +575,7 @@ func TestExecuteBuilderQuery_SaysWhatEachQueryMeasured(t *testing.T) {
 		{name: "summed rate of a counter", requestType: "scalar", queries: []any{map[string]any{"type": "builder_query", "spec": map[string]any{
 			"name": "A", "signal": "metrics",
 			"aggregations": []any{map[string]any{"metricName": "requests_total", "timeAggregation": "rate", "spaceAggregation": "sum", "reduceTo": "sum"}},
-		}}}, wantRule: "rate_summed", want: []string{`note: in query "A", reduceTo sum added up the per-second rate of each 60s step`}},
+		}}}, wantRule: "rate_summed", want: []string{`in query "A", reduceTo sum`, "each 60s step"}},
 		{name: "averaged percentile with having", requestType: "scalar", queries: []any{map[string]any{"type": "builder_query", "spec": map[string]any{
 			"name": "A", "signal": "metrics", "having": map[string]any{"expression": "__result > 1"},
 			"aggregations": []any{map[string]any{"metricName": "latency.bucket", "spaceAggregation": "p95", "reduceTo": "avg"}},

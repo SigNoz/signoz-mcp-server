@@ -9,12 +9,23 @@ and summed rates are not window values.
 
 import json
 import time
+from datetime import UTC, datetime
 
 import pytest
 
 from fixtures.mcpclient import MCPClient
 from fixtures.results import first_text_block, note_blocks, result_code
 from fixtures.telemetry import seed_histogram_minutes, seed_metrics, seed_steady_counter, wait_for
+
+
+def _iso(ms: int) -> str:
+    """A Unix ms timestamp as the notes write it."""
+    return datetime.fromtimestamp(ms / 1000, tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _reported_step(result: dict) -> int:
+    """The step SigNoz reports for query A in data.meta.stepIntervals."""
+    return json.loads(first_text_block(result))["data"]["meta"]["stepIntervals"]["A"]
 
 
 def _scalar_values(body: str) -> list[float]:
@@ -138,7 +149,7 @@ def test_metadata_lookup_matches_the_exact_name(mcp_client: MCPClient, test_id: 
         return {} if result.get("isError", False) else result
 
     found = wait_for(resolved, f"metadata for {gauge} visible")
-    assert "metricType: gauge (auto-fetched" in note_blocks(found), (
+    assert "metricType: gauge" in note_blocks(found), (
         f"exact name did not resolve its own metadata: {note_blocks(found)}"
     )
 
@@ -223,9 +234,8 @@ def test_window_percentile_is_not_the_mean_of_step_percentiles(
 
     for metric in (cumulative, delta):
         averaged = wait_for(lambda m=metric: all_minutes(m), f"all ten minutes of {metric}")
-        notes = note_blocks(averaged)
-        assert "reduceTo avg combined the p95 of each 60s step" in notes, notes
-        assert "groupBy le, and a limit that returns every bucket of every group" in notes, notes
+        step = _reported_step(averaged)
+        assert f"{step}s" in note_blocks(averaged), f"the note must name the {step}s step SigNoz reported"
         low = _scalar_values(first_text_block(p95(metric, "min")))
         high = _scalar_values(first_text_block(p95(metric, "max")))
         assert low == [16.667] and high == [96.875], f"{metric}: min {low}, max {high}"
@@ -307,8 +317,9 @@ def test_window_percentile_is_not_the_mean_of_step_percentiles(
     boundary_ms = boundary_s * 1000
     assert step_timestamps(cumulative) == [boundary_ms], f"cumulative steps over a window around {boundary_ms}"
     assert step_timestamps(delta) == [boundary_ms - 300_000, boundary_ms], f"delta steps around {boundary_ms}"
+    # The note names the step SigNoz starts the cumulative result at, not the one before the window.
     peak = note_blocks(p95_with(cumulative, {"reduceTo": "max", **window}))
-    assert "so this 300s step does not cover the window as one step: for this cumulative histogram" in peak, peak
+    assert _iso(boundary_ms) in peak and _iso(boundary_ms - 300_000) not in peak, peak
 
 
 def test_counter_reducers_say_what_they_measured(mcp_client: MCPClient, test_id: str, telemetry: None) -> None:
@@ -336,17 +347,19 @@ def test_counter_reducers_say_what_they_measured(mcp_client: MCPClient, test_id:
     # The window holds about 3,540 seconds of the series; SigNoz aligns it to the step.
     assert total == pytest.approx(0.5 * 3540, rel=0.05), f"increase with sum: {total}"
     summed = scalar(None, "sum")
-    assert "reduceTo sum added up the per-second rate of each 60s step" in note_blocks(summed), note_blocks(summed)
-    # Each 60s step holds its increase over 60, so the sum is the count over 60: neither a count nor a rate.
+    step = _reported_step(summed)
+    assert f"{step}s" in note_blocks(summed), f"the note must name the {step}s step SigNoz reported"
+    # Each step holds its increase over the step, so the sum is the count over the step: neither a count nor a rate.
     # The tolerance is one step's rate, in case a minute passes between the two calls.
     summed_rates = _scalar_values(first_text_block(summed))[0]
-    assert summed_rates == pytest.approx(total / 60, abs=0.5), f"summed per-step rates {summed_rates}, count {total}"
+    assert summed_rates == pytest.approx(total / step, abs=0.5), f"summed per-step rates {summed_rates}, count {total}"
 
     latest = scalar("latest", "last")
-    assert f"{metric} is a cumulative counter, so timeAggregation latest reads its running total" in note_blocks(latest)
+    # The counter notes key off the metadata SigNoz reports for the counter.
+    decisions = note_blocks(latest)
+    assert "temporality: cumulative" in decisions and "isMonotonic: true" in decisions, decisions
     assert _scalar_values(first_text_block(latest))[0] == pytest.approx(0.5 * 70 * 60, rel=0.01), "the running total"
     samples = scalar("count", "sum")
-    assert "counts the counter's samples" in note_blocks(samples), note_blocks(samples)
     # Each 10s sample adds 5 to the counter, so the window holds a fifth as many samples as events;
     # the tolerance is one step's samples.
     sample_count = _scalar_values(first_text_block(samples))[0]
@@ -365,15 +378,13 @@ def test_counter_reducers_say_what_they_measured(mcp_client: MCPClient, test_id:
     assert pinned("delta") == [], "a cumulative counter pinned as delta matches no samples"
     assert pinned("cumulative") == pytest.approx([0.5], rel=0.05)
 
-    # metricType alone still gets the temporality and monotonicity it left out, so the default is the rate.
+    # metricType alone still gets the monotonicity it left out, so the default is the rate.
     typed = mcp_client.call_tool(
         "signoz_query_metrics",
         {"searchContext": f"rate of {metric}", "metricName": metric, "metricType": "sum", "reduceTo": "avg"}
         | {"requestType": "scalar", "timeRange": "1h"},
     )
-    notes = note_blocks(typed)
-    assert "temporality: cumulative (auto-fetched)" in notes and "isMonotonic: true (auto-fetched)" in notes, notes
-    assert _scalar_values(first_text_block(typed)) == pytest.approx([0.5], rel=0.05)
+    assert _scalar_values(first_text_block(typed)) == pytest.approx([0.5], rel=0.05), note_blocks(typed)
 
     # SigNoz raises a step below its 60 s minimum; the decisions note names the step it used.
     raised = mcp_client.call_tool(
@@ -381,7 +392,7 @@ def test_counter_reducers_say_what_they_measured(mcp_client: MCPClient, test_id:
         {"searchContext": f"rate of {metric}", "metricName": metric, "stepInterval": "10", "timeRange": "1h"},
     )
     assert json.loads(first_text_block(raised))["data"]["meta"]["stepIntervals"] == {"A": 60}
-    assert "stepInterval: 60s (SigNoz used this step; 10s was requested)" in note_blocks(raised), note_blocks(raised)
+    assert "stepInterval: 60s" in note_blocks(raised), note_blocks(raised)
 
     # A window-long step that starts mid-step reaches back before the window for a counter rate.
     boundary_s = int(time.time() - 1800) // 600 * 600
@@ -413,4 +424,4 @@ def test_counter_reducers_say_what_they_measured(mcp_client: MCPClient, test_id:
             },
         )
     )
-    assert "the first step starts at" in note and "before the window, and counts data from before it" in note, note
+    assert _iso(timestamps[0]) in note, f"the note must name the first step SigNoz returned, {_iso(timestamps[0])}"

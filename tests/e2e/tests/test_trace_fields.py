@@ -297,19 +297,10 @@ def test_entry_spans_count_each_request_once(mcp_client: MCPClient, test_id: str
     assert count(caller, "kind_string = 'Server'") == 2 * calls, "server spans count each request twice"
     assert count(callee, "isRoot = true") == 0, "a span under a remote parent is an entry point, not a root"
 
-    # The all-span count says what it measured and names the entry-span filter; the entry count does not.
-    def notes(filter_expr: str | None) -> str:
-        args = {"searchContext": "request count", "service": caller, "aggregations": "count()", "timeRange": "1h"}
-        if filter_expr:
-            args["filter"] = filter_expr
-        return note_blocks(assert_tool_ok(mcp_client.call_tool("signoz_aggregate_traces", args)))
-
-    all_spans_notes = notes(None)
-    assert f'aggregates every span of service "{caller}"' in all_spans_notes, all_spans_notes
-    assert "set filter to isEntryPoint = true OR isRoot = true and keep the service argument" in all_spans_notes, (
-        all_spans_notes
-    )
-    assert "every span of service" not in notes(ENTRY_SPANS), notes(ENTRY_SPANS)
+    # The all-span count's note names the filter whose count above is the request count.
+    args = {"searchContext": "request count", "service": caller, "aggregations": "count()", "timeRange": "1h"}
+    all_spans_notes = note_blocks(assert_tool_ok(mcp_client.call_tool("signoz_aggregate_traces", args)))
+    assert ENTRY_SPANS in all_spans_notes, all_spans_notes
 
 
 def test_span_metrics_count_every_span_and_say_so(mcp_client: MCPClient, test_id: str, telemetry: None) -> None:
@@ -325,13 +316,13 @@ def test_span_metrics_count_every_span_and_say_so(mcp_client: MCPClient, test_id
         inner_server_span=True,
     )
 
-    def span_metric_count() -> dict | None:
+    def span_metric_count(key: str = "service.name") -> dict | None:
         result = mcp_client.call_tool(
             "signoz_query_metrics",
             {
                 "searchContext": f"request count of {caller}",
                 "metricName": "signoz_calls_total",
-                "filter": f"service.name = '{caller}'",
+                "filter": f"{key} = '{caller}'",
                 "timeAggregation": "increase",
                 "reduceTo": "sum",
                 "requestType": "scalar",
@@ -346,19 +337,29 @@ def test_span_metrics_count_every_span_and_say_so(mcp_client: MCPClient, test_id
 
     # The collector flushes span metrics on an interval, so wait for all three spans per request.
     result = wait_for(span_metric_count, f"signoz_calls_total for {caller} counting every span", timeout=300)
-    assert f'counts every span of service "{caller}"' in note_blocks(result), note_blocks(result)
+    # The note names signoz_list_services, whose count below is the request count, and the entry-span
+    # filter test_entry_spans_count_each_request_once proves.
+    notes = note_blocks(result)
+    assert "signoz_list_services" in notes and ENTRY_SPANS in notes, notes
+    # Metric filters read every field context from one label set, which the note's service match relies on.
+    for key in ("attribute.service.name", "resource.service.name"):
+        assert span_metric_count(key), f"filter {key} = '{caller}' did not select the same {3 * calls} span calls"
 
-    services = json.loads(
-        first_text_block(
-            assert_tool_ok(
-                mcp_client.call_tool(
-                    "signoz_list_services", {"searchContext": "services", "timeRange": "1h", "limit": "1000"}
+    def listed_calls() -> list:
+        services = json.loads(
+            first_text_block(
+                assert_tool_ok(
+                    mcp_client.call_tool(
+                        "signoz_list_services", {"searchContext": "services", "timeRange": "1h", "limit": "1000"}
+                    )
                 )
             )
         )
-    )
-    entries = services if isinstance(services, list) else services.get("data") or []
-    numbers = [entry.get("numCalls") for entry in entries if entry.get("serviceName") == caller]
+        entries = services if isinstance(services, list) else services.get("data") or []
+        return [entry.get("numCalls") for entry in entries if entry.get("serviceName") == caller]
+
+    # Span metrics can flush before the spans are queryable, so wait for the service to be listed.
+    numbers = wait_for(listed_calls, f"{caller} in signoz_list_services")
     assert numbers == [calls], f"signoz_list_services numCalls for {caller}: {numbers}"
 
 

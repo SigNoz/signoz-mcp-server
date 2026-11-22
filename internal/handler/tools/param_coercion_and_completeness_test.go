@@ -84,20 +84,6 @@ func TestParseSearchTracesArgs_ErrorFilter(t *testing.T) {
 	}
 }
 
-// query_metrics hard-errors on a garbage isMonotonic and honors a valid one.
-func TestParseMetricsQueryArgs_IsMonotonicGarbage(t *testing.T) {
-	if _, err := parseMetricsQueryArgs(map[string]any{"metricName": "m", "isMonotonic": "yes"}); err == nil {
-		t.Fatal("expected error on garbage isMonotonic, got nil")
-	}
-	req, err := parseMetricsQueryArgs(map[string]any{"metricName": "m", "isMonotonic": true})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if req.IsMonotonic == nil || !*req.IsMonotonic {
-		t.Fatal("expected IsMonotonic=true")
-	}
-}
-
 // A suffixed string like "1h"/"60s" must NOT be accepted as a numeric prefix
 // (1/60); it must warn + auto-select instead of applying a silently-wrong
 // bucket size. Direct parseStepInterval coverage + via the aggregate parser.
