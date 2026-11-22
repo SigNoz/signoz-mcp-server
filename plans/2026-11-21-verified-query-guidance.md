@@ -406,6 +406,42 @@ C25 and C27, accepted C26 as declined, and kept C20 open.
 - Check (round 7, the same negative on main, the trimmed branch, and the fixed branch): Haiku
   6 of 6, 4 of 6, 6 of 6; Sonnet 3 of 3 on each. No fixed-branch session answered from the edge.
 
+### 2026-11-22 — Fifth review: the measurement notes
+
+A review of the measurement notes only (GPT-6.2 Astra, max effort) raised M1 to M16 against
+`11b04f4`. Each was checked against the code and SigNoz at `9d5c5871cb`. The maintainer's rule for
+this pass: ignore the rarest cases and implement the rest properly.
+
+Fixed:
+
+- M1: on a scalar request the counter note says increase with reduceTo sum.
+- M3: the trace and span-metric rules read filter keys from a small tokenizer, so
+  `k8s.service.name`, `peer.service.name`, and `service.name` inside a quoted value no longer name
+  a service. A span-kind predicate other than `kind = 'Server'` counts as deliberate.
+- M4: the span-metric notes name `count()` or `rate()` and say to carry over the query's other
+  filter conditions and grouping.
+- M6: with no known type, a name ending in `_bucket` counts as a histogram, as `.bucket` does.
+- M7: a rank in the `+Inf` bucket takes the highest finite bound, as SigNoz's `bucketQuantile` does.
+- M9: the step-alignment note no longer promises the exact window, and says the result can be
+  empty when the next step boundary is at or after the window's end.
+- M10: builder `start` and `end` are read as SigNoz's `ToMilliSecs` reads them.
+- M11: the builder trace rule runs only for scalar and time-series requests.
+- M14: one decoder reads the named query's step for both metric tools and WARN-logs metadata it
+  cannot decode. With no reported step the notes name none.
+- M15: each per-query builder note names its query.
+- M16, and the tests under M5: the formula-input e2e ranks B against A and checks the surviving
+  service and its value; the counter e2e pins the summed rates and the sample count against the
+  window's increase.
+
+Left as too rare: M8 (groups times buckets over the 10,000-row limit cap), M12 (several
+aggregations in one metric builder query), M13 (a query named like a function), and parts of M1 and
+M5 (`having`; a window that is exactly one step), M3 (a dashboard variable as the service), M6 (an
+exponential histogram named `*.bucket`), and M11 (trace-operator queries).
+
+Declined: M2. A nested span that shares an entry span's name also counts as an entry point. That
+is SigNoz's definition, the Services page counts the same way, and the notes already say "as
+signoz_list_services does".
+
 ### 2026-11-21 — Mutation-side rules on the tools, schema pointers kept
 
 - Decision: rules that prevent a wrong result with no error go on the tool: the alert unit rule,
@@ -450,6 +486,9 @@ C25 and C27, accepted C26 as declined, and kept C20 open.
   negative): Haiku 6/6, 3/6, 4/6, every miss the service map edge's p95.
 - EVL-1 round 7 (27 sessions; main, trimmed, service map text fixed), outgoing-call p95: Haiku
   6/6, 4/6, 6/6; Sonnet 3/3 in each.
+- Fifth review fixes (`1543d64`): `make ci` passes and the full e2e suite passes on a fresh
+  v0.151.0 cast (118 passed, 1 skipped as on main). The handler tests gain a firing case and a
+  quiet neighbour for each changed rule.
 - e2e, 2026-11-22: `test_service_map_reports_one_edge_from_both_ends` now also asserts the units
   note names the callee side and that the caller's client spans give a different p99 (210 ms
   against the edge's 200 ms). It and `test_trace_fields.py` pass on a fresh v0.151.0 cast.
@@ -470,4 +509,6 @@ fixes. Deferred:
   not match its query signal.
 - Review findings C13, C14, and C26 (a sentence that predates this PR; a limit-plus-offset formula
   input; an offset carried into the retried bucket query).
+- Measurement-note cases left as too rare in the fifth review (M8, M12, M13, and parts of M1, M3,
+  M5, M6 and M11), and M2, declined.
 - Skill changes are tracked in SigNoz/nerve-pod#436; behaviour bugs are in SigNoz/nerve-pod#674.
