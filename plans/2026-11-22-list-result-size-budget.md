@@ -245,9 +245,6 @@ above). Breaking change (CMP-1): a list page can hold fewer items than `limit` w
 The compatibility path (CMP-2) is `pagination.nextOffset`, or for `signoz_list_dashboards` the
 number of dashboards returned, or a higher `MCP_MAX_RESULT_BYTES` for the server.
 
-Not done yet: the before-and-after prompt runs (EVL-1); SigNoz/nerve-pod#673 commits to evals
-before its final PR merges.
-
 SigNoz/agent-skills needs a companion change (CMP-3), tracked in
 SigNoz/nerve-pod#436: `signoz-explaining-dashboards` teaches raising `offset` by `limit` until
 `total` is covered, which skips dashboards after a budget cut.
