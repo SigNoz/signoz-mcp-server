@@ -71,7 +71,8 @@ evolution.
 | Field-local format, units, accepted forms, defaults, constraints, inter-field dependencies, short examples | Parameter description / input schema |
 | Result shape, handles (IDs, `webUrl`), pagination and truncation metadata | Output schema / result envelope |
 | Read-only / destructive / idempotent behavior | Tool annotations |
-| Routing rules and policies shared across several tools | Server instructions |
+| Which tool answers which question, in the user's words, naming tools exactly | Server instructions preamble |
+| Policies shared across several tools | Server instructions |
 | Long grammars, full schemas, complete worked examples, workflows, catalogs | Resources (`signoz://…`) |
 | Live tenant content addressed by ID | Read-only tools (`signoz_get_alert`, `signoz_get_dashboard`); resource template only under RES-1 |
 | Reusable user-invoked multi-step workflows | Prompts |
@@ -84,6 +85,23 @@ evolution.
 - **[SUR-10]** Gate a tool call only on authentication, consent, or
   confirmation of destructive action. A tool MUST NOT hard-require an optional
   documentation or resource fetch before it will work.
+- **[SUR-11] Place each rule where the model reads it.** Clients that defer
+  tool loading show the model only tool names and the server instructions
+  until it loads a tool, and none shows parameter descriptions before then.
+  Models rarely read `signoz://` resources unless a workflow names them as a
+  step, so a rule taught only in a resource is not taught.
+  - Tool routing MUST sit in the server instructions preamble, in the words
+    users use, naming tools exactly.
+  - A tool description SHOULD lead with the words a user would say, since
+    clients match tool search against its opening.
+  - A parameter description teaches how to fill that parameter; it MUST NOT be
+    the only place that steers the model to another tool.
+  - A warning on one tool does not reach a model that loaded another, so each
+    plausible wrong tool for a question needs its own line, and a result note
+    (OUT-7) covers what descriptions cannot.
+  - A rule that prevents a wrong answer or a failed call goes on the parameter
+    or tool it applies to, after it is verified against SigNoz. A resource
+    pointer MAY remain as further reading, not as the rule.
 
 ## 4. Input schemas and parameter behavior
 
@@ -158,8 +176,10 @@ evolution.
   content that mirrors mutable external material, record provenance and
   freshness so staleness is detectable.
 - **[RES-5]** Server instructions are for routing and policies that span
-  several tools (signal selection, filter-key discovery, timestamp handling,
-  `webUrl` usage). Per-tool detail MUST NOT migrate into server instructions.
+  several tools (which tool answers which question, signal selection,
+  filter-key discovery, timestamp handling, `webUrl` usage). Routing goes in
+  the self-contained preamble before the first heading. Per-tool detail MUST
+  NOT migrate into server instructions.
 
 ## 7. Results, pagination, and partial success
 
@@ -196,6 +216,24 @@ evolution.
   A payload that is not a JSON object, or that already owns a top-level
   `notes` field, keeps the note as text only and logs a WARN. Text-only
   results keep notes as text blocks.
+
+- **[OUT-7] Measurement notes.** When a successful query has a shape that
+  commonly answers a different question than the user asked, and it returns
+  a plausible number with no error, the result SHOULD carry a note saying what
+  was measured (for example, every span of a service rather than its
+  requests).
+  - The trigger MUST be narrow and read only the request and metadata the
+    handler already has. A neighbouring request that legitimately asks the
+    other question MUST NOT get the note.
+  - The note MUST stay true when the caller meant the query as written; it
+    states what was measured, and phrases any fix as conditional on the
+    question.
+  - The note names a fix only when the fix was checked against the pinned
+    SigNoz, with an e2e test pinning it.
+  - Build notes in `internal/handler/tools/measurement_notes.go` and count each
+    one in `mcp.tool.result.measurement_notes` by tool and rule.
+  - A trap the server cannot detect from the request gets description or
+    instruction text only, with the reason in the plan.
 
 ## 8. Errors and recovery
 
@@ -314,6 +352,7 @@ For any PR touching a client-visible MCP surface, review the applicable items:
 **Surface choice & placement**
 - [ ] New surface justified over extending an existing one; names use agent/domain vocabulary; boundary vs nearest neighbor stated (SUR-3, SUR-4, SUR-5, SUR-6)
 - [ ] First-call-critical guidance inline, not resource-only; no optional-doc gating (SUR-1, SUR-9, SUR-10)
+- [ ] Routing in the instructions preamble; descriptions lead with users' words; each rule on the parameter or tool it applies to, verified against SigNoz (SUR-11)
 - [ ] Annotations match end-to-end behavior; mutations are atomic and disclose/report all side effects (SUR-7, SUR-8)
 
 **Schemas**
@@ -335,6 +374,7 @@ For any PR touching a client-visible MCP surface, review the applicable items:
 - [ ] Handles returned where they save a lookup; reads write back cleanly (OUT-1, OUT-2)
 - [ ] Truncation/pagination explicit with next step; partial success only for independent items (OUT-3, OUT-4)
 - [ ] Notes on a structured result also appear in `structuredContent.notes`, added through `appendNotes` (OUT-6)
+- [ ] A silent wrong-answer shape gets a narrow, counted measurement note that stays true for the legitimate question, with any fix verified against SigNoz (OUT-7)
 
 **Errors**
 - [ ] Stable tool-error `code`; validation text names field, problem, accepted forms, next action (ERR-1, ERR-2)

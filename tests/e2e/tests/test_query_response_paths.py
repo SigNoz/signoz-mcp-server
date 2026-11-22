@@ -75,3 +75,19 @@ def test_execute_builder_query(mcp_client: MCPClient) -> None:
         mcp_client.call_tool("signoz_execute_builder_query", {"searchContext": "count logs", "query": query})
     )
     json.loads(first_text_block(result))
+
+
+def test_older_request_shape_error_names_the_queries_list(mcp_client: MCPClient) -> None:
+    """SigNoz rejects builderQueries without naming compositeQuery.queries; the tool error adds it."""
+    now = int(time.time() * 1000)
+    query = {
+        "start": now - 3_600_000,
+        "end": now,
+        "requestType": "scalar",
+        "compositeQuery": {"builderQueries": {"A": {"queryName": "A", "dataSource": "traces"}}},
+    }
+    result = mcp_client.call_tool("signoz_execute_builder_query", {"searchContext": "count spans", "query": query})
+    assert result.get("isError", False), first_text_block(result)[:400]
+    text = first_text_block(result)
+    assert "atleast one query is required" in text, text
+    assert "query_range takes compositeQuery.queries" in text, text

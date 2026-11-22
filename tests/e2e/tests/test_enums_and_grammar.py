@@ -133,3 +133,7 @@ def test_order_keys_the_guides_teach(mcp_client: MCPClient, test_id: str) -> Non
     for order_by in ("p99(duration_nano) desc", "name asc", "0 desc"):
         body = first_text_block(assert_tool_ok(ordered(order_by)))
         assert "e2e-operation" in body, f"orderBy {order_by!r} returned no groups: {body[:300]}"
+    # A query name is not an order key; SigNoz's error lists the keys that are, so it states its fix.
+    wrong = ordered("A desc")
+    assert wrong.get("isError", False), first_text_block(wrong)[:300]
+    assert "Valid keys are: 0, name, p99(duration_nano)" in first_text_block(wrong), first_text_block(wrong)[:400]

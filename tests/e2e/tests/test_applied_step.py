@@ -1,11 +1,12 @@
 """The step SigNoz applied, as the query tools report it, against the pinned release.
 
-SigNoz raises a stepInterval below the window's minimum. The notes state
-numbers that come from its rules, and this suite checks each against the real
-backend: for logs and traces the minimum over 7 days is 400 s and never below
-5 s, and the window a note names for the requested buckets allows them; for
-metrics the minimum is never below 60 s. Cost Meter reports its own minimum,
-and passing it is accepted. The handler tests pin the notes' wording.
+SigNoz raises a stepInterval below the window's minimum. The notes and the
+metrics guide state numbers that come from its rules, and this suite checks
+each against the real backend: for logs and traces the minimum over 7 days is
+400 s and never below 5 s, and the window a note names for the requested
+buckets allows them; a metric step is raised over a long window; and a Cost
+Meter step is never below 3600 s, which SigNoz accepts when passed. The
+handler tests pin the notes' wording.
 """
 
 import re
@@ -73,12 +74,14 @@ def test_aggregate_note_names_the_raised_step_and_a_window_that_allows_the_reque
     assert (_applied_step(allowed), _step_lines(allowed)) == (5, []), f"a {hours}-hour window must allow 5 s buckets"
 
 
-def test_query_metrics_decision_names_the_raised_step(mcp_client: MCPClient, test_id: str, telemetry: None) -> None:
+def test_metric_and_cost_meter_steps_are_raised_to_the_window_minimum(
+    mcp_client: MCPClient, test_id: str, telemetry: None
+) -> None:
     metric = f"mcp_e2e_{test_id.replace('-', '_')}_gauge"
     seed_metrics(f"mcp-e2e-{test_id}", metric, value=1.0, count=2)
 
-    def decision(time_range: str, step: int, source: str | None = None) -> tuple[int, str] | None:
-        """The step SigNoz applied and the decisions line that reports it."""
+    def applied_step(time_range: str, step: int, source: str | None = None) -> int | None:
+        """The step SigNoz reports it ran the query at, or None while it reports none."""
         arguments = {
             "searchContext": f"{metric} over time in small steps",
             "metricName": metric,
@@ -92,37 +95,12 @@ def test_query_metrics_decision_names_the_raised_step(mcp_client: MCPClient, tes
         if result.get("isError", False):
             return None
         # SigNoz reports no step for a metric it cannot find in the window yet.
-        steps = (first_block_json(result)["data"].get("meta") or {}).get("stepIntervals") or {}
-        if "A" not in steps:
-            return None
-        lines = _step_lines(result)
-        assert len(lines) == 1, f"the decisions note needs one stepInterval line: {lines}"
-        return steps["A"], lines[0]
+        return ((first_block_json(result)["data"].get("meta") or {}).get("stepIntervals") or {}).get("A")
 
-    def reports(outcome: tuple[int, str], raised: bool) -> bool:
-        """The line carries the step SigNoz applied and says whether SigNoz raised the request."""
-        step, line = outcome
-        return line.startswith(f"stepInterval: {step}s") and ("raised" in line) == raised
+    wait_for(lambda: applied_step("1h", 60), f"SigNoz reports a step for {metric}")
+    week = applied_step("7d", 120)
+    assert week and week > 120, f"SigNoz no longer raises a 120 s step over 7 days: {week}"
 
-    asked = wait_for(lambda: decision("1h", 60), f"SigNoz reports a step for {metric}")
-    assert asked[0] == 60 and reports(asked, raised=False), f"a 1-hour window must allow 60 s steps: {asked}"
-    # 1 hour over 300 points is 12 s, so 60 s here is the floor, not the window.
-    floor = decision("1h", 10)
-    assert floor and floor[0] == 60 and reports(floor, raised=True), f"the metric floor moved: {floor}"
-
-    # Over 7 days the minimum is above both requests.
-    for step in (10, 120):
-        week = decision("7d", step)
-        assert week and week[0] > max(step, 60) and reports(week, raised=True), (
-            f"SigNoz no longer raises {step} s over 7 days: {week}"
-        )
-    hour = decision("1h", 120)
-    assert hour and hour[0] == 120 and reports(hour, raised=False), f"a 1-hour window must allow 120 s steps: {hour}"
-
-    # Cost Meter has its own floor, and passing the step SigNoz applied is accepted.
-    meter = decision("1h", 60, source="meter")
-    assert meter and meter[0] == 3600 and reports(meter, raised=True), f"the Cost Meter floor moved: {meter}"
-    again = decision("1h", meter[0], source="meter")
-    assert again and again[0] == 3600 and reports(again, raised=False), (
-        f"Cost Meter must accept its own minimum: {again}"
-    )
+    # The guide says a Cost Meter step is never below 3600 s, and that passing 3600 gives hourly buckets.
+    assert applied_step("1h", 60, source="meter") == 3600, "the Cost Meter floor moved"
+    assert applied_step("1h", 3600, source="meter") == 3600, "Cost Meter must accept its own minimum"

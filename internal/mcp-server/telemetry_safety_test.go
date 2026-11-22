@@ -403,7 +403,7 @@ func TestSecretBearingToolTelemetryScrubsSearchContextAndErrorText(t *testing.T)
 				StructuredContent: map[string]any{"code": tools.CodeValidationFailed, "status": http.StatusBadRequest},
 			}
 			request := toolRequest(toolName, `{"searchContext":"`+secret+`","config":{"kind":"webhook","spec":{"url":"`+secret+`"}}}`)
-			got, err := server.receivingMiddleware(func(name string) bool { return name == toolName })(func(context.Context, string, mcp.Request) (mcp.Result, error) {
+			got, err := server.receivingMiddleware(func(name string) bool { return name == toolName }, nil)(func(context.Context, string, mcp.Request) (mcp.Result, error) {
 				return result, nil
 			})(ctx, "tools/call", request)
 			if err != nil || got != result {

@@ -46,18 +46,36 @@ Values: sum, avg, min, max, count, and p50, p75, p90, p95, p99 for histograms.
 
 ### ReduceTo (requestType=scalar only, and required there)
 
-reduceTo collapses each series to one value: last, max, min, avg, sum, count, median. There is no
-default, because the metric type cannot say what the question asks:
+reduceTo collapses each series to one value: last, max, min, avg, sum, count, median. A series
+holds one value per step, so reduceTo works on step values. There is no default, because the
+metric type cannot say what the question asks:
 
 | Question | reduceTo |
 |---|---|
-| Current value | last |
-| Peak | max |
-| Typical value | avg |
+| Latest value | last |
+| Peak step | max |
+| Mean of the steps | avg |
 | Total count over the window | sum, with timeAggregation increase on a counter |
 
-Summing a rate series is not a total count, and averaging per-bucket percentiles is not a
-whole-window percentile. Each formula input query in a scalar request needs its own reduceTo.
+Summing a rate series is not a total count: use timeAggregation increase with reduceTo sum for the
+count, or reduceTo avg for the average per-second rate. Averaging per-step percentiles is not a
+whole-window percentile; the window's percentile lies between what reduceTo min and max return.
+For a single percentile of an explicit-bucket histogram, read each bucket's count with
+timeAggregation increase, spaceAggregation sum, reduceTo sum, le added to groupBy, and a limit that
+returns every bucket of every group (SigNoz applies the limit to the reduced series, one per bucket),
+then interpolate within the first bucket whose count reaches the percentile's share of the total,
+per group when the query is grouped. An exponential histogram has no le buckets for this.
+A step as long as the window does not give one window-wide value either: SigNoz starts steps at
+multiples of the step since the Unix epoch, so unless the window starts on such a multiple, the first
+step reaches back before the window or, for a cumulative histogram percentile with no
+timeAggregation, can be left out.
+For a cumulative histogram, PromQL through signoz_execute_builder_query with requestType scalar
+also returns the window's percentile, with the window length as the range:
+
+    histogram_quantile(0.95, sum by (le) (increase({"http.server.duration.bucket", "service.name"="checkout"}[3600s])))
+
+SigNoz's PromQL returns no data for a delta histogram. Each formula input query in a scalar request
+needs its own reduceTo.
 
 ### What SigNoz rejects
 
@@ -69,11 +87,11 @@ whole-window percentile. Each formula input query in a scalar request needs its 
 
 ## Choosing Aggregations
 
-1. **Counters**: rate gives per-second throughput and increase gives the count added per bucket. max or latest on a cumulative counter reads its running total, not activity in the window.
+1. **Counters**: rate gives per-second throughput and increase gives the count added per bucket. latest, max, min, avg, or sum on a cumulative counter works on its running total, not activity in the window, and count counts its samples.
 2. **Gauges**: avg, max, or latest. rate and increase run but measure how the value changed, which is rarely what a gauge question asks.
-3. **Histograms**: SigNoz stores a histogram named X as X.bucket (type histogram) plus the counters X.count and X.sum; query X.bucket, not X. Leave timeAggregation empty and pick a percentile for latency. To read the buckets instead, use timeAggregation rate with spaceAggregation sum: the result is grouped by le, and the le="+Inf" series is the total observation rate.
+3. **Histograms**: SigNoz stores a histogram named X as X.bucket (type histogram) plus the counters X.count and X.sum; query X.bucket, not X. Leave timeAggregation empty and pick a percentile for latency. To read the buckets instead, use timeAggregation increase with spaceAggregation sum, grouped by le: each le series is a count and the le="+Inf" series is the total observation count. SigNoz returns these counts even when timeAggregation is rate.
 4. **Summaries**: query the .quantile series with both aggregations set, for example avg and max, grouped by quantile; the .count and .sum series are counters.
-5. **Providing only metricType for a counter** → This bypasses metadata auto-fetch and can leave temporality or monotonicity unspecified. Either omit metricType so all metadata is fetched, or pass the matching values from signoz_list_metrics.
+5. **Span metrics**: signoz_calls_total and signoz_latency come from every span, labelled with span.kind and operation, so a request that records several spans counts several times. For a service's request count, rate, or latency use signoz_list_services, or signoz_aggregate_traces with isEntryPoint = true OR isRoot = true.
 6. **Setting temporality by hand** → Omit it. The backend resolves cumulative, delta or unspecified from the metric's metadata; a pinned value that does not match the exporter returns no data. Set it only to override the stored metadata.
 
 ---
@@ -100,7 +118,7 @@ You can combine multiple metric queries using formulas:
 - Different metrics can have different types; each gets its own aggregation defaults
 
 ### Formula Functions
-Supported: exp, log, ln, sqrt, sin, cos, tan, abs, ceil, floor
+Supported: abs, exp, exp2, exp10, log, ln, log2, log10, sqrt, cbrt, erf, erfc, lgamma, tgamma, sin, cos, tan, asin, acos, atan, degrees, radians, and now; ceil and floor are not
 
 ### Example: Error Rate %
 Query A: http_errors_total (counter) → rate / sum
@@ -194,7 +212,7 @@ range, not each time bucket. A short-lived spike can therefore fall outside the 
         "limit": 100,
         "order": [{"key": {"name": "__result"}, "direction": "desc"}],
         "aggregations": [{
-          "metricName": "http_request_duration_seconds",
+          "metricName": "http_request_duration_seconds.bucket",
           "timeAggregation": "",
           "spaceAggregation": "p99"
         }],
@@ -329,9 +347,11 @@ dimension, just like any other metric.
 
 ## Step Interval
 
-- Auto-calculated as: max(60, (end - start) / 300 / 1000) seconds
+- Auto-calculated as (end - start) / 300 seconds, rounded down to a multiple of 60, with a minimum of 60
+- Windows from a day up to a week round it to the nearest 300 seconds, and longer windows to the nearest 1800
 - Targets approximately 300 data points per series
-- Minimum: 60 seconds
-- Cost Meter has its own, larger steps (see Cost Meter above)
 - Can be overridden with the stepInterval parameter; SigNoz raises a value below its minimum for the window
+- Cost Meter has its own, larger steps (see Cost Meter above)
+- Steps start at multiples of the step since the Unix epoch, so a window that does not start on such a
+  multiple is split across one more step
 `

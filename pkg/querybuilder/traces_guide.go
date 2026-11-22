@@ -1,5 +1,10 @@
 package querybuilder
 
+// EntrySpanFilter scopes a trace query to the spans SigNoz counts as a
+// service's requests. Every text that gives a client the filter reads it here,
+// except metricsrules.MetricsGuide, which this package's tests import.
+const EntrySpanFilter = "isEntryPoint = true OR isRoot = true"
+
 const TracesQueryBuilderGuide = `
 === SIGNOZ QUERY BUILDER V5 — TRACES GUIDE ===
 
@@ -33,6 +38,11 @@ Examples:
 
 Both accept only "= true". To exclude root spans, filter parent_span_id != '' instead.
 
+A service's requests are its entry spans. For a request count, rate, or latency, filter
+` + EntrySpanFilter + `, as signoz_list_services does. Without it, count(), rate(),
+and duration percentiles cover every span the service records, and a request with a server
+span nested inside another counts twice.
+
 == FIELD DISCOVERY ==
 
 An unknown key may not fail: SigNoz can match a guessed attribute, return the warning
@@ -47,8 +57,8 @@ their observed values before filtering:
 
 Span attributes use fieldContext "attribute" everywhere: in the discovery tools and in Query Builder
 selectFields and groupBy entries. Older query payloads spell the same context with the legacy value
-"tag"; translate it to "attribute" for discovery, because SigNoz ignores "tag" when listing keys and
-returns no values for it. The resource and attribute names below are common examples, not a complete
+"tag"; translate it to "attribute" for discovery, because SigNoz does not read "tag" as
+"attribute" there. The resource and attribute names below are common examples, not a complete
 catalog for every workspace.
 
 == FIELD NAMES — THREE CATEGORIES ==
@@ -200,7 +210,7 @@ matters more than response size.
   "variables": {}
 }
 
---- Example 3: Time series — P99 latency over time (requestType: "time_series") ---
+--- Example 3: Time series — P99 request latency over time (requestType: "time_series") ---
 
 {
   "schemaVersion": "v1",
@@ -220,7 +230,7 @@ matters more than response size.
           "offset": 0,
           "order": [{"key": {"name": "p99(duration_nano)"}, "direction": "desc"}],
           "having": {"expression": ""},
-          "filter": {"expression": "service.name = 'checkout'"},
+          "filter": {"expression": "service.name = 'checkout' AND (` + EntrySpanFilter + `)"},
           "aggregations": [
             {"expression": "p99(duration_nano)"}
           ]

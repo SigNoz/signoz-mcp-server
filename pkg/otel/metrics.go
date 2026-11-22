@@ -28,6 +28,7 @@ type Meters struct {
 	ToolSchemaCompileFailures          metric.Int64Counter
 	ToolOutputMissingStructuredContent metric.Int64Counter
 	ToolResultBudgetEvents             metric.Int64Counter
+	ToolResultMeasurementNotes         metric.Int64Counter
 }
 
 func NewMeters(mp metric.MeterProvider) (*Meters, error) {
@@ -188,6 +189,13 @@ func NewMeters(mp metric.MeterProvider) (*Meters, error) {
 	if err != nil {
 		return nil, err
 	}
+	toolResultMeasurementNotes, err := meter.Int64Counter(
+		"mcp.tool.result.measurement_notes",
+		metric.WithDescription("Count of notes saying what a successful query result measured, by tool and rule"),
+	)
+	if err != nil {
+		return nil, err
+	}
 	return &Meters{
 		ToolCalls:                          toolCalls,
 		ToolCallDuration:                   toolCallDuration,
@@ -212,5 +220,6 @@ func NewMeters(mp metric.MeterProvider) (*Meters, error) {
 		ToolSchemaCompileFailures:          toolSchemaCompileFailures,
 		ToolOutputMissingStructuredContent: toolOutputMissingStructuredContent,
 		ToolResultBudgetEvents:             toolResultBudgetEvents,
+		ToolResultMeasurementNotes:         toolResultMeasurementNotes,
 	}, nil
 }

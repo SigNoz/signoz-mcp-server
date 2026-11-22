@@ -1,12 +1,15 @@
 package tools
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
+	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/SigNoz/signoz-mcp-server/pkg/querybuilder"
 )
 
@@ -16,7 +19,7 @@ const metricsLegacyQueryAliasError = `parameter validation failed: "query" is no
 type metricsQueryRequest struct {
 	MetricName       string
 	MetricType       string
-	IsMonotonic      bool
+	IsMonotonic      *bool // nil when the caller did not send it, so a false is theirs
 	Temporality      string
 	TimeAggregation  string
 	SpaceAggregation string
@@ -49,8 +52,8 @@ type formulaSubQuery struct {
 	Name             string   `json:"name" jsonschema:"Query name the formula references, for example B."`
 	MetricName       string   `json:"metricName" jsonschema:"Metric to query, for example http_requests_total."`
 	MetricType       string   `json:"metricType,omitempty" jsonschema:"gauge, sum, histogram, exponential_histogram, or summary. Omit to auto-fetch it with temporality and monotonicity."`
-	IsMonotonic      bool     `json:"isMonotonic,omitempty" jsonschema:"Whether a sum metric only increases. Auto-fetched when metricType is omitted."`
-	Temporality      string   `json:"temporality,omitempty" jsonschema:"cumulative, delta, or unspecified. Auto-fetched when metricType is omitted."`
+	IsMonotonic      *bool    `json:"isMonotonic,omitempty" jsonschema:"Whether a sum metric only increases. Auto-fetched when omitted."`
+	Temporality      string   `json:"temporality,omitempty" jsonschema:"cumulative, delta, or unspecified. Auto-fetched when omitted."`
 	TimeAggregation  string   `json:"timeAggregation,omitempty" jsonschema:"Aggregation over time buckets: latest, sum, avg, min, max, count, count_distinct, rate, or increase. Defaulted by metric type."`
 	SpaceAggregation string   `json:"spaceAggregation,omitempty" jsonschema:"Aggregation across series: sum, avg, min, max, count, or p50 to p99 for histograms. Defaulted by metric type."`
 	GroupBy          []string `json:"groupBy,omitempty" jsonschema:"Field names to group by, as an array or a comma-separated string. Use the same groupBy as the primary query so the formula can match series."`
@@ -110,7 +113,7 @@ func parseMetricsQueryArgs(args map[string]any) (*metricsQueryRequest, error) {
 	if v, present, err := parseBoolArg(args, "isMonotonic"); err != nil {
 		return nil, err
 	} else if present {
-		req.IsMonotonic = v
+		req.IsMonotonic = &v
 	}
 
 	groupBy, err := parseFieldNameList("groupBy", args["groupBy"])
@@ -149,11 +152,15 @@ func parseMetricsQueryArgs(args map[string]any) (*metricsQueryRequest, error) {
 				item["groupBy"] = names
 			}
 			if _, ok := item["isMonotonic"].(string); ok {
-				v, _, err := parseBoolArg(item, "isMonotonic")
+				v, present, err := parseBoolArg(item, "isMonotonic")
 				if err != nil {
 					return nil, fmt.Errorf("%s formulaQueries[%d]: %w", validationErrorPrefix, i, err)
 				}
-				item["isMonotonic"] = v
+				if present {
+					item["isMonotonic"] = v
+				} else {
+					delete(item, "isMonotonic")
+				}
 			}
 		}
 		if len(items) > 0 {
@@ -199,6 +206,42 @@ func buildGroupByFields(names []string) []querybuilder.FieldKey {
 		fields = append(fields, querybuilder.NewFieldKey(name, "metrics", "attribute", ""))
 	}
 	return fields
+}
+
+// responseStepIntervals reads data.meta.stepIntervals from a query_range
+// response: the step in seconds SigNoz used for each query, by query name,
+// which can differ from the step asked for. SigNoz leaves a query out when it
+// skipped it, such as one on a missing metric, and SQL queries have no step,
+// so a missing entry is not an error. SigNoz declares each step an unsigned
+// integer, so metadata that does not decode, or an entry that is null,
+// negative, or fractional, is a contract change: it is WARN-logged and the
+// entry is left out.
+func responseStepIntervals(ctx context.Context, logger *slog.Logger, toolName string, response json.RawMessage) map[string]int64 {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	var resp struct {
+		Data struct {
+			Meta struct {
+				StepIntervals map[string]json.RawMessage `json:"stepIntervals"`
+			} `json:"meta"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(response, &resp); err != nil {
+		logger.WarnContext(ctx, "qb step intervals unparsed", slog.String("tool", toolName), logpkg.ErrAttr(err))
+		return nil
+	}
+	steps := make(map[string]int64, len(resp.Data.Meta.StepIntervals))
+	for name, raw := range resp.Data.Meta.StepIntervals {
+		step, err := strconv.ParseUint(strings.TrimSpace(string(raw)), 10, 63)
+		if err != nil {
+			logger.WarnContext(ctx, "qb step intervals unparsed",
+				slog.String("tool", toolName), slog.String("query", name), slog.String("step", string(raw)))
+			continue
+		}
+		steps[name] = int64(step)
+	}
+	return steps
 }
 
 // --- helpers ---

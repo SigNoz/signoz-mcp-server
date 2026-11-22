@@ -237,7 +237,8 @@ func (h *Handler) RegisterDashboardHandlers(s *mcp.Server) {
 		withCreateToolAnnotations(),
 		mcp.WithDescription(
 			"Use this when the user wants a custom SigNoz dashboard built from a complete title, layout, variables, and panel configuration; use signoz_import_dashboard instead when a curated template fits. "+
-				"Use signoz_create_view instead to save one Explorer query. Before composing the payload, read signoz://dashboard/instructions, signoz://dashboard/widgets-instructions, signoz://dashboard/widgets-examples, and signoz://dashboard/examples (complete worked dashboards), then follow the query-specific resource linked by the widget guide.",
+				"Use signoz_create_view instead to save one Explorer query. Before composing the payload, read signoz://dashboard/instructions, signoz://dashboard/widgets-instructions, signoz://dashboard/widgets-examples, and signoz://dashboard/examples (complete worked dashboards), then follow the query-specific resource linked by the widget guide. "+
+				"SigNoz saves a panel whose query returns no data, such as one on a key the workspace lacks, so dry-run each panel's query through signoz_execute_builder_query before saving.",
 		),
 		rawInputSchema(createDashboardSchema),
 	)
@@ -249,7 +250,8 @@ func (h *Handler) RegisterDashboardHandlers(s *mcp.Server) {
 		withUpdateToolAnnotations(),
 		mcp.WithDescription(
 			"Use this when the user wants to change an existing SigNoz dashboard. This is a full replacement, not a partial patch: fetch it with signoz_get_dashboard, take the \"data\" object out of that response, merge only the requested changes into it, and preserve every other field. Send that object's fields at the top level; the {status, data} response envelope is not accepted as input. For small, targeted edits prefer signoz_patch_dashboard, which avoids re-sending the whole dashboard. "+
-				"Use signoz_update_view instead for a saved Explorer query. Before composing changed panels, read signoz://dashboard/instructions, signoz://dashboard/widgets-instructions, and signoz://dashboard/widgets-examples, then follow the query-specific resource linked by the widget guide.",
+				"Use signoz_update_view instead for a saved Explorer query. Before composing changed panels, read signoz://dashboard/instructions, signoz://dashboard/widgets-instructions, and signoz://dashboard/widgets-examples, then follow the query-specific resource linked by the widget guide. "+
+				"SigNoz saves a panel whose query returns no data, so dry-run each changed panel's query through signoz_execute_builder_query first.",
 		),
 		rawInputSchema(updateDashboardSchema),
 	)
@@ -263,9 +265,10 @@ func (h *Handler) RegisterDashboardHandlers(s *mcp.Server) {
 			"Apply a partial update to a v2 dashboard using an RFC 6902 JSON Patch, without re-sending the whole dashboard. "+
 				"Supply the dashboard 'id' and 'patch' (an array of {op, path, value} operations). Paths are JSON Pointers into the dashboard's postable shape, "+
 				"e.g. /spec/display/name, /spec/panels/<panelId>, /spec/panels/<panelId>/spec/queries/0, /spec/variables/0, /tags/-. "+
-				"Prefer this over signoz_update_dashboard for targeted changes (renaming, adding/editing one panel or query, tweaking a variable); it is far cheaper than rebuilding the full dashboard. "+
+				"Prefer this over signoz_update_dashboard for targeted changes (renaming, adding/editing one panel or query, tweaking a variable). "+
 				"Apply is lenient (remove on a missing path is a no-op; add creates missing parents) but the result is still validated; locked dashboards are rejected. "+
-				"Read signoz://dashboard/patch-instructions for worked recipes and exact paths (e.g. adding a panel takes two ops).",
+				"Adding a panel takes two ops, the panel and a grid item at /spec/layouts/0/spec/items/-; SigNoz saves a panel with no grid item but leaves it out of the layout. "+
+				"SigNoz saves a query with no data, so dry-run changed queries through signoz_execute_builder_query. signoz://dashboard/patch-instructions has worked recipes and exact paths.",
 		),
 		rawInputSchema(patchDashboardSchema),
 	)

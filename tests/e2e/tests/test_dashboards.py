@@ -167,6 +167,38 @@ def test_text_panel_create_get_update_patch_defaults_layout_and_cleanup(mcp_clie
         assert patched_spec["headerOptions"] == {"hide": False}
         assert patched_data["spec"]["layouts"] == dashboard["spec"]["layouts"]
 
+        # The patch guide's rejections: a grid item left pointing at a removed panel, and overlapping items.
+        def rejected_patch(description: str, patch: list) -> str:
+            result = mcp_client.call_tool(
+                "signoz_patch_dashboard", {"searchContext": description, "id": dashboard_id, "patch": patch}
+            )
+            assert result.get("isError", False), f"SigNoz accepted {description}: {text_blocks(result)[:300]}"
+            return text_blocks(result)
+
+        orphaned = rejected_patch(
+            "remove a panel but not its grid item", [{"op": "remove", "path": "/spec/panels/explicit"}]
+        )
+        assert "references unknown panel" in orphaned, orphaned
+        item = dict(patched_data["spec"]["layouts"][0]["spec"]["items"][0], content={"$ref": "#/spec/panels/overlap"})
+        overlap = rejected_patch(
+            "add a panel on top of another",
+            [
+                {"op": "add", "path": "/spec/panels/overlap", "value": _panel(patched_data, "explicit")},
+                {"op": "add", "path": "/spec/layouts/0/spec/items/-", "value": item},
+            ],
+        )
+        assert "overlap" in overlap, overlap
+
+        # The list-filter guide: REGEXP and EXISTS on a reserved key are rejected, EXISTS on a tag key is not.
+        def listed(filter_expression: str) -> dict:
+            return mcp_client.call_tool(
+                "signoz_list_dashboards", {"searchContext": "find dashboards", "filter": filter_expression}
+            )
+
+        assert "REGEXP filtering" in text_blocks(listed("name REGEXP 'mcp-e2e.*'"))
+        assert "EXISTS is not allowed" in text_blocks(listed("name EXISTS"))
+        assert not listed("mcp_e2e_tag EXISTS").get("isError", False)
+
         deleted_result = assert_tool_ok(
             mcp_client.call_tool(
                 "signoz_delete_dashboard",
@@ -774,3 +806,38 @@ def test_template_catalog_import_lifecycle(mcp_client: MCPClient) -> None:
             {"searchContext": f"confirm imported dashboard {dashboard_id} is gone", "id": dashboard_id},
         )
         assert gone.get("isError", False), f"imported dashboard {dashboard_id} remained after cleanup"
+
+
+def test_panels_save_without_data_or_a_grid_item(mcp_client: MCPClient, test_id: str) -> None:
+    """Pins the dashboard tools' rules: a panel on a missing key saves, and a patched panel needs its grid item."""
+    title = f"mcp-e2e-{test_id}-no-data"
+    dashboard = _area_dashboard(title, {"visualization": {"stack": "normal"}})
+    query = dashboard["spec"]["panels"]["volume"]["spec"]["queries"][0]["spec"]["plugin"]["spec"]
+    query["filter"] = {"expression": f"mcp_e2e_missing_{test_id.replace('-', '_')} = 'x'"}
+    dashboard_id = _dashboard_id(first_json(assert_tool_ok(mcp_client.call_tool("signoz_create_dashboard", dashboard))))
+    try:
+        orphan = deepcopy(dashboard["spec"]["panels"]["volume"])
+        assert_tool_ok(
+            mcp_client.call_tool(
+                "signoz_patch_dashboard",
+                {
+                    "searchContext": "add a panel without a grid item",
+                    "id": dashboard_id,
+                    "patch": [{"op": "add", "path": "/spec/panels/orphan", "value": orphan}],
+                },
+            )
+        )
+        data = _data(
+            first_json(
+                assert_tool_ok(
+                    mcp_client.call_tool("signoz_get_dashboard", {"searchContext": "get it", "id": dashboard_id})
+                )
+            )
+        )
+        assert "orphan" in data["spec"]["panels"], "SigNoz keeps a panel added without a grid item"
+        refs = [item["content"]["$ref"] for item in data["spec"]["layouts"][0]["spec"]["items"]]
+        assert refs == ["#/spec/panels/volume"], f"the panel without a grid item is not in the layout: {refs}"
+    finally:
+        assert_tool_ok(
+            mcp_client.call_tool("signoz_delete_dashboard", {"searchContext": "clean up", "id": dashboard_id})
+        )
