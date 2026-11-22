@@ -108,7 +108,7 @@ func TestAggregateTools_SayWhenSigNozRaisedTheStep(t *testing.T) {
 				if tc.wantNote != "" && (len(stepNotes) != 1 || stepNotes[0] != tc.wantNote) {
 					t.Fatalf("SigNoz raised the step, so the result needs exactly one step note\nwant: %q\ngot:  %q", tc.wantNote, stepNotes)
 				}
-				if got := strings.Contains(logs, "qb response has no stepIntervals"); got != tc.wantWarn {
+				if got := strings.Contains(logs, "qb response has no step interval for query A"); got != tc.wantWarn {
 					t.Fatalf("missing-stepIntervals WARN logged = %v, want %v; logs:\n%s", got, tc.wantWarn, logs)
 				}
 			})

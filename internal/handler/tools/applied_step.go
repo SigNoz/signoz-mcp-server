@@ -28,7 +28,7 @@ func aggregateStepNote(ctx context.Context, logger *slog.Logger, tool string, re
 	switch {
 	case applied == 0:
 		// Fail open: SigNoz reports the step of every query these tools send.
-		logger.WarnContext(ctx, "qb response has no stepIntervals", slog.String("tool", tool))
+		logger.WarnContext(ctx, "qb response has no step interval for query A", slog.String("tool", tool))
 		return ""
 	case applied < requested:
 		logger.WarnContext(ctx, "qb ran a query below the requested step",
