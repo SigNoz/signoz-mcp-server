@@ -442,6 +442,37 @@ Declined: M2. A nested span that shares an entry span's name also counts as an e
 is SigNoz's definition, the Services page counts the same way, and the notes already say "as
 signoz_list_services does".
 
+### 2026-11-22 — Sixth review: the fifth review's fixes
+
+A second review at the same settings, of `11b04f4..1543d64`, confirmed M6, M7, M11, M15, M16, the
+M5 test changes, and the trim, and raised N1 to N12. N1 to N11 are fixed in `e102b2d`.
+
+- N1: the counter note names the whole retry (increase, sum, sum for a scalar count; rate, sum, avg
+  for a scalar rate), because the caller's spaceAggregation also decides the result.
+- N2: span-metric labels differ from span fields in name and value (`operation`, `span.kind`,
+  `status.code` against `name`, `kind_string`, `status_code_string`), so the span-metric notes say
+  to rewrite other conditions and group keys as span fields, and leave `le` out.
+- N3: for a time-series metric request the suggested trace call names requestType time_series, the
+  same window, and the step. `signoz_list_services` is offered only for a scalar over the whole
+  service.
+- N4: the step-alignment note compares the next boundary with the end as SigNoz floors it.
+- N5: the filter reader accepts the grammar's spellings: `=` and `==`, `IN (..)`, `IN [..]`,
+  `IN value`, and unquoted values. `kind_string = Server` and `kind_string IN ('Server')` fire
+  again, and `service.name IN ['frontend']` names its service.
+- N6: the service map description said the callee recorded every edge's latency. A database or
+  messaging edge is measured on the caller's spans; the description and units note now say so, and
+  the note names an aggregation in the caller-side call.
+- N7: on the builder path, a metrics query SigNoz reported no step for was skipped, so it gets no
+  notes.
+- N8: the last two substring checks read keys from the tokens, so a service named
+  `operations-api` no longer silences a note. The `signoz_execute_builder_query` description says
+  "every matching span".
+- N9: a step entry that is null, negative, or fractional is WARN-logged and dropped.
+- N10: the formula-input e2e ages both gauges and waits for the unlimited sums before limiting.
+- N11: the percentile test and the service map e2e assert key terms, not whole sentences.
+
+Declined: N12, a nanosecond timestamp that loses a millisecond to float precision.
+
 ### 2026-11-21 — Mutation-side rules on the tools, schema pointers kept
 
 - Decision: rules that prevent a wrong result with no error go on the tool: the alert unit rule,
@@ -489,6 +520,9 @@ signoz_list_services does".
 - Fifth review fixes (`1543d64`): `make ci` passes and the full e2e suite passes on a fresh
   v0.151.0 cast (118 passed, 1 skipped as on main). The handler tests gain a firing case and a
   quiet neighbour for each changed rule.
+- Sixth review fixes (`e102b2d`): `make ci` passes; `test_result_shaping.py`,
+  `test_service_map.py`, `test_metric_aggregations.py`, and `test_trace_fields.py` pass on a fresh
+  v0.151.0 cast (23 of 23), and the formula-input test passed 10 of 10 runs.
 - e2e, 2026-11-22: `test_service_map_reports_one_edge_from_both_ends` now also asserts the units
   note names the callee side and that the caller's client spans give a different p99 (210 ms
   against the edge's 200 ms). It and `test_trace_fields.py` pass on a fresh v0.151.0 cast.
@@ -510,5 +544,5 @@ fixes. Deferred:
 - Review findings C13, C14, and C26 (a sentence that predates this PR; a limit-plus-offset formula
   input; an offset carried into the retried bucket query).
 - Measurement-note cases left as too rare in the fifth review (M8, M12, M13, and parts of M1, M3,
-  M5, M6 and M11), and M2, declined.
+  M5, M6 and M11), and M2 and N12, declined.
 - Skill changes are tracked in SigNoz/nerve-pod#436; behaviour bugs are in SigNoz/nerve-pod#674.
