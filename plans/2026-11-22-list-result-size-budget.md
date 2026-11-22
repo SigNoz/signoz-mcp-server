@@ -1,6 +1,6 @@
 # Plan: Result Size Budget for the List Tools
 
-Status: In Progress
+Status: Done
 Issue: [SigNoz/nerve-pod#673](https://github.com/SigNoz/nerve-pod/issues/673)
 PR: https://github.com/SigNoz/signoz-mcp-server/pull/478
 
@@ -178,12 +178,27 @@ restored after) and failed on the assertion meant for it:
 
 The raw search tests pass with their expectations unchanged.
 
-Not run: the e2e suite, including the new `test_list_result_budget.py`. `foundryctl` is not
-installed on the development machine; the new tests were collected with `pytest --collect-only`
-and pass `ruff`.
+`GOTOOLCHAIN=go1.26.11`, each `make ci` step run separately: `check-fmt`, `lint`, `check-build`,
+`test-race`, `check-guardrails`, `check-protocol`, `check-conformance`, `check-e2e-style`, and
+`check-repo-docs` pass. `check-deps` fails only in `go mod verify`, on a modified local
+module-cache copy of `gopsutil`; `go mod tidy -diff` is clean.
+
+e2e: CI starts only on a pull request whose base is `main`, so the e2e workflow was started by
+hand on the branch at e58a339. It ran 110 tests with 1 skipped, including
+`test_list_dashboards_pages_by_result_size` and the refactored native-server fixture the whole
+suite shares. The suite did not run locally (`foundryctl` is not installed). The other CI jobs
+have not run on this pull request; they start when it targets `main`.
 
 ## Outcome
 
-In progress. SigNoz/agent-skills needs a companion change (CMP-3), tracked in
+Implemented for six list tools; saved views and AI pricing are left uncut (see the decision
+above). Breaking change (CMP-1): a list page can hold fewer items than `limit` while more exist.
+The compatibility path (CMP-2) is `pagination.nextOffset`, or for `signoz_list_dashboards` the
+number of dashboards returned, or a higher `MCP_MAX_RESULT_BYTES` for the server.
+
+Not done yet: the before-and-after prompt runs (EVL-1); SigNoz/nerve-pod#673 commits to evals
+before its final PR merges.
+
+SigNoz/agent-skills needs a companion change (CMP-3), tracked in
 SigNoz/nerve-pod#436: `signoz-explaining-dashboards` teaches raising `offset` by `limit` until
 `total` is covered, which skips dashboards after a budget cut.
