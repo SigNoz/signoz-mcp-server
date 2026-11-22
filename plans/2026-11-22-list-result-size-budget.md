@@ -150,7 +150,7 @@ return.
 
 ### 2026-11-22 — A rule and a guardrail for new paging tools
 
-- Decision: OUT-7 in `docs/mcp-best-practices.md` asks every new tool to bound its result and
+- Decision: OUT-8 in `docs/mcp-best-practices.md` asks every new tool to bound its result and
   state its largest one in the PR, and requires a tool that pages with `offset` to return a
   fixed order and fit the result size budget.
   `TestGuardrail_OffsetToolResultsFitTheirSizeBudget` reads the registered tools and holds each
@@ -194,14 +194,14 @@ return.
   fails if `tools/list` returns a second page it did not read.
 - Decision: the handler test of a cut page compares each item's whole padded string, so a
   shortened item fails it. The e2e walk requires every page to hold a dashboard.
-- Decision: OUT-7 says a tool that pages with `offset` must apply the budget, not fit it: the
+- Decision: OUT-8 says a tool that pages with `offset` must apply the budget, not fit it: the
   first item comes back even when it alone is over the budget.
 
 ## Reference Links
 
 - [SigNoz/nerve-pod#673: bound MCP tool results to a size budget](https://github.com/SigNoz/nerve-pod/issues/673)
 - [SigNoz/signoz-mcp-server#476: the raw search budget](https://github.com/SigNoz/signoz-mcp-server/pull/476)
-- [OUT-3, OUT-5, OUT-6, OUT-7, CMP-1, CMP-2, CMP-3 in the MCP best practices](../docs/mcp-best-practices.md)
+- [OUT-3, OUT-5, OUT-6, OUT-8, CMP-1, CMP-2, CMP-3 in the MCP best practices](../docs/mcp-best-practices.md)
 
 ## Verification
 

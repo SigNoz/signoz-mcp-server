@@ -103,7 +103,7 @@ func TestGuardrail_OffsetToolResultsFitTheirSizeBudget(t *testing.T) {
 			}), headers)
 			result, _ := response.wire["result"].(map[string]any)
 			if response.status != http.StatusOK || result == nil || result["isError"] == true {
-				t.Fatalf("%s returned no page (status %d): %.400s\nA tool that pages with offset needs a route in this test that answers with a page over the budget (OUT-7).", name, response.status, response.body)
+				t.Fatalf("%s returned no page (status %d): %.400s\nA tool that pages with offset needs a route in this test that answers with a page over the budget (OUT-8).", name, response.status, response.body)
 			}
 			content, _ := result["content"].([]any)
 			textBytes := 0
@@ -112,7 +112,7 @@ func TestGuardrail_OffsetToolResultsFitTheirSizeBudget(t *testing.T) {
 				textBytes += len(text)
 			}
 			if textBytes > config.DefaultMaxResultBytes {
-				t.Fatalf("%s delivered %d bytes of text, over the default %d-byte result size budget. Return its page through listResult or rawSearchResult, which keep the leading whole items that fit (OUT-7). Only when SigNoz returns its items in no fixed order, name it in guardrails.UnbudgetedOffsetTools with the reason.", name, textBytes, config.DefaultMaxResultBytes)
+				t.Fatalf("%s delivered %d bytes of text, over the default %d-byte result size budget. Return its page through listResult or rawSearchResult, which keep the leading whole items that fit (OUT-8). Only when SigNoz returns its items in no fixed order, name it in guardrails.UnbudgetedOffsetTools with the reason.", name, textBytes, config.DefaultMaxResultBytes)
 			}
 			block0, _ := content[0].(map[string]any)["text"].(string)
 			var page struct {

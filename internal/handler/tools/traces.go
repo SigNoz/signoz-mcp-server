@@ -29,7 +29,7 @@ func (h *Handler) RegisterTracesHandlers(s *mcp.Server) {
 	aggregateTracesTool := mcp.NewTool("signoz_aggregate_traces",
 		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description(searchContextParamDescription)),
-		mcp.WithDescription("Use this when the user wants custom aggregate statistics over spans (counts, rates, latency percentiles, grouped/top-N breakdowns, or time series) rather than individual span rows or a full trace hierarchy. For the built-in operation table for one traced service, ranked by p99, use signoz_get_service_top_operations. Use signoz_search_traces for raw spans, trace-ID discovery, or one row per trace (such as the most expensive AI traces), and signoz_get_trace_details for one known trace ID. Before calling, read signoz://traces/query-builder-guide; discover unfamiliar workspace fields with signoz_get_field_keys. For the user's LLM, AI agent, token, cost, model, tool-call, or prompt questions (AI observability), set queryType to builder_ai_query and read signoz://ai/query-builder-guide. Defaults to the last 1 hour."),
+		mcp.WithDescription("Use this when the user wants request counts, rates, latency percentiles, error counts, grouped or top-N breakdowns, or time series over spans, rather than individual span rows or a full trace hierarchy. SigNoz aggregates every span the filter matches: for a service's requests, filter on "+querybuilder.EntrySpanFilter+", as signoz_list_services does. For the built-in operation table for one traced service, ranked by p99, use signoz_get_service_top_operations. Use signoz_search_traces for raw spans, trace-ID discovery, or one row per trace (such as the most expensive AI traces), and signoz_get_trace_details for one known trace ID. Discover unfamiliar workspace fields with signoz_get_field_keys; signoz://traces/query-builder-guide has the filter grammar and span fields. For the user's LLM, AI agent, token, cost, model, tool-call, or prompt questions (AI observability), set queryType to builder_ai_query; signoz://ai/query-builder-guide has its fields. Defaults to the last 1 hour."),
 		mcp.WithString("aggregations", mcp.Required(), stringOrStringArrayType(), mcp.Description(tracesAggregationsParamDescription)),
 		mcp.WithString("groupBy", stringOrStringArrayType(), mcp.Description(tracesGroupByParamDescription)),
 		mcp.WithString("having", mcp.Description(havingParamDescription)),
@@ -55,7 +55,7 @@ func (h *Handler) RegisterTracesHandlers(s *mcp.Server) {
 	searchTracesTool := mcp.NewTool("signoz_search_traces",
 		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description(searchContextParamDescription)),
-		mcp.WithDescription("Use this when the user wants individual span rows matching service, operation, error, duration, or field filters, needs to discover trace IDs, or wants one row per trace (requestType=trace), such as the slowest traces or the most expensive AI traces. It returns paginated rows, not aggregate trends/groups or a full trace hierarchy; use signoz_aggregate_traces for statistics and signoz_get_trace_details for one known trace ID. Each span row is the span's complete record: span fields such as name and duration_nano, the attributes and resource maps (service.name is in resource), events, and links. Name fields in selectFields to get only those fields. Read signoz://traces/query-builder-guide before using unfamiliar workspace fields. For the user's LLM, AI agent, token, cost, model, tool-call, or prompt questions (AI observability), set queryType to builder_ai_query and read signoz://ai/query-builder-guide. Defaults to the last 1 hour."),
+		mcp.WithDescription("Use this when the user wants individual span rows matching service, operation, error, duration, or field filters, needs to discover trace IDs, or wants one row per trace (requestType=trace), such as the slowest traces or the most expensive AI traces. It returns paginated rows, not aggregate trends/groups or a full trace hierarchy; use signoz_aggregate_traces for statistics and signoz_get_trace_details for one known trace ID. Each span row is the span's complete record: span fields such as name and duration_nano, the attributes and resource maps (service.name is in resource), events, and links. Name fields in selectFields to get only those fields. Discover unfamiliar workspace fields with signoz_get_field_keys; signoz://traces/query-builder-guide has the filter grammar. For the user's LLM, AI agent, token, cost, model, tool-call, or prompt questions (AI observability), set queryType to builder_ai_query; signoz://ai/query-builder-guide has its fields. Defaults to the last 1 hour."),
 		mcp.WithString("filter", mcp.Description(searchTracesFilterParamDescription)),
 		mcp.WithString("service", mcp.Description(searchTracesServiceParamDescription)),
 		mcp.WithString("operation", mcp.Description(searchTracesOperationParamDescription)),
@@ -126,7 +126,11 @@ func (h *Handler) handleAggregateTraces(ctx context.Context, req mcp.CallToolReq
 		return upstreamQueryError(err, "traces"), nil
 	}
 
-	notes := append([]string{windowNote(reqData.StartTime, reqData.EndTime)}, aggregateNotes(reqData)...)
+	notes := []string{windowNote(reqData.StartTime, reqData.EndTime)}
+	if note, ok := traceAllSpansNote(reqData.FilterExpression, stringValue(args["filter"]), len(reqData.GroupBy), reqData.Aggregations, reqData.QueryType); ok {
+		notes = append(notes, h.recordMeasurementNotes(ctx, "signoz_aggregate_traces", []measurementNote{note})...)
+	}
+	notes = append(notes, aggregateNotes(reqData)...)
 	notes = append(notes, aiAggregateNotes(reqData)...)
 	notes = append(notes, aggregateStepNote(ctx, h.logger, "signoz_aggregate_traces", reqData, result))
 	return aggregateResult(ctx, h.logger, "signoz_aggregate_traces", result, reqData.LimitClamped, notes...), nil

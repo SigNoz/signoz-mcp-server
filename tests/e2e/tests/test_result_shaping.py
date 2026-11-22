@@ -57,6 +57,11 @@ def test_aggregate_logs_several_aggregations_and_having(mcp_client: MCPClient, t
     columns, rows = aggregate_columns_and_row_count(first_text_block(result))
     assert "__result_0" in columns and "__result_1" in columns, f"both aggregations must be returned: {columns}"
     assert rows == 1, f"having must keep only the service with more than one log: {first_text_block(result)[:600]}"
+    # An alias inside the expression is rejected, and this tool has no alias field, so its aggregations
+    # description says to write none.
+    aliased = _aggregate_logs(mcp_client, aggregations="count() as total", filter=scope)
+    assert aliased.get("isError", False), first_text_block(aliased)[:300]
+    assert "aliasing is not allowed in expression" in first_text_block(aliased)
     assert big in first_text_block(result) and small not in first_text_block(result)
 
 
@@ -320,3 +325,74 @@ def test_query_metrics_limit_order_having_and_typed_formula_queries(
         f"having on query A must leave one formula group: {formula_rows(filtered_ratio)}"
     )
     assert "having (on query A" in note_blocks(filtered_ratio), note_blocks(filtered_ratio)
+
+
+def test_formula_input_limit_drops_series_and_says_so(mcp_client: MCPClient, test_id: str, telemetry: None) -> None:
+    """Pins the formula-input note: a limit on an input applies before the formula and drops its other series.
+
+    A ranks the services 1, 2, 3 and B ranks them the other way, 30, 20, 10.
+    seed_metrics writes each gauge as value and value + 1, so the averages are
+    0.5 higher and A + B is 32, 23, 14. A limit of 1 on A keeps A's top service,
+    whose sum is the smallest; a limit applied to the formula would keep the largest.
+    The samples are aged into completed minutes, so the query never reads one
+    sample of a pair without the other.
+    """
+    prefix = f"mcp_e2e_{test_id.replace('-', '_')}_formula"
+    metric_a, metric_b = f"{prefix}_a", f"{prefix}_b"
+    services = [f"mcp-e2e-{test_id}-{i}" for i in range(3)]
+    for i, service in enumerate(services):
+        seed_metrics(service, metric_a, value=float(i + 1), count=2, age_seconds=120)
+        seed_metrics(service, metric_b, value=float(10 * (3 - i)), count=2, age_seconds=120)
+
+    def request(limit_on_input: bool) -> dict:
+        now = int(time.time() * 1000)
+
+        def spec(name: str, metric: str) -> dict:
+            return {
+                "name": name,
+                "signal": "metrics",
+                "aggregations": [
+                    {"metricName": metric, "timeAggregation": "avg", "spaceAggregation": "sum", "reduceTo": "avg"}
+                ],
+                "groupBy": [{"name": "service.name"}],
+                "filter": {"expression": f"service.name LIKE 'mcp-e2e-{test_id}-%'"},
+            }
+
+        first = spec("A", metric_a)
+        if limit_on_input:
+            first.update({"limit": 1, "order": [{"key": {"name": "__result"}, "direction": "desc"}]})
+        return {
+            "schemaVersion": "v1",
+            "start": now - 3_600_000,
+            "end": now,
+            "requestType": "scalar",
+            "compositeQuery": {
+                "queries": [
+                    {"type": "builder_query", "spec": first},
+                    {"type": "builder_query", "spec": spec("B", metric_b)},
+                    {"type": "builder_formula", "spec": {"name": "F", "expression": "A + B"}},
+                ]
+            },
+        }
+
+    def formula_rows(limit_on_input: bool) -> tuple[list[list], str]:
+        result = mcp_client.call_tool(
+            "signoz_execute_builder_query",
+            {"searchContext": "sum two queries per service", "query": request(limit_on_input)},
+        )
+        assert not result.get("isError", False), first_text_block(result)[:400]
+        results = first_block_json(result)["data"]["data"]["results"]
+        rows = [row for r in results if r.get("queryName") == "F" for row in r.get("data") or []]
+        return rows, note_blocks(result)
+
+    unlimited = {services[0]: 32, services[1]: 23, services[2]: 14}
+    wait_for(
+        lambda: {row[0]: row[-1] for row in formula_rows(False)[0]} == unlimited,
+        f"A + B for all {len(services)} services through the formula",
+    )
+    rows, notes = formula_rows(True)
+    assert [(row[0], row[-1]) for row in rows] == [(services[2], 14)], (
+        f"a limit of 1 on input A keeps A's top service: {rows}"
+    )
+    assert 'query "A" is a formula input with limit 1' in notes, notes
+    assert "is a formula input" not in formula_rows(False)[1]

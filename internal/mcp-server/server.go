@@ -42,6 +42,7 @@ import (
 const (
 	officialSDKPageSize = 128
 	unknownToolName     = "unknown"
+	unknownResourceURI  = "unknown"
 	// maxRequestedToolNameLength bounds the logged name of an unknown tool;
 	// registered names are far shorter.
 	maxRequestedToolNameLength = 128
@@ -497,9 +498,10 @@ func (m *MCPServer) newSDKServer() *mcp.Server {
 			Prompts:   &mcp.PromptCapabilities{},
 		},
 	})
-	s.AddReceivingMiddleware(m.receivingMiddleware(func(name string) bool {
-		return m.handler != nil && m.handler.HasRegisteredTool(s, name)
-	}))
+	s.AddReceivingMiddleware(m.receivingMiddleware(
+		func(name string) bool { return m.handler != nil && m.handler.HasRegisteredTool(s, name) },
+		func(uri string) bool { return m.handler != nil && m.handler.HasRegisteredResource(s, uri) },
+	))
 	return s
 }
 
@@ -619,7 +621,7 @@ func (m *MCPServer) maxBytesMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func (m *MCPServer) receivingMiddleware(isRegisteredTool func(string) bool) mcp.Middleware {
+func (m *MCPServer) receivingMiddleware(isRegisteredTool, isRegisteredResource func(string) bool) mcp.Middleware {
 	return func(next mcp.MethodHandler) mcp.MethodHandler {
 		return func(ctx context.Context, method string, request mcp.Request) (result mcp.Result, err error) {
 			start := time.Now()
@@ -676,6 +678,10 @@ func (m *MCPServer) receivingMiddleware(isRegisteredTool func(string) bool) mcp.
 			}()
 
 			spanAttrs := []attribute.KeyValue{otelpkg.MCPMethodKey.String(observedMethod)}
+			if method == "resources/read" {
+				// Which guide was read. On the span only: a URI is not a metric dimension.
+				spanAttrs = append(spanAttrs, otelpkg.MCPResourceURIKey.String(observedResourceURI(request, isRegisteredResource)))
+			}
 			spanAttrs = append(spanAttrs, requestTelemetryAttrs(request)...)
 			spanAttrs = otelpkg.AppendTenantURL(ctx, spanAttrs)
 			spanAttrs = otelpkg.AppendCallerCorrelation(ctx, spanAttrs)
@@ -755,6 +761,17 @@ func observedToolName(request mcp.Request, isRegisteredTool func(string) bool) s
 		return unknownToolName
 	}
 	return req.Params.Name
+}
+
+// observedResourceURI returns the requested URI when it names a registered
+// resource and a fixed placeholder otherwise. A client can ask for any URI,
+// and it must not choose a span attribute's value.
+func observedResourceURI(request mcp.Request, isRegisteredResource func(string) bool) string {
+	req, ok := request.(*mcp.ReadResourceRequest)
+	if !ok || req.Params == nil || isRegisteredResource == nil || !isRegisteredResource(req.Params.URI) {
+		return unknownResourceURI
+	}
+	return req.Params.URI
 }
 
 func toolRequestContext(ctx context.Context, toolName string, arguments any) context.Context {

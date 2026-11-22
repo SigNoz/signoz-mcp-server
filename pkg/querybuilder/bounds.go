@@ -259,6 +259,46 @@ func jsonValue(v any) any {
 	return decoded
 }
 
+// LimitedFormulaInput is a builder query that a formula references and that
+// sets its own positive limit.
+type LimitedFormulaInput struct {
+	QueryName string
+	Limit     int
+}
+
+// LimitedFormulaInputs lists the formula inputs that carry a positive limit.
+// SigNoz applies that limit before the formula runs, so the formula combines
+// only the input's top series. Call it after ApplyBounds, which turns numeric
+// limit strings into integers.
+func LimitedFormulaInputs(request map[string]any) []LimitedFormulaInput {
+	views := requestViews(request)
+	inputs := formulaInputNames(views)
+	var limited []LimitedFormulaInput
+	for _, view := range views {
+		if view.builder && view.limit != nil && *view.limit > 0 && inputs[strings.ToLower(strings.TrimSpace(view.name))] {
+			limited = append(limited, LimitedFormulaInput{QueryName: view.name, Limit: *view.limit})
+		}
+	}
+	return limited
+}
+
+// FormulaInputNames returns the lowercased names of the builder queries any
+// formula in the request references.
+func FormulaInputNames(request map[string]any) map[string]bool {
+	return formulaInputNames(requestViews(request))
+}
+
+func requestViews(request map[string]any) []queryView {
+	composite, _ := request["compositeQuery"].(map[string]any)
+	queries, _ := composite["queries"].([]any)
+	views := make([]queryView, len(queries))
+	for i, raw := range queries {
+		envelope, _ := raw.(map[string]any)
+		views[i] = readQuery(envelope)
+	}
+	return views
+}
+
 // formulaInputNames returns the builder-query names any formula in the same
 // request references. SigNoz applies each builder query's limit before it
 // evaluates formulas, including disabled intermediate formulas, so a limit on

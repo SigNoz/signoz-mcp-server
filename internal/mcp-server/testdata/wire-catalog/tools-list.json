@@ -23,11 +23,11 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user wants aggregate statistics over logs (counts, rates, averages, percentiles, or grouped/top-N breakdowns) rather than individual log records. Use signoz_search_logs for log rows and message inspection; use signoz_execute_builder_query only for queries this tool cannot express. Log fields are workspace-specific, so read signoz://logs/query-builder-guide and discover unfamiliar keys with signoz_get_field_keys. Defaults to the last 1 hour.",
+          "description": "Use this when the user wants log counts, error counts, rates, averages, percentiles, or grouped or top-N breakdowns over logs, rather than individual log records. Use signoz_search_logs for log rows and message inspection; use signoz_execute_builder_query only for queries this tool cannot express. Log fields are workspace-specific, so discover unfamiliar keys with signoz_get_field_keys before filtering on them; signoz://logs/query-builder-guide has the filter grammar. Defaults to the last 1 hour.",
           "inputSchema": {
             "properties": {
               "aggregations": {
-                "description": "Aggregation expressions to compute, written as the Query Builder writes them: count(), count_distinct(user_id), avg(duration), sum(bytes), min(x), max(x), p50(x) to p99(x), rate(), or a conditional such as countIf(severity_text = 'ERROR'). One expression or an array; results come back as __result_0, __result_1, ... in that order. Example: [\"count()\", \"p99(duration)\"]. SigNoz validates the expressions.",
+                "description": "Aggregation expressions to compute, written as the Query Builder writes them: count(), count_distinct(user_id), avg(duration), sum(bytes), min(x), max(x), p50(x) to p99(x), rate(), or a conditional such as countIf(severity_text = 'ERROR'). One expression or an array, with no alias: SigNoz rejects count() as total. Results come back as __result_0, __result_1, ... in that order. Example: [\"count()\", \"p99(duration)\"]. SigNoz validates the expressions.",
                 "items": {
                   "type": "string"
                 },
@@ -174,11 +174,11 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user wants custom aggregate statistics over spans (counts, rates, latency percentiles, grouped/top-N breakdowns, or time series) rather than individual span rows or a full trace hierarchy. For the built-in operation table for one traced service, ranked by p99, use signoz_get_service_top_operations. Use signoz_search_traces for raw spans, trace-ID discovery, or one row per trace (such as the most expensive AI traces), and signoz_get_trace_details for one known trace ID. Before calling, read signoz://traces/query-builder-guide; discover unfamiliar workspace fields with signoz_get_field_keys. For the user's LLM, AI agent, token, cost, model, tool-call, or prompt questions (AI observability), set queryType to builder_ai_query and read signoz://ai/query-builder-guide. Defaults to the last 1 hour.",
+          "description": "Use this when the user wants request counts, rates, latency percentiles, error counts, grouped or top-N breakdowns, or time series over spans, rather than individual span rows or a full trace hierarchy. SigNoz aggregates every span the filter matches: for a service's requests, filter on isEntryPoint = true OR isRoot = true, as signoz_list_services does. For the built-in operation table for one traced service, ranked by p99, use signoz_get_service_top_operations. Use signoz_search_traces for raw spans, trace-ID discovery, or one row per trace (such as the most expensive AI traces), and signoz_get_trace_details for one known trace ID. Discover unfamiliar workspace fields with signoz_get_field_keys; signoz://traces/query-builder-guide has the filter grammar and span fields. For the user's LLM, AI agent, token, cost, model, tool-call, or prompt questions (AI observability), set queryType to builder_ai_query; signoz://ai/query-builder-guide has its fields. Defaults to the last 1 hour.",
           "inputSchema": {
             "properties": {
               "aggregations": {
-                "description": "Aggregation expressions to compute, written as the Query Builder writes them: count(), count_distinct(name), avg(duration_nano), sum(x), min(x), max(x), p50(duration_nano) to p99(duration_nano), rate(), or a conditional such as countIf(has_error = true). duration_nano is span latency in nanoseconds. For a service's request rate, filter on its entry spans with isEntryPoint = true OR isRoot = true, as signoz_list_services does; counting all its spans or all its server spans can count one request more than once. One expression or an array; results come back as __result_0, __result_1, ... in that order. Example: [\"count()\", \"p99(duration_nano)\"]. SigNoz validates the expressions.",
+                "description": "Aggregation expressions to compute, written as the Query Builder writes them: count(), count_distinct(name), avg(duration_nano), sum(x), min(x), max(x), p50(duration_nano) to p99(duration_nano), rate(), or a conditional such as countIf(has_error = true). duration_nano is span latency in nanoseconds. One expression or an array, with no alias: SigNoz rejects count() as total. Results come back as __result_0, __result_1, ... in that order. Example: [\"count()\", \"p99(duration_nano)\"]. SigNoz validates the expressions.",
                 "items": {
                   "type": "string"
                 },
@@ -252,7 +252,7 @@
                 ]
               },
               "groupBy": {
-                "description": "Field names to group results by, as an array or a comma-separated string (e.g. [\"service.name\", \"name\"] or 'service.name, name'). Leave empty for a single aggregate value. For values over time, use requestType time_series; grouping by timestamp fails.",
+                "description": "Field names to group results by, as an array or a comma-separated string (e.g. [\"service.name\", \"name\"] or 'service.name, name'). Leave empty for a single aggregate value. For values over time, use requestType time_series; grouping by timestamp fails. Client spans to different services can share a span name: to compare the services a caller calls, group by a destination attribute such as server.address; signoz_get_field_keys lists the attributes spans carry.",
                 "items": {
                   "type": "string"
                 },
@@ -508,7 +508,7 @@
             "openWorldHint": true,
             "readOnlyHint": false
           },
-          "description": "Use this when the user wants a new SigNoz alert rule; use signoz_update_alert to change an existing rule. Supports v2alpha1 threshold, PromQL, and metric anomaly alerts. Read signoz://alert/instructions and signoz://alert/examples before composing any payload, unless already read in the same prepared operation; for PromQL also read signoz://promql/instructions. For direct routing, reuse a fully paginated signoz_list_notification_channels result only from the same still-current prepared operation; otherwise call it, refreshing only if state may have changed. Use exact returned immutable routing displayName values, not machine name. If none fits, ask the user or offer signoz_create_notification_channel with settings the user provides; never guess or create automatically. SigNoz rejects a threshold tier with no channels or an unknown channel name; confirmed v2 policy routing may omit tier channels.",
+          "description": "Use this when the user wants a new SigNoz alert rule; use signoz_update_alert to change an existing rule. Read signoz://alert/instructions and signoz://alert/examples before composing any payload, unless already read in the same prepared operation; for PromQL also read signoz://promql/instructions. For direct routing, reuse a fully paginated signoz_list_notification_channels result only from the same still-current prepared operation; otherwise call it, refreshing only if state may have changed. Use the exact returned displayName, not name. If none fits, ask or offer signoz_create_notification_channel with user settings; never create one unasked. SigNoz rejects a threshold tier with no channels or an unknown channel name; confirmed v2 policy routing may omit tier channels. When a threshold sets targetUnit, set condition.compositeQuery.unit to the series unit; without it SigNoz compares the target unconverted. SigNoz saves a rule whose query has no data; dry-run its queries with signoz_execute_builder_query.",
           "inputSchema": {
             "properties": {
               "alert": {
@@ -743,7 +743,7 @@
             "openWorldHint": true,
             "readOnlyHint": false
           },
-          "description": "Use this when the user wants a custom SigNoz dashboard built from a complete title, layout, variables, and panel configuration; use signoz_import_dashboard instead when a curated template fits. Use signoz_create_view instead to save one Explorer query. Before composing the payload, read signoz://dashboard/instructions, signoz://dashboard/widgets-instructions, signoz://dashboard/widgets-examples, and signoz://dashboard/examples (complete worked dashboards), then follow the query-specific resource linked by the widget guide.",
+          "description": "Use this when the user wants a custom SigNoz dashboard built from a complete title, layout, variables, and panel configuration; use signoz_import_dashboard instead when a curated template fits. Use signoz_create_view instead to save one Explorer query. Before composing the payload, read signoz://dashboard/instructions, signoz://dashboard/widgets-instructions, signoz://dashboard/widgets-examples, and signoz://dashboard/examples (complete worked dashboards), then follow the query-specific resource linked by the widget guide. SigNoz saves a panel whose query returns no data, such as one on a key the workspace lacks, so dry-run each panel's query through signoz_execute_builder_query before saving.",
           "inputSchema": {
             "$defs": {
               "CommonJSONRef": {
@@ -5405,7 +5405,7 @@
             "openWorldHint": true,
             "readOnlyHint": false
           },
-          "description": "Use this when the user wants to save one reusable query spec for Logs, Traces, Metrics, or Cost Meter; use signoz_create_dashboard for a multi-widget dashboard. Before composing any payload, you must read both signoz://view/instructions and signoz://view/examples. Do not send server-populated IDs or timestamps.",
+          "description": "Use this when the user wants to save one reusable query spec for Logs, Traces, Metrics, or Cost Meter; use signoz_create_dashboard for a multi-widget dashboard. Set every builder_query signal to the view's source (metrics, with source meter, for a Cost Meter view); SigNoz saves a mismatched view without complaint. signoz://view/instructions and signoz://view/examples have the spec fields and complete payloads. Do not send server-populated IDs or timestamps.",
           "inputSchema": {
             "properties": {
               "generateName": {
@@ -5625,7 +5625,7 @@
             "openWorldHint": true,
             "readOnlyHint": false
           },
-          "description": "Permanently delete one notification channel by ID after the user has confirmed the exact channel. This tool does not check alert-rule references.",
+          "description": "Permanently delete one notification channel by ID after the user has confirmed the exact channel. SigNoz rejects deleting a channel that an alert rule or routing policy routes to and names those routing policies. For a name that is a UUID, use signoz_get_alert to check whether that rule routes to this channel; if it does not, or for any other name, it is a routing policy in SigNoz settings. Re-route them first.",
           "inputSchema": {
             "additionalProperties": false,
             "properties": {
@@ -5677,7 +5677,7 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this only when dedicated log, trace, and metric tools cannot express the request, including multi-query requests, formulas, PromQL, and ClickHouse SQL. Use signoz_search_logs/signoz_search_traces for raw rows, signoz_aggregate_logs/signoz_aggregate_traces for grouped or top-N analysis, and signoz_query_metrics for ordinary metrics queries. Read the matching signoz://logs/query-builder-guide, signoz://traces/query-builder-guide, signoz://ai/query-builder-guide, or signoz://metrics-aggregation-guide; formulas require the metrics guide, and PromQL requires signoz://promql/instructions. signoz://query-builder/examples holds a complete request per query type and request type. Leave limit unset on each builder_query a formula references, because SigNoz applies an input's limit before the formula runs and drops series from its result. Give every other builder_query and each builder_formula a positive limit (100 for results) and non-empty spec.order (not dashboard orderBy); the server fills in omitted ones.",
+          "description": "Use this only when dedicated log, trace, and metric tools cannot express the request, such as multi-query requests, formulas, PromQL, or ClickHouse SQL. Use signoz_search_logs/signoz_search_traces for raw rows, signoz_aggregate_logs/signoz_aggregate_traces for grouped or top-N analysis, and signoz_query_metrics for ordinary metrics queries. A trace count, rate, or latency for one service covers every matching span unless the filter has isEntryPoint = true OR isRoot = true. Scalar metric queries reduce one value per step: reduceTo avg of a percentile is not the window's percentile, and reduceTo sum of a rate is not a count. Leave limit unset on each builder_query a formula references, because SigNoz applies it before the formula runs and drops the other series. signoz://query-builder/examples has full requests; signoz://traces/query-builder-guide, signoz://logs/query-builder-guide, signoz://ai/query-builder-guide, signoz://metrics-aggregation-guide, and signoz://promql/instructions have the grammar.",
           "inputSchema": {
             "properties": {
               "query": {
@@ -6089,7 +6089,7 @@
           "inputSchema": {
             "properties": {
               "fieldContext": {
-                "description": "Restrict results to a single field context (optional). Valid values: 'resource' (resource attributes, e.g. service.name, k8s.namespace.name), 'attribute' (user-ingested span/log attributes), 'scope' (instrumentation scope), 'log' / 'span' / 'metric' (intrinsic columns of the logs/traces/metrics signal), 'body' (fields inside a JSON log body). For span/log attributes use 'attribute', not the legacy Query Builder context 'tag': SigNoz ignores 'tag' when listing keys and returns no values for it. 'trace' (fields of a whole trace rather than one span, such as values computed over all of its spans; write them with the trace. prefix in queries).",
+                "description": "Restrict results to a single field context (optional). Valid values: 'resource' (resource attributes, e.g. service.name, k8s.namespace.name), 'attribute' (user-ingested span/log attributes), 'scope' (instrumentation scope), 'log' / 'span' / 'metric' (intrinsic columns of the logs/traces/metrics signal), 'body' (fields inside a JSON log body). For span/log attributes use 'attribute', not the legacy Query Builder context 'tag', which SigNoz does not read as 'attribute' here. 'trace' (fields of a whole trace rather than one span, such as values computed over all of its spans; write them with the trace. prefix in queries).",
                 "enum": [
                   "resource",
                   "attribute",
@@ -6166,7 +6166,7 @@
           "inputSchema": {
             "properties": {
               "fieldContext": {
-                "description": "Restrict results to a single field context (optional). Valid values: 'resource' (resource attributes, e.g. service.name, k8s.namespace.name), 'attribute' (user-ingested span/log attributes), 'scope' (instrumentation scope), 'log' / 'span' / 'metric' (intrinsic columns of the logs/traces/metrics signal), 'body' (fields inside a JSON log body). For span/log attributes use 'attribute', not the legacy Query Builder context 'tag': SigNoz ignores 'tag' when listing keys and returns no values for it. Set this when the same key name exists in more than one context to disambiguate which one to fetch values for.",
+                "description": "Restrict results to a single field context (optional). Valid values: 'resource' (resource attributes, e.g. service.name, k8s.namespace.name), 'attribute' (user-ingested span/log attributes), 'scope' (instrumentation scope), 'log' / 'span' / 'metric' (intrinsic columns of the logs/traces/metrics signal), 'body' (fields inside a JSON log body). For span/log attributes use 'attribute', not the legacy Query Builder context 'tag', which SigNoz does not read as 'attribute' here. Set this when the same key name exists in more than one context to disambiguate which one to fetch values for.",
                 "enum": [
                   "resource",
                   "attribute",
@@ -7097,7 +7097,7 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user asks which services call a service, what a service depends on, or which dependency is slow or failing. It returns the dependency graph behind SigNoz's Service Map for a time window: one edge per caller (parent) and callee (child) with callCount, callRate (calls per second), errorRate (percent of calls that failed), and p50 to p99 latency in nanoseconds. Set service and direction to keep one service's edges, and environment, cluster, or namespace to narrow the graph. Databases and message systems are callees named by their system, such as redis or kafka; a message system is the child of both its producers and its consumers. Edges come from per-minute rollups of traced calls, so a window shorter than a minute can return nothing, and an uninstrumented caller leaves no edge. Use signoz_list_services for per-service totals, signoz_get_service_top_operations for one service's operations, and signoz_aggregate_traces for custom span statistics.",
+          "description": "Use this when the user asks which services call a service, what a service depends on, or which dependency is slow or failing. It returns SigNoz's Service Map graph for a time window: one edge per caller (parent) and callee (child) with callCount, callRate (calls per second), errorRate (percent of calls that failed), and p50 to p99 latency in nanoseconds, from the callee's spans between services. Set service and direction to keep one service's edges, and environment, cluster, or namespace to narrow the graph. Databases and message systems are callees named by their system, such as redis or kafka, measured on the caller's spans; a message system is the child of both its producers and its consumers. Edges come from per-minute rollups of traced calls, so a window shorter than a minute can return nothing, and an uninstrumented caller leaves no edge. Use signoz_list_services for per-service totals, signoz_get_service_top_operations for one service's operations, and signoz_aggregate_traces for span statistics.",
           "inputSchema": {
             "properties": {
               "cluster": {
@@ -7278,7 +7278,7 @@
           "inputSchema": {
             "properties": {
               "includeSpans": {
-                "description": "Include detailed span information (default: true).",
+                "description": "Has no effect: every call returns the trace's spans as complete records, up to 1,000.",
                 "type": [
                   "boolean",
                   "string"
@@ -7905,7 +7905,7 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user wants APM services with trace activity and their call or latency summaries in a time window. It returns traced-service records sorted by name and paginated; absence means no trace activity in that window, not that a matching service.name never appears in logs. p99 and avgDuration are latencies in nanoseconds, callRate is calls per second, and errorRate and fourXXRate are percentages (0.5 means 0.5%). For log values use signoz_get_field_values with signal=\"logs\" and name=\"service.name\"; for one service's operations use signoz_get_service_top_operations. Follow pagination.nextOffset until hasMore=false before concluding a traced service is absent.",
+          "description": "Use this when the user wants a service's request rate, error rate, or latency, or the traced services active in a time window. It counts each service's requests at its entry spans, so numCalls is the request count and callRate is requests per second: numCalls divided by the whole requested window. It returns traced-service records sorted by name and paginated; absence means no trace activity in that window, not that a matching service.name never appears in logs. p99 and avgDuration are latencies in nanoseconds, and errorRate and fourXXRate are percentages (0.5 means 0.5%). For log values use signoz_get_field_values with signal=\"logs\" and name=\"service.name\"; for one service's operations use signoz_get_service_top_operations. Follow pagination.nextOffset until hasMore=false before concluding a traced service is absent.",
           "inputSchema": {
             "properties": {
               "end": {
@@ -8004,7 +8004,7 @@
             "openWorldHint": true,
             "readOnlyHint": false
           },
-          "description": "Apply a partial update to a v2 dashboard using an RFC 6902 JSON Patch, without re-sending the whole dashboard. Supply the dashboard 'id' and 'patch' (an array of {op, path, value} operations). Paths are JSON Pointers into the dashboard's postable shape, e.g. /spec/display/name, /spec/panels/\u003cpanelId\u003e, /spec/panels/\u003cpanelId\u003e/spec/queries/0, /spec/variables/0, /tags/-. Prefer this over signoz_update_dashboard for targeted changes (renaming, adding/editing one panel or query, tweaking a variable); it is far cheaper than rebuilding the full dashboard. Apply is lenient (remove on a missing path is a no-op; add creates missing parents) but the result is still validated; locked dashboards are rejected. Read signoz://dashboard/patch-instructions for worked recipes and exact paths (e.g. adding a panel takes two ops).",
+          "description": "Apply a partial update to a v2 dashboard using an RFC 6902 JSON Patch, without re-sending the whole dashboard. Supply the dashboard 'id' and 'patch' (an array of {op, path, value} operations). Paths are JSON Pointers into the dashboard's postable shape, e.g. /spec/display/name, /spec/panels/\u003cpanelId\u003e, /spec/panels/\u003cpanelId\u003e/spec/queries/0, /spec/variables/0, /tags/-. Prefer this over signoz_update_dashboard for targeted changes (renaming, adding/editing one panel or query, tweaking a variable). Apply is lenient (remove on a missing path is a no-op; add creates missing parents) but the result is still validated; locked dashboards are rejected. Adding a panel takes two ops, the panel and a grid item at /spec/layouts/0/spec/items/-; SigNoz saves a panel with no grid item but leaves it out of the layout. SigNoz saves a query with no data, so dry-run changed queries through signoz_execute_builder_query. signoz://dashboard/patch-instructions has worked recipes and exact paths.",
           "inputSchema": {
             "$defs": {
               "DashboardtypesJSONPatchOperation": {
@@ -8082,7 +8082,7 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user wants metric values, trends, breakdowns, or formulas. It returns scalar or time-series results, applies metric-aware aggregation defaults, and reports the decisions used. If the exact metricName is known, call this directly: when metricType is omitted, type, temporality, and monotonicity are auto-fetched together. Use signoz_list_metrics only to discover names or inspect catalog metadata; use signoz_execute_builder_query for complex multi-query requests this tool cannot express. Standalone and formula results are capped at the top 100; formula inputs are not limited. Grouped time-series top-N is ranked over the whole window. Read signoz://metrics-aggregation-guide for rules and examples.",
+          "description": "Use this when the user wants metric values, trends, breakdowns, or formulas. It returns scalar or time-series results, applies metric-aware aggregation defaults, and reports the decisions used. If the exact metricName is known, call this directly: when metricType is omitted, type, temporality, and monotonicity are auto-fetched together. Use signoz_list_metrics only to discover names or inspect catalog metadata; use signoz_execute_builder_query for complex multi-query requests this tool cannot express. Standalone and formula results are capped at the top 100; formula inputs are not limited. Grouped time-series top-N is ranked over the whole window. For a service's request rate or latency, use signoz_list_services or signoz_aggregate_traces; the span metrics signoz_calls_total and signoz_latency count every span, not requests. signoz://metrics-aggregation-guide has the aggregation rules per metric type and examples.",
           "inputSchema": {
             "properties": {
               "end": {
@@ -8119,7 +8119,7 @@
                       ]
                     },
                     "isMonotonic": {
-                      "description": "Whether a sum metric only increases. Auto-fetched when metricType is omitted.",
+                      "description": "Whether a sum metric only increases. Auto-fetched when omitted.",
                       "type": [
                         "boolean",
                         "string"
@@ -8146,7 +8146,7 @@
                       "type": "string"
                     },
                     "temporality": {
-                      "description": "cumulative, delta, or unspecified. Auto-fetched when metricType is omitted.",
+                      "description": "cumulative, delta, or unspecified. Auto-fetched when omitted.",
                       "type": "string"
                     },
                     "timeAggregation": {
@@ -8226,7 +8226,7 @@
                 "type": "string"
               },
               "isMonotonic": {
-                "description": "Whether a type=sum metric is monotonically increasing. Auto-fetched when metricType is omitted; otherwise provide the correct value for sum metrics.",
+                "description": "Whether a type=sum metric is monotonically increasing. Omit to auto-fetch it; a value sent here overrides the metadata.",
                 "type": [
                   "boolean",
                   "string"
@@ -8241,7 +8241,7 @@
                 ]
               },
               "metricName": {
-                "description": "Name of the metric to query. Example: 'container.cpu.utilization', 'http_requests_total'.",
+                "description": "Name of the metric to query. Example: 'container.cpu.utilization', 'http_requests_total'. A histogram named X is queried as X.bucket. SigNoz's span metrics signoz_calls_total and signoz_latency record one sample per span, so one request with several spans counts several times.",
                 "type": "string"
               },
               "metricType": {
@@ -8253,7 +8253,7 @@
                 "type": "string"
               },
               "reduceTo": {
-                "description": "Required when requestType is scalar: how to reduce each series to one value. Choose from the question: last for the current value, max for the peak, avg for a typical value, or sum, min, count, median. For a total count over the window, use timeAggregation increase with reduceTo sum; summing rates is not a count. Ignored for time_series.",
+                "description": "Required when requestType is scalar: how to reduce each series, which holds one value per step, to one value. Choose from the question: last for the latest step, max for the peak step, avg for the mean of the steps, or sum, min, count, median. For a total count over the window, use timeAggregation increase with reduceTo sum; summing rates is not a count. With a percentile, every reducer works on per-step percentiles, so none gives the window's percentile; for a single percentile of an explicit-bucket histogram, read each bucket's count with timeAggregation increase, spaceAggregation sum, reduceTo sum, le added to groupBy, and a limit that returns every bucket, then interpolate. Ignored for time_series.",
                 "type": "string"
               },
               "requestType": {
@@ -8285,18 +8285,18 @@
                 ]
               },
               "stepInterval": {
-                "description": "Step in seconds for time_series. Omit for automatic sizing (about 300 points, at least 60 s). To locate a change within a coarse step, query that interval with a smaller step, such as 60.",
+                "description": "Step in seconds; a scalar request reduces one value per step. Omit for automatic sizing (about 300 points, at least 60 s). SigNoz starts steps at multiples of the step since the Unix epoch, so a step as long as the window is one step only when the window starts on such a multiple; otherwise the first step reaches back before the window or, for a cumulative histogram percentile, can be left out. To locate a change within a coarse step, query that interval with a smaller step, such as 60.",
                 "type": [
                   "integer",
                   "string"
                 ]
               },
               "temporality": {
-                "description": "Metric temporality: cumulative, delta, or unspecified. Auto-fetched when metricType is omitted; otherwise provide the metric's value when it affects aggregation.",
+                "description": "Metric temporality: cumulative, delta, or unspecified. Omit to auto-fetch it; a value sent here overrides the metadata.",
                 "type": "string"
               },
               "timeAggregation": {
-                "description": "Aggregation within each series over a time bucket: latest, sum, avg, min, max, count, count_distinct, rate, or increase. Omit for the type's default: avg for gauges and non-monotonic sums, rate for counters, none for histogram percentiles. SigNoz validates the combination.",
+                "description": "Aggregation within each series over a time bucket: latest, sum, avg, min, max, count, count_distinct, rate, or increase. Omit for the type's default: avg for gauges and non-monotonic sums, rate for counters, none for histogram percentiles. On a cumulative counter, latest, max, min, avg, and sum work on its running total since it started, and count counts its samples; use increase for the count in each bucket or rate for per second. SigNoz validates the combination.",
                 "type": "string"
               },
               "timeRange": {
@@ -8418,7 +8418,7 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user wants individual log records or messages matching text, service, severity, or field filters. It returns paginated rows, not counts, trends, or grouped breakdowns; use signoz_aggregate_logs for those, and signoz_execute_builder_query only for queries this tool cannot express. Each row is the complete log record: log columns such as body and severity_text, attributes in attributes_string, attributes_number, and attributes_bool, and resource attributes such as service.name in resources_string. Name fields in selectFields to get only those fields. You do not need the guide when using only searchText, service, severity, time, or pagination. Read signoz://logs/query-builder-guide before filtering on unfamiliar fields. Defaults to the last 1 hour.",
+          "description": "Use this when the user wants individual log records or messages matching text, service, severity, or field filters. It returns paginated rows, not counts, trends, or grouped breakdowns; use signoz_aggregate_logs for those, and signoz_execute_builder_query only for queries this tool cannot express. Each row is the complete log record: log columns such as body and severity_text, attributes in attributes_string, attributes_number, and attributes_bool, and resource attributes such as service.name in resources_string. Name fields in selectFields to get only those fields. Discover unfamiliar fields with signoz_get_field_keys before filtering on them; signoz://logs/query-builder-guide has the filter grammar. Defaults to the last 1 hour.",
           "inputSchema": {
             "properties": {
               "end": {
@@ -8520,7 +8520,7 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user wants individual span rows matching service, operation, error, duration, or field filters, needs to discover trace IDs, or wants one row per trace (requestType=trace), such as the slowest traces or the most expensive AI traces. It returns paginated rows, not aggregate trends/groups or a full trace hierarchy; use signoz_aggregate_traces for statistics and signoz_get_trace_details for one known trace ID. Each span row is the span's complete record: span fields such as name and duration_nano, the attributes and resource maps (service.name is in resource), events, and links. Name fields in selectFields to get only those fields. Read signoz://traces/query-builder-guide before using unfamiliar workspace fields. For the user's LLM, AI agent, token, cost, model, tool-call, or prompt questions (AI observability), set queryType to builder_ai_query and read signoz://ai/query-builder-guide. Defaults to the last 1 hour.",
+          "description": "Use this when the user wants individual span rows matching service, operation, error, duration, or field filters, needs to discover trace IDs, or wants one row per trace (requestType=trace), such as the slowest traces or the most expensive AI traces. It returns paginated rows, not aggregate trends/groups or a full trace hierarchy; use signoz_aggregate_traces for statistics and signoz_get_trace_details for one known trace ID. Each span row is the span's complete record: span fields such as name and duration_nano, the attributes and resource maps (service.name is in resource), events, and links. Name fields in selectFields to get only those fields. Discover unfamiliar workspace fields with signoz_get_field_keys; signoz://traces/query-builder-guide has the filter grammar. For the user's LLM, AI agent, token, cost, model, tool-call, or prompt questions (AI observability), set queryType to builder_ai_query; signoz://ai/query-builder-guide has its fields. Defaults to the last 1 hour.",
           "inputSchema": {
             "properties": {
               "end": {
@@ -8911,7 +8911,7 @@
             "openWorldHint": true,
             "readOnlyHint": false
           },
-          "description": "Use this when the user wants to change an existing SigNoz alert rule; use signoz_create_alert for a new rule. This is a full replacement: call signoz_get_alert unless its complete result is available from the same still-current prepared operation, then preserve every unchanged field. Likewise reuse signoz://alert/instructions, signoz://alert/examples, and a fully paginated signoz_list_notification_channels result only from that operation; otherwise read/call them, refreshing only if state may have changed. Use exact returned immutable routing displayName values, not machine name. If no direct channel fits, ask the user or offer signoz_create_notification_channel with settings the user provides; never create automatically. SigNoz rejects a threshold tier with no channels or an unknown channel name; confirmed v2 policy routing may omit tier channels.",
+          "description": "Use this when the user wants to change an existing SigNoz alert rule; use signoz_create_alert for a new rule. This is a full replacement: call signoz_get_alert unless its complete result is available from the same still-current prepared operation, then preserve every unchanged field. Likewise reuse signoz://alert/instructions, signoz://alert/examples, and a fully paginated signoz_list_notification_channels result only from that operation; otherwise read/call them, refreshing only if state may have changed. Use the exact returned displayName, not name. If no channel fits, ask or offer signoz_create_notification_channel; never create one unasked. SigNoz rejects a threshold tier with no channels or an unknown channel name; confirmed v2 policy routing may omit tier channels. When a threshold sets targetUnit, set condition.compositeQuery.unit to the series unit; without it SigNoz compares the target unconverted. SigNoz saves a rule whose query has no data; dry-run changed queries with signoz_execute_builder_query.",
           "inputSchema": {
             "properties": {
               "alert": {
@@ -9154,7 +9154,7 @@
             "openWorldHint": true,
             "readOnlyHint": false
           },
-          "description": "Use this when the user wants to change an existing SigNoz dashboard. This is a full replacement, not a partial patch: fetch it with signoz_get_dashboard, take the \"data\" object out of that response, merge only the requested changes into it, and preserve every other field. Send that object's fields at the top level; the {status, data} response envelope is not accepted as input. For small, targeted edits prefer signoz_patch_dashboard, which avoids re-sending the whole dashboard. Use signoz_update_view instead for a saved Explorer query. Before composing changed panels, read signoz://dashboard/instructions, signoz://dashboard/widgets-instructions, and signoz://dashboard/widgets-examples, then follow the query-specific resource linked by the widget guide.",
+          "description": "Use this when the user wants to change an existing SigNoz dashboard. This is a full replacement, not a partial patch: fetch it with signoz_get_dashboard, take the \"data\" object out of that response, merge only the requested changes into it, and preserve every other field. Send that object's fields at the top level; the {status, data} response envelope is not accepted as input. For small, targeted edits prefer signoz_patch_dashboard, which avoids re-sending the whole dashboard. Use signoz_update_view instead for a saved Explorer query. Before composing changed panels, read signoz://dashboard/instructions, signoz://dashboard/widgets-instructions, and signoz://dashboard/widgets-examples, then follow the query-specific resource linked by the widget guide. SigNoz saves a panel whose query returns no data, so dry-run each changed panel's query through signoz_execute_builder_query first.",
           "inputSchema": {
             "$defs": {
               "CommonJSONRef": {
@@ -13801,7 +13801,7 @@
             "openWorldHint": true,
             "readOnlyHint": false
           },
-          "description": "Use this when the user wants to change an existing saved view. This is a full replacement: call signoz_get_view first, modify its data object, preserve every unrequested field, and pass that full object as view. Upstream keeps name immutable on update; the display name lives in spec.displayName. Read signoz://view/instructions and signoz://view/examples when changing source or spec. Keep the UUID only in id; omit server-populated IDs and timestamps from view.",
+          "description": "Use this when the user wants to change an existing saved view. This is a full replacement: call signoz_get_view first, modify its data object, preserve every unrequested field, and pass that full object as view. Upstream keeps name immutable on update; the display name lives in spec.displayName. Read signoz://view/instructions and signoz://view/examples when changing source or spec. When changing source or queries, keep every builder_query signal equal to source (metrics for a Cost Meter view); SigNoz saves a mismatch. Keep the UUID only in id; omit server-populated IDs and timestamps from view.",
           "inputSchema": {
             "properties": {
               "id": {

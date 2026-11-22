@@ -133,6 +133,11 @@ func (l budgetedListTool) call(t *testing.T, server *mcp.Server, limit, offset i
 // answers the tool's route with its items; the server budget is listBudget.
 func newListBudgetHarness(t *testing.T, list budgetedListTool, items []string) budgetHarness {
 	t.Helper()
+	return newListBudgetHarnessWithBudget(t, list, items, listBudget)
+}
+
+func newListBudgetHarnessWithBudget(t *testing.T, list budgetedListTool, items []string, budget int) budgetHarness {
+	t.Helper()
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != list.path {
 			http.NotFound(w, r)
@@ -154,7 +159,7 @@ func newListBudgetHarness(t *testing.T, list budgetedListTool, items []string) b
 	logs := &bytes.Buffer{}
 	h := &Handler{
 		logger:         slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: slog.LevelWarn})),
-		config:         &config.Config{MaxResultBytes: listBudget},
+		config:         &config.Config{MaxResultBytes: budget},
 		meters:         meters,
 		clientOverride: signozclient.NewClient(logpkg.New("error"), upstream.URL, "test-api-key", "SIGNOZ-API-KEY", nil),
 	}
@@ -366,6 +371,10 @@ func TestListToolReturnsAnOversizedFirstItemWhole(t *testing.T) {
 // The validation decorator's notices count toward the budget: the page is
 // cut with them in place, not before they are appended.
 func TestListToolBudgetCountsDecoratorNotices(t *testing.T) {
+	// A tool's own notes and the notice are each delivered twice, as a text
+	// block and in structuredContent.notes. The service map's take most of
+	// listBudget, so this budget leaves room for them and for more than one item.
+	const budget = 8000
 	var stray []string
 	for i := range 10 {
 		stray = append(stray, fmt.Sprintf(`"unknown_argument_with_a_long_name_%02d":"x"`, i))
@@ -375,12 +384,12 @@ func TestListToolBudgetCountsDecoratorNotices(t *testing.T) {
 			continue // it rejects undeclared arguments instead of serving them with a notice
 		}
 		t.Run(list.tool, func(t *testing.T) {
-			harness := newListBudgetHarness(t, list, list.items(40, 400))
+			harness := newListBudgetHarnessWithBudget(t, list, list.items(40, 400), budget)
 			result := list.call(t, harness.server, 20, 0, stray...)
 
 			notes := trailingTextBlocks(result)
 			require.Contains(t, notes[len(notes)-1], "this tool ignored the arguments", "the ignored-arguments notice is the last block")
-			require.LessOrEqual(t, textBytes(result), listBudget, "the delivered result, notices included, must fit: %s", allTextBlocks(result))
+			require.LessOrEqual(t, textBytes(result), budget, "the delivered result, notices included, must fit: %s", allTextBlocks(result))
 			delivered := readDeliveredList(t, result, list.itemsAt)
 			for i, item := range delivered.items {
 				require.Contains(t, string(item), fmt.Sprintf(`item-%03d `, i))

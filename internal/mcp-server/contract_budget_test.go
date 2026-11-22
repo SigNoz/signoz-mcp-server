@@ -30,6 +30,10 @@ const (
 var toolNamePattern = regexp.MustCompile(`^[a-z0-9_]+$`)
 var advertisedResourcePattern = regexp.MustCompile("signoz://[^\\s\"'<>`]+")
 
+// advertisedToolNamePattern matches tool names by their verbs, so metric names
+// such as signoz_calls_total are not read as tools.
+var advertisedToolNamePattern = regexp.MustCompile(`\bsignoz_(?:aggregate|check|create|delete|execute|fetch|get|import|list|patch|query|search|submit|test|update)_[a-z_]+\b`)
+
 // These are the server aliases published in first-party setup examples or
 // sent in initialize. Cursor combines alias + separator + tool name and caps
 // that identifier at 60 characters.
@@ -120,6 +124,35 @@ func TestGuardrail_WireContractBudgets(t *testing.T) {
 			for _, handle := range handles {
 				if !strings.Contains(tool.Description, handle) {
 					t.Errorf("%s description missing concept handle %q", toolName, handle)
+				}
+			}
+		}
+	})
+
+	// Clients that defer tool loading show the model only tool names and the
+	// instructions, so the preamble must route to tools, and every tool name a
+	// description or the instructions mention must still be registered.
+	t.Run("advertised tool names resolve", func(t *testing.T) {
+		registered := make(map[string]bool, len(listedTools))
+		for _, tool := range listedTools {
+			registered[tool.Name] = true
+		}
+		instructions := initializeResult.Instructions
+		preamble := instructions[:max(firstMarkdownHeadingOffset(instructions), 0)]
+		if len(advertisedToolNamePattern.FindAllString(preamble, -1)) == 0 {
+			t.Error("the instructions preamble names no tool; it must route questions to tools")
+		}
+		texts := map[string]string{"initialize instructions": instructions}
+		for _, tool := range listedTools {
+			texts[tool.Name+" description"] = tool.Description
+			walkSchemaDescriptions(inputSchema(t, tool), "inputSchema", func(path, description string) {
+				texts[tool.Name+" "+path] = description
+			})
+		}
+		for where, text := range texts {
+			for _, name := range advertisedToolNamePattern.FindAllString(text, -1) {
+				if !registered[name] {
+					t.Errorf("%s names %s, which is not a registered tool", where, name)
 				}
 			}
 		}
