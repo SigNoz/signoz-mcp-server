@@ -104,6 +104,8 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 	// Step interval: use caller-provided value or let the backend decide
 	stepInterval := mqr.StepInterval
 	callerProvidedStep := stepInterval > 0
+	// The caller's step line is rewritten once the response shows the step SigNoz applied.
+	stepDecision := len(decisions)
 	if callerProvidedStep {
 		decisions = append(decisions, fmt.Sprintf("stepInterval: %ds (caller-provided)", stepInterval))
 	} else if mqr.StepIntervalInvalid != "" {
@@ -234,15 +236,19 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 		return upstreamQueryError(err, "metrics"), nil
 	}
 
-	// Extract backend-determined stepInterval from response if caller didn't provide one
-	if !callerProvidedStep {
-		if si := extractStepInterval(result); si > 0 {
-			decisions = append(decisions, fmt.Sprintf("stepInterval: %ds (backend-determined)", si))
-		}
-	}
 	backendWarnings := extractBackendWarningMessages(result)
-	warnBackendWarnings(ctx, h.logger, "signoz_query_metrics", backendWarnings)
+	applied := appliedStepIntervals(result)
+	// SigNoz reports no step for a metric it cannot find in the window, with a
+	// warning, so a warned response marks the missing steps on that log and
+	// only an unwarned one reports them as drift.
+	warnBackendWarnings(ctx, h.logger, "signoz_query_metrics", backendWarnings, slog.Bool("missingStepIntervals", len(applied) == 0))
 	warnUnparsedWarningEnvelope(ctx, h.logger, "signoz_query_metrics", result, len(backendWarnings))
+	warnAppliedStepDrift(ctx, h.logger, "signoz_query_metrics", stepInterval, applied, len(backendWarnings) == 0)
+	if callerProvidedStep {
+		decisions[stepDecision] = metricsStepDecision(stepInterval, applied, mqr.Source)
+	} else if step := appliedStep(applied); step > 0 {
+		decisions = append(decisions, fmt.Sprintf("stepInterval: %ds (backend-determined)", step))
+	}
 
 	// JSON-first: the raw backend payload is block 0 (matching the search/
 	// aggregate siblings); decisions/warnings go into a SEPARATE note block

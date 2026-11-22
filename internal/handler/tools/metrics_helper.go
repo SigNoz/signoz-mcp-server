@@ -201,27 +201,6 @@ func buildGroupByFields(names []string) []querybuilder.FieldKey {
 	return fields
 }
 
-// extractStepInterval parses meta.stepIntervals from the backend response JSON
-// and returns the step interval for the first query (typically "A").
-// Returns 0 if not found or on parse error.
-func extractStepInterval(response json.RawMessage) int64 {
-	var resp struct {
-		Data struct {
-			Meta struct {
-				StepIntervals map[string]int64 `json:"stepIntervals"`
-			} `json:"meta"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(response, &resp); err != nil {
-		return 0
-	}
-	// Return the first (usually "A") step interval
-	for _, v := range resp.Data.Meta.StepIntervals {
-		return v
-	}
-	return 0
-}
-
 // --- helpers ---
 
 func stringArg(args map[string]any, key string) string {

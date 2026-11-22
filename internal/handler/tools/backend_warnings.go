@@ -33,7 +33,7 @@ func extractBackendWarningMessages(response json.RawMessage) []string {
 	return messages
 }
 
-func warnBackendWarnings(ctx context.Context, logger *slog.Logger, toolName string, messages []string) {
+func warnBackendWarnings(ctx context.Context, logger *slog.Logger, toolName string, messages []string, attrs ...slog.Attr) {
 	if len(messages) == 0 {
 		return
 	}
@@ -43,10 +43,9 @@ func warnBackendWarnings(ctx context.Context, logger *slog.Logger, toolName stri
 	if logger == nil {
 		logger = slog.Default()
 	}
-	logger.WarnContext(ctx,
+	logger.LogAttrs(ctx, slog.LevelWarn,
 		"SigNoz query builder returned non-fatal warnings",
-		slog.String("tool", toolName),
-		slog.Int("warningCount", len(messages)),
+		append([]slog.Attr{slog.String("tool", toolName), slog.Int("warningCount", len(messages))}, attrs...)...,
 	)
 }
 
