@@ -185,6 +185,11 @@ are fitted with those notices counted.
   on, which is the failure the budget exists to prevent. The note on a shortened first row
   keeps its mention: there the override is one of two ways to read the full value.
 
+### 2026-11-22 — Review of the later commits (codex-loop)
+
+- Decision: the e2e walk requires every page to hold a row. Without it, a first page holding
+  every row followed by an empty one would have counted as two pages.
+
 ## Reference Links
 
 - [SigNoz/nerve-pod#673: bound MCP tool results to a size budget](https://github.com/SigNoz/nerve-pod/issues/673)
