@@ -141,10 +141,9 @@ func (f *resultFit) complete(extra []string) *mcp.CallToolResult {
 	return finish(extra)
 }
 
-// deliverFitted returns fit's result without extra notes. When the validation
-// decorator is in the call, it also registers fit there, so the decorator can
-// rebuild the result with its notices counted. record runs once per call, with
-// the outcome of the result delivered.
+// deliverFitted registers fit with the validation decorator, which appends its
+// notices after the handler returns and so must rebuild the result with them
+// counted. record runs once per call, for the result delivered.
 func deliverFitted(ctx context.Context, fit func(extra []string) (*mcp.CallToolResult, pageOutcome), record func(pageOutcome)) *mcp.CallToolResult {
 	preview, outcome := fit(nil)
 	finisher := resultFitFrom(ctx)
