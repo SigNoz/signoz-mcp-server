@@ -184,10 +184,12 @@ The raw search tests pass with their expectations unchanged.
 module-cache copy of `gopsutil`; `go mod tidy -diff` is clean.
 
 e2e: CI starts only on a pull request whose base is `main`, so the e2e workflow was started by
-hand on the branch at e58a339. It ran 110 tests with 1 skipped, including
-`test_list_dashboards_pages_by_result_size` and the refactored native-server fixture the whole
-suite shares. The suite did not run locally (`foundryctl` is not installed). The other CI jobs
-have not run on this pull request; they start when it targets `main`.
+hand on the branch. After the stack was rebased onto SigNoz/signoz-mcp-server#477, the run at
+4a6beb9, which holds all three changes of the stack, passed 113 tests with 1 skipped. It
+includes `test_list_dashboards_pages_by_result_size`, the refactored native-server fixture the
+whole suite shares, and the new tests of the two PRs below this one. The suite did not run
+locally (`foundryctl` is not installed). The other CI jobs have not run on this pull request;
+they start when it targets `main`.
 
 ## Outcome
 
