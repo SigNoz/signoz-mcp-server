@@ -97,7 +97,7 @@ Use this shape when spec.signal = "metrics":
 ` + "```" + `
 
 - metricName: the metric you're querying.
-- timeAggregation: per-series time aggregation. Common: avg, max, min, sum, rate, increase, count, count_distinct, latest. Set it on every gauge and sum query: SigNoz applies no default to an alert query and saves a rule without it, but a gauge or sum query then fails with "invalid time aggregation". Use avg for a gauge and rate or increase for a counter. A histogram query needs none.
+- timeAggregation: per-series time aggregation. Common: avg, max, min, sum, rate, increase, count, count_distinct, latest. Set it on every gauge, sum, and summary query: SigNoz applies no default to an alert query and saves a rule without it, but such a query then fails with "invalid time aggregation". Use avg for a gauge and rate or increase for a counter. A histogram query needs none.
 - spaceAggregation: cross-series aggregation. Common: sum, avg, min, max, count. For histograms: p50, p75, p90, p95, p99.
 
 ### Logs / traces signal — expression shape

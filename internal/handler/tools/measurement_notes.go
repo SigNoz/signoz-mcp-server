@@ -210,13 +210,26 @@ type filterKey struct {
 	rest  []filterToken
 }
 
-// is reports whether the key is one of names, bare or under the field context
-// SigNoz accepts for it, as in span.isRoot or resource.service.name. Another
-// context names another field: scope.name is not the span's name.
-func (k filterKey) is(context string, names ...string) bool {
+// The field contexts a key can be written under. A trace filter keeps contexts
+// apart: scope.name is not the span's name. A metric filter reads every
+// context from one label set, so attribute.service.name is the service too.
+var (
+	spanContexts     = []string{"span", "spanfield"}
+	resourceContexts = []string{"resource"}
+	labelContexts    = []string{"resource", "attribute", "tag", "point", "scope", "metric"}
+)
+
+// is reports whether the key is one of names, bare or under one of contexts,
+// as in span.isRoot or resource.service.name.
+func (k filterKey) is(contexts []string, names ...string) bool {
 	for _, name := range names {
-		if k.name == name || k.name == context+"."+name {
+		if k.name == name {
 			return true
+		}
+		for _, context := range contexts {
+			if k.name == context+"."+name {
+				return true
+			}
 		}
 	}
 	return false
@@ -241,16 +254,17 @@ func filterKeys(tokens []filterToken) []filterKey {
 }
 
 // hasFilterKey reports whether any predicate key is one of names, bare or
-// under context.
-func hasFilterKey(keys []filterKey, context string, names ...string) bool {
-	return slices.ContainsFunc(keys, func(key filterKey) bool { return key.is(context, names...) })
+// under one of contexts.
+func hasFilterKey(keys []filterKey, contexts []string, names ...string) bool {
+	return slices.ContainsFunc(keys, func(key filterKey) bool { return key.is(contexts, names...) })
 }
 
 // filterService returns the one service a filter is scoped to: the value its
 // only service.name key is compared with, by equality or a one-value IN. It
 // returns "" when the filter names no service or more than one, or has an OR or
-// NOT that can widen the scope.
-func filterService(filter string) string {
+// NOT that can widen the scope. contexts are the ones the signal accepts for
+// the service key.
+func filterService(filter string, contexts []string) string {
 	tokens := tokenizeFilter(filter)
 	for _, token := range tokens {
 		if token.is("OR", "NOT") {
@@ -259,7 +273,7 @@ func filterService(filter string) string {
 	}
 	service, found := "", 0
 	for _, key := range filterKeys(tokens) {
-		if !key.is("resource", "service.name") {
+		if !key.is(contexts, "service.name") {
 			continue
 		}
 		found++
@@ -276,13 +290,13 @@ func filterService(filter string) string {
 
 // filterIsOnlyService reports whether a filter is nothing but one service
 // predicate, possibly in parentheses.
-func filterIsOnlyService(filter string) bool {
+func filterIsOnlyService(filter string, contexts []string) bool {
 	tokens := tokenizeFilter(filter)
 	for len(tokens) >= 2 && tokens[0].is("(") && tokens[len(tokens)-1].is(")") {
 		tokens = tokens[1 : len(tokens)-1]
 	}
 	keys := filterKeys(tokens)
-	if len(keys) != 1 || keys[0].index != 0 || !keys[0].is("resource", "service.name") {
+	if len(keys) != 1 || keys[0].index != 0 || !keys[0].is(contexts, "service.name") {
 		return false
 	}
 	values, length, ok := comparedValues(keys[0].rest)
@@ -295,16 +309,16 @@ func filterIsOnlyService(filter string) bool {
 func narrowsSpans(keys []filterKey) bool {
 	for _, key := range keys {
 		switch {
-		case key.is("span", "name"):
+		case key.is(spanContexts, "name"):
 			return true
-		case key.is("span", "kind", "kind_string"):
+		case key.is(spanContexts, "kind", "kind_string"):
 			values, _, ok := comparedValues(key.rest)
 			if !ok {
 				return true
 			}
 			for _, value := range values {
 				// kind holds the OTLP number, where 2 is the server kind.
-				if !strings.EqualFold(value, "server") && (!key.is("span", "kind") || value != "2") {
+				if !strings.EqualFold(value, "server") && (!key.is(spanContexts, "kind") || value != "2") {
 					return true
 				}
 			}
@@ -322,13 +336,13 @@ func traceAllSpansNote(filter, callerFilter string, groupBy int, aggregations []
 	if groupBy > 0 || queryType == querybuilder.QueryTypeBuilderAI {
 		return measurementNote{}, false
 	}
-	service := filterService(filter)
+	service := filterService(filter, resourceContexts)
 	if service == "" {
 		return measurementNote{}, false
 	}
 	// Entry, root, parent, and ID keys already scope the spans.
 	keys := filterKeys(tokenizeFilter(filter))
-	if hasFilterKey(keys, "span", "isroot", "isentrypoint", "parent_span_id", "trace_id", "span_id") || narrowsSpans(keys) {
+	if hasFilterKey(keys, spanContexts, "isroot", "isentrypoint", "parent_span_id", "trace_id", "span_id") || narrowsSpans(keys) {
 		return measurementNote{}, false
 	}
 	matched := false
@@ -567,8 +581,8 @@ func spanMetricsAllSpansNote(m metricMeasurement) (measurementNote, bool) {
 	if !calls && !latency {
 		return measurementNote{}, false
 	}
-	service := filterService(m.Filter)
-	if service == "" || hasFilterKey(filterKeys(tokenizeFilter(m.Filter)), "attribute", "span.kind", "operation") {
+	service := filterService(m.Filter, labelContexts)
+	if service == "" || hasFilterKey(filterKeys(tokenizeFilter(m.Filter)), labelContexts, "span.kind", "operation") {
 		return measurementNote{}, false
 	}
 	var groups []string
@@ -581,7 +595,7 @@ func spanMetricsAllSpansNote(m metricMeasurement) (measurementNote, bool) {
 			groups = append(groups, key)
 		}
 	}
-	onlyService := filterIsOnlyService(m.Filter)
+	onlyService := filterIsOnlyService(m.Filter, labelContexts)
 	aggregation := "count() or rate()"
 	if latency {
 		aggregation = "p95(duration_nano)"

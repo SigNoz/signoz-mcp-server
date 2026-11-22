@@ -132,6 +132,7 @@ func TestAggregateTraces_SaysWhenItCountsEverySpanOfAService(t *testing.T) {
 		{name: "server spans still nest", args: map[string]any{"service": "frontend", "filter": "kind_string = 'Server'", "aggregations": "rate()"}, wantNote: true, wantFix: "add AND (isEntryPoint = true OR isRoot = true) to the filter"},
 		{name: "entry spans", args: map[string]any{"service": "frontend", "filter": "isEntryPoint = true OR isRoot = true", "aggregations": "count()"}},
 		{name: "root spans by a qualified key", args: map[string]any{"service": "frontend", "filter": "span.isRoot = true", "aggregations": "count()"}},
+		{name: "root spans by the older context name", args: map[string]any{"service": "frontend", "filter": "spanfield.isRoot = true", "aggregations": "count()"}},
 		{name: "an instrumentation scope is not an operation", args: map[string]any{"service": "frontend", "filter": "scope.name = 'otel-http'", "aggregations": "count()"}, wantNote: true, wantFix: "add AND (isEntryPoint = true OR isRoot = true) to the filter"},
 		{name: "operations picked with the singular operator", args: map[string]any{"service": "frontend", "filter": "name CONTAIN 'checkout'", "aggregations": "count()"}},
 		{name: "server spans by kind number", args: map[string]any{"service": "frontend", "filter": "kind IN [2]", "aggregations": "count()"}, wantNote: true, wantFix: "add AND (isEntryPoint = true OR isRoot = true) to the filter"},
@@ -363,6 +364,16 @@ func TestQueryMetrics_SaysWhatAScalarReductionMeasured(t *testing.T) {
 		{
 			name: "span metrics for one operation by a qualified key", metadata: deltaCounter,
 			args: map[string]any{"metricName": "signoz_calls_total", "filter": "service.name = 'frontend' AND attribute.operation = 'GET /cart'", "timeAggregation": "increase", "reduceTo": "sum"},
+		},
+		{
+			name: "span metrics for one operation under the resource context", metadata: deltaCounter,
+			args: map[string]any{"metricName": "signoz_calls_total", "filter": "service.name = 'frontend' AND resource.operation = 'GET /cart'", "timeAggregation": "increase", "reduceTo": "sum"},
+		},
+		{
+			name: "span metrics for a service named under the attribute context", metadata: deltaCounter,
+			args:     map[string]any{"metricName": "signoz_calls_total", "filter": "attribute.service.name = 'frontend'", "timeAggregation": "increase", "reduceTo": "sum"},
+			wantRule: "span_metrics_all_spans",
+			want:     []string{`counts every span of service "frontend"`},
 		},
 		{
 			name: "span metrics for one service and more", metadata: deltaCounter,

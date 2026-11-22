@@ -896,6 +896,16 @@ the `mcp.resource.uri` attribute and the `IsMonotonic` refactor, raised D1 to D1
   in the metrics guide's function list; the step examples in the dashboard query example labelled
   as traces and logs; and the README table's "all spans" for trace details.
 
+A second round resolved D1 to D10, accepted the part of D2 that was declined, and raised three more:
+
+- D11: metric filters read every field context from one label set, so on a span metric
+  `attribute.service.name` is the service and `resource.operation` picks one operation. The metric
+  rules now match a label bare or under any of those contexts; trace filters still keep contexts
+  apart.
+- D12: the alert guide's sentence left out summaries, whose quantile series also need a
+  `timeAggregation`.
+- D13: SigNoz reads `spanfield.` as `span.`, so `spanfield.isRoot` counts as a root filter.
+
 ### 2026-11-21 — Mutation-side rules on the tools, schema pointers kept
 
 - Decision: rules that prevent a wrong result with no error go on the tool: the alert unit rule,
