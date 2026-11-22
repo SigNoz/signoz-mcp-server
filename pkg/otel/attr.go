@@ -32,6 +32,7 @@ const (
 	MCPClientRootsKey            = attribute.Key("mcp.client.capability.roots")
 	MCPClientSamplingKey         = attribute.Key("mcp.client.capability.sampling")
 	MCPClientElicitationKey      = attribute.Key("mcp.client.capability.elicitation")
+	MCPResourceURIKey            = attribute.Key("mcp.resource.uri")
 	MCPSearchContextKey          = attribute.Key("mcp.search_context")
 	MCPTenantURLKey              = attribute.Key("mcp.tenant_url")
 	MCPToolIsErrorKey            = attribute.Key("mcp.tool.is_error")
@@ -46,6 +47,9 @@ const (
 	MCPFeedbackCategoryKey       = attribute.Key("mcp.feedback.category")
 	MCPFeedbackToolNameKey       = attribute.Key("mcp.feedback.tool_name")
 	MCPFeedbackModelKey          = attribute.Key("mcp.feedback.model")
+	// MCPResultNoteRuleKey names the measurement-note rule a result carried;
+	// its values are a fixed set owned by the tools package.
+	MCPResultNoteRuleKey = attribute.Key("mcp.result_note.rule")
 	// MCPToolResultBytes approximates the size, in bytes, of the text content
 	// returned by a tool call — sum of `len(Text)` across TextContent entries.
 	// Non-standard (the registry has no equivalent today); scoped under the

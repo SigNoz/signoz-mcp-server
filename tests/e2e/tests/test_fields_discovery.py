@@ -120,14 +120,14 @@ def test_field_keys_context_filter_is_honored(mcp_client: MCPClient, test_id: st
     service = f"mcp-e2e-{test_id}"
     seed_traces(service, count=1)
 
-    def seeded_marker_keys(context: str) -> dict:
+    def seeded_marker_keys(context: str, search: str = "e2e.marker") -> dict:
         result = mcp_client.call_tool(
             "signoz_get_field_keys",
             {
-                "searchContext": f"discover e2e.marker in context {context}",
+                "searchContext": f"discover {search} in context {context}",
                 "signal": "traces",
                 "fieldContext": context,
-                "searchText": "e2e.marker",
+                "searchText": search,
             },
         )
         assert_tool_ok(result)
@@ -139,6 +139,11 @@ def test_field_keys_context_filter_is_honored(mcp_client: MCPClient, test_id: st
 
     resource_keys = seeded_marker_keys("resource")
     assert "e2e.marker" not in resource_keys, f"resource filter leaked an attribute key: {resource_keys}"
+    # The legacy context "tag" is not read as "attribute": it returns the resource key service.name,
+    # which "attribute" leaves out.
+    assert "service.name" not in seeded_marker_keys("attribute", "service.name")
+    tag_keys = seeded_marker_keys("tag", "service.name")
+    assert "service.name" in tag_keys, f"fieldContext=tag read as attribute dropped the resource key: {tag_keys}"
 
 
 def test_span_intrinsics_discoverable_under_span_context(mcp_client: MCPClient) -> None:

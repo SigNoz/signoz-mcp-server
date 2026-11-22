@@ -43,7 +43,7 @@ func (h *Handler) RegisterViewHandlers(s *mcp.Server) {
 	createTool := mcp.NewTool("signoz_create_view",
 		withCreateToolAnnotations(),
 		mcp.WithDescription(
-			"Use this when the user wants to save one reusable query spec for Logs, Traces, Metrics, or Cost Meter; use signoz_create_dashboard for a multi-widget dashboard. Before composing any payload, you must read both signoz://view/instructions and signoz://view/examples. Do not send server-populated IDs or timestamps.",
+			"Use this when the user wants to save one reusable query spec for Logs, Traces, Metrics, or Cost Meter; use signoz_create_dashboard for a multi-widget dashboard. Set every builder_query signal to the view's source (metrics, with source meter, for a Cost Meter view); SigNoz saves a mismatched view without complaint. signoz://view/instructions and signoz://view/examples have the spec fields and complete payloads. Do not send server-populated IDs or timestamps.",
 		),
 		mcp.WithInputSchema[types.CreateViewInput](),
 	)
@@ -52,7 +52,7 @@ func (h *Handler) RegisterViewHandlers(s *mcp.Server) {
 	updateTool := mcp.NewTool("signoz_update_view",
 		withUpdateToolAnnotations(),
 		mcp.WithDescription(
-			"Use this when the user wants to change an existing saved view. This is a full replacement: call signoz_get_view first, modify its data object, preserve every unrequested field, and pass that full object as view. Upstream keeps name immutable on update; the display name lives in spec.displayName. Read signoz://view/instructions and signoz://view/examples when changing source or spec. Keep the UUID only in id; omit server-populated IDs and timestamps from view.",
+			"Use this when the user wants to change an existing saved view. This is a full replacement: call signoz_get_view first, modify its data object, preserve every unrequested field, and pass that full object as view. Upstream keeps name immutable on update; the display name lives in spec.displayName. Read signoz://view/instructions and signoz://view/examples when changing source or spec. When changing source or queries, keep every builder_query signal equal to source (metrics for a Cost Meter view); SigNoz saves a mismatch. Keep the UUID only in id; omit server-populated IDs and timestamps from view.",
 		),
 		mcp.WithInputSchema[types.UpdateViewInput](),
 	)

@@ -64,7 +64,10 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 	var decisions []string
 	decisions = append(decisions, fmt.Sprintf("metricName: %s", mqr.MetricName))
 
-	// Auto-fetch metric metadata if not provided
+	// Auto-fetch metric metadata if not provided. temporality is what the
+	// defaults and notes use; mqr.Temporality is what SigNoz receives.
+	isMonotonic := false
+	temporality := mqr.Temporality
 	if mqr.MetricType == "" {
 		meta, fetchErr := h.fetchMetricMetadata(ctx, client, mqr.MetricName, mqr.Source)
 		if fetchErr != nil {
@@ -76,37 +79,52 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 		}
 		if meta != nil {
 			mqr.MetricType = meta.MetricType
-			mqr.IsMonotonic = meta.IsMonotonic
-			mqr.Temporality = meta.Temporality
 			decisions = append(decisions, fmt.Sprintf("metricType: %s (auto-fetched)", mqr.MetricType))
-			// Absent fields are reported as unknown/assumed, not authoritative.
-			if meta.TemporalityMissing {
+			// A value the caller sent wins. Absent fields are reported as
+			// unknown/assumed, not authoritative.
+			switch {
+			case mqr.Temporality != "":
+				decisions = append(decisions, fmt.Sprintf("temporality: %s (caller-provided)", mqr.Temporality))
+			case meta.TemporalityMissing:
+				mqr.Temporality = meta.Temporality
 				decisions = append(decisions, fmt.Sprintf("temporality: unknown (not returned by metadata; assumed %q)", mqr.Temporality))
-			} else {
+			default:
+				mqr.Temporality = meta.Temporality
 				decisions = append(decisions, fmt.Sprintf("temporality: %s (auto-fetched)", mqr.Temporality))
 			}
-			if meta.IsMonotonicMissing {
-				decisions = append(decisions, fmt.Sprintf("isMonotonic: unknown (not returned by metadata; assumed %t)", mqr.IsMonotonic))
-			} else {
-				decisions = append(decisions, fmt.Sprintf("isMonotonic: %t (auto-fetched)", mqr.IsMonotonic))
+			switch {
+			case mqr.IsMonotonic != nil:
+				isMonotonic = *mqr.IsMonotonic
+				decisions = append(decisions, fmt.Sprintf("isMonotonic: %t (caller-provided)", isMonotonic))
+			case meta.IsMonotonicMissing:
+				isMonotonic = meta.IsMonotonic
+				decisions = append(decisions, fmt.Sprintf("isMonotonic: unknown (not returned by metadata; assumed %t)", isMonotonic))
+			default:
+				isMonotonic = meta.IsMonotonic
+				decisions = append(decisions, fmt.Sprintf("isMonotonic: %t (auto-fetched)", isMonotonic))
 			}
+			temporality = mqr.Temporality
 		} else {
 			// User-correctable (wrong metric name); coded like the formula not-found path.
 			return errorWithCode(CodeValidationFailed, metricNotFoundMessage(mqr.MetricName, "")), nil
 		}
 	} else {
 		decisions = append(decisions, fmt.Sprintf("metricType: %s (caller-provided)", mqr.MetricType))
-		if mqr.Temporality != "" {
-			decisions = append(decisions, fmt.Sprintf("temporality: %s (caller-provided)", mqr.Temporality))
+		filled, monotonic, fillErr := h.fillOmittedMetricMetadata(ctx, client, mqr.MetricName, mqr.MetricType, mqr.Source, &temporality, mqr.IsMonotonic)
+		if fillErr != nil {
+			return upstreamError(fillErr), nil
 		}
+		isMonotonic = monotonic
+		decisions = append(decisions, filled...)
 	}
 
 	// Step interval: use caller-provided value or let the backend decide
 	stepInterval := mqr.StepInterval
 	callerProvidedStep := stepInterval > 0
-	// The caller's step line is rewritten once the response shows the step SigNoz applied.
-	stepDecision := len(decisions)
+	// stepDecision is filled in once SigNoz reports the step it used.
+	stepDecision := -1
 	if callerProvidedStep {
+		stepDecision = len(decisions)
 		decisions = append(decisions, fmt.Sprintf("stepInterval: %ds (caller-provided)", stepInterval))
 	} else if mqr.StepIntervalInvalid != "" {
 		// Present but not a plain positive integer of seconds (e.g. "1h", "60s",
@@ -120,8 +138,8 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 	// Apply defaults for primary query
 	resolved, err := metricsrules.ApplyDefaults(metricsrules.MetricQueryParams{
 		MetricType:       mqr.MetricType,
-		IsMonotonic:      mqr.IsMonotonic,
-		Temporality:      mqr.Temporality,
+		IsMonotonic:      isMonotonic,
+		Temporality:      temporality,
 		TimeAggregation:  mqr.TimeAggregation,
 		SpaceAggregation: mqr.SpaceAggregation,
 		ReduceTo:         mqr.ReduceTo,
@@ -163,7 +181,7 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 
 	// Formula sub-queries
 	for _, fq := range mqr.FormulaQueries {
-		subResolved, subErr := resolveFormulaSubQuery(ctx, h, client, fq, mqr.RequestType, mqr.Source, &decisions)
+		subResolved, subErr := resolveFormulaSubQuery(ctx, h, client, &fq, mqr.RequestType, mqr.Source, &decisions)
 		if subErr != nil {
 			// Upstream metadata-fetch failures get the uniform prefix; local
 			// validation errors ("metric not found"/"validation error") stay raw.
@@ -236,26 +254,48 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 		return upstreamQueryError(err, "metrics"), nil
 	}
 
-	backendWarnings := extractBackendWarningMessages(result)
-	applied := appliedStepIntervals(result)
-	// SigNoz reports no step for a metric it cannot find in the window, with a
-	// warning, so a warned response marks the missing steps on that log and
-	// only an unwarned one reports them as drift.
-	warnBackendWarnings(ctx, h.logger, "signoz_query_metrics", backendWarnings, slog.Bool("missingStepIntervals", len(applied) == 0))
-	warnUnparsedWarningEnvelope(ctx, h.logger, "signoz_query_metrics", result, len(backendWarnings))
-	warnAppliedStepDrift(ctx, h.logger, "signoz_query_metrics", stepInterval, applied, len(backendWarnings) == 0)
-	if callerProvidedStep {
-		decisions[stepDecision] = metricsStepDecision(stepInterval, applied, mqr.Source)
-	} else if step := appliedStep(applied); step > 0 {
-		decisions = append(decisions, fmt.Sprintf("stepInterval: %ds (backend-determined)", step))
+	// The notes use the step SigNoz reports for the primary query, which can
+	// differ from a caller's (SigNoz raises a step below its minimum); when it
+	// reports none, they name no step.
+	effectiveStep := responseStepIntervals(ctx, h.logger, "signoz_query_metrics", result)["A"]
+	switch {
+	case effectiveStep > 0 && !callerProvidedStep:
+		decisions = append(decisions, fmt.Sprintf("stepInterval: %ds (backend-determined)", effectiveStep))
+	case effectiveStep > 0 && effectiveStep != stepInterval:
+		decisions[stepDecision] = fmt.Sprintf("stepInterval: %ds (SigNoz used this step; %ds was requested)", effectiveStep, stepInterval)
 	}
+	backendWarnings := extractBackendWarningMessages(result)
+	warnBackendWarnings(ctx, h.logger, "signoz_query_metrics", backendWarnings)
+	warnUnparsedWarningEnvelope(ctx, h.logger, "signoz_query_metrics", result, len(backendWarnings))
 
 	// JSON-first: the raw backend payload is block 0 (matching the search/
 	// aggregate siblings); decisions/warnings go into a SEPARATE note block
 	// rather than prepended. query_metrics is a raw QB passthrough, so it stays
 	// text-only (no structuredContent) — its upstream shape is variable.
-	note := buildMetricsDecisionsNote(decisions, resolved.Warnings)
-	return resultWithNotes(result, windowNote(startTime, endTime), note), nil
+	notes := []string{windowNote(startTime, endTime)}
+	// A formula result combines its inputs, so the per-query rules stay off.
+	if mqr.Formula == "" {
+		notes = append(notes, h.recordMeasurementNotes(ctx, "signoz_query_metrics", metricMeasurementNotes(metricMeasurement{
+			MetricName:       mqr.MetricName,
+			MetricType:       mqr.MetricType,
+			IsMonotonic:      isMonotonic,
+			Temporality:      temporality,
+			TimeAggregation:  resolved.TimeAggregation,
+			SpaceAggregation: resolved.SpaceAggregation,
+			ReduceTo:         resolved.ReduceTo,
+			Filter:           mqr.Filter,
+			GroupBy:          mqr.GroupBy,
+			RequestType:      mqr.RequestType,
+			StepSeconds:      effectiveStep,
+			CallerStep:       callerProvidedStep,
+			HasFunctions:     len(mqr.Functions) > 0,
+			HasHaving:        strings.TrimSpace(mqr.Having) != "",
+			StartMs:          startTime,
+			EndMs:            endTime,
+		}))...)
+	}
+	notes = append(notes, buildMetricsDecisionsNote(decisions, resolved.Warnings))
+	return resultWithNotes(result, notes...), nil
 }
 
 // buildMetricsDecisionsNote renders the decisions/warnings advisory block that
@@ -328,6 +368,68 @@ func (h *Handler) fetchMetricMetadata(ctx context.Context, client metricMetadata
 		}
 	}
 	return meta, nil
+}
+
+// fillOmittedMetricMetadata fills the temporality and monotonicity that a
+// caller who sent metricType left out; a value the caller sent always wins. A
+// failed or empty lookup keeps the query running on the caller's values,
+// except a 401 or 403, which is returned so the client can re-authenticate.
+// sent is the caller's isMonotonic, nil when it was not sent; the monotonicity
+// to use is returned.
+func (h *Handler) fillOmittedMetricMetadata(ctx context.Context, client metricMetadataClient, metricName, metricType, source string, temporality *string, sent *bool) (decisions []string, isMonotonic bool, err error) {
+	if *temporality != "" {
+		decisions = append(decisions, fmt.Sprintf("temporality: %s (caller-provided)", *temporality))
+	}
+	if sent != nil {
+		isMonotonic = *sent
+		decisions = append(decisions, fmt.Sprintf("isMonotonic: %t (caller-provided)", isMonotonic))
+	}
+	// A gauge has neither value, and only a sum has a monotonicity.
+	needTemporality := *temporality == "" && !strings.EqualFold(metricType, "gauge")
+	needMonotonic := sent == nil && strings.EqualFold(metricType, "sum")
+	if !needTemporality && !needMonotonic {
+		return decisions, isMonotonic, nil
+	}
+
+	meta, err := h.fetchMetricMetadata(ctx, client, metricName, source)
+	unknown := ""
+	switch {
+	case err != nil && isGlobalUpstreamFailure(ctx, err):
+		return nil, false, err
+	case err != nil:
+		unknown = "metadata lookup failed"
+		h.logger.WarnContext(ctx, "Metric metadata lookup failed; querying with the caller's values",
+			slog.String("metricName", metricName), logpkg.ErrAttr(err))
+	case meta == nil:
+		unknown = "metric not found in metadata"
+		h.logger.WarnContext(ctx, "Metric not found in metadata; querying with the caller's values",
+			slog.String("metricName", metricName))
+	}
+	if needTemporality {
+		switch {
+		case unknown != "":
+			decisions = append(decisions, fmt.Sprintf("temporality: unknown (%s; SigNoz resolves it)", unknown))
+		case meta.TemporalityMissing:
+			*temporality = meta.Temporality
+			decisions = append(decisions, fmt.Sprintf("temporality: unknown (not returned by metadata; assumed %q)", *temporality))
+		default:
+			*temporality = meta.Temporality
+			decisions = append(decisions, fmt.Sprintf("temporality: %s (auto-fetched)", *temporality))
+		}
+	}
+	if needMonotonic {
+		switch {
+		case unknown != "":
+			decisions = append(decisions, fmt.Sprintf("isMonotonic: unknown (%s; assumed false)", unknown))
+		case meta.IsMonotonicMissing:
+			isMonotonic = meta.IsMonotonic
+			decisions = append(decisions, fmt.Sprintf("isMonotonic: unknown (not returned by metadata; assumed %t)", isMonotonic))
+		default:
+			isMonotonic = meta.IsMonotonic
+			decisions = append(decisions, fmt.Sprintf("isMonotonic: %t (auto-fetched)", isMonotonic))
+		}
+	}
+	return decisions, isMonotonic, nil
 }
 
 // parseExactMetricMetadata decodes a GetMetricMetadata body. It returns nil
@@ -433,9 +535,9 @@ func normalizeMetricType(t string) string {
 }
 
 // resolveFormulaSubQuery applies defaults for a formula sub-query, auto-fetching metadata if needed.
-func resolveFormulaSubQuery(ctx context.Context, h *Handler, client metricMetadataClient, fq formulaSubQuery, requestType, source string, decisions *[]string) (*metricsrules.ResolvedAggregation, error) {
+func resolveFormulaSubQuery(ctx context.Context, h *Handler, client metricMetadataClient, fq *formulaSubQuery, requestType, source string, decisions *[]string) (*metricsrules.ResolvedAggregation, error) {
 	metricType := fq.MetricType
-	isMonotonic := fq.IsMonotonic
+	isMonotonic := false
 	temporality := fq.Temporality
 
 	// Auto-fetch if needed
@@ -449,18 +551,34 @@ func resolveFormulaSubQuery(ctx context.Context, h *Handler, client metricMetada
 		}
 		if meta != nil {
 			metricType = meta.MetricType
-			isMonotonic = meta.IsMonotonic
-			temporality = meta.Temporality
+			// A value the caller sent wins, as on the primary query.
+			if fq.IsMonotonic != nil {
+				isMonotonic = *fq.IsMonotonic
+			} else {
+				isMonotonic = meta.IsMonotonic
+			}
+			if temporality == "" {
+				temporality = meta.Temporality
+			}
 			*decisions = append(*decisions, fmt.Sprintf("query %s (%s): metricType=%s (auto-fetched)", fq.Name, fq.MetricName, metricType))
 			// Mirror the primary path: absent fields are disclosed as assumed.
-			if meta.TemporalityMissing {
+			if meta.TemporalityMissing && fq.Temporality == "" {
 				*decisions = append(*decisions, fmt.Sprintf("query %s (%s): temporality unknown (not returned by metadata; assumed %q)", fq.Name, fq.MetricName, temporality))
 			}
-			if meta.IsMonotonicMissing {
+			if meta.IsMonotonicMissing && fq.IsMonotonic == nil {
 				*decisions = append(*decisions, fmt.Sprintf("query %s (%s): isMonotonic unknown (not returned by metadata; assumed %t)", fq.Name, fq.MetricName, isMonotonic))
 			}
 		} else {
 			return nil, errors.New(metricNotFoundMessage(fq.MetricName, fq.Name))
+		}
+	} else {
+		filled, monotonic, fillErr := h.fillOmittedMetricMetadata(ctx, client, fq.MetricName, metricType, source, &temporality, fq.IsMonotonic)
+		if fillErr != nil {
+			return nil, markUpstream(fillErr)
+		}
+		isMonotonic = monotonic
+		for _, d := range filled {
+			*decisions = append(*decisions, fmt.Sprintf("query %s: %s", fq.Name, d))
 		}
 	}
 
@@ -475,9 +593,6 @@ func resolveFormulaSubQuery(ctx context.Context, h *Handler, client metricMetada
 	if err != nil {
 		return nil, fmt.Errorf("validation error for formula query %q (%s): %w", fq.Name, fq.MetricName, err)
 	}
-
-	// Update fq temporality for the aggregation struct
-	fq.Temporality = temporality
 
 	for _, d := range resolved.Decisions {
 		*decisions = append(*decisions, fmt.Sprintf("query %s: %s", fq.Name, d))

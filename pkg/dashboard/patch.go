@@ -15,7 +15,7 @@ Shape recap (JSON Pointers target the postable shape):
 Critical [read first]:
 - Adding a panel takes TWO ops in ONE patch: add the panel at /spec/panels/<id> AND append a grid item at /spec/layouts/0/spec/items/- whose content.$ref is "#/spec/panels/<id>". A panel with no grid item is accepted but never renders.
 - Removing a panel also takes TWO ops in ONE patch: remove its grid item AND remove the panel entry. The whole dashboard is validated after the ops apply, so a grid item whose $ref points to a removed panel is rejected ("references unknown panel").
-- The top-level "name" is immutable — never patch /name. Rename via replace /spec/display/name (this does NOT change the immutable name).
+- The top-level "name" is immutable: never patch /name. Rename via replace /spec/display/name (this does NOT change the immutable name).
 - Query-backed panels hold exactly ONE query (backend-enforced). To combine series, replace the single query with a signoz/CompositeQuery; do NOT append a second entry to /spec/panels/<id>/spec/queries. signoz/TextPanel is queryless and must use queries: []; query replacement paths do not apply to it.
 - Apply is lenient (remove on a missing path is a no-op; add creates missing parents) but the final dashboard is still validated; locked dashboards are rejected.
 
@@ -25,17 +25,17 @@ Rename / edit description:
 [{"op":"replace","path":"/spec/display/name","value":"New title"}]
 [{"op":"replace","path":"/spec/display/description","value":"..."}]
 
-Add a panel (panel + grid item together). Set the grid item's "y" below every existing item (its y + height) — overlapping items are rejected ("items overlap"):
+Add a panel (panel + grid item together). Set the grid item's "y" below every existing item (its y + height); overlapping items are rejected ("items overlap"):
 [
-  {"op":"add","path":"/spec/panels/panel-b","value":{ ...a Panel — copy a shape from signoz://dashboard/widgets-examples... }},
+  {"op":"add","path":"/spec/panels/panel-b","value":{ ...a Panel; copy a shape from signoz://dashboard/widgets-examples... }},
   {"op":"add","path":"/spec/layouts/0/spec/items/-","value":{"x":0,"y":6,"width":12,"height":6,"content":{"$ref":"#/spec/panels/panel-b"}}}
 ]
 
 Edit one field of an existing panel (e.g. its title or y-axis unit):
 [{"op":"replace","path":"/spec/panels/panel-b/spec/display/name","value":"Renamed panel"}]
 
-Replace a panel's query (one query per panel — replace, don't append; use signoz/CompositeQuery for multi-series):
-[{"op":"replace","path":"/spec/panels/panel-b/spec/queries/0","value":{ ...a query — see signoz://dashboard/widgets-examples... }}]
+Replace a panel's query (one query per panel: replace, don't append; use signoz/CompositeQuery for multi-series):
+[{"op":"replace","path":"/spec/panels/panel-b/spec/queries/0","value":{ ...a query; see signoz://dashboard/widgets-examples... }}]
 
 Add a Markdown TextPanel (two ops in one patch: panel plus grid item):
 [
@@ -51,7 +51,7 @@ Move / resize a panel (edit its grid item):
 
 Add a variable (appends even when variables is empty):
 [{"op":"add","path":"/spec/variables/-","value":{"kind":"ListVariable","spec":{"name":"service_name","display":{"name":"Service Name"},"plugin":{"kind":"signoz/DynamicVariable","spec":{"name":"service.name","signal":"logs"}}}}}]
-(spec.name is the $service_name reference handle; plugin.spec.name is the attribute key. See signoz://dashboard/instructions for variable rules — always ask which panels a variable applies to before wiring it in.)
+(spec.name is the $service_name reference handle; plugin.spec.name is the attribute key. See signoz://dashboard/instructions for variable rules; always ask which panels a variable applies to before wiring it in.)
 
 Add a tag:
 [{"op":"add","path":"/tags/-","value":{"key":"team","value":"platform"}}]

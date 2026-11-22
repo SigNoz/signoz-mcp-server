@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -183,7 +184,7 @@ func spanAttrValue(attrs []attribute.KeyValue, key attribute.Key) (attribute.Val
 func callReceiving(t *testing.T, server *MCPServer, ctx context.Context, method string, req mcp.Request, result mcp.Result, err error) (mcp.Result, error) {
 	t.Helper()
 	isRegisteredTool := func(name string) bool { return name == "probe" }
-	return server.receivingMiddleware(isRegisteredTool)(func(context.Context, string, mcp.Request) (mcp.Result, error) {
+	return server.receivingMiddleware(isRegisteredTool, nil)(func(context.Context, string, mcp.Request) (mcp.Result, error) {
 		return result, err
 	})(ctx, method, req)
 }
@@ -813,7 +814,7 @@ func TestReceivingMiddlewarePassesToolOutcomesThroughAndRecoversPanics(t *testin
 				}
 				return tt.result, tt.err
 			}
-			result, gotErr := server.receivingMiddleware(func(name string) bool { return name == "probe" })(next)(context.Background(), "tools/call", request)
+			result, gotErr := server.receivingMiddleware(func(name string) bool { return name == "probe" }, nil)(next)(context.Background(), "tools/call", request)
 			if tt.panicValue != nil {
 				var rpcErr *jsonrpc.Error
 				if !errors.As(gotErr, &rpcErr) || rpcErr.Code != jsonrpc.CodeInternalError || rpcErr.Message != "Internal error" {
@@ -879,6 +880,75 @@ func TestReceivingMiddlewareKeepsUnknownToolNamesOutOfMetricsAndSpans(t *testing
 	}
 	if strings.Contains(spans[0].Name, requestedName) {
 		t.Fatalf("span name = %q, want bounded unknown-tool name", spans[0].Name)
+	}
+}
+
+// A client can ask for any URI, so a resources/read span names the resource
+// only when the server serves it, and no metric carries the URI.
+func TestResourceReadSpansNameOnlyRegisteredResources(t *testing.T) {
+	traceExporter := tracetest.NewInMemoryExporter()
+	traceProvider := sdktrace.NewTracerProvider(sdktrace.WithSyncer(traceExporter))
+	previousTracerProvider := otel.GetTracerProvider()
+	otel.SetTracerProvider(traceProvider)
+	t.Cleanup(func() {
+		otel.SetTracerProvider(previousTracerProvider)
+		_ = traceProvider.Shutdown(context.Background())
+	})
+	reader := sdkmetric.NewManualReader()
+	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	t.Cleanup(func() { _ = meterProvider.Shutdown(context.Background()) })
+	meters, err := otelpkg.NewMeters(meterProvider)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const guide = "signoz://metrics-aggregation-guide"
+	madeUp := "signoz://" + strings.Repeat("x", 4096)
+
+	client, err := newIntegrationClient(t, buildTestServerWithDocsAndMeters(t, nil, meters))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.ReadResource(context.Background(), &mcp.ReadResourceParams{URI: guide}); err != nil {
+		t.Fatalf("read %s: %v", guide, err)
+	}
+	if _, err := client.ReadResource(context.Background(), &mcp.ReadResourceParams{URI: madeUp}); err == nil {
+		t.Fatal("reading a URI the server does not serve succeeded")
+	}
+	var recorded []string
+	for _, span := range traceExporter.GetSpans() {
+		if span.Name != "resources/read" {
+			continue
+		}
+		for _, attr := range span.Attributes {
+			if attr.Key == otelpkg.MCPResourceURIKey {
+				recorded = append(recorded, attr.Value.AsString())
+			}
+		}
+	}
+	if want := []string{guide, unknownResourceURI}; !slices.Equal(recorded, want) {
+		t.Fatalf("mcp.resource.uri on resources/read spans = %q, want %q", recorded, want)
+	}
+
+	// The same two reads are counted, and no metric attribute carries a URI.
+	var metrics metricdata.ResourceMetrics
+	if err := reader.Collect(context.Background(), &metrics); err != nil {
+		t.Fatal(err)
+	}
+	methodCalls, found := oteltest.FindInt64SumMetric(metrics, "mcp.method.calls")
+	if !found {
+		t.Fatal("mcp.method.calls was not recorded")
+	}
+	var reads int64
+	for _, point := range methodCalls.DataPoints {
+		if method, _ := point.Attributes.Value(otelpkg.MCPMethodKey); method.AsString() == "resources/read" {
+			reads += point.Value
+		}
+		if encoded := point.Attributes.Encoded(attribute.DefaultEncoder()); strings.Contains(encoded, "signoz://") {
+			t.Fatalf("mcp.method.calls attributes carry a resource URI: %s", encoded)
+		}
+	}
+	if reads != 2 {
+		t.Fatalf("mcp.method.calls counted %d resources/read calls, want the 2 the client made", reads)
 	}
 }
 

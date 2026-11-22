@@ -402,6 +402,8 @@ func upstreamQueryError(err error, signal string) *mcp.CallToolResult {
 		guidance = missingKeyGuidance(keys, signal)
 	case strings.Contains(err.Error(), promQLMatcherParseError):
 		guidance = promQLMatcherGuidance
+	case strings.Contains(err.Error(), noQueriesError):
+		guidance = noQueriesGuidance
 	case deniedQueryType != "":
 		guidance = telemetryDenialGuidance(deniedQueryType, signal)
 	default:
@@ -424,6 +426,14 @@ func upstreamQueryError(err error, signal string) *mcp.CallToolResult {
 const (
 	promQLMatcherParseError = "but got '~'"
 	promQLMatcherGuidance   = "`=~` and `!~` are PromQL matchers. Query Builder filters use REGEXP and NOT REGEXP instead, for example `k8s.pod.name REGEXP 'checkout-.*'`."
+)
+
+// SigNoz answers a request with no compositeQuery.queries this way, including
+// one written in the older builderQueries, promQueries, or chQueries shape,
+// without naming the shape it expects.
+const (
+	noQueriesError    = "atleast one query is required"
+	noQueriesGuidance = "query_range takes compositeQuery.queries, a list of {type, spec} envelopes such as {\"type\": \"builder_query\", \"spec\": {...}}; builderQueries, promQueries, and chQueries are an older request shape. signoz://query-builder/examples has a complete request per query type."
 )
 
 // SigNoz denies a telemetry query the caller's role does not cover with code

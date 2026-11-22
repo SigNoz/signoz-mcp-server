@@ -18,7 +18,7 @@ When writing PromQL queries in SigNoz, you MUST follow these rules:
 1. Metric names with dots MUST be quoted and wrapped in curly braces
 2. Label names with dots MUST be quoted
 3. Metric name MUST be the first parameter inside curly braces (without a label operator)
-4. Use double quotes for all quoted strings
+4. Quote names with double quotes (single quotes also work)
 5. Traditional metric names (letters, numbers, underscores only) can use old or new format, but prefer new format for consistency
 ================================================================================
 SYNTAX PATTERN
@@ -89,7 +89,7 @@ Before submitting a PromQL query, verify:
   [ ] Metric name with dots is quoted: {"metric.name"}
   [ ] Label names with dots are quoted: "label.name"="value"
   [ ] Grouping labels with dots are quoted: by ("label.name")
-  [ ] All quotes are double quotes ", not single quotes '
+  [ ] Quoted names use double quotes (single quotes also work)
   [ ] Histogram/Summary metrics use dot suffixes (.bucket, .sum, .count)
   [ ] For grouped or multi-series charts, legend uses {{label_name}} syntax matching query labels
 ================================================================================
@@ -98,13 +98,11 @@ ERROR PREVENTION
 Common Mistakes:
   WRONG: rate("http.requests.total"[5m])                                    // Missing curly braces
   WRONG: rate({job="api", "http.requests.total"}[5m])                      // Metric name not first
-  WRONG: rate({'http.requests.total'}[5m])                                 // Single quotes
   WRONG: rate({"http.requests.total", service.name="api"}[5m])            // Missing quotes on label with dots
 
 Correct Versions:
   RIGHT: rate({"http.requests.total"}[5m])                                 // Curly braces present
   RIGHT: rate({"http.requests.total", job="api"}[5m])                     // Metric name first
-  RIGHT: rate({"http.requests.total"}[5m])                                // Double quotes
   RIGHT: rate({"http.requests.total", "service.name"="api"}[5m])         // Quoted labels with dots
 ================================================================================
 PROMETHEUS 3.X UTF-8 QUOTED SELECTOR (OTEL METRIC NAMES WITH DOTS)
