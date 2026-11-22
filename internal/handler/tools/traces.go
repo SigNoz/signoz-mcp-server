@@ -131,6 +131,7 @@ func (h *Handler) handleAggregateTraces(ctx context.Context, req mcp.CallToolReq
 	}
 	notes = append(notes, aggregateNotes(reqData)...)
 	notes = append(notes, aiAggregateNotes(reqData)...)
+	notes = append(notes, aggregateStepNote(ctx, h.logger, "signoz_aggregate_traces", reqData, result))
 	return aggregateResult(ctx, h.logger, "signoz_aggregate_traces", result, reqData.LimitClamped, notes...), nil
 }
 

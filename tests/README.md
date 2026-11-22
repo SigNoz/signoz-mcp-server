@@ -114,6 +114,10 @@ variables: `--reuse`, `--teardown`, `--foundry-binary-path`, `--license-key`.
   OpenInference span run through the saved mappings.
 - `test_upstream_errors.py` — coded NOT_FOUND and UNAUTHORIZED upstream errors
   with the uniform prefix.
+- `test_applied_step.py` — the step SigNoz applies when it raises a `stepInterval`,
+  and every number the aggregate step note and the metrics guide state: the logs
+  and traces minimum over 7 days, the windows that allow 60 s and 5 s buckets, the
+  5 s floor, a metric step raised over 7 days, and the Cost Meter step.
 - `test_logs.py` — seeded log search, explicit scoped/unscoped search grammar,
   quoted terms, body-only legacy search text, and upstream warning preservation.
 - `test_dashboards.py` — TextPanel create/get/update/patch/default/layout
