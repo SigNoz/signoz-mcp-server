@@ -216,7 +216,7 @@ func (h *Handler) handleListViews(ctx context.Context, req mcp.CallToolRequest) 
 		h.logger.ErrorContext(ctx, "Failed to wrap views with pagination", logpkg.ErrAttr(err))
 		return InternalErrorResult("failed to marshal response: " + err.Error()), nil
 	}
-	return listResult(ctx, h.logger, resultJSON, limitClamped), nil
+	return h.unbudgetedListResult(ctx, resultJSON, limitClamped), nil
 }
 
 func (h *Handler) handleGetView(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

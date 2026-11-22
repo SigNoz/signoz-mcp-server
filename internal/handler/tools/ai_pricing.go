@@ -84,7 +84,7 @@ func (h *Handler) handleGetAIPricing(ctx context.Context, req mcp.CallToolReques
 	if err != nil {
 		return InternalErrorResult("failed to marshal response: " + err.Error()), nil
 	}
-	return listResult(ctx, h.logger, payload, limitClamped), nil
+	return h.unbudgetedListResult(ctx, payload, limitClamped), nil
 }
 
 // listAIPricingRules assembles the requested window from as many upstream

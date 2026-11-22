@@ -216,7 +216,6 @@ evolution.
   A payload that is not a JSON object, or that already owns a top-level
   `notes` field, keeps the note as text only and logs a WARN. Text-only
   results keep notes as text blocks.
-
 - **[OUT-7] Measurement notes.** When a successful query has a shape that
   commonly answers a different question than the user asked, and it returns
   a plausible number with no error, the result SHOULD carry a note saying what
@@ -234,6 +233,19 @@ evolution.
     one in `mcp.tool.result.measurement_notes` by tool and rule.
   - A trap the server cannot detect from the request gets description or
     instruction text only, with the reason in the plan.
+- **[OUT-8] Bounded results.** A client truncates, drops, or moves to a file a
+  result larger than it shows its model, so a new tool SHOULD keep its text
+  blocks within the result size budget (`MCP_MAX_RESULT_BYTES`): give a list a
+  `limit` with a default and a maximum, and state the largest result the tool
+  can return in the PR. A tool that pages with `offset` MUST apply the budget:
+  return the page through `listResult` or `rawSearchResult`, which end an
+  over-budget page on a whole item and say so (OUT-3). The first item always
+  comes back, even when it alone is over the budget. A cut is safe only over
+  a fixed order, so a new `offset` tool MUST return one. The tools whose
+  upstream order is not fixed are not cut and are named, with the reason, in
+  `guardrails.UnbudgetedOffsetTools`.
+  `TestGuardrail_OffsetToolResultsFitTheirSizeBudget` reads the registered
+  tools and rejects an `offset` tool that is neither budgeted nor named there.
 
 ## 8. Errors and recovery
 
@@ -375,6 +387,7 @@ For any PR touching a client-visible MCP surface, review the applicable items:
 - [ ] Truncation/pagination explicit with next step; partial success only for independent items (OUT-3, OUT-4)
 - [ ] Notes on a structured result also appear in `structuredContent.notes`, added through `appendNotes` (OUT-6)
 - [ ] A silent wrong-answer shape gets a narrow, counted measurement note that stays true for the legitimate question, with any fix verified against SigNoz (OUT-7)
+- [ ] A new tool's largest result is bounded and stated; a tool that pages with `offset` returns a fixed order and applies the result size budget (OUT-8)
 
 **Errors**
 - [ ] Stable tool-error `code`; validation text names field, problem, accepted forms, next action (ERR-1, ERR-2)

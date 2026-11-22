@@ -3,6 +3,7 @@ import socket
 import subprocess
 import time
 from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -158,21 +159,20 @@ def mcp_server_binary(tmp_path_factory: pytest.TempPathFactory) -> Path:
     return binary
 
 
-@pytest.fixture
-def mcp_server_with_global_external_url(
-    mcp_server_binary: Path, signoz: SigNoz, signoz_global_external_url: str
-) -> Iterator[MCPServer]:
-    """Run natively so literal localhost reaches the same cast SigNoz on Linux and macOS."""
-    __tracebackhide__ = True
+@contextmanager
+def _native_mcp_server(binary: Path, backend_url: str, signoz: SigNoz, env: dict[str, str]) -> Iterator[str]:
+    """Run the server binary on a free loopback port with env added; yield its base URL.
+
+    Takes signoz, not its API key: pytest prints a failing call's arguments, and
+    the key's field is hidden from that output.
+    """
     with socket.socket() as listener:
         listener.bind(("127.0.0.1", 0))
         port = listener.getsockname()[1]
 
-    backend_url = signoz.endpoint.replace("127.0.0.1", "localhost")
-    backend_url += urlsplit(signoz_global_external_url).path.rstrip("/")
     base_url = f"http://127.0.0.1:{port}"
     process = subprocess.Popen(
-        [str(mcp_server_binary)],
+        [str(binary)],
         cwd=REPO_ROOT,
         env=os.environ
         | {
@@ -188,13 +188,14 @@ def mcp_server_with_global_external_url(
             "ANALYTICS_ENABLED": "false",
             "OTEL_TRACES_EXPORTER": "none",
             "OTEL_METRICS_EXPORTER": "none",
-        },
+        }
+        | env,
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
     )
     try:
         _wait_ready(base_url, lambda: process.poll() is None, lambda: f"exit code: {process.poll()}")
-        yield MCPServer(base_url=base_url, backend_url=backend_url, external_url=signoz_global_external_url)
+        yield base_url
     finally:
         process.terminate()
         try:
@@ -203,3 +204,31 @@ def mcp_server_with_global_external_url(
             process.kill()
             process.wait(timeout=10)
         logger.info("local MCP server process stopped and reaped")
+
+
+@pytest.fixture
+def mcp_server_with_global_external_url(
+    mcp_server_binary: Path, signoz: SigNoz, signoz_global_external_url: str
+) -> Iterator[MCPServer]:
+    """Run natively so literal localhost reaches the same cast SigNoz on Linux and macOS."""
+    __tracebackhide__ = True
+    backend_url = signoz.endpoint.replace("127.0.0.1", "localhost")
+    backend_url += urlsplit(signoz_global_external_url).path.rstrip("/")
+    with _native_mcp_server(mcp_server_binary, backend_url, signoz, {}) as base_url:
+        yield MCPServer(base_url=base_url, backend_url=backend_url, external_url=signoz_global_external_url)
+
+
+# SMALL_RESULT_BUDGET is the MCP_MAX_RESULT_BYTES of mcp_server_with_small_result_budget.
+SMALL_RESULT_BUDGET = 2500
+
+
+@pytest.fixture(scope="module")
+def mcp_server_with_small_result_budget(mcp_server_binary: Path, signoz: SigNoz) -> Iterator[MCPServer]:
+    """Run natively with a small server result size budget.
+
+    The list tools take no per-call maxResultBytes, so only the server default
+    can make a few real items overflow a page.
+    """
+    env = {"MCP_MAX_RESULT_BYTES": str(SMALL_RESULT_BUDGET)}
+    with _native_mcp_server(mcp_server_binary, signoz.endpoint, signoz, env) as base_url:
+        yield MCPServer(base_url=base_url, backend_url=signoz.endpoint)

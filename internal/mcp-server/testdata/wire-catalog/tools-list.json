@@ -7509,6 +7509,9 @@
                   "limit": {
                     "type": "integer"
                   },
+                  "maxResultBytes": {
+                    "type": "integer"
+                  },
                   "nextOffset": {
                     "type": "integer"
                   },
@@ -7517,6 +7520,9 @@
                   },
                   "total": {
                     "type": "integer"
+                  },
+                  "truncated": {
+                    "type": "boolean"
                   }
                 },
                 "required": [
@@ -7660,6 +7666,9 @@
                   "limit": {
                     "type": "integer"
                   },
+                  "maxResultBytes": {
+                    "type": "integer"
+                  },
                   "nextOffset": {
                     "type": "integer"
                   },
@@ -7668,6 +7677,9 @@
                   },
                   "total": {
                     "type": "integer"
+                  },
+                  "truncated": {
+                    "type": "boolean"
                   }
                 },
                 "required": [
@@ -7718,7 +7730,7 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user wants to discover tenant dashboards, browse their summaries, or find a dashboard id. It returns names, descriptions, tags, timestamps, source, and a total count, not panel/query definitions; use signoz_get_dashboard for one full definition. source is user or integration; only user dashboards can be updated, patched, or deleted. source is not a list-filter column: filter by name, description, tags, creator, timestamps, or locked state, then distinguish user vs integration client-side across pages. When looking for a specific dashboard, page by raising offset by limit until you have covered total before concluding it is absent.",
+          "description": "Use this when the user wants to discover tenant dashboards, browse their summaries, or find a dashboard id. It returns names, descriptions, tags, timestamps, source, and a total count, not panel/query definitions; use signoz_get_dashboard for one full definition. source is user or integration; only user dashboards can be updated, patched, or deleted. source is not a list-filter column: filter by name, description, tags, creator, timestamps, or locked state, then distinguish user vs integration client-side across pages. When looking for a specific dashboard, page by raising offset by the number of dashboards returned until you have covered total before concluding it is absent.",
           "inputSchema": {
             "properties": {
               "filter": {
@@ -7735,7 +7747,7 @@
               },
               "offset": {
                 "default": "0",
-                "description": "Number of dashboard summaries to skip. Default 0; raise by limit to page until you reach total.",
+                "description": "Number of dashboard summaries to skip. Default 0; raise by the number returned to page until you reach total.",
                 "type": [
                   "integer",
                   "string"

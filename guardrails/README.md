@@ -22,7 +22,7 @@ access to unexported retry, registration, middleware, and server-composition hel
 - Mutating POST requests are not replayed after ambiguous failures; audited read-only POSTs may retry.
 - Tool results remain JSON-safe through the production transport.
 - Tool-result telemetry measures the complete serialized result, including structured content, and separately the UTF-8 bytes of its text blocks.
-- `signoz_search_logs` and `signoz_search_traces` results fit the default result size budget through the production HTTP handler. The handler tests pin how a page is cut.
+- Every tool with an `offset` parameter fits the default result size budget through the production HTTP handler, unless `UnbudgetedOffsetTools` names it with its reason. The tools are read from the registry, so a new paging tool cannot ship without a budget. The handler tests pin how a page is cut.
 - The production HTTP handler preserves discovery descriptors, deterministic resource and prompt contents, and representative tool/error results across the MCP SDK migration.
 - Building the docs index from the embedded corpus stays under a reviewed peak-heap budget and resident budget, and the build commits in bounded batches, so a refresh cannot regress into the single-batch peak that OOM-killed 512Mi containers.
 

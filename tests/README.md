@@ -64,6 +64,8 @@ uv run pytest --basetemp=./tmp/ e2e/tests/test_logs.py::test_seeded_logs_are_sea
   The path case includes the prefix in `SIGNOZ_URL`, because SigNoz mounts its API
   there too. Per-request alias checks use the origin cases.
   The pinned backend returns `data.external_url: "//<unset>"` when unconfigured.
+- `mcp_server_with_small_result_budget` runs the same native binary with a small
+  `MCP_MAX_RESULT_BYTES`, so a few real list items overflow a page.
 - Tests talk to the server through the official Python MCP SDK
   (`fixtures/mcpclient.py` wraps it in a sync facade over a background event
   loop) and to SigNoz directly (`SigNoz.api`) for setup and verification.
@@ -121,6 +123,9 @@ variables: `--reuse`, `--teardown`, `--foundry-binary-path`, `--license-key`.
 - `test_result_budget.py` — a small `maxResultBytes` splits SigNoz's `signoz_search_logs` and
   `signoz_search_traces` rows into several pages, and following `pagination.nextOffset` returns
   every seeded row once, in order.
+- `test_list_result_budget.py` — against a native server with a small `MCP_MAX_RESULT_BYTES`
+  (the list tools take no per-call budget), SigNoz's dashboard list splits into several pages,
+  and following `pagination.nextOffset` returns every created dashboard once, in order.
 - `test_logs.py` — seeded log search, explicit scoped/unscoped search grammar,
   quoted terms, body-only legacy search text, and upstream warning preservation.
 - `test_dashboards.py` — TextPanel create/get/update/patch/default/layout
