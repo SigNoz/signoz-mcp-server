@@ -7,10 +7,9 @@ PR: https://github.com/SigNoz/signoz-mcp-server/pull/475
 ## Context
 
 Models rarely read `signoz://` guides, so a rule taught only there is not taught (SigNoz/nerve-pod#667).
-In controlled Claude Code sessions no scored session completed a resource read. The costly rules
-fail silently: the query succeeds and returns a plausible wrong number. Nothing checked that the
-guidance sent to clients is still true (SigNoz/nerve-pod#482). The goal is that the model gets the
-right number, or is told what the number it got measures.
+The costly rules fail silently: the query succeeds and returns a plausible wrong number. Nothing
+checked that the guidance sent to clients is still true (SigNoz/nerve-pod#482). The goal is that
+the model gets the right number, or is told what the number it got measures.
 
 Decisions made with the maintainer before work began:
 
@@ -20,7 +19,7 @@ Decisions made with the maintainer before work began:
    `MaxServerInstructionsBytes` goes from 2,048 to 4,096. No other budget changes.
 4. Rules move onto the parameter or tool they apply to, each verified against SigNoz first;
    "read signoz://..." imperatives give way to the rule, and a pointer may stay as further reading.
-5. Out of scope: resource-URI span attributes, `anthropic/alwaysLoad`, new tools or parameters,
+5. Out of scope: resource-URI span attributes, client-specific always-load hints, new tools or parameters,
    any guide-read gate (SUR-10), a guide-delivery tool (SigNoz/nerve-pod#157), and skill changes
    (SigNoz/nerve-pod#436).
 
@@ -257,9 +256,9 @@ multi-shard cluster.
 
 - Decision: `MaxServerInstructionsBytes` 2,048 → 4,096; the 512-byte preamble budget stays and now
   holds the routing.
-- Rationale: Claude Code cut instructions at 2,048 characters until v2.1.296 (2026-10-09) and now
-  cuts at 4,096; Noz cuts at 4,096; Codex's guidance keeps the first 512 characters self-contained.
-  The instructions are 3,912 bytes with a 510-byte preamble.
+- Rationale: the clients this server targets keep 4,096 characters of server instructions, and
+  client guidance asks that the first 512 characters stand alone. The instructions are 3,912 bytes
+  with a 510-byte preamble.
 
 ### 2026-11-21 — Offer only fixes pinned by e2e
 
@@ -408,7 +407,7 @@ C25 and C27, accepted C26 as declined, and kept C20 open.
 
 ### 2026-11-22 — Fifth review: the measurement notes
 
-A review of the measurement notes only (GPT-6.2 Astra, max effort) raised M1 to M16 against
+A review of the measurement notes only raised M1 to M16 against
 `11b04f4`. Each was checked against the code and SigNoz at `9d5c5871cb`. The maintainer's rule for
 this pass: ignore the rarest cases and implement the rest properly.
 
