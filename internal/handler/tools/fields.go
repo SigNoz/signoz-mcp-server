@@ -18,7 +18,7 @@ const fieldContextParamDesc = "Restrict results to a single field context (optio
 	"'scope' (instrumentation scope), " +
 	"'log' / 'span' / 'metric' (intrinsic columns of the logs/traces/metrics signal), " +
 	"'body' (fields inside a JSON log body). " +
-	"For span/log attributes use 'attribute', not the legacy Query Builder context 'tag': SigNoz returns no keys and no values for 'tag'."
+	"For span/log attributes use 'attribute', not the legacy Query Builder context 'tag', which SigNoz does not read as 'attribute' here."
 
 const (
 	fieldKeysLimitParamDesc = "Maximum number of keys to return for each signal (optional). Omit it for the SigNoz default. " +

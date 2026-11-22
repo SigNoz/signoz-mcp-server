@@ -208,20 +208,34 @@ func TestQueryMetrics_FillsOnlyTheMetadataACallerLeftOut(t *testing.T) {
 		want           []string
 		wantSent       map[string]aggregation
 		wantWarn       string
+		wantCode       string // the call fails with this code and sends no query
 	}{
 		{
 			name: "metricType alone on a cumulative counter", metadataStatus: http.StatusOK,
 			args:        map[string]any{"metricType": "sum"},
 			wantLookups: 1,
 			want:        []string{"metricType: sum (caller-provided)", "temporality: cumulative (auto-fetched)", "isMonotonic: true (auto-fetched)", "timeAggregation: rate"},
-			wantSent:    map[string]aggregation{"A": {"cumulative", "rate"}},
+			wantSent:    map[string]aggregation{"A": {"", "rate"}},
 		},
 		{
 			name: "the caller's monotonicity wins", metadataStatus: http.StatusOK,
 			args:        map[string]any{"metricType": "sum", "isMonotonic": "false"},
 			wantLookups: 1,
 			want:        []string{"isMonotonic: false (caller-provided)", "temporality: cumulative (auto-fetched)", "timeAggregation: avg"},
+			wantSent:    map[string]aggregation{"A": {"", "avg"}},
+		},
+		{
+			name: "the caller's monotonicity wins when the type is fetched too", metadataStatus: http.StatusOK,
+			args:        map[string]any{"isMonotonic": false},
+			wantLookups: 1,
+			want:        []string{"metricType: sum (auto-fetched)", "isMonotonic: false (caller-provided)", "timeAggregation: avg"},
 			wantSent:    map[string]aggregation{"A": {"cumulative", "avg"}},
+		},
+		{
+			name: "a metadata lookup the caller may not make", metadataStatus: http.StatusForbidden,
+			args:        map[string]any{"metricType": "sum"},
+			wantLookups: 1,
+			wantCode:    CodePermissionDenied,
 		},
 		{
 			name: "every value sent needs no lookup", metadataStatus: http.StatusInternalServerError,
@@ -259,7 +273,17 @@ func TestQueryMetrics_FillsOnlyTheMetadataACallerLeftOut(t *testing.T) {
 			},
 			wantLookups: 1,
 			want:        []string{"query B: temporality: cumulative (auto-fetched)", "query B: isMonotonic: true (auto-fetched)", "query B: timeAggregation: rate"},
-			wantSent:    map[string]aggregation{"A": {"cumulative", "rate"}, "B": {"cumulative", "rate"}},
+			wantSent:    map[string]aggregation{"A": {"cumulative", "rate"}, "B": {"", "rate"}},
+		},
+		{
+			name: "a formula sub-query's monotonicity wins when its type is fetched", metadataStatus: http.StatusOK,
+			args: map[string]any{
+				"metricType": "sum", "isMonotonic": true, "temporality": "cumulative", "formula": "A / B",
+				"formulaQueries": []any{map[string]any{"name": "B", "metricName": "http.requests", "isMonotonic": false}},
+			},
+			wantLookups: 1,
+			want:        []string{"query B: timeAggregation: avg"},
+			wantSent:    map[string]aggregation{"A": {"cumulative", "rate"}, "B": {"", "avg"}},
 		},
 		{
 			name: "a formula sub-query that sends false", metadataStatus: http.StatusInternalServerError,
@@ -318,6 +342,12 @@ func TestQueryMetrics_FillsOnlyTheMetadataACallerLeftOut(t *testing.T) {
 
 			result, err := h.handleQueryMetrics(testCtx(), makeToolRequest("signoz_query_metrics", args))
 			require.NoError(t, err)
+			if tc.wantCode != "" {
+				require.Equal(t, tc.wantCode, resultCode(t, result))
+				require.Equal(t, tc.wantLookups, lookups, "metadata lookups")
+				require.Empty(t, sent, "no query is sent")
+				return
+			}
 			notes := resultNotes(t, result)
 			for _, text := range tc.want {
 				require.Contains(t, notes, text)

@@ -132,6 +132,8 @@ func TestAggregateTraces_SaysWhenItCountsEverySpanOfAService(t *testing.T) {
 		{name: "server spans still nest", args: map[string]any{"service": "frontend", "filter": "kind_string = 'Server'", "aggregations": "rate()"}, wantNote: true, wantFix: "add AND (isEntryPoint = true OR isRoot = true) to the filter"},
 		{name: "entry spans", args: map[string]any{"service": "frontend", "filter": "isEntryPoint = true OR isRoot = true", "aggregations": "count()"}},
 		{name: "root spans by a qualified key", args: map[string]any{"service": "frontend", "filter": "span.isRoot = true", "aggregations": "count()"}},
+		{name: "an instrumentation scope is not an operation", args: map[string]any{"service": "frontend", "filter": "scope.name = 'otel-http'", "aggregations": "count()"}, wantNote: true, wantFix: "add AND (isEntryPoint = true OR isRoot = true) to the filter"},
+		{name: "operations picked with the singular operator", args: map[string]any{"service": "frontend", "filter": "name CONTAIN 'checkout'", "aggregations": "count()"}},
 		{name: "server spans by kind number", args: map[string]any{"service": "frontend", "filter": "kind IN [2]", "aggregations": "count()"}, wantNote: true, wantFix: "add AND (isEntryPoint = true OR isRoot = true) to the filter"},
 		{name: "client spans by kind number", args: map[string]any{"service": "frontend", "filter": "kind = 3", "aggregations": "count()"}},
 		{name: "an unquoted value that reads like a key", args: map[string]any{"filter": "service.name = 'frontend' AND http.target == name", "aggregations": "count()"}, wantNote: true, wantFix: "add AND (isEntryPoint = true OR isRoot = true) to the filter"},

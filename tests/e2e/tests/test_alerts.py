@@ -264,7 +264,16 @@ def test_rule_on_a_missing_metric_saves(mcp_client: MCPClient, test_id: str) -> 
     rule = threshold_rule(f"mcp-e2e-{test_id}-no-time-aggregation")
     spec = rule["condition"]["compositeQuery"]["queries"][0]["spec"]
     spec["aggregations"] = [{"metricName": gauge, "spaceAggregation": "sum"}]
-    delete_rule(mcp_client, create_rule(mcp_client, rule))
+    rule_id = create_rule(mcp_client, rule)
+    try:
+        fetched = assert_tool_ok(
+            mcp_client.call_tool("signoz_get_alert", {"searchContext": "read the saved rule", "id": rule_id})
+        )
+    finally:
+        delete_rule(mcp_client, rule_id)
+    # The query SigNoz saved, so a default added at creation would show here.
+    spec = first_block_json(fetched)["data"]["condition"]["compositeQuery"]["queries"][0]["spec"]
+    assert not spec["aggregations"][0].get("timeAggregation"), f"SigNoz saved a timeAggregation: {spec['aggregations']}"
 
     def dry_run() -> str | None:
         now = int(time.time() * 1000)

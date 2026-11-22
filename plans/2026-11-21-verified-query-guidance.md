@@ -362,7 +362,7 @@ the tools and guides of that subject.
 | `signoz_list_metrics` | source=meter lists the usage metrics SigNoz meters (ingestion volume) | accurate | SigNoz meter source | C | none: the e2e cast has no meter data |
 | `signoz_get_field_keys` | data.complete=false when cut; intrinsic and materialized fields on top of the limit | accurate | SigNoz fields API | W | test_field_lookups_honor_limit_and_say_when_cut |
 | `signoz_get_field_keys` | fieldDataType: an array form such as []string reads as its element type | accurate | telemetrytypes/field_datatype.go mapping | C | none: SigNoz's own mapping, no silent result |
-| `signoz_get_field_keys` | fieldContext 'tag' is ignored when listing keys and returns no values | stale | live SigNoz returns no keys and no values for 'tag'; it does not ignore the filter (field_context.go maps tag only in JSON bodies) | W | none: the probe showed empty keys and values; text fixed |
+| `signoz_get_field_keys` | fieldContext 'tag' is ignored when listing keys and returns no values | stale | field_context.go maps tag to attribute only in JSON bodies, not on the fields endpoints; what comes back for 'tag' differs by signal, so the text now says only that it is not read as 'attribute' there | W | none: the probe showed empty keys and values; text fixed |
 | `signoz_get_field_keys` | queryType builder_ai_query lists trace-level and gen_ai fields | accurate | SigNoz AI fields | W | test_ai_field_keys_list_per_trace_columns, test_ai_field_keys_filter_to_trace_context |
 | `signoz_get_field_values` | values come from all retained metadata; no time range | accurate | SigNoz fields API | W | test_seeded_resource_attribute_values_discoverable |
 | alert tools | create/update route by exact displayName; ask before creating a channel | accurate | ruletypes threshold channel validation | EF | test_create_alert_unknown_channel_rejected |
@@ -839,10 +839,10 @@ describe them.
   fetches whichever of temporality and isMonotonic the caller left out, for the primary query and
   formula sub-queries; a value the caller sent wins. A gauge needs neither, and only a sum needs
   monotonicity. A failed lookup or a metric missing from the metadata keeps the query running on
-  the caller's values, WARN-logged, and the decisions note says the value is unknown. A fetched
-  temporality is now sent upstream for these callers and for sub-queries, which dropped it on a
-  copy, as it already was for a primary query without `metricType`; SigNoz fills an empty one from
-  its own metadata, so the result only differs when the two disagree. The metrics guide's mistake
+  the caller's values, WARN-logged, and the decisions note says the value is unknown; a 401 or 403
+  is returned as a coded error. The fetched temporality feeds the defaults and the notes and is not
+  sent to SigNoz for these callers or for sub-queries, so their requests are what they were (see
+  the eighth review below). The metrics guide's mistake
   about `metricType` alone is removed, and the isMonotonic and temporality descriptions say a sent
   value overrides the metadata.
 - The `routing_channels` e2e fixture read the channel id from `data.id`, which the create result
@@ -866,6 +866,35 @@ describe them.
   in so this PR can close the issue.
 - Check: `TestResourceReadSpansNameOnlyRegisteredResources` reads a guide and a made-up URI through
   a real session and checks the span attribute and the method metric.
+
+### 2026-11-22 — Eighth review: the commits pushed without one
+
+Three behaviour commits (the seventh review's fixes, the third audit pass, and the four bug fixes)
+were pushed before any review. A review of everything since the last reviewed commit, including
+the `mcp.resource.uri` attribute and the `IsMonotonic` refactor, raised D1 to D10.
+
+- D1: with `metricType` omitted, the metadata overwrote a caller's `isMonotonic` and `temporality`,
+  though the descriptions now say a sent value wins. A sent value wins on that path too, for the
+  primary query and formula sub-queries.
+- D2: the fix for `metricType` alone had begun sending the fetched temporality to SigNoz for those
+  callers and for sub-queries. SigNoz's catalog holds one temporality with no time window, while
+  the query path resolves an omitted one over the requested window, so pinning it can drop series
+  for a metric whose temporality changed. The fetched value now feeds only the defaults and notes
+  on those paths. A primary query without `metricType` still sends the fetched temporality, as it
+  did before this PR; that is listed as a follow-up.
+- D3: a 401 or 403 from the metadata lookup is returned as a coded error, not swallowed by the
+  fallback, as the repo's rule for upstream auth failures requires.
+- D4: the filter reader had dropped every field context, so `scope.name` read as the span's `name`
+  and silenced the all-spans note. A key now keeps its context and matches bare or under the one
+  context SigNoz accepts for it (`span.` for span fields, `resource.` for the service).
+- D5: "SigNoz returns no keys and no values for `tag`" was too strong; the text now says SigNoz
+  does not read `tag` as `attribute` there.
+- D6: the alert guide said to set `timeAggregation` on every query but a histogram percentile. A
+  histogram bucket-count query needs none either, so it now says every gauge and sum query. The
+  e2e reads the saved rule back and checks SigNoz stored no default.
+- D7 to D10: the singular `CONTAIN` and `EXIST` operators; `erf`, `erfc`, `lgamma`, and `tgamma`
+  in the metrics guide's function list; the step examples in the dashboard query example labelled
+  as traces and logs; and the README table's "all spans" for trace details.
 
 ### 2026-11-21 — Mutation-side rules on the tools, schema pointers kept
 

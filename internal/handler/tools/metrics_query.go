@@ -64,8 +64,10 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 	var decisions []string
 	decisions = append(decisions, fmt.Sprintf("metricName: %s", mqr.MetricName))
 
-	// Auto-fetch metric metadata if not provided
+	// Auto-fetch metric metadata if not provided. temporality is what the
+	// defaults and notes use; mqr.Temporality is what SigNoz receives.
 	isMonotonic := false
+	temporality := mqr.Temporality
 	if mqr.MetricType == "" {
 		meta, fetchErr := h.fetchMetricMetadata(ctx, client, mqr.MetricName, mqr.Source)
 		if fetchErr != nil {
@@ -77,28 +79,42 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 		}
 		if meta != nil {
 			mqr.MetricType = meta.MetricType
-			isMonotonic = meta.IsMonotonic
-			mqr.Temporality = meta.Temporality
 			decisions = append(decisions, fmt.Sprintf("metricType: %s (auto-fetched)", mqr.MetricType))
-			// Absent fields are reported as unknown/assumed, not authoritative.
-			if meta.TemporalityMissing {
+			// A value the caller sent wins. Absent fields are reported as
+			// unknown/assumed, not authoritative.
+			switch {
+			case mqr.Temporality != "":
+				decisions = append(decisions, fmt.Sprintf("temporality: %s (caller-provided)", mqr.Temporality))
+			case meta.TemporalityMissing:
+				mqr.Temporality = meta.Temporality
 				decisions = append(decisions, fmt.Sprintf("temporality: unknown (not returned by metadata; assumed %q)", mqr.Temporality))
-			} else {
+			default:
+				mqr.Temporality = meta.Temporality
 				decisions = append(decisions, fmt.Sprintf("temporality: %s (auto-fetched)", mqr.Temporality))
 			}
-			if meta.IsMonotonicMissing {
+			switch {
+			case mqr.IsMonotonic != nil:
+				isMonotonic = *mqr.IsMonotonic
+				decisions = append(decisions, fmt.Sprintf("isMonotonic: %t (caller-provided)", isMonotonic))
+			case meta.IsMonotonicMissing:
+				isMonotonic = meta.IsMonotonic
 				decisions = append(decisions, fmt.Sprintf("isMonotonic: unknown (not returned by metadata; assumed %t)", isMonotonic))
-			} else {
+			default:
+				isMonotonic = meta.IsMonotonic
 				decisions = append(decisions, fmt.Sprintf("isMonotonic: %t (auto-fetched)", isMonotonic))
 			}
+			temporality = mqr.Temporality
 		} else {
 			// User-correctable (wrong metric name); coded like the formula not-found path.
 			return errorWithCode(CodeValidationFailed, metricNotFoundMessage(mqr.MetricName, "")), nil
 		}
 	} else {
 		decisions = append(decisions, fmt.Sprintf("metricType: %s (caller-provided)", mqr.MetricType))
-		var filled []string
-		filled, isMonotonic = h.fillOmittedMetricMetadata(ctx, client, mqr.MetricName, mqr.MetricType, mqr.Source, &mqr.Temporality, mqr.IsMonotonic)
+		filled, monotonic, fillErr := h.fillOmittedMetricMetadata(ctx, client, mqr.MetricName, mqr.MetricType, mqr.Source, &temporality, mqr.IsMonotonic)
+		if fillErr != nil {
+			return upstreamError(fillErr), nil
+		}
+		isMonotonic = monotonic
 		decisions = append(decisions, filled...)
 	}
 
@@ -123,7 +139,7 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 	resolved, err := metricsrules.ApplyDefaults(metricsrules.MetricQueryParams{
 		MetricType:       mqr.MetricType,
 		IsMonotonic:      isMonotonic,
-		Temporality:      mqr.Temporality,
+		Temporality:      temporality,
 		TimeAggregation:  mqr.TimeAggregation,
 		SpaceAggregation: mqr.SpaceAggregation,
 		ReduceTo:         mqr.ReduceTo,
@@ -263,7 +279,7 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 			MetricName:       mqr.MetricName,
 			MetricType:       mqr.MetricType,
 			IsMonotonic:      isMonotonic,
-			Temporality:      mqr.Temporality,
+			Temporality:      temporality,
 			TimeAggregation:  resolved.TimeAggregation,
 			SpaceAggregation: resolved.SpaceAggregation,
 			ReduceTo:         resolved.ReduceTo,
@@ -356,10 +372,11 @@ func (h *Handler) fetchMetricMetadata(ctx context.Context, client metricMetadata
 
 // fillOmittedMetricMetadata fills the temporality and monotonicity that a
 // caller who sent metricType left out; a value the caller sent always wins. A
-// failed or empty lookup keeps the query running on the caller's values. sent
-// is the caller's isMonotonic, nil when it was not sent; the monotonicity to
-// use is returned.
-func (h *Handler) fillOmittedMetricMetadata(ctx context.Context, client metricMetadataClient, metricName, metricType, source string, temporality *string, sent *bool) (decisions []string, isMonotonic bool) {
+// failed or empty lookup keeps the query running on the caller's values,
+// except a 401 or 403, which is returned so the client can re-authenticate.
+// sent is the caller's isMonotonic, nil when it was not sent; the monotonicity
+// to use is returned.
+func (h *Handler) fillOmittedMetricMetadata(ctx context.Context, client metricMetadataClient, metricName, metricType, source string, temporality *string, sent *bool) (decisions []string, isMonotonic bool, err error) {
 	if *temporality != "" {
 		decisions = append(decisions, fmt.Sprintf("temporality: %s (caller-provided)", *temporality))
 	}
@@ -371,12 +388,14 @@ func (h *Handler) fillOmittedMetricMetadata(ctx context.Context, client metricMe
 	needTemporality := *temporality == "" && !strings.EqualFold(metricType, "gauge")
 	needMonotonic := sent == nil && strings.EqualFold(metricType, "sum")
 	if !needTemporality && !needMonotonic {
-		return decisions, isMonotonic
+		return decisions, isMonotonic, nil
 	}
 
 	meta, err := h.fetchMetricMetadata(ctx, client, metricName, source)
 	unknown := ""
 	switch {
+	case err != nil && isGlobalUpstreamFailure(ctx, err):
+		return nil, false, err
 	case err != nil:
 		unknown = "metadata lookup failed"
 		h.logger.WarnContext(ctx, "Metric metadata lookup failed; querying with the caller's values",
@@ -410,7 +429,7 @@ func (h *Handler) fillOmittedMetricMetadata(ctx context.Context, client metricMe
 			decisions = append(decisions, fmt.Sprintf("isMonotonic: %t (auto-fetched)", isMonotonic))
 		}
 	}
-	return decisions, isMonotonic
+	return decisions, isMonotonic, nil
 }
 
 // parseExactMetricMetadata decodes a GetMetricMetadata body. It returns nil
@@ -532,22 +551,32 @@ func resolveFormulaSubQuery(ctx context.Context, h *Handler, client metricMetada
 		}
 		if meta != nil {
 			metricType = meta.MetricType
-			isMonotonic = meta.IsMonotonic
-			temporality = meta.Temporality
+			// A value the caller sent wins, as on the primary query.
+			if fq.IsMonotonic != nil {
+				isMonotonic = *fq.IsMonotonic
+			} else {
+				isMonotonic = meta.IsMonotonic
+			}
+			if temporality == "" {
+				temporality = meta.Temporality
+			}
 			*decisions = append(*decisions, fmt.Sprintf("query %s (%s): metricType=%s (auto-fetched)", fq.Name, fq.MetricName, metricType))
 			// Mirror the primary path: absent fields are disclosed as assumed.
-			if meta.TemporalityMissing {
+			if meta.TemporalityMissing && fq.Temporality == "" {
 				*decisions = append(*decisions, fmt.Sprintf("query %s (%s): temporality unknown (not returned by metadata; assumed %q)", fq.Name, fq.MetricName, temporality))
 			}
-			if meta.IsMonotonicMissing {
+			if meta.IsMonotonicMissing && fq.IsMonotonic == nil {
 				*decisions = append(*decisions, fmt.Sprintf("query %s (%s): isMonotonic unknown (not returned by metadata; assumed %t)", fq.Name, fq.MetricName, isMonotonic))
 			}
 		} else {
 			return nil, errors.New(metricNotFoundMessage(fq.MetricName, fq.Name))
 		}
 	} else {
-		var filled []string
-		filled, isMonotonic = h.fillOmittedMetricMetadata(ctx, client, fq.MetricName, metricType, source, &temporality, fq.IsMonotonic)
+		filled, monotonic, fillErr := h.fillOmittedMetricMetadata(ctx, client, fq.MetricName, metricType, source, &temporality, fq.IsMonotonic)
+		if fillErr != nil {
+			return nil, markUpstream(fillErr)
+		}
+		isMonotonic = monotonic
 		for _, d := range filled {
 			*decisions = append(*decisions, fmt.Sprintf("query %s: %s", fq.Name, d))
 		}
@@ -564,9 +593,6 @@ func resolveFormulaSubQuery(ctx context.Context, h *Handler, client metricMetada
 	if err != nil {
 		return nil, fmt.Errorf("validation error for formula query %q (%s): %w", fq.Name, fq.MetricName, err)
 	}
-
-	// The caller builds the sub-query's aggregation from fq.
-	fq.Temporality = temporality
 
 	for _, d := range resolved.Decisions {
 		*decisions = append(*decisions, fmt.Sprintf("query %s: %s", fq.Name, d))

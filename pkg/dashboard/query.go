@@ -766,7 +766,7 @@ Time Aggregation:
     - Traces/Logs: Min 5s, auto (time_range / 300) rounded to 5s
     - Metrics: Min 60s, varies by time range
     - Max: 1,500 data points per series
-  Examples:
+  Examples for traces and logs:
     - 1 hour → 10s steps (360 points)
     - 24 hours → 285s steps (about 300 points)
 

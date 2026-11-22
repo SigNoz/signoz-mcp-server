@@ -118,7 +118,7 @@ You can combine multiple metric queries using formulas:
 - Different metrics can have different types; each gets its own aggregation defaults
 
 ### Formula Functions
-Supported: abs, exp, exp2, exp10, log, ln, log2, log10, sqrt, cbrt, sin, cos, tan, asin, acos, atan, degrees, radians, and now; ceil and floor are not
+Supported: abs, exp, exp2, exp10, log, ln, log2, log10, sqrt, cbrt, erf, erfc, lgamma, tgamma, sin, cos, tan, asin, acos, atan, degrees, radians, and now; ceil and floor are not
 
 ### Example: Error Rate %
 Query A: http_errors_total (counter) → rate / sum

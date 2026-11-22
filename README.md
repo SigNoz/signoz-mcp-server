@@ -467,7 +467,7 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 | `signoz_search_logs` | Return individual log records matching filters |
 | `signoz_aggregate_traces` | Aggregate span or per-AI-trace statistics and grouped or top-N breakdowns |
 | `signoz_search_traces` | Return span rows or one row per trace (including AI traces), or discover trace IDs |
-| `signoz_get_trace_details` | Get one known trace with all spans and hierarchy |
+| `signoz_get_trace_details` | Get one known trace: up to 1,000 spans and their hierarchy |
 | `signoz_get_ai_pricing` | List AI model prices, or models seen in the last hour with no price |
 | `signoz_list_ai_attribute_mappings` | List the mapping groups that turn vendor AI span attributes into `gen_ai.*` keys |
 | `signoz_test_ai_attribute_mapping` | Run sample spans through the AI attribute mappings without saving anything |
@@ -915,7 +915,7 @@ Discover field names available for filtering or grouping metrics, traces, or log
   - `signal` (required) - Signal type. Enum: `metrics`, `traces`, `logs`
   - `searchText` (optional) - Filter field keys by name substring
   - `metricName` (optional) - Filter by metric name (relevant for metrics signal)
-  - `fieldContext` (optional) - Restrict to a field context. Enum: `resource`, `attribute`, `scope`, `log`/`span`/`metric` (intrinsic columns), `trace` (fields of a whole trace rather than one span, such as values computed over all of its spans; written with the `trace.` prefix), `body` (JSON log body). Use `attribute`, not the legacy Query Builder context `tag`, for which SigNoz returns no keys.
+  - `fieldContext` (optional) - Restrict to a field context. Enum: `resource`, `attribute`, `scope`, `log`/`span`/`metric` (intrinsic columns), `trace` (fields of a whole trace rather than one span, such as values computed over all of its spans; written with the `trace.` prefix), `body` (JSON log body). Use `attribute`, not the legacy Query Builder context `tag`, which SigNoz does not read as `attribute` here.
   - `fieldDataType` (optional) - Restrict to a data type: `string`, `bool`, `int64`, `float64`, `number`. An array form like `[]string` is treated as its element type.
   - `source` (optional) - For metrics, use `meter` for Cost Meter fields; omit for the default metrics store
   - `queryType` (optional) - `builder_query` (default) lists the fields of `signal`. Set `builder_ai_query` for AI observability queries; it also lists the trace-level fields, such as `trace.estimated_total_cost`, and `gen_ai.*` attributes.
@@ -930,7 +930,7 @@ Get observed values for a known field key. Use `signoz_get_field_keys` when the 
   - `name` (required) - Field key name to get values for (e.g., `service.name`, `http.method`)
   - `searchText` (optional) - Filter values by substring
   - `metricName` (optional) - Filter by metric name (relevant for metrics signal)
-  - `fieldContext` (optional) - Restrict the lookup to a field context (`resource`, `attribute`, `scope`, `log`/`span`/`metric`, `body`) when the same key name exists in more than one. Use `attribute`, not the legacy Query Builder context `tag`; SigNoz returns no values for `tag`.
+  - `fieldContext` (optional) - Restrict the lookup to a field context (`resource`, `attribute`, `scope`, `log`/`span`/`metric`, `body`) when the same key name exists in more than one. Use `attribute`, not the legacy Query Builder context `tag`, which SigNoz does not read as `attribute` here.
   - `source` (optional) - For metrics, use `meter` for Cost Meter values; omit for the default metrics store
   - `limit` (optional) - Maximum number of values to return, as an integer or string. Omit it for the SigNoz default.
 

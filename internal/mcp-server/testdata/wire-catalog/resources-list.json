@@ -34,7 +34,7 @@
           "description": "Read this before creating or updating an alert unless its current content was already read for the same prepared operation. It explains the query envelopes, threshold tiers, and evaluation specs the input schema does not describe, anomaly scoring, and when to reuse or call signoz_list_notification_channels. Read signoz://alert/examples only when examples are still needed.",
           "mimeType": "text/markdown",
           "name": "Alert Rule Instructions",
-          "size": 22486,
+          "size": 22504,
           "uri": "signoz://alert/instructions"
         },
         {
@@ -132,7 +132,7 @@
           "description": "Read this before choosing aggregations for signoz_query_metrics or building metrics Query Builder JSON. It explains timeAggregation, spaceAggregation, and reduceTo by metric type; formulas and limits; groupBy and filter label names; top-N selection across the full window; step intervals; examples; and Cost Meter queries.",
           "mimeType": "text/markdown",
           "name": "Metrics Aggregation Guide",
-          "size": 14045,
+          "size": 14072,
           "uri": "signoz://metrics-aggregation-guide"
         },
         {
@@ -153,7 +153,7 @@
           "description": "Read this when composing a Query Builder dashboard widget. It covers signal-specific aggregations, filters, metric naming, grouped legends, functions, and examples; use the ClickHouse or PromQL resources instead for those query types.",
           "mimeType": "text/markdown",
           "name": "Query Builder Examples",
-          "size": 17029,
+          "size": 17049,
           "uri": "signoz://dashboard/query-builder-example"
         },
         {
@@ -187,7 +187,7 @@
           "description": "Read this before writing Query Builder v5 JSON for traces or filtering on unfamiliar trace fields. It explains filter syntax, field discovery, built-in span fields, row and aggregate queries, limits, ordering, timestamps, and examples for rows, single values, and time series.",
           "mimeType": "text/markdown",
           "name": "Traces Query Builder Guide",
-          "size": 11365,
+          "size": 11366,
           "uri": "signoz://traces/query-builder-guide"
         }
       ],

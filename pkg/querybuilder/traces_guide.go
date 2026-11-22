@@ -57,8 +57,8 @@ their observed values before filtering:
 
 Span attributes use fieldContext "attribute" everywhere: in the discovery tools and in Query Builder
 selectFields and groupBy entries. Older query payloads spell the same context with the legacy value
-"tag"; translate it to "attribute" for discovery, because SigNoz returns no keys and no values for
-"tag". The resource and attribute names below are common examples, not a complete
+"tag"; translate it to "attribute" for discovery, because SigNoz does not read "tag" as
+"attribute" there. The resource and attribute names below are common examples, not a complete
 catalog for every workspace.
 
 == FIELD NAMES — THREE CATEGORIES ==
