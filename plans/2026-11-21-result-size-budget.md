@@ -260,8 +260,7 @@ per call, or a higher `MCP_MAX_RESULT_BYTES` for the server. SigNoz/agent-skills
 companion change (CMP-3): `signoz-generating-queries` treats a raw search with fewer rows than
 `limit` as complete.
 
-Not done yet: the before-and-after prompt runs (EVL-1). SigNoz/nerve-pod#673 commits to evals
-before its final PR merges. The SigNoz/agent-skills companion change is not opened yet.
+Not done yet: the SigNoz/agent-skills companion change is not opened.
 
 Deferred to the later PRs of SigNoz/nerve-pod#673: the series tools, the list tools, and the
 dashboard tools. `signoz_get_trace_details` is left to SigNoz/nerve-pod#651.
