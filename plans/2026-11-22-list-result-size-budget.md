@@ -149,8 +149,9 @@ return.
 
 ### 2026-11-22 — A rule and a guardrail for new paging tools
 
-- Decision: OUT-7 in `docs/mcp-best-practices.md` requires a tool that pages with `offset` to
-  return a fixed order and fit the result size budget.
+- Decision: OUT-7 in `docs/mcp-best-practices.md` asks every new tool to bound its result and
+  state its largest one in the PR, and requires a tool that pages with `offset` to return a
+  fixed order and fit the result size budget.
   `TestGuardrail_OffsetToolsAreBudgetedOrExempt` reads the registered tools and fails for one
   with `offset` that is in neither budget guardrail nor `guardrails.UnbudgetedOffsetTools`,
   which names saved views and AI pricing with the reason.
