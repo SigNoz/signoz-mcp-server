@@ -23,7 +23,7 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *mcp.Server) {
 		mcp.WithDescription(
 			"Use this only when dedicated log, trace, and metric tools cannot express the request, such as multi-query requests, formulas, PromQL, or ClickHouse SQL. "+
 				"Use signoz_search_logs/signoz_search_traces for raw rows, signoz_aggregate_logs/signoz_aggregate_traces for grouped or top-N analysis, and signoz_query_metrics for ordinary metrics queries. "+
-				"A trace count, rate, or latency for one service covers every span unless the filter has isEntryPoint = true OR isRoot = true. Scalar metric queries reduce one value per step: reduceTo avg of a percentile is not the window's percentile, and reduceTo sum of a rate is not a count. "+
+				"A trace count, rate, or latency for one service covers every span unless the filter has "+querybuilder.EntrySpanFilter+". Scalar metric queries reduce one value per step: reduceTo avg of a percentile is not the window's percentile, and reduceTo sum of a rate is not a count. "+
 				"Leave limit unset on each builder_query a formula references, because SigNoz applies it before the formula runs and drops the other series. "+
 				"signoz://query-builder/examples has full requests; signoz://traces/query-builder-guide, signoz://logs/query-builder-guide, signoz://ai/query-builder-guide, signoz://metrics-aggregation-guide, and signoz://promql/instructions have the grammar.",
 		),

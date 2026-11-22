@@ -1,5 +1,10 @@
 package querybuilder
 
+// EntrySpanFilter scopes a trace query to the spans SigNoz counts as a
+// service's requests. Every text that gives a client the filter reads it here,
+// except metricsrules.MetricsGuide, which this package's tests import.
+const EntrySpanFilter = "isEntryPoint = true OR isRoot = true"
+
 const TracesQueryBuilderGuide = `
 === SIGNOZ QUERY BUILDER V5 — TRACES GUIDE ===
 
@@ -34,7 +39,7 @@ Examples:
 Both accept only "= true". To exclude root spans, filter parent_span_id != '' instead.
 
 A service's requests are its entry spans. For a request count, rate, or latency, filter
-isEntryPoint = true OR isRoot = true, as signoz_list_services does. Without it, count(), rate(),
+` + EntrySpanFilter + `, as signoz_list_services does. Without it, count(), rate(),
 and duration percentiles cover every span the service records, and a request with a server
 span nested inside another counts twice.
 
@@ -225,7 +230,7 @@ matters more than response size.
           "offset": 0,
           "order": [{"key": {"name": "p99(duration_nano)"}, "direction": "desc"}],
           "having": {"expression": ""},
-          "filter": {"expression": "service.name = 'checkout' AND (isEntryPoint = true OR isRoot = true)"},
+          "filter": {"expression": "service.name = 'checkout' AND (` + EntrySpanFilter + `)"},
           "aggregations": [
             {"expression": "p99(duration_nano)"}
           ]

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
+	"github.com/SigNoz/signoz-mcp-server/pkg/querybuilder"
 )
 
 // RegisterPrompts registers all MCP prompts on the server.
@@ -87,7 +88,7 @@ func handleLatencyAnalysis(_ context.Context, req mcp.GetPromptRequest) (*mcp.Ge
 					Text: fmt.Sprintf(`Analyze p99 latency for the service "%s" over the last %s. Follow these steps:
 
 1. Use signoz_aggregate_traces with service="%s", aggregations=["p99(duration_nano)"], groupBy="name", timeRange="%s" to find the slowest operations.
-2. Use signoz_aggregate_traces with service="%s", aggregations=["p99(duration_nano)"], filter="isEntryPoint = true OR isRoot = true", requestType="time_series", timeRange="%s" to see how request latency has changed over time.
+2. Use signoz_aggregate_traces with service="%s", aggregations=["p99(duration_nano)"], filter="`+querybuilder.EntrySpanFilter+`", requestType="time_series", timeRange="%s" to see how request latency has changed over time.
 3. Use signoz_search_traces with service="%s", minDuration="1s", timeRange="%s" to find specific slow traces (>1s).
 4. For the slowest trace found, use signoz_get_trace_details to examine the span breakdown.
 5. Summarize: which operations are slow, whether latency is trending up, and what spans contribute most to latency.`, service, timeRange, service, timeRange, service, timeRange, service, timeRange),

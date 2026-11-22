@@ -129,9 +129,9 @@ func traceAllSpansNote(filter, callerFilter string, groupBy int, aggregations []
 	if !matched {
 		return measurementNote{}, false
 	}
-	fix := "add AND (isEntryPoint = true OR isRoot = true) to the filter"
+	fix := "add AND (" + querybuilder.EntrySpanFilter + ") to the filter"
 	if strings.TrimSpace(callerFilter) == "" {
-		fix = "set filter to isEntryPoint = true OR isRoot = true and keep the service argument"
+		fix = "set filter to " + querybuilder.EntrySpanFilter + " and keep the service argument"
 	}
 	return measurementNote{rule: ruleTraceAllSpans, text: fmt.Sprintf(
 		"note: this aggregates every span of service %q that matches the filter, not its requests; one request can record several spans, including a server span nested inside another. "+
@@ -337,7 +337,7 @@ func spanMetricsAllSpansNote(m metricMeasurement) (measurementNote, bool) {
 	if calls {
 		return measurementNote{rule: ruleSpanMetricsAllSpans, text: fmt.Sprintf(
 			"note: %s counts every span of service %q, one per span, so one request that records several spans counts several times. "+
-				"For the service's requests, use signoz_list_services (numCalls, callRate), or signoz_aggregate_traces with service %q and filter isEntryPoint = true OR isRoot = true.",
+				"For the service's requests, use signoz_list_services (numCalls, callRate), or signoz_aggregate_traces with service %q and filter "+querybuilder.EntrySpanFilter+".",
 			m.MetricName, service, service)}, true
 	}
 	percentile := "p95"
@@ -346,7 +346,7 @@ func spanMetricsAllSpansNote(m metricMeasurement) (measurementNote, bool) {
 	}
 	return measurementNote{rule: ruleSpanMetricsAllSpans, text: fmt.Sprintf(
 		"note: %s records the duration of every span of service %q, including spans inside each request. "+
-			"For the service's request latency, use signoz_aggregate_traces with %s(duration_nano), service %q, and filter isEntryPoint = true OR isRoot = true.",
+			"For the service's request latency, use signoz_aggregate_traces with %s(duration_nano), service %q, and filter "+querybuilder.EntrySpanFilter+".",
 		m.MetricName, service, percentile, service)}, true
 }
 
