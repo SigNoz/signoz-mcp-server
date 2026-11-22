@@ -178,6 +178,24 @@ and SigNoz returns each row's complete record. Metrics are the one exception to 
 every metrics label is sent in attribute context, because SigNoz keeps resource and point
 attributes in one labels set and a name with no context would read an intrinsic column instead.
 
+### Result size budget
+
+`signoz_search_logs` and `signoz_search_traces` bound each result to a size budget measured in
+UTF-8 bytes of text blocks (`MCP_MAX_RESULT_BYTES`, default 32,000, or a per-call
+`maxResultBytes`). `rawSearchResult` (`internal/handler/tools/results.go`) splits the query_range
+body at the rows of its one result, `data.data.results[0].rows[]`, keeping each row as
+`json.RawMessage`, and `internal/handler/tools/result_budget.go` keeps the longest prefix of
+whole rows that fits, re-encoding the objects around them and adding the top-level `pagination`
+object. The walker holds a large body once as the payload and once as its rows. The cut runs
+after `webUrl` enrichment.
+
+The validation decorator appends its notices after the handler returns, so the handler cannot
+know their size. Instead of reserving headroom, which would waste a fixed slice of every budget
+and break small per-call budgets, the handler registers a finisher in the call's context
+(`withResultFit`). The decorator passes its notices to the finisher, which fits the rows again with
+those notices counted; without a decorator, the handler's own result stands. A body the walker
+cannot page is returned unchanged with a WARN (fail open, never silent).
+
 ## MCP Runtime and Transports
 
 The runtime is `github.com/modelcontextprotocol/go-sdk` v1.8.0. The same

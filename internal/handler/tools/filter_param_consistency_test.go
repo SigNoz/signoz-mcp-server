@@ -176,14 +176,16 @@ func TestExtractBackendWarningMessages(t *testing.T) {
 }
 
 // The raw JSON payload is always the first, independently parseable content
-// block; the clamp note appears only when clamped and is never prepended into
-// the JSON.
+// block, with only the server's pagination field added; the clamp note appears
+// only when clamped and is never prepended into the JSON.
 func TestRawSearchResult_KeepsRawJSONFirstAndAppendsNoteBlocks(t *testing.T) {
 	payload := []byte(`{"status":"success","data":{"warning":{"warnings":[{"message":"ambiguous key"}]},"data":{"results":[]}}}`)
+	const wantBlock0 = `{"status":"success","data":{"warning":{"warnings":[{"message":"ambiguous key"}]},"data":{"results":[]}},"pagination":{"returned":0,"limit":100,"offset":0,"hasMore":false,"nextOffset":-1,"truncated":false}}`
 	var logs bytes.Buffer
-	logger := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	h := &Handler{logger: slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn}))}
+	budget := resultBudget{bytes: 32000}
 
-	unclamped := rawSearchResult(testCtx(), logger, "signoz_search_logs", payload, 100, 0, false, "")
+	unclamped := h.rawSearchResult(testCtx(), "signoz_search_logs", payload, rawSearchRequest{limit: 100, budget: budget})
 	if len(unclamped.Content) != 2 {
 		t.Fatalf("unclamped content block count = %d, want raw JSON + completeness note", len(unclamped.Content))
 	}
@@ -191,12 +193,12 @@ func TestRawSearchResult_KeepsRawJSONFirstAndAppendsNoteBlocks(t *testing.T) {
 		t.Fatalf("unclamped block 1 = %q, want no clamp note", note)
 	}
 
-	result := rawSearchResult(testCtx(), logger, "signoz_search_logs", payload, 100, 0, true, "")
+	result := h.rawSearchResult(testCtx(), "signoz_search_logs", payload, rawSearchRequest{limit: 100, limitClamped: true, budget: budget})
 	if len(result.Content) != 3 {
 		t.Fatalf("content block count = %d, want raw JSON + clamp note + completeness note", len(result.Content))
 	}
-	if block0 := noteText(t, result, 0); block0 != string(payload) {
-		t.Fatalf("block 0 = %q, want raw response unchanged", block0)
+	if block0 := noteText(t, result, 0); block0 != wantBlock0 {
+		t.Fatalf("block 0 = %q, want the raw response plus pagination: %q", block0, wantBlock0)
 	}
 	if clampNote := noteText(t, result, 1); !strings.Contains(clampNote, "result limited to") {
 		t.Fatalf("block 1 = %q, want clamp note", clampNote)

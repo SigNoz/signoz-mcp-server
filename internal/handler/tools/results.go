@@ -106,26 +106,82 @@ func addStructuredNotes(res *mcp.CallToolResult, notes []string) error {
 	return nil
 }
 
-// rawSearchResult is the result wrapper for raw row tools (search_logs /
-// search_traces), which support offset pagination. It appends a completeness
-// note (hasMore + nextOffset) inferred from the returned row count so callers
-// never silently assume a truncated page is complete. A non-empty emptyNote is
-// appended when the first page has no rows.
-func rawSearchResult(ctx context.Context, logger *slog.Logger, toolName string, payload []byte, limit, offset int, limitClamped bool, emptyNote string, extraNotes ...string) *mcp.CallToolResult {
+// rawSearchRequest is what a raw row tool's result needs from its arguments.
+type rawSearchRequest struct {
+	limit        int
+	offset       int
+	limitClamped bool
+	budget       resultBudget
+	// emptyNote, when not blank, follows the notes of an empty first page.
+	emptyNote string
+	// ignoresSelectFields is true when selectFields does not apply to the rows.
+	ignoresSelectFields bool
+}
+
+// rawSearchResult is the result of the raw row tools (signoz_search_logs,
+// signoz_search_traces), which page with offset. Its rows fit the result size
+// budget, and its JSON gains a top-level pagination object with hasMore and
+// nextOffset. A completeness note repeats them so callers never mistake a
+// partial page for the whole result. A payload whose rows it cannot walk is
+// returned unchanged with the inferred note, and a WARN.
+func (h *Handler) rawSearchResult(ctx context.Context, toolName string, payload []byte, req rawSearchRequest, extraNotes ...string) *mcp.CallToolResult {
 	notes := append([]string(nil), extraNotes...)
-	if limitClamped {
+	if req.limitClamped {
 		notes = append(notes, fmt.Sprintf(
 			"note: result limited to %d rows to bound server memory; paginate with \"offset\" (or narrow the time range/filters) for more.",
 			MaxRawResultLimit))
 	}
-	returnedRows, rowsKnown := countQueryRangeRows(payload)
-	warnRowCountUnknown(ctx, logger, toolName, payload, rowsKnown)
-	notes = append(notes, completenessNote(returnedRows, limit, offset, rowsKnown))
-	if rowsKnown && returnedRows == 0 && offset == 0 {
-		notes = append(notes, emptyNote)
-	}
+	notes = append(notes, req.budget.clampNote())
 	warnings := extractBackendWarningMessages(payload)
-	warnBackendWarnings(ctx, logger, toolName, warnings)
-	warnUnparsedWarningEnvelope(ctx, logger, toolName, payload, len(warnings))
-	return resultWithNotes(payload, notes...)
+	warnBackendWarnings(ctx, h.logger, toolName, warnings)
+	warnUnparsedWarningEnvelope(ctx, h.logger, toolName, payload, len(warnings))
+
+	rows, err := parseRowPage(payload)
+	if err != nil {
+		// Fail open: an unwalkable payload keeps today's shape and note.
+		returnedRows, rowsKnown := countQueryRangeRows(payload)
+		warnRowCountUnknown(ctx, h.logger, toolName, payload, rowsKnown)
+		if rowsKnown {
+			h.warnLogger().WarnContext(ctx, "raw search result left unbounded because its rows could not be paged",
+				slog.String("gen_ai.tool.name", toolName),
+				logpkg.ErrAttr(err))
+		}
+		// Counted even for an empty body, which the WARNs skip: its notes alone
+		// can be over a small budget.
+		h.countBudgetEvent(ctx, toolName, budgetEventFailOpen)
+		notes = append(notes, completenessNote(returnedRows, req.limit, req.offset, rowsKnown))
+		if rowsKnown && returnedRows == 0 && req.offset == 0 {
+			notes = append(notes, req.emptyNote)
+		}
+		return resultWithNotes(payload, notes...)
+	}
+
+	page := &rawSearchPage{
+		toolName:  toolName,
+		limit:     req.limit,
+		offset:    req.offset,
+		budget:    req.budget,
+		leadNotes: notes,
+		emptyNote: req.emptyNote,
+		rows:      rows,
+
+		ignoresSelectFields: req.ignoresSelectFields,
+	}
+	preview, outcome := page.fit(nil)
+	fit := resultFitFrom(ctx)
+	if fit == nil {
+		h.recordBudget(ctx, page, outcome)
+		return preview
+	}
+	// The validation decorator finishes the result once it knows its notices.
+	fit.register(func(extra []string) *mcp.CallToolResult {
+		if len(extra) == 0 {
+			h.recordBudget(ctx, page, outcome)
+			return preview
+		}
+		result, finalOutcome := page.fit(extra)
+		h.recordBudget(ctx, page, finalOutcome)
+		return result
+	})
+	return preview
 }

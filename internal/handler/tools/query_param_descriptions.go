@@ -85,6 +85,12 @@ const (
 	includeSpansParamDescription             = "Has no effect: every call returns the trace's spans as complete records, up to 1,000."
 )
 
+// maxResultBytesParamDescription is shared by signoz_search_logs and signoz_search_traces.
+const maxResultBytesParamDescription = "Size budget for this result in UTF-8 bytes of text, counting the JSON and its notes (default: 32000 unless the server sets another). " +
+	"Rows that do not fit move to the next page, so a page can hold fewer rows than limit: read pagination.hasMore and continue from pagination.nextOffset. " +
+	"To fit more rows in a page, name fewer fields in selectFields. Raise this only if your client can show a larger result. " +
+	"Values below 1000 or above 500000 (or the server default, when higher) are clamped, with a note."
+
 // aiTraceKeys are the per-trace AI columns SigNoz computes only for builder_ai_query.
 const aiTraceKeys = "trace.llm_call_count, trace.tool_call_count, trace.distinct_tool_count, trace.input_tokens, trace.output_tokens, trace.total_tokens, trace.estimated_total_cost, trace.max_llm_duration_nano"
 

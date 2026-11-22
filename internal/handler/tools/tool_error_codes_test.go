@@ -108,6 +108,9 @@ func TestToolHandlers_RejectInvalidArgumentsBeforeCallingSigNoz(t *testing.T) {
 		{tool: "signoz_get_service_top_operations", arguments: `{"service":"frontend","start":"yesterday"}`, wantText: `invalid "start" "yesterday"`},
 		{tool: "signoz_get_service_map", arguments: `{"start":"yesterday"}`, wantText: `invalid "start" "yesterday"`},
 		{tool: "signoz_get_alert_history", arguments: `{"id":"0196634d-5d66-75c4-b778-e317f49dab7a","start":"yesterday"}`, wantText: `invalid "start" "yesterday"`},
+		// A size budget that is not a number is rejected, not replaced by the default.
+		{tool: "signoz_search_logs", arguments: `{"maxResultBytes":"32KB"}`, wantText: `"maxResultBytes" must be an integer number of bytes`},
+		{tool: "signoz_search_traces", arguments: `{"maxResultBytes":{"bytes":32000}}`, wantText: `"maxResultBytes" must be an integer number of bytes`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.tool+" "+tt.arguments, func(t *testing.T) {

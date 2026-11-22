@@ -137,6 +137,19 @@ func TestLoadConfig_HTTPHostCanBeConfigured(t *testing.T) {
 	require.Equal(t, "127.0.0.1", cfg.Host)
 }
 
+// MCP_MAX_RESULT_BYTES sets the default result size budget; like
+// MCP_MAX_REQUEST_BYTES it takes positive integers only, so a typo or 0 keeps
+// the 32000-byte default instead of disabling the budget.
+func TestLoadConfig_MaxResultBytesTakesOnlyPositiveValues(t *testing.T) {
+	for value, want := range map[string]int{"": 32000, "64000": 64000, "0": 32000, "-5": 32000, "32k": 32000} {
+		t.Setenv(MaxResultBytesEnv, value)
+
+		cfg, err := LoadConfig()
+		require.NoError(t, err)
+		require.Equal(t, want, cfg.MaxResultBytes, "%s=%q", MaxResultBytesEnv, value)
+	}
+}
+
 func TestValidateConfig_StdioRequiresConfiguredCredentials(t *testing.T) {
 	cfg := &Config{
 		TransportMode: "stdio",

@@ -50,11 +50,25 @@ const (
 	// MCPResultNoteRuleKey names the measurement-note rule a result carried;
 	// its values are a fixed set owned by the tools package.
 	MCPResultNoteRuleKey = attribute.Key("mcp.result_note.rule")
-	// MCPToolResultBytes approximates the size, in bytes, of the text content
-	// returned by a tool call — sum of `len(Text)` across TextContent entries.
-	// Non-standard (the registry has no equivalent today); scoped under the
-	// mcp.tool.* namespace used by this server's other tool-call attrs.
+	// MCPToolResultBytesKey is the size, in bytes, of the whole CallToolResult
+	// serialized as JSON: every content block, structuredContent, and the
+	// result envelope. A payload sent as both text and structuredContent counts
+	// twice. Non-standard (the registry has no equivalent today); scoped under
+	// the mcp.tool.* namespace used by this server's other tool-call attrs.
 	MCPToolResultBytesKey = attribute.Key("mcp.tool.result.size_bytes")
+	// MCPToolResultTextBytesKey is the UTF-8 byte length of the result's text
+	// blocks, summed: the text a client shows its model. Result size budgets
+	// measure this number.
+	MCPToolResultTextBytesKey = attribute.Key("mcp.tool.result.text_bytes")
+	// Result size budget attributes, set on the tool span when a tool pages its
+	// rows by size: the budget applied, the rows the budget dropped from the
+	// page, and the rows whose long strings were shortened to fit.
+	MCPToolResultBudgetBytesKey         = attribute.Key("mcp.tool.result.budget.bytes")
+	MCPToolResultBudgetRowsDroppedKey   = attribute.Key("mcp.tool.result.budget.rows_dropped")
+	MCPToolResultBudgetShortenedRowsKey = attribute.Key("mcp.tool.result.budget.shortened_rows")
+	// MCPToolResultBudgetEventKey labels mcp.tool.result.budget.events with a
+	// bounded outcome: rows_dropped, row_shortened, over_budget, or fail_open.
+	MCPToolResultBudgetEventKey = attribute.Key("mcp.tool.result.budget.event")
 	// ClientSource is normalized at ingress to a bounded categorical value and
 	// is safe on metrics. The two assistant IDs are per-execution UUIDs and MUST
 	// NOT be applied as metric attributes.

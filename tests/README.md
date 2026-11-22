@@ -118,6 +118,9 @@ variables: `--reuse`, `--teardown`, `--foundry-binary-path`, `--license-key`.
   and every number the aggregate step note and the metrics guide state: the logs
   and traces minimum over 7 days, the windows that allow 60 s and 5 s buckets, the
   5 s floor, a metric step raised over 7 days, and the Cost Meter step.
+- `test_result_budget.py` — a small `maxResultBytes` splits SigNoz's `signoz_search_logs` and
+  `signoz_search_traces` rows into several pages, and following `pagination.nextOffset` returns
+  every seeded row once, in order.
 - `test_logs.py` — seeded log search, explicit scoped/unscoped search grammar,
   quoted terms, body-only legacy search text, and upstream warning preservation.
 - `test_dashboards.py` — TextPanel create/get/update/patch/default/layout

@@ -187,7 +187,7 @@ func TestNoticeOnAStructuredResultKeepsExactNumbersAndText(t *testing.T) {
 func TestRawPassthroughResults_CarryNoStructuredContent(t *testing.T) {
 	payload := []byte(`{"status":"success","data":[]}`)
 	results := map[string]*mcp.CallToolResult{
-		"search_logs and search_traces":       rawSearchResult(testCtx(), nil, "signoz_search_logs", payload, 100, 0, false, ""),
+		"search_logs and search_traces":       newTestHandler(nil).rawSearchResult(testCtx(), "signoz_search_logs", payload, rawSearchRequest{limit: 100, budget: resultBudget{bytes: 32000}}),
 		"aggregate_logs and aggregate_traces": aggregateResult(testCtx(), nil, "signoz_aggregate_logs", payload, false),
 	}
 	for tools, result := range results {

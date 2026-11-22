@@ -256,6 +256,9 @@ func (h *Handler) validationDecorator(toolName string, input, output *compiledTo
 		if len(undeclared) > 0 {
 			ctx, use = withArgumentUse(ctx)
 		}
+		// A result paged by size is rebuilt with these notices, not appended
+		// to, so the delivered result, notices included, fits its budget.
+		ctx, fit := withResultFit(ctx)
 
 		result, err := next(ctx, req)
 		if err != nil || result == nil {
@@ -265,7 +268,11 @@ func (h *Handler) validationDecorator(toolName string, input, output *compiledTo
 			if ignored := use.unhandled(undeclared); len(ignored) > 0 {
 				notices = append(notices, ignoredArgumentsNotice(ignored))
 			}
-			appendNotes(ctx, h.logger, result, notices...)
+			if fitted := fit.complete(notices); fitted != nil {
+				result = fitted
+			} else {
+				appendNotes(ctx, h.logger, result, notices...)
+			}
 		}
 		if result.IsError || output == nil {
 			return result, nil

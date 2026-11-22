@@ -56,6 +56,7 @@ func (h *Handler) RegisterLogsHandlers(s *mcp.Server) {
 		mcp.WithString("offset", mcp.DefaultString("0"), intOrStringType(), mcp.Description(searchLogsOffsetParamDescription)),
 		mcp.WithString("orderBy", mcp.Description(searchLogsOrderByParamDescription)),
 		mcp.WithString("selectFields", stringOrStringArrayType(), mcp.Description(logsSelectFieldsParamDescription)),
+		mcp.WithString(maxResultBytesParam, intOrStringType(), mcp.Description(maxResultBytesParamDescription)),
 	)
 
 	h.addTool(s, searchLogsTool, h.handleSearchLogs)
@@ -135,6 +136,10 @@ func (h *Handler) handleSearchLogs(ctx context.Context, req mcp.CallToolRequest)
 	if err != nil {
 		return errorWithCode(CodeValidationFailed, err.Error()), nil
 	}
+	budget, errResult := h.parseResultBudget(args)
+	if errResult != nil {
+		return errResult, nil
+	}
 
 	queryPayload, err := querybuilder.LogsSearch(
 		reqData.StartTime, reqData.EndTime, reqData.FilterExpression,
@@ -176,5 +181,11 @@ func (h *Handler) handleSearchLogs(ctx context.Context, req mcp.CallToolRequest)
 	if reqData.BodyOnlySearchText {
 		emptyNote = bodyOnlySearchTextNote
 	}
-	return rawSearchResult(ctx, h.logger, "signoz_search_logs", result, reqData.Limit, reqData.Offset, reqData.LimitClamped, emptyNote, notes...), nil
+	return h.rawSearchResult(ctx, "signoz_search_logs", result, rawSearchRequest{
+		limit:        reqData.Limit,
+		offset:       reqData.Offset,
+		limitClamped: reqData.LimitClamped,
+		budget:       budget,
+		emptyNote:    emptyNote,
+	}, notes...), nil
 }
