@@ -1,7 +1,8 @@
 """Result size budget on the raw searches against the pinned release.
 
-A small maxResultBytes ends each page on a whole row, and following
-pagination.nextOffset returns every matching row exactly once, in order.
+A small maxResultBytes splits SigNoz's real rows into several pages, and
+following pagination.nextOffset returns every matching row exactly once, in
+order. The handler tests pin how a page is cut and what its pagination says.
 """
 
 from collections.abc import Callable
@@ -15,13 +16,6 @@ SMALL_BUDGET = 2500
 LARGE_BUDGET = 200000
 
 
-def _text_bytes(result: dict) -> int:
-    """UTF-8 bytes of every text block, the number the budget bounds."""
-    return sum(
-        len(block.get("text", "").encode("utf-8")) for block in result.get("content", []) if block.get("type") == "text"
-    )
-
-
 def _rows(body: dict) -> list[dict]:
     rows = []
     for result in body["data"]["data"]["results"]:
@@ -29,33 +23,18 @@ def _rows(body: dict) -> list[dict]:
     return rows
 
 
-def _walk_pages(search: Callable[..., dict], full: list[dict]) -> int:
-    """Follow nextOffset under SMALL_BUDGET; every page must be a whole-row slice of `full`."""
+def _walk_pages(search: Callable[..., dict]) -> tuple[list[dict], int]:
+    """Follow pagination.nextOffset under SMALL_BUDGET; return the rows and the number of pages."""
     offset, pages, collected = 0, 0, []
     while True:
-        result = assert_tool_ok(search(offset=str(offset), maxResultBytes=str(SMALL_BUDGET)))
-        assert _text_bytes(result) <= SMALL_BUDGET, (
-            f"page at offset {offset} is over its budget: {_text_bytes(result)} bytes"
-        )
-        body = first_block_json(result)
-        rows, pagination = _rows(body), body["pagination"]
-        assert rows, f"a page with rows left must return at least one: {pagination}"
-        assert pagination["returned"] == len(rows) and pagination["offset"] == offset, pagination
-        assert rows == full[offset : offset + len(rows)], f"page at offset {offset} must be whole rows in order"
-        assert "shortenedRows" not in pagination, f"no seeded row is larger than the budget: {pagination}"
-        collected.extend(rows)
+        body = first_block_json(assert_tool_ok(search(offset=str(offset), maxResultBytes=str(SMALL_BUDGET))))
+        collected.extend(_rows(body))
         pages += 1
+        pagination = body["pagination"]
         if not pagination["hasMore"]:
-            assert pagination["nextOffset"] == -1 and not pagination["truncated"], pagination
-            break
-        assert pagination["truncated"], (
-            f"with limit {pagination['limit']} only the budget can end this page: {pagination}"
-        )
-        assert pagination["nextOffset"] == offset + len(rows), pagination
+            return collected, pages
+        assert pagination["nextOffset"] > offset and pages <= SEEDED, f"paging must make progress: {pagination}"
         offset = pagination["nextOffset"]
-        assert pages <= SEEDED, "paging must make progress"
-    assert collected == full, "following nextOffset must return every row exactly once"
-    return pages
 
 
 def test_search_logs_pages_by_result_size(mcp_client: MCPClient, test_id: str, telemetry: None) -> None:
@@ -84,7 +63,9 @@ def test_search_logs_pages_by_result_size(mcp_client: MCPClient, test_id: str, t
     full = _rows(first_block_json(assert_tool_ok(search(maxResultBytes=str(LARGE_BUDGET)))))
     assert len({row["data"]["id"] for row in full}) == SEEDED
 
-    assert _walk_pages(search, full) > 1, f"a {SMALL_BUDGET}-byte budget must split {SEEDED} rows into several pages"
+    collected, pages = _walk_pages(search)
+    assert pages > 1, f"a {SMALL_BUDGET}-byte budget must split SigNoz's {SEEDED} rows into several pages"
+    assert collected == full, "following nextOffset must return every row SigNoz holds exactly once, in order"
 
 
 def test_search_traces_pages_by_result_size(mcp_client: MCPClient, test_id: str, telemetry: None) -> None:
@@ -113,4 +94,6 @@ def test_search_traces_pages_by_result_size(mcp_client: MCPClient, test_id: str,
     full = _rows(first_block_json(assert_tool_ok(search(maxResultBytes=str(LARGE_BUDGET)))))
     assert len({row["data"]["span_id"] for row in full}) == SEEDED
 
-    assert _walk_pages(search, full) > 1, f"a {SMALL_BUDGET}-byte budget must split {SEEDED} rows into several pages"
+    collected, pages = _walk_pages(search)
+    assert pages > 1, f"a {SMALL_BUDGET}-byte budget must split SigNoz's {SEEDED} rows into several pages"
+    assert collected == full, "following nextOffset must return every row SigNoz holds exactly once, in order"

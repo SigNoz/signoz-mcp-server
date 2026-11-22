@@ -166,6 +166,16 @@ are fitted with those notices counted.
   a small budget, so the counter is the signal.
 - Decision: an uncut page keeps whatever follows the body's closing brace, such as a line ending.
 
+### 2026-11-22 — One layer per rule in the tests
+
+- Decision: `TestGuardrail_RowSearchResultsFitTheirSizeBudget` keeps one check per tool: at the
+  default configuration, through the production HTTP handler, a 400 KB page comes back within
+  the default budget. The e2e walk keeps what needs real SigNoz: several pages, and every row
+  once, in order.
+- Rationale: `docs/testing.md` pins a rule once, at the lowest layer that runs the real code.
+  The guardrail and the e2e walk repeated rules the handler tests pin: the per-call budget, the
+  notices counted in the budget, and the pagination fields of a cut page.
+
 ## Reference Links
 
 - [SigNoz/nerve-pod#673: bound MCP tool results to a size budget](https://github.com/SigNoz/nerve-pod/issues/673)
@@ -190,8 +200,8 @@ restored after) and failed:
 - `TestRowSearchFailsOpenOnABodyItCannotPage`: a payload's own `pagination` overwritten.
 - `TestToolHandlers_RejectInvalidArgumentsBeforeCallingSigNoz` (two new rows): a non-integer
   `maxResultBytes` accepted.
-- `TestGuardrail_RowSearchResultsFitTheirSizeBudget`: fit returning every row (all six cases fail)
-  and notices appended after the cut (both notice cases fail).
+- `TestGuardrail_RowSearchResultsFitTheirSizeBudget`: the default budget not applied when the
+  operator sets none (both tools fail).
 - `TestGuardrail_ToolCallSpanHasSerializedResultBytes`: the `mcp.tool.result.text_bytes`
   attribute removed.
 - `TestLoadConfig_MaxResultBytesTakesOnlyPositiveValues`: `MCP_MAX_RESULT_BYTES=0` accepted.
