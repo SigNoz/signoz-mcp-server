@@ -211,9 +211,9 @@ func (h *Handler) RegisterDashboardHandlers(s *mcp.Server) {
 	tool := mcp.NewTool("signoz_list_dashboards",
 		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description(searchContextParamDescription)),
-		mcp.WithDescription("Use this when the user wants to discover tenant dashboards, browse their summaries, or find a dashboard id. It returns names, descriptions, tags, timestamps, source, and a total count, not panel/query definitions; use signoz_get_dashboard for one full definition. source is user or integration; only user dashboards can be updated, patched, or deleted. source is not a list-filter column: filter by name, description, tags, creator, timestamps, or locked state, then distinguish user vs integration client-side across pages. When looking for a specific dashboard, page by raising offset by limit until you have covered total before concluding it is absent."),
+		mcp.WithDescription("Use this when the user wants to discover tenant dashboards, browse their summaries, or find a dashboard id. It returns names, descriptions, tags, timestamps, source, and a total count, not panel/query definitions; use signoz_get_dashboard for one full definition. source is user or integration; only user dashboards can be updated, patched, or deleted. source is not a list-filter column: filter by name, description, tags, creator, timestamps, or locked state, then distinguish user vs integration client-side across pages. When looking for a specific dashboard, page by raising offset by the number of dashboards returned until you have covered total before concluding it is absent."),
 		mcp.WithString("limit", mcp.DefaultString("50"), intOrStringType(), mcp.Description("Maximum dashboard summaries per page. Default 50; values above 200 are clamped (the v2 API's server-side cap).")),
-		mcp.WithString("offset", mcp.DefaultString("0"), intOrStringType(), mcp.Description("Number of dashboard summaries to skip. Default 0; raise by limit to page until you reach total.")),
+		mcp.WithString("offset", mcp.DefaultString("0"), intOrStringType(), mcp.Description("Number of dashboard summaries to skip. Default 0; raise by the number returned to page until you reach total.")),
 		mcp.WithString("filter", mcp.Description("Optional server-side filter over dashboard metadata (name, description, tags, creator, timestamps, locked state); omit to list all. "+
 			"Read signoz://dashboard/list-filter-guide for the filter DSL grammar, per-key operators, value formats, and examples. "+
 			"Example: \"name CONTAINS 'overview' AND locked = true\".")),
@@ -347,12 +347,15 @@ func (h *Handler) handleListDashboards(ctx context.Context, req mcp.CallToolRequ
 		resultJSON = util.InjectListWebURL(resultJSON, base, "dashboard", "dashboards", "id")
 	}
 
+	var notes []string
 	if limitClamped {
-		return structuredResultWithNotes(ctx, h.logger, resultJSON, fmt.Sprintf(
+		notes = append(notes, fmt.Sprintf(
 			"Requested limit exceeded the maximum of %d and was clamped. Use offset to page through the rest.",
-			dashboardListMaxLimit)), nil
+			dashboardListMaxLimit))
 	}
-	return structuredResult(resultJSON), nil
+	// SigNoz's body has no pagination object; a budget cut adds one.
+	shape := listShape{itemsPath: []string{"data", "dashboards"}, offset: offset, limit: limit}
+	return h.budgetedListResult(ctx, "signoz_list_dashboards", resultJSON, shape, notes...), nil
 }
 
 func (h *Handler) handleGetDashboard(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

@@ -57,8 +57,9 @@ const (
 	// measure this number.
 	MCPToolResultTextBytesKey = attribute.Key("mcp.tool.result.text_bytes")
 	// Result size budget attributes, set on the tool span when a tool pages its
-	// rows by size: the budget applied, the rows the budget dropped from the
-	// page, and the rows whose long strings were shortened to fit.
+	// rows or list items by size: the budget applied, the rows or items the
+	// budget dropped from the page, and the rows whose long strings were
+	// shortened to fit (list items are never shortened).
 	MCPToolResultBudgetBytesKey         = attribute.Key("mcp.tool.result.budget.bytes")
 	MCPToolResultBudgetRowsDroppedKey   = attribute.Key("mcp.tool.result.budget.rows_dropped")
 	MCPToolResultBudgetShortenedRowsKey = attribute.Key("mcp.tool.result.budget.shortened_rows")

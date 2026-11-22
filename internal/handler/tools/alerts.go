@@ -224,7 +224,7 @@ func (h *Handler) handleListAlerts(ctx context.Context, req mcp.CallToolRequest)
 		return InternalErrorResult("failed to marshal response: " + err.Error()), nil
 	}
 
-	return listResult(ctx, h.logger, resultJSON, limitClamped), nil
+	return h.listResult(ctx, "signoz_list_alerts", resultJSON, dataItems, limitClamped), nil
 }
 
 // alertRulesUpstreamPageSize is the most rules GET /api/v3/rules returns per
@@ -311,7 +311,7 @@ func (h *Handler) handleListAlertRules(ctx context.Context, req mcp.CallToolRequ
 		return InternalErrorResult("failed to marshal response: " + err.Error()), nil
 	}
 
-	return listResult(ctx, h.logger, resultJSON, limitClamped), nil
+	return h.listResult(ctx, "signoz_list_alert_rules", resultJSON, dataItems, limitClamped), nil
 }
 
 func (h *Handler) handleGetAlert(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

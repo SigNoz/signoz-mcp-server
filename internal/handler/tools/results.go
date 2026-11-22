@@ -167,21 +167,7 @@ func (h *Handler) rawSearchResult(ctx context.Context, toolName string, payload 
 
 		ignoresSelectFields: req.ignoresSelectFields,
 	}
-	preview, outcome := page.fit(nil)
-	fit := resultFitFrom(ctx)
-	if fit == nil {
-		h.recordBudget(ctx, page, outcome)
-		return preview
-	}
-	// The validation decorator finishes the result once it knows its notices.
-	fit.register(func(extra []string) *mcp.CallToolResult {
-		if len(extra) == 0 {
-			h.recordBudget(ctx, page, outcome)
-			return preview
-		}
-		result, finalOutcome := page.fit(extra)
-		h.recordBudget(ctx, page, finalOutcome)
-		return result
+	return deliverFitted(ctx, page.fit, func(outcome pageOutcome) {
+		h.recordBudget(ctx, toolName, page.budget.bytes, len(rows.rows), outcome)
 	})
-	return preview
 }

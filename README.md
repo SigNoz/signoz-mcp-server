@@ -495,6 +495,14 @@ For detailed usage and examples, see the [full documentation](https://signoz.io/
 - When the budget ends a page, pass the `start` and `end` from the window note with the next `offset`. A relative `timeRange` is resolved again on each call, so new rows would shift the page.
 - A body whose rows cannot be located, that has more than one result, or that already has its own top-level `pagination` field, is returned unchanged with the inferred completeness note, and the server logs a WARN.
 
+The list tools `signoz_list_services`, `signoz_get_service_map`, `signoz_list_alerts`, `signoz_list_alert_rules`, `signoz_list_dashboards`, and `signoz_list_notification_channels` fit each page into the same budget, measured the same way. They use the server's `MCP_MAX_RESULT_BYTES` only and take no `maxResultBytes`; `offset` already reaches every item. `signoz_list_views` and `signoz_get_ai_pricing` also page with `offset` but are not cut: SigNoz returns their items in no fixed order, so a page continued from an offset could repeat one item and miss another.
+
+- A page that fits is returned as before, with no new fields.
+- A page that does not fit keeps the leading whole items that fit and drops the rest. Its `pagination` gains `truncated: true` and `maxResultBytes`, `hasMore` is `true`, `nextOffset` is `offset` plus the items returned, and `total` is unchanged; `signoz_list_notification_channels` also sets `count` to the items returned. A note gives the next offset. `signoz_list_dashboards` returns SigNoz's body, which has no `pagination` object, so a cut page gains a top-level one with `total`, `offset`, `limit`, `hasMore`, `nextOffset`, `truncated`, and `maxResultBytes`, and SigNoz's `data.total` stays. A page can therefore hold fewer items than `limit` while more exist: read `pagination.hasMore`, or for an uncut dashboard page compare `offset` plus the items returned with `total`.
+- Items are never shortened, because a caller may write one back through an update tool. When the first item alone does not fit, it comes back whole and over the budget, and the server logs a WARN.
+- When the budget ends a `signoz_list_services` or `signoz_get_service_map` page, pass `window.startMs` and `window.endMs` as `start` and `end` with the next `offset`, so a relative `timeRange` does not shift the page.
+- A `signoz_list_dashboards` body over the budget whose `data.dashboards` array or `data.total` cannot be found is returned unchanged, and the server logs a WARN.
+
 ### Agent Routing Guidance
 
 Use `signoz_search_docs` for topical discovery when no exact documentation page is selected, then `signoz_fetch_doc` for the chosen page or heading. Use live data tools for tenant telemetry, alert state, dashboards, saved views, and notification channels.
@@ -653,7 +661,7 @@ Gets one alert rule's full definition (`GET /api/v2/rules/{id}`). Use `signoz_li
 
 #### `signoz_list_dashboards`
 
-Lists paginated tenant-dashboard summaries (name, UUID, description, tags, timestamps). Use `signoz_get_dashboard` for panel and query definitions, and page by raising `offset` by `limit` until you have covered `total` before concluding a dashboard is absent.
+Lists paginated tenant-dashboard summaries (name, UUID, description, tags, timestamps). Use `signoz_get_dashboard` for panel and query definitions, and page by raising `offset` by the number of dashboards returned until you have covered `total` before concluding a dashboard is absent. A page can hold fewer dashboards than `limit` when the [result size budget](#result-size-budget) ends it; that page carries a `pagination` object with `nextOffset`.
 
 - **Parameters:**
   - `limit` (default 50), `offset` (default 0) – offset-based pagination
@@ -734,7 +742,7 @@ Lists APM services with trace activity in a time range, sorted by service name a
   - `start`/`end` (optional) - A fixed window: an RFC 3339 date-time with `Z` or an offset, or Unix epoch milliseconds. With `start`, the window runs from `start` to `end` (default now) and `timeRange` is ignored. `end` without `start` is rejected with the `start` to add.
   - `limit` (optional) - Maximum services per page (default: 50, max: 1000; higher values are clamped)
   - `offset` (optional) - Number of results to skip for pagination (default: 0)
-- **Response**: `data` (services with `webUrl` when available), `pagination` (`total`, `offset`, `limit`, `hasMore`, `nextOffset`), `window` (`start`, `end`, `startMs`, `endMs`), the window queried, and `notes` when the limit was clamped
+- **Response**: `data` (services with `webUrl` when available), `pagination` (`total`, `offset`, `limit`, `hasMore`, `nextOffset`, plus `truncated` and `maxResultBytes` when the [result size budget](#result-size-budget) ended the page), `window` (`start`, `end`, `startMs`, `endMs`), the window queried, and `notes` when the limit was clamped or the budget ended the page
 
 #### `signoz_get_service_top_operations`
 
@@ -761,7 +769,7 @@ Gets the service dependency graph that SigNoz's Service Map draws for a time win
   - `environment` (optional) - Keep only edges recorded with this `deployment.environment` resource value; discover values with `signoz_get_field_values` (`signal=traces`, `fieldContext=resource`, `name=deployment.environment`)
   - `cluster` (optional) - Keep only edges recorded with this `k8s.cluster.name` resource value; discover values with `signoz_get_field_values` (`signal=traces`, `fieldContext=resource`, `name=k8s.cluster.name`)
   - `namespace` (optional) - Keep only edges recorded with this `k8s.namespace.name` resource value; discover values with `signoz_get_field_values` (`signal=traces`, `fieldContext=resource`, `name=k8s.namespace.name`)
-- **Response**: `data` (edges), `pagination` (`total`, `offset`, `limit`, `hasMore`, `nextOffset`), `window` (`start`, `end`, `startMs`, `endMs`), the window queried, and `notes`, which always states the units of the edge numbers
+- **Response**: `data` (edges), `pagination` (`total`, `offset`, `limit`, `hasMore`, `nextOffset`, plus `truncated` and `maxResultBytes` when the [result size budget](#result-size-budget) ended the page), `window` (`start`, `end`, `startMs`, `endMs`), the window queried, and `notes`, which always states the units of the edge numbers
 
 #### `signoz_get_alert_history`
 
@@ -1180,7 +1188,7 @@ Runs a SigNoz Query Builder v5 request that the dedicated tools cannot express, 
 | `MCP_SERVER_HOST` | Host/interface for HTTP transport mode (default: empty, which listens on all interfaces). Set to `127.0.0.1` for loopback-only access. | No |
 | `MCP_SERVER_PORT` | Port for HTTP transport mode (default: `8000`)                                 | No |
 | `MCP_MAX_REQUEST_BYTES` | Max inbound MCP HTTP request body size in bytes (default: `4194304` / 4 MiB). Bounds memory from a single oversized request. | No |
-| `MCP_MAX_RESULT_BYTES` | Default result size budget, in UTF-8 bytes of text, for `signoz_search_logs` and `signoz_search_traces` (default: `32000`). Positive integers only; any other value keeps the default. A per-call `maxResultBytes` above 500000 is clamped to 500000, or to this value when it is higher. See [Result size budget](#result-size-budget). | No |
+| `MCP_MAX_RESULT_BYTES` | Default result size budget, in UTF-8 bytes of text, for `signoz_search_logs`, `signoz_search_traces`, and the six list tools named under [Result size budget](#result-size-budget) (default: `32000`). Positive integers only; any other value keeps the default. A per-call `maxResultBytes` above 500000 is clamped to 500000, or to this value when it is higher. See [Result size budget](#result-size-budget). | No |
 | `CLIENT_CACHE_SIZE` | Maximum cached tenant clients in multi-tenant HTTP mode (default: `256`) | No |
 | `CLIENT_CACHE_TTL_MINUTES` | Tenant-client cache lifetime in minutes (default: `30`) | No |
 | `SIGNOZ_DOCS_REFRESH_INTERVAL` | Interval for the single docs refresh schedule (Go duration, default `6h`, jittered). Set both docs refresh intervals to `0` or `off` to disable scheduled refreshes. See [Memory footprint](#memory-footprint). | No |

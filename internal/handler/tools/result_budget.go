@@ -22,7 +22,8 @@ import (
 
 // A result size budget bounds the text a client shows its model: the UTF-8
 // bytes of every text block, the JSON payload and each note. The raw row tools
-// fit whole rows into it and page the rest with offset.
+// and the list tools (list_budget.go) fit whole rows or items into it and page
+// the rest with offset.
 const (
 	maxResultBytesParam = "maxResultBytes"
 	// minResultBytes keeps a per-call budget above the envelope and notes alone.
@@ -138,6 +139,29 @@ func (f *resultFit) complete(extra []string) *mcp.CallToolResult {
 		return nil
 	}
 	return finish(extra)
+}
+
+// deliverFitted returns fit's result without extra notes. When the validation
+// decorator is in the call, it also registers fit there, so the decorator can
+// rebuild the result with its notices counted. record runs once per call, with
+// the outcome of the result delivered.
+func deliverFitted(ctx context.Context, fit func(extra []string) (*mcp.CallToolResult, pageOutcome), record func(pageOutcome)) *mcp.CallToolResult {
+	preview, outcome := fit(nil)
+	finisher := resultFitFrom(ctx)
+	if finisher == nil {
+		record(outcome)
+		return preview
+	}
+	finisher.register(func(extra []string) *mcp.CallToolResult {
+		if len(extra) == 0 {
+			record(outcome)
+			return preview
+		}
+		result, final := fit(extra)
+		record(final)
+		return result
+	})
+	return preview
 }
 
 // rawSearchPage is one raw search response with what its result needs to
@@ -318,25 +342,26 @@ func textBytes(result *mcp.CallToolResult) int {
 
 // recordBudget puts what fitting did on the tool span and, when the budget
 // changed or could not bound the result, on mcp.tool.result.budget.events.
-func (h *Handler) recordBudget(ctx context.Context, page *rawSearchPage, outcome pageOutcome) {
+// rows counts the rows or list items the page had before fitting.
+func (h *Handler) recordBudget(ctx context.Context, toolName string, budgetBytes, rows int, outcome pageOutcome) {
 	trace.SpanFromContext(ctx).SetAttributes(
-		otelpkg.MCPToolResultBudgetBytesKey.Int(page.budget.bytes),
+		otelpkg.MCPToolResultBudgetBytesKey.Int(budgetBytes),
 		otelpkg.MCPToolResultBudgetRowsDroppedKey.Int(outcome.dropped),
 		otelpkg.MCPToolResultBudgetShortenedRowsKey.Int(outcome.shortened),
 	)
 	if outcome.dropped > 0 {
-		h.countBudgetEvent(ctx, page.toolName, budgetEventRowsDropped)
+		h.countBudgetEvent(ctx, toolName, budgetEventRowsDropped)
 	}
 	if outcome.shortened > 0 {
-		h.countBudgetEvent(ctx, page.toolName, budgetEventRowShortened)
+		h.countBudgetEvent(ctx, toolName, budgetEventRowShortened)
 	}
 	if outcome.overBudget {
-		h.countBudgetEvent(ctx, page.toolName, budgetEventOverBudget)
+		h.countBudgetEvent(ctx, toolName, budgetEventOverBudget)
 		h.warnLogger().WarnContext(ctx, "tool result is over its size budget after fitting rows",
-			slog.String("gen_ai.tool.name", page.toolName),
-			slog.Int("budget_bytes", page.budget.bytes),
+			slog.String("gen_ai.tool.name", toolName),
+			slog.Int("budget_bytes", budgetBytes),
 			slog.Int("text_bytes", outcome.textBytes),
-			slog.Int("rows", len(page.rows.rows)))
+			slog.Int("rows", rows))
 	}
 }
 

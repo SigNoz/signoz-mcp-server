@@ -99,7 +99,7 @@ func (h *Handler) handleListNotificationChannels(ctx context.Context, req mcp.Ca
 	if err != nil {
 		return InternalErrorResult("failed to marshal notification channel list"), nil
 	}
-	return structuredResult(payload), nil
+	return h.budgetedListResult(ctx, "signoz_list_notification_channels", payload, listShape{itemsPath: []string{"channels"}}), nil
 }
 
 func (h *Handler) handleGetNotificationChannel(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

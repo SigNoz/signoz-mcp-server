@@ -24,6 +24,11 @@ type Metadata struct {
 	Limit      int  `json:"limit"`
 	HasMore    bool `json:"hasMore"`
 	NextOffset int  `json:"nextOffset"`
+	// Truncated and MaxResultBytes appear only when the server's result size
+	// budget, not limit, ended the page; NextOffset then follows the last item
+	// returned.
+	Truncated      bool `json:"truncated,omitempty"`
+	MaxResultBytes int  `json:"maxResultBytes,omitempty"`
 }
 
 // Response wraps a list data with paged metadata

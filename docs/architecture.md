@@ -196,6 +196,19 @@ and break small per-call budgets, the handler registers a finisher in the call's
 those notices counted; without a decorator, the handler's own result stands. A body the walker
 cannot page is returned unchanged with a WARN (fail open, never silent).
 
+Saved views and AI pricing also page with `offset`, but SigNoz returns their items in no fixed
+order, so a page continued from an offset could repeat or miss an item; they are returned whole
+through `unbudgetedListResult`. The other list tools that page with `offset` (services, the
+service map, alerts, alert rules, dashboards, and notification channels) apply the server budget through
+`listResult` and `budgetedListResult` (`internal/handler/tools/list_budget.go`), with the same
+finisher. A page that fits is the result the handler built. Only a page over budget is split at
+its items array, `data`, `channels`, or SigNoz's `data.dashboards`; the longest prefix of whole
+items that fits is kept, and the page's `pagination` object gains `truncated` and
+`maxResultBytes`, with `hasMore` and `nextOffset` set after the last item kept. The dashboard
+body has no `pagination` object, so a cut adds one built from SigNoz's `data.total`. Items are
+never shortened, because a caller may write one back, so the first item always comes back whole.
+There is no per-call budget on these tools: `offset` already reaches every item.
+
 ## MCP Runtime and Transports
 
 The runtime is `github.com/modelcontextprotocol/go-sdk` v1.8.0. The same
