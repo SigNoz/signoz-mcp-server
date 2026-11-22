@@ -473,6 +473,27 @@ M5 test changes, and the trim, and raised N1 to N12. N1 to N11 are fixed in `e10
 
 Declined: N12, a nanosecond timestamp that loses a millisecond to float precision.
 
+### 2026-11-22 — Seventh review: a confirming round
+
+A round at the same settings, limited to `e102b2d`, confirmed N1, N3, N4, N6's edge sources, N9,
+and N10, and raised P1 to P5.
+
+- P1: with `le` among several group keys, the span-metric note said to group "by the same keys".
+  It now names the keys it keeps.
+- P2: predicate keys are now read as keys: a word followed by a comparison or an operator keyword,
+  lower-cased, without the field-context prefix SigNoz drops (`span.isRoot`,
+  `attribute.operation`). An unquoted value that reads like a key no longer silences a note, and
+  `kind = 2`, the server kind's number, counts as a server filter.
+- P3: the formula-input note is not emitted for a metric input SigNoz skipped.
+- P4: the service map units note says to use the same window, because `signoz_aggregate_traces`
+  defaults to one hour and the map to six, and describes the population as the caller's client
+  spans to every destination.
+- P5: the service map e2e asserts "come from the callee's spans", since "callee" alone also
+  matched another clause; the percentile test asserts the reducer, percentile, and step. The
+  step-decoder test gains a malformed entry beside a valid one.
+
+These fixes have not been reviewed again.
+
 ### 2026-11-21 — Mutation-side rules on the tools, schema pointers kept
 
 - Decision: rules that prevent a wrong result with no error go on the tool: the alert unit rule,
