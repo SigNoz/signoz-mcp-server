@@ -91,9 +91,8 @@ needs its own reduceTo.
 2. **Gauges**: avg, max, or latest. rate and increase run but measure how the value changed, which is rarely what a gauge question asks.
 3. **Histograms**: SigNoz stores a histogram named X as X.bucket (type histogram) plus the counters X.count and X.sum; query X.bucket, not X. Leave timeAggregation empty and pick a percentile for latency. To read the buckets instead, use timeAggregation increase with spaceAggregation sum, grouped by le: each le series is a count and the le="+Inf" series is the total observation count. SigNoz returns these counts even when timeAggregation is rate.
 4. **Summaries**: query the .quantile series with both aggregations set, for example avg and max, grouped by quantile; the .count and .sum series are counters.
-5. **Providing only metricType for a counter** → This bypasses metadata auto-fetch and can leave temporality or monotonicity unspecified. Either omit metricType so all metadata is fetched, or pass the matching values from signoz_list_metrics.
-6. **Span metrics**: signoz_calls_total and signoz_latency come from every span, labelled with span.kind and operation, so a request that records several spans counts several times. For a service's request count, rate, or latency use signoz_list_services, or signoz_aggregate_traces with isEntryPoint = true OR isRoot = true.
-7. **Setting temporality by hand** → Omit it. The backend resolves cumulative, delta or unspecified from the metric's metadata; a pinned value that does not match the exporter returns no data. Set it only to override the stored metadata.
+5. **Span metrics**: signoz_calls_total and signoz_latency come from every span, labelled with span.kind and operation, so a request that records several spans counts several times. For a service's request count, rate, or latency use signoz_list_services, or signoz_aggregate_traces with isEntryPoint = true OR isRoot = true.
+6. **Setting temporality by hand** → Omit it. The backend resolves cumulative, delta or unspecified from the metric's metadata; a pinned value that does not match the exporter returns no data. Set it only to override the stored metadata.
 
 ---
 

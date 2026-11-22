@@ -252,7 +252,7 @@
                 ]
               },
               "groupBy": {
-                "description": "Field names to group results by, as an array or a comma-separated string (e.g. [\"service.name\", \"name\"] or 'service.name, name'). Leave empty for a single aggregate value. For values over time, use requestType time_series; grouping by timestamp fails.",
+                "description": "Field names to group results by, as an array or a comma-separated string (e.g. [\"service.name\", \"name\"] or 'service.name, name'). Leave empty for a single aggregate value. For values over time, use requestType time_series; grouping by timestamp fails. Client spans to different services can share a span name: to compare the services a caller calls, group by a destination attribute such as server.address; signoz_get_field_keys lists the attributes spans carry.",
                 "items": {
                   "type": "string"
                 },
@@ -7893,7 +7893,7 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user wants a service's request rate, error rate, or latency, or the traced services active in a time window. It counts each service's requests at its entry spans, so numCalls is the request count and callRate is requests per second. It returns traced-service records sorted by name and paginated; absence means no trace activity in that window, not that a matching service.name never appears in logs. p99 and avgDuration are latencies in nanoseconds, and errorRate and fourXXRate are percentages (0.5 means 0.5%). For log values use signoz_get_field_values with signal=\"logs\" and name=\"service.name\"; for one service's operations use signoz_get_service_top_operations. Follow pagination.nextOffset until hasMore=false before concluding a traced service is absent.",
+          "description": "Use this when the user wants a service's request rate, error rate, or latency, or the traced services active in a time window. It counts each service's requests at its entry spans, so numCalls is the request count and callRate is requests per second: numCalls divided by the whole requested window. It returns traced-service records sorted by name and paginated; absence means no trace activity in that window, not that a matching service.name never appears in logs. p99 and avgDuration are latencies in nanoseconds, and errorRate and fourXXRate are percentages (0.5 means 0.5%). For log values use signoz_get_field_values with signal=\"logs\" and name=\"service.name\"; for one service's operations use signoz_get_service_top_operations. Follow pagination.nextOffset until hasMore=false before concluding a traced service is absent.",
           "inputSchema": {
             "properties": {
               "end": {
@@ -8107,7 +8107,7 @@
                       ]
                     },
                     "isMonotonic": {
-                      "description": "Whether a sum metric only increases. Auto-fetched when metricType is omitted.",
+                      "description": "Whether a sum metric only increases. Auto-fetched when omitted.",
                       "type": [
                         "boolean",
                         "string"
@@ -8134,7 +8134,7 @@
                       "type": "string"
                     },
                     "temporality": {
-                      "description": "cumulative, delta, or unspecified. Auto-fetched when metricType is omitted.",
+                      "description": "cumulative, delta, or unspecified. Auto-fetched when omitted.",
                       "type": "string"
                     },
                     "timeAggregation": {
@@ -8214,7 +8214,7 @@
                 "type": "string"
               },
               "isMonotonic": {
-                "description": "Whether a type=sum metric is monotonically increasing. Auto-fetched when metricType is omitted; otherwise provide the correct value for sum metrics.",
+                "description": "Whether a type=sum metric is monotonically increasing. Omit to auto-fetch it; a value sent here overrides the metadata.",
                 "type": [
                   "boolean",
                   "string"
@@ -8280,7 +8280,7 @@
                 ]
               },
               "temporality": {
-                "description": "Metric temporality: cumulative, delta, or unspecified. Auto-fetched when metricType is omitted; otherwise provide the metric's value when it affects aggregation.",
+                "description": "Metric temporality: cumulative, delta, or unspecified. Omit to auto-fetch it; a value sent here overrides the metadata.",
                 "type": "string"
               },
               "timeAggregation": {

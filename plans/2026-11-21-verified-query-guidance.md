@@ -71,7 +71,7 @@ error that does not; **C** cosmetic. Sources are SigNoz paths at `9d5c5871cb` or
 | `signoz_execute_builder_query` | guides "required" | imperative only | decision 4 | W | rules inline; pointers kept |
 | `signoz_execute_builder_query` | a formula input limit drops series | accurate, previously unverified | new e2e `test_formula_input_limit_drops_series_and_says_so` | W | unchanged, plus note |
 | `signoz_list_services` | counts requests at entry spans | missing | `module.go` scope | W (models chose other tools) | added, without the filter expression |
-| `signoz_list_services` | callRate per second; errorRate in percent | accurate | eval truth (1,200 requests over 1,500 s = 0.8) | C | unchanged |
+| `signoz_list_services` | callRate per second; errorRate in percent | incomplete: callRate is numCalls over the whole requested window | eval truth (1,200 requests over 1,500 s = 0.8); `implservices/module.go` `periodSeconds`; e2e `test_services_sorted_by_name_and_paged_without_gaps` | C | adds that callRate divides numCalls by the whole window |
 | `signoz_get_service_top_operations` `tags` | span-attribute tags match | accurate now (SigNoz/nerve-pod#482 cited it as stale) | `implservices/helpers.go` `buildFilterExpression`; e2e `test_service_top_operations_lists_the_seeded_operation` | EN | unchanged |
 | `signoz_search_logs`, `signoz_search_traces`, `signoz_aggregate_logs` | "Read the guide before unfamiliar fields" | imperative only | decision 4 | W | key discovery stated; pointer kept |
 
@@ -186,7 +186,7 @@ own text; they were spot-checked, not edited.
 | `signoz_get_field_keys`, `signoz_get_field_values` | no time range; data.complete=false when cut | accurate | e2e `test_field_lookups_honor_limit_and_say_when_cut` | W | unchanged |
 | `signoz_get_trace_details` | found by ID alone | accurate | e2e `test_trace_details_finds_a_trace_by_id_alone` | C | unchanged |
 | `signoz_get_service_map` | paired calls only; a window under a minute can be empty | accurate | e2e `test_service_map.py` | W | unchanged |
-| `signoz_get_service_map` | which side an edge's latency and errorRate are measured on | missing | the collector's service-calls view takes them from the callee's span; e2e `test_service_map.py` | W (found in the eval) | description and units note name the callee side |
+| `signoz_get_service_map` | which side an edge's latency and errorRate are measured on | missing | the collector's service-calls view takes them from the callee's span; e2e `test_service_map.py` | W (found in the eval) | description and units note name the callee side; the note says the client-span route pools destinations and how to keep one |
 | `signoz_get_org_overview` | missing fields are unreported, not zero | accurate | e2e `test_org_overview` | W | unchanged |
 | AI pricing and mapping tools | views, unpriced models in the last hour, mapping groups | accurate | e2e `test_ai_pricing_and_mappings.py` | C | unchanged |
 | `signoz_search_docs`, `signoz_fetch_doc` | ranking, sections, headings | accurate | `internal/docs` golden tests | C | unchanged |
@@ -575,6 +575,8 @@ the tools and guides of that subject.
 - `internal/mcp-server/testdata/wire-catalog/` — the changed entries only.
 - `README.md`, `manifest.json`, `docs/mcp-best-practices.md` (SUR-11, OUT-7, RES-5).
 - e2e: `tests/e2e/tests/test_{trace_fields,metric_aggregations,result_shaping}.py`, `tests/fixtures/telemetry.py`.
+- Bug fixes: `internal/handler/tools/{metrics_query,metrics_helper,services}.go`; e2e in
+  `test_{service_map,service_listing,spec_examples}.py`.
 - Second pass: alert, dashboard, view, and channel descriptions; `internal/handler/tools/errs.go`
   and `notification_channels.go` recovery text; `pkg/alert/resources.go`, `pkg/dashboard/query.go`;
   e2e in `test_{alerts,dashboards,logs,notification_channels,saved_views,query_response_paths}.py`.
@@ -822,6 +824,32 @@ and N10, and raised P1 to P5.
 
 These fixes have not been reviewed again.
 
+### 2026-11-22 — Bugs next to this PR's texts
+
+Four bugs this PR's texts sit on, fixed here because each is small and the texts would otherwise
+describe them.
+
+- `metricType` alone skipped the metadata lookup (SigNoz/nerve-pod#674 item 6), so `metricType:
+  sum` defaulted to avg and the counter notes stayed off. With `metricType` set, the tool now
+  fetches whichever of temporality and isMonotonic the caller left out, for the primary query and
+  formula sub-queries; a value the caller sent wins. A gauge needs neither, and only a sum needs
+  monotonicity. A failed lookup or a metric missing from the metadata keeps the query running on
+  the caller's values, WARN-logged, and the decisions note says the value is unknown. A fetched
+  temporality is now sent upstream for these callers and for sub-queries, which dropped it on a
+  copy, as it already was for a primary query without `metricType`; SigNoz fills an empty one from
+  its own metadata, so the result only differs when the two disagree. The metrics guide's mistake
+  about `metricType` alone is removed, and the isMonotonic and temporality descriptions say a sent
+  value overrides the metadata.
+- The `routing_channels` e2e fixture read the channel id from `data.id`, which the create result
+  does not carry, so it deleted no channel (SigNoz/nerve-pod#674 item 13). It uses `dig_id` and fails
+  on a missing id.
+- The service map units note sent caller-latency questions to client spans without saying they
+  pool every destination, and client spans to different services can share a span name. The note
+  and the traces `groupBy` description now say to filter or group by a destination attribute such
+  as `server.address`, as an example, since instrumentation decides which attributes exist.
+- `signoz_list_services` now says callRate is numCalls divided by the whole requested window, so a
+  service active for part of it reads lower than its rate while active.
+
 ### 2026-11-21 — Mutation-side rules on the tools, schema pointers kept
 
 - Decision: rules that prevent a wrong result with no error go on the tool: the alert unit rule,
@@ -886,6 +914,17 @@ These fixes have not been reviewed again.
   (order key), and `test_window_percentile_is_not_the_mean_of_step_percentiles` (single-quoted
   PromQL). The full e2e suite passes on a fresh v0.151.0 cast (118 passed, 1 skipped as on main),
   and `make ci` passes.
+- Bugs next to this PR's texts: handler tests cover `metricType` alone on a cumulative counter
+  (rate by default; `counter_running_total` on latest), the caller's values winning, a failed
+  lookup, a metric missing from the metadata, and a formula sub-query. e2e assertions:
+  `test_counter_reducers_say_what_they_measured` (`metricType` alone fetches both values),
+  `test_service_map_reports_one_edge_from_both_ends` (two callees: grouping client spans by name
+  pools them, by `server.address` keeps each latency),
+  `test_services_sorted_by_name_and_paged_without_gaps` (callRate is numCalls over 3,600 s), and
+  `test_spec_examples.py` run twice on one cast with no channel left behind (the create result is
+  `{channel, testNotification}`, so `data.id` was always empty). The touched files pass on a fresh
+  v0.151.0 cast (22 of 22), the full suite passes (118 passed, 1 skipped as on main), and
+  `make ci` passes.
 - `GOTOOLCHAIN=go1.26.11 make ci` with a temporary module cache (a locally modified cache entry
   fails `go mod verify`) and protocol and conformance port overrides (another local process holds
   port 18080). Full e2e suite against v0.151.0.
@@ -907,4 +946,5 @@ claims the earlier passes left unverified (see "Formerly unverified claims"). Le
   input; an offset carried into the retried bucket query).
 - Measurement-note cases left as too rare in the fifth review (M8, M12, M13, and parts of M1, M3,
   M5, M6 and M11), and M2 and N12, declined.
-- Skill changes are tracked in SigNoz/nerve-pod#436; behaviour bugs are in SigNoz/nerve-pod#674.
+- Skill changes are tracked in SigNoz/nerve-pod#436; behaviour bugs are in SigNoz/nerve-pod#674,
+  of which items 6 and 13 are fixed here (see "Bugs next to this PR's texts").

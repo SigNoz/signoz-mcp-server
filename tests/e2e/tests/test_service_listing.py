@@ -3,8 +3,11 @@
 Services come back sorted by name, so offset pages neither skip nor repeat
 one, and a name containing `@` keeps its statistics. Latencies are
 nanoseconds and error rates are percentages, as both tool descriptions say,
-and SigNoz applies the top-operations limit after ranking by p99.
+callRate is numCalls over the whole window, as the list_services description
+says, and SigNoz applies the top-operations limit after ranking by p99.
 """
+
+import pytest
 
 from fixtures.mcpclient import MCPClient, assert_tool_ok
 from fixtures.results import first_block_json, note_blocks
@@ -13,6 +16,7 @@ from fixtures.telemetry import seed_traces, wait_for
 # seed_traces makes each root span 250 ms long and each child span 100 ms.
 ROOT_SPAN_NS = 250_000_000
 CHILD_SPAN_NS = 100_000_000
+WINDOW_SECONDS = 3600  # list_services asks for timeRange 1h
 
 
 def list_services(mcp_client: MCPClient, limit: int, offset: int = 0) -> dict:
@@ -45,6 +49,9 @@ def test_services_sorted_by_name_and_paged_without_gaps(mcp_client: MCPClient, t
 
     seeded = next(item for item in listing["data"] if item["serviceName"] == at_sign)
     assert seeded["numCalls"] == 2
+    assert seeded["callRate"] == pytest.approx(seeded["numCalls"] / WINDOW_SECONDS), (
+        "callRate is numCalls over the whole requested window, not the seconds the service was active"
+    )
     assert seeded["numErrors"] == 1
     assert seeded["errorRate"] == 50, "errorRate is a percentage: one of two calls failed"
     assert seeded["p99"] == ROOT_SPAN_NS, "latencies are nanoseconds"

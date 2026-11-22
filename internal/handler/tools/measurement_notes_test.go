@@ -317,6 +317,12 @@ func TestQueryMetrics_SaysWhatAScalarReductionMeasured(t *testing.T) {
 			},
 		},
 		{
+			name: "latest of a counter typed sum alone", metadata: cumulativeCounter,
+			args:     map[string]any{"metricName": "http.requests", "metricType": "sum", "timeAggregation": "latest", "spaceAggregation": "avg", "reduceTo": "sum"},
+			wantRule: "counter_running_total",
+			want:     []string{"timeAggregation latest reads its running total", "temporality: cumulative (auto-fetched)"},
+		},
+		{
 			name: "sample count of a cumulative counter", metadata: cumulativeCounter,
 			args:     map[string]any{"metricName": "http.requests", "timeAggregation": "count", "reduceTo": "max", "requestType": "time_series"},
 			wantRule: "counter_running_total",

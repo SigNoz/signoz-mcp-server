@@ -365,6 +365,16 @@ def test_counter_reducers_say_what_they_measured(mcp_client: MCPClient, test_id:
     assert pinned("delta") == [], "a cumulative counter pinned as delta matches no samples"
     assert pinned("cumulative") == pytest.approx([0.5], rel=0.05)
 
+    # metricType alone still gets the temporality and monotonicity it left out, so the default is the rate.
+    typed = mcp_client.call_tool(
+        "signoz_query_metrics",
+        {"searchContext": f"rate of {metric}", "metricName": metric, "metricType": "sum", "reduceTo": "avg"}
+        | {"requestType": "scalar", "timeRange": "1h"},
+    )
+    notes = note_blocks(typed)
+    assert "temporality: cumulative (auto-fetched)" in notes and "isMonotonic: true (auto-fetched)" in notes, notes
+    assert _scalar_values(first_text_block(typed)) == pytest.approx([0.5], rel=0.05)
+
     # SigNoz raises a step below its 60 s minimum; the decisions note names the step it used.
     raised = mcp_client.call_tool(
         "signoz_query_metrics",

@@ -96,9 +96,8 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 		}
 	} else {
 		decisions = append(decisions, fmt.Sprintf("metricType: %s (caller-provided)", mqr.MetricType))
-		if mqr.Temporality != "" {
-			decisions = append(decisions, fmt.Sprintf("temporality: %s (caller-provided)", mqr.Temporality))
-		}
+		decisions = append(decisions, h.fillOmittedMetricMetadata(ctx, client, mqr.MetricName, mqr.MetricType, mqr.Source,
+			&mqr.Temporality, &mqr.IsMonotonic, mqr.IsMonotonicSet)...)
 	}
 
 	// Step interval: use caller-provided value or let the backend decide
@@ -164,7 +163,7 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 
 	// Formula sub-queries
 	for _, fq := range mqr.FormulaQueries {
-		subResolved, subErr := resolveFormulaSubQuery(ctx, h, client, fq, mqr.RequestType, mqr.Source, &decisions)
+		subResolved, subErr := resolveFormulaSubQuery(ctx, h, client, &fq, mqr.RequestType, mqr.Source, &decisions)
 		if subErr != nil {
 			// Upstream metadata-fetch failures get the uniform prefix; local
 			// validation errors ("metric not found"/"validation error") stay raw.
@@ -353,6 +352,63 @@ func (h *Handler) fetchMetricMetadata(ctx context.Context, client metricMetadata
 	return meta, nil
 }
 
+// fillOmittedMetricMetadata fills the temporality and monotonicity that a
+// caller who sent metricType left out; a value the caller sent always wins. A
+// failed or empty lookup keeps the query running on the caller's values.
+func (h *Handler) fillOmittedMetricMetadata(ctx context.Context, client metricMetadataClient, metricName, metricType, source string, temporality *string, isMonotonic *bool, isMonotonicSet bool) []string {
+	var decisions []string
+	if *temporality != "" {
+		decisions = append(decisions, fmt.Sprintf("temporality: %s (caller-provided)", *temporality))
+	}
+	if isMonotonicSet {
+		decisions = append(decisions, fmt.Sprintf("isMonotonic: %t (caller-provided)", *isMonotonic))
+	}
+	// A gauge has neither value, and only a sum has a monotonicity.
+	needTemporality := *temporality == "" && !strings.EqualFold(metricType, "gauge")
+	needMonotonic := !isMonotonicSet && strings.EqualFold(metricType, "sum")
+	if !needTemporality && !needMonotonic {
+		return decisions
+	}
+
+	meta, err := h.fetchMetricMetadata(ctx, client, metricName, source)
+	unknown := ""
+	switch {
+	case err != nil:
+		unknown = "metadata lookup failed"
+		h.logger.WarnContext(ctx, "Metric metadata lookup failed; querying with the caller's values",
+			slog.String("metricName", metricName), logpkg.ErrAttr(err))
+	case meta == nil:
+		unknown = "metric not found in metadata"
+		h.logger.WarnContext(ctx, "Metric not found in metadata; querying with the caller's values",
+			slog.String("metricName", metricName))
+	}
+	if needTemporality {
+		switch {
+		case unknown != "":
+			decisions = append(decisions, fmt.Sprintf("temporality: unknown (%s; SigNoz resolves it)", unknown))
+		case meta.TemporalityMissing:
+			*temporality = meta.Temporality
+			decisions = append(decisions, fmt.Sprintf("temporality: unknown (not returned by metadata; assumed %q)", *temporality))
+		default:
+			*temporality = meta.Temporality
+			decisions = append(decisions, fmt.Sprintf("temporality: %s (auto-fetched)", *temporality))
+		}
+	}
+	if needMonotonic {
+		switch {
+		case unknown != "":
+			decisions = append(decisions, fmt.Sprintf("isMonotonic: unknown (%s; assumed false)", unknown))
+		case meta.IsMonotonicMissing:
+			*isMonotonic = meta.IsMonotonic
+			decisions = append(decisions, fmt.Sprintf("isMonotonic: unknown (not returned by metadata; assumed %t)", *isMonotonic))
+		default:
+			*isMonotonic = meta.IsMonotonic
+			decisions = append(decisions, fmt.Sprintf("isMonotonic: %t (auto-fetched)", *isMonotonic))
+		}
+	}
+	return decisions
+}
+
 // parseExactMetricMetadata decodes a GetMetricMetadata body. It returns nil
 // when the body carries no metric type.
 func parseExactMetricMetadata(data json.RawMessage) *metricMetadata {
@@ -456,7 +512,7 @@ func normalizeMetricType(t string) string {
 }
 
 // resolveFormulaSubQuery applies defaults for a formula sub-query, auto-fetching metadata if needed.
-func resolveFormulaSubQuery(ctx context.Context, h *Handler, client metricMetadataClient, fq formulaSubQuery, requestType, source string, decisions *[]string) (*metricsrules.ResolvedAggregation, error) {
+func resolveFormulaSubQuery(ctx context.Context, h *Handler, client metricMetadataClient, fq *formulaSubQuery, requestType, source string, decisions *[]string) (*metricsrules.ResolvedAggregation, error) {
 	metricType := fq.MetricType
 	isMonotonic := fq.IsMonotonic
 	temporality := fq.Temporality
@@ -485,6 +541,10 @@ func resolveFormulaSubQuery(ctx context.Context, h *Handler, client metricMetada
 		} else {
 			return nil, errors.New(metricNotFoundMessage(fq.MetricName, fq.Name))
 		}
+	} else {
+		for _, d := range h.fillOmittedMetricMetadata(ctx, client, fq.MetricName, metricType, source, &temporality, &isMonotonic, fq.IsMonotonicSet) {
+			*decisions = append(*decisions, fmt.Sprintf("query %s: %s", fq.Name, d))
+		}
 	}
 
 	resolved, err := metricsrules.ApplyDefaults(metricsrules.MetricQueryParams{
@@ -499,7 +559,7 @@ func resolveFormulaSubQuery(ctx context.Context, h *Handler, client metricMetada
 		return nil, fmt.Errorf("validation error for formula query %q (%s): %w", fq.Name, fq.MetricName, err)
 	}
 
-	// Update fq temporality for the aggregation struct
+	// The caller builds the sub-query's aggregation from fq.
 	fq.Temporality = temporality
 
 	for _, d := range resolved.Decisions {

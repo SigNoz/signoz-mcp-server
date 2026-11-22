@@ -16,7 +16,7 @@ from collections.abc import Iterator
 import pytest
 
 from fixtures.mcpclient import MCPClient, assert_tool_ok, text_blocks
-from fixtures.results import first_block_json
+from fixtures.results import dig_id, first_block_json
 from fixtures.seeded import channel_gone, create_channel, delete_channel, delete_view, view_gone
 
 HEADING = re.compile(r"^(#{2,3}) (.+)$")
@@ -84,7 +84,8 @@ def routing_channels(mcp_client: MCPClient, test_id: str) -> Iterator[dict[str, 
                     },
                 )
             )
-            created[display_name] = (first_block_json(result).get("data") or {}).get("id")
+            created[display_name] = dig_id(first_block_json(result))
+            assert created[display_name], f"{display_name}: create returned no id"
         yield created
     finally:
         for channel_id in created.values():

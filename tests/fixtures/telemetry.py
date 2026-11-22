@@ -164,6 +164,7 @@ def seed_service_calls(
     callee_duration_ns: int,
     environment: str,
     inner_server_span: bool = False,
+    server_address: str | None = None,
 ) -> None:
     """Push `count` traces in which `caller` calls `callee` and every call fails.
 
@@ -174,6 +175,7 @@ def seed_service_calls(
     Both services carry `environment` as deployment.environment, the key the
     graph stores for filtering. `inner_server_span` adds a second caller server
     span between the root and the client span, as a web framework's own span does.
+    `server_address` sets server.address on the client spans, as HTTP client instrumentation does.
     """
     now = time.time_ns()
     caller_spans, callee_spans = [], []
@@ -218,6 +220,7 @@ def seed_service_calls(
                 "startTimeUnixNano": str(start + 5_000_000),
                 "endTimeUnixNano": str(end - 5_000_000),
                 "status": {"code": 1},
+                "attributes": [_attr("server.address", server_address)] if server_address else [],
             },
         ]
         callee_spans.append(
