@@ -285,7 +285,7 @@ func TestQueryMetrics_SaysWhatAScalarReductionMeasured(t *testing.T) {
 			name: "a counter over a window-long step", metadata: cumulativeCounter,
 			args:     map[string]any{"metricName": "http.requests", "timeAggregation": "increase", "reduceTo": "sum", "stepInterval": "3600", "start": "2026-11-21T13:30:00Z", "end": "2026-11-21T14:30:00Z"},
 			wantRule: "step_alignment",
-			want:     []string{"the first step starts at 2026-11-21T13:00:00Z, before the window, and counts data from before it."},
+			want:     []string{"the first step starts at 2026-11-21T13:00:00Z, before the window, and counts data from before it.", "stepInterval: 3600s (caller-provided)"},
 		},
 		{name: "a counter over an aligned window-long step", metadata: cumulativeCounter, args: map[string]any{"metricName": "http.requests", "timeAggregation": "increase", "reduceTo": "sum", "stepInterval": "3600", "start": "2026-11-21T13:00:00Z", "end": "2026-11-21T14:00:00Z"}},
 		{
@@ -298,7 +298,8 @@ func TestQueryMetrics_SaysWhatAScalarReductionMeasured(t *testing.T) {
 			name: "the step SigNoz used, not the one asked for", metadata: cumulativeCounter,
 			args:     map[string]any{"metricName": "http.requests", "reduceTo": "sum", "stepInterval": "10"},
 			wantRule: "rate_summed",
-			want:     []string{"the per-second rate of each 60s step"},
+			want:     []string{"the per-second rate of each 60s step", "stepInterval: 60s (SigNoz used this step; 10s was requested)"},
+			absent:   []string{"stepInterval: 10s (caller-provided)"},
 		},
 		{name: "summed rate counted across series", metadata: cumulativeCounter, args: map[string]any{"metricName": "http.requests", "spaceAggregation": "count", "reduceTo": "sum"}},
 		{name: "summed rate after a function", metadata: cumulativeCounter, args: map[string]any{"metricName": "http.requests", "reduceTo": "sum", "functions": []any{map[string]any{"name": "cutOffMin", "args": []any{map[string]any{"value": 0}}}}}},

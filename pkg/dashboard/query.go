@@ -768,16 +768,16 @@ Time Aggregation:
     - Max: 1,500 data points per series
   Examples:
     - 1 hour → 10s steps (360 points)
-    - 24 hours → 5min steps (300 points)
+    - 24 hours → 285s steps (about 300 points)
 
 Trace Operators (V5):
-  Analyze parent-child relationships:
-    - => Direct descendant
-    - -> Indirect descendant
-    - && AND within trace
-    - || OR
-    - NOT Negation
-  Example: service.name = 'frontend' => service.name = 'customer'
+  Analyze parent-child relationships between the spans of traces builder queries, by query name:
+    - => Direct child
+    - -> Descendant
+    - && Both present in the trace
+    - || Either present
+    - NOT Absent
+  Example: A => B, where query A filters service.name = 'frontend' and query B filters service.name = 'customer'
 
 Metrics-Specific Features:
   Temporal Aggregation: Rate, Increase
@@ -845,7 +845,7 @@ Field Existence Behavior:
       service.name IN ('api', 'web', 'auth')  // Automatically checks existence
 
 Common Pitfalls:
-  1. Missing quotes: status = 'active' not status = active
+  1. Quoting: quote string values, status = 'active'
   2. LIKE wildcards: message LIKE '%error%' not message LIKE 'error'
   3. Array syntax: region IN ('us', 'eu') not region IN 'us', 'eu'
   4. Precedence: (a OR b) AND c not a OR b AND c
@@ -1013,7 +1013,7 @@ Performance Optimization:
   Query Level:
     1. Filter early - Apply restrictive filters first
     2. Limit scope - Use specific time ranges
-    3. Resource attributes - Leverage indexed fields (service.name, severity_text)
+    3. Resource attributes - Use indexed fields (service.name, severity_text)
     4. Aggregation efficiency - Choose appropriate time windows
 
   Dashboard Level:

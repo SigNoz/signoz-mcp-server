@@ -208,6 +208,335 @@ above is fixed except the alertType mismatch, whose effect on evaluation is not 
 not-verified rows keep their text; checking them needs an alert to fire, a UI to render, or a
 multi-shard cluster.
 
+## Audit, third pass: coverage by surface
+
+The first two passes recorded claims; this pass records coverage. Every client-visible text was
+read in full: the server instructions, all 48 tool descriptions with every parameter description,
+all 25 `signoz://` resources, the 4 prompts, every `manifest.json` description, and the recovery
+text of the coded errors. Generated text was read and checked for contradictions but not edited:
+the dashboard input schemas, the nested alert, view, channel, and query_range fields from the SigNoz
+OpenAPI spec, the example payload resources (`pkg/*/examples.generated.md`), the ClickHouse schema
+resources, and the docs sitemap. Claims were checked against SigNoz at `9d5c5871cb`, the handlers,
+and, where the source left a question, a live probe on the pinned cast. Same modes as above; the
+e2e column names a test or says why there is none.
+
+### Coverage
+
+| Surface | Read | Claim rows, passes 1 / 2 / 3 | Pass 3 status | Listed in |
+|---|---|---|---|---|
+| server instructions | in full | 8 / 0 / 5 | 5 accurate | first pass, third pass |
+| `signoz_aggregate_logs` | in full | 2 / 0 / 18 | 17 accurate, 1 missing | first pass, third pass |
+| `signoz_aggregate_traces` | in full | 5 / 0 / 12 | 11 accurate, 1 missing | first pass, third pass |
+| `signoz_check_metric_cardinality` | in full | 0 / 1 / 0 | none new | second pass |
+| `signoz_check_metric_usage` | in full | 0 / 1 / 0 | none new | second pass |
+| `signoz_create_alert` | in full; nested schema text generated | 0 / 0 + 17* / 2 | 1 accurate, 1 open | second pass*, third pass |
+| `signoz_create_dashboard` | in full; nested schema text generated | 0 / 0 + 18* / 1 | 1 accurate | second pass*, third pass |
+| `signoz_create_notification_channel` | in full; nested schema text generated | 0 / 0 + 10* / 1 | 1 accurate | second pass*, third pass |
+| `signoz_create_view` | in full; nested schema text generated | 0 / 1 + 10* / 1 | 1 accurate | second pass, third pass |
+| `signoz_delete_alert` | in full | 0 / 0 / 1 | 1 accurate | third pass |
+| `signoz_delete_dashboard` | in full | 0 / 0 / 1 | 1 accurate | third pass |
+| `signoz_delete_notification_channel` | in full | 0 / 1 + 10* / 1 | 1 accurate | second pass, third pass |
+| `signoz_delete_view` | in full | 0 / 0 / 1 | 1 accurate | third pass |
+| `signoz_execute_builder_query` | in full; nested schema text generated | 3 / 2 / 2 | 2 accurate | first pass, second pass, third pass |
+| `signoz_fetch_doc` | in full | 0 / 1 / 1 | 1 accurate | second pass, third pass |
+| `signoz_get_ai_pricing` | in full | 0 / 0 / 1 | 1 accurate | third pass |
+| `signoz_get_alert` | in full | 0 / 0 / 1 | 1 accurate | third pass |
+| `signoz_get_alert_history` | in full | 0 / 1 / 1 | 1 accurate | second pass, third pass |
+| `signoz_get_dashboard` | in full | 0 / 0 / 1 | 1 accurate | third pass |
+| `signoz_get_field_keys` | in full | 0 / 1 / 4 | 3 accurate, 1 stale or misleading | second pass, third pass |
+| `signoz_get_field_values` | in full | 0 / 1 / 1 | 1 accurate | second pass, third pass |
+| `signoz_get_notification_channel` | in full | 0 / 0 / 1 | 1 accurate | third pass |
+| `signoz_get_org_overview` | in full | 0 / 1 / 1 | 1 accurate | second pass, third pass |
+| `signoz_get_service_map` | in full | 0 / 2 / 1 | 1 accurate | second pass, third pass |
+| `signoz_get_service_top_operations` | in full | 1 / 0 / 2 | 2 accurate | first pass, third pass |
+| `signoz_get_top_metrics` | in full | 0 / 1 / 0 | none new | second pass |
+| `signoz_get_trace_details` | in full | 0 / 1 / 2 | 1 stale or misleading, 1 accurate | second pass, third pass |
+| `signoz_get_view` | in full | 0 / 0 / 1 | 1 accurate | third pass |
+| `signoz_import_dashboard` | in full | 0 / 0 / 1 | 1 accurate | third pass |
+| `signoz_list_ai_attribute_mappings` | in full | 0 / 0 / 1 | 1 accurate | third pass |
+| `signoz_list_alert_rules` | in full | 0 / 1 / 1 | 1 accurate | second pass, third pass |
+| `signoz_list_alerts` | in full | 0 / 1 / 1 | 1 accurate | second pass, third pass |
+| `signoz_list_dashboard_templates` | in full | 0 / 0 / 1 | 1 accurate | third pass |
+| `signoz_list_dashboards` | in full | 0 / 0 / 1 | 1 accurate | third pass |
+| `signoz_list_metrics` | in full | 1 / 1 / 2 | 2 accurate | first pass, second pass, third pass |
+| `signoz_list_notification_channels` | in full | 0 / 0 / 2 | 2 accurate | third pass |
+| `signoz_list_services` | in full | 4 / 0 / 2 | 2 accurate | first pass, third pass |
+| `signoz_list_views` | in full | 0 / 0 / 1 | 1 accurate | third pass |
+| `signoz_patch_dashboard` | in full | 0 / 1 + 18* / 1 | 1 accurate | second pass, third pass |
+| `signoz_query_metrics` | in full | 9 / 1 / 8 | 7 accurate, 1 stale or misleading | first pass, second pass, third pass |
+| `signoz_search_docs` | in full | 0 / 1 / 1 | 1 accurate | second pass, third pass |
+| `signoz_search_logs` | in full | 1 / 0 / 16 | 16 accurate | first pass, third pass |
+| `signoz_search_traces` | in full | 1 / 0 / 10 | 10 accurate | first pass, third pass |
+| `signoz_submit_feedback` | in full | 0 / 0 / 1 | 1 accurate | third pass |
+| `signoz_test_ai_attribute_mapping` | in full | 0 / 0 / 1 | 1 accurate | third pass |
+| `signoz_update_alert` | in full; nested schema text generated | 0 / 0 + 17* / 1 | 1 accurate | second pass*, third pass |
+| `signoz_update_dashboard` | in full; nested schema text generated | 0 / 0 + 18* / 1 | 1 accurate | second pass*, third pass |
+| `signoz_update_notification_channel` | in full | 0 / 0 + 10* / 1 | 1 accurate | second pass*, third pass |
+| `signoz_update_view` | in full; nested schema text generated | 0 / 0 + 10* / 1 | 1 accurate | second pass*, third pass |
+| `signoz://ai/query-builder-guide` | in full | 1 / 0 / 1 | 1 accurate | first pass, third pass |
+| `signoz://alert/examples` | in full; generated | 0 / 0 / 2 | 2 accurate | third pass |
+| `signoz://alert/instructions` | in full | 0 / 0 + 17* / 23 | 21 accurate, 2 stale or misleading | second pass*, third pass |
+| `signoz://dashboard/clickhouse-logs-example` | in full | 0 / 0 / 1 | 1 accurate | third pass |
+| `signoz://dashboard/clickhouse-metrics-example` | in full | 0 / 0 / 1 | 1 accurate | third pass |
+| `signoz://dashboard/clickhouse-schema-for-logs` | in full; generated | 0 / 0 / 1 | 1 accurate | third pass |
+| `signoz://dashboard/clickhouse-schema-for-metrics` | in full; generated | 0 / 0 / 1 | 1 accurate | third pass |
+| `signoz://dashboard/clickhouse-schema-for-traces` | in full; generated | 0 / 0 / 1 | 1 accurate | third pass |
+| `signoz://dashboard/clickhouse-traces-example` | in full | 0 / 0 / 1 | 1 accurate | third pass |
+| `signoz://dashboard/examples` | in full; payloads generated | 0 / 0 / 3 | 3 accurate | third pass |
+| `signoz://dashboard/instructions` | in full | 0 / 0 / 8 | 5 accurate, 1 stale or misleading, 1 guidance, 1 style | third pass |
+| `signoz://dashboard/list-filter-guide` | in full | 0 / 0 + 18* / 6 | 6 accurate | second pass*, third pass |
+| `signoz://dashboard/patch-instructions` | in full | 0 / 0 + 18* / 6 | 5 accurate, 1 style | second pass*, third pass |
+| `signoz://dashboard/query-builder-example` | in full | 0 / 0 + 18* / 11 | 7 accurate, 3 stale or misleading, 1 style | second pass*, third pass |
+| `signoz://dashboard/widgets-examples` | in full | 0 / 0 / 3 | 3 accurate | third pass |
+| `signoz://dashboard/widgets-instructions` | in full | 0 / 0 + 18* / 7 | 7 accurate | second pass*, third pass |
+| `signoz://docs/sitemap` | in full; generated | 0 / 0 / 1 | 1 accurate | third pass |
+| `signoz://logs/query-builder-guide` | in full | 1 / 0 / 5 | 5 accurate | first pass, third pass |
+| `signoz://metrics-aggregation-guide` | in full | 6 / 0 / 1 | 1 accurate | first pass, third pass |
+| `signoz://notification-channel/examples` | in full; generated | 0 / 0 / 2 | 2 accurate | third pass |
+| `signoz://promql/instructions` | in full | 1 / 0 / 2 | 1 accurate, 1 stale or misleading | first pass, third pass |
+| `signoz://query-builder/examples` | in full; generated | 1 / 0 / 1 | 1 accurate | first pass, third pass |
+| `signoz://traces/query-builder-guide` | in full | 3 / 0 / 5 | 4 accurate, 1 stale or misleading | first pass, third pass |
+| `signoz://view/examples` | in full; generated | 0 / 0 / 1 | 1 accurate | third pass |
+| `signoz://view/instructions` | in full | 0 / 0 + 10* / 5 | 5 accurate | second pass*, third pass |
+| `compare_metrics` prompt | in full | 1 / 1 / 1 | 1 accurate | first pass, second pass, third pass |
+| `debug_service_errors` prompt | in full | 1 / 1 / 1 | 1 accurate | first pass, second pass, third pass |
+| `incident_triage` prompt | in full | 1 / 1 / 1 | 1 accurate | first pass, second pass, third pass |
+| `latency_analysis` prompt | in full | 1 / 1 / 2 | 1 accurate, 1 stale or misleading | first pass, second pass, third pass |
+| `manifest.json` | in full | 1 / 3 / 2 | 1 stale or misleading, 1 accurate | first pass, second pass, third pass |
+| `coded errors` | in full | 4 / 6 / 3 | 3 accurate | first pass, second pass, third pass |
+
+\* Rows of the second pass's Alerts, Dashboards, or Views and notification channels table, shared by
+the tools and guides of that subject.
+
+### Claims
+
+| Surface | Claim | Status | Checked against | Mode | e2e |
+|---|---|---|---|---|---|
+| instructions | AI telemetry questions mean the user's app in SigNoz | accurate | routing; ai tools | W | test_ai_traces.py (tool routes) |
+| instructions | usage and billing metrics: signoz_query_metrics source=meter | accurate | metrics_helper.go source param; SigNoz meter source | W | none: no meter data on the e2e cast |
+| instructions | rule 2 calls signoz_get_field_keys with fieldContext=resource | accurate | get_field_keys fieldContext param | EF | test_field_keys_context_filter_is_honored |
+| instructions | rule 6 resource results include webUrl | accurate | alerts.go, dashboards.go, traces.go, services.go | C | test_dashboard_web_urls_follow..., test_trace_deep_links... |
+| instructions | rule 8 count = increase with reduceTo sum | accurate with the counter default spaceAggregation sum | pkg/metricsrules/rules.go:104 | W | test_counter_reducers_say_what_they_measured |
+| logs tools | defaults 1h window; end defaults to now; start forms | accurate | timeutil.ResolveWindow; handler tests | EF | test_services_ns_and_ms_windows |
+| logs tools | rows are complete records (attributes_string, resources_string) | accurate | SigNoz raw log rows | C | test_search_logs_select_fields_and_order |
+| logs tools | selectFields adds timestamp and id, at most 50, prefixes pick context | accurate | logs_helper.go; SigNoz select | EF | test_search_logs_select_fields_and_order |
+| logs tools | body.<path> selectable/groupable only when listed | accurate | SigNoz error text | EF | test_unlisted_body_field_cannot_be_grouped |
+| logs tools | limit default 20 (search) / 100 (aggregate), max 10000 clamped | accurate | handler constants; querybuildertypesv5 MaxQueryLimit | C | test_aggregate_logs_several_aggregations_and_having |
+| logs tools | orderBy default timestamp desc, id tie-break; aggregate orderBy key rule | accurate | logs_helper.go; test_order_keys_the_guides_teach | EF | test_search_logs_select_fields_and_order, test_order_keys_the_guides_teach |
+| logs tools | searchScope/searchText semantics; ignored with a note | accurate | logs_helper.go | W | test_explicit_search_scopes..., test_search_scope_without_search_text_is_ignored_with_a_note |
+| logs tools | severity matches any case as a prefix | accurate | logs_helper.go | W | test_severity_shortcut_matches_any_case_as_a_prefix |
+| logs tools | service shortcut adds resource.service.name; missing key gives no rows plus warning | accurate | logs_helper.go:225 | W | test_missing_filter_key_returns_no_rows_with_the_taught_warning |
+| logs tools | ambiguous keys default to resource | accurate | pkg/querybuilder/key_resolution.go ResolveLogicalFields | W | none: SigNoz says so in the result's warning (live probe); not pinned |
+| logs tools | no key:value, STARTS WITH, IS NULL in the grammar | accurate | grammar/FilterQuery.g4 | EF | none: SigNoz rejects them with a syntax error |
+| logs tools | search() over every field or scopes, slow, may be rejected | accurate | key_resolution.go search docs; SigNoz search | EF | test_explicit_search_scopes_quoting_and_warning_round_trip |
+| logs tools | aggregations, __result_N order, having by expression | accurate | SigNoz validation | EF | test_aggregate_logs_several_aggregations_and_having |
+| logs tools | functions: timeShift semantics; scalar applies only timeShift | accurate | SigNoz postprocess | W | test_aggregate_logs_time_shift_reads_an_earlier_window, test_aggregate_traces_functions_change_time_series_and_not_scalars |
+| logs tools | an unknown groupBy key can come back as one empty group | accurate | SigNoz group by missing key | W | none: the result carries a key-not-found warning (live probe); not pinned |
+| logs tools | time_series top groups ranked over the whole range | accurate | querier applySeriesLimit (plan row 70) | W | test_query_metrics_limit_order_having_and_typed_formula_queries |
+| trace tools | rows are complete span records with events and links; selectFields adds timestamp, trace_id, span_id | accurate | SigNoz raw trace rows | C | test_search_traces_complete_rows_and_select_fields |
+| trace tools | search() is logs-only | accurate | where_clause_visitor.go VisitSearchCall RejectsBodyFunction | EF | test_trace_fields.py |
+| trace tools | keys in several contexts default to resource | accurate | key_resolution.go ResolveLogicalFields | W | none: as the logs row |
+| trace tools | min/maxDuration units; a bare number is nanoseconds | accurate | traces handler duration parsing | W | handler tests (traces_test.go) |
+| trace tools | operation, error, service shortcuts compose with AND | accurate | traces handler | W | test_shortcut_filters_narrow_an_or_filter |
+| trace tools | builder_query trace rows come back slowest first; orderBy ignored | accurate | SigNoz trace request | C | test_plain_trace_rows_come_back_slowest_first |
+| trace tools | builder_ai_query scope, trace-level fields, ordering | accurate | SigNoz AI query | W | test_ai_traces.py (17 tests) |
+| trace tools | one call cannot mix trace-level and span-level aggregations | accurate | SigNoz validation | EF | test_ai_aggregate_rejects_mixing_trace_and_span_aggregations |
+| trace tools | grouping by timestamp fails | accurate | querybuildertypesv5/validation.go "group by on timestamp is not allowed" | EF | none: SigNoz's error names the field |
+| trace tools | aggregate orderBy must be an aggregation or groupBy key | accurate | SigNoz order validation | EF | test_order_keys_the_guides_teach |
+| `signoz_query_metrics` | standalone and formula results capped at 100; formula inputs not limited | accurate | metrics_query.go bounds | W | test_query_metrics_limit_order_having_and_typed_formula_queries |
+| `signoz_query_metrics` | having filters query A before a formula; SigNoz ignores having on the formula result | accurate | SigNoz formula evaluation | W | test_query_metrics_limit_order_having_and_typed_formula_queries |
+| `signoz_query_metrics` | defaults: requestType time_series; orderBy __result desc; limit 100, max 10000 | accurate | metrics_query.go | C | handler tests (metrics_query_test.go) |
+| `signoz_query_metrics` | type defaults: avg for gauges and non-monotonic sums, rate and sum for counters, p99 for histograms; summary has none | accurate | pkg/metricsrules/rules.go | EF | test_scalar_requires_an_explicit_reduce_to; handler tests |
+| `signoz_query_metrics` | automatic step: about 300 points, at least 60 s | accurate | pkg/querybuilder/time.go RecommendedNumberOfPoints, RecommendedStepIntervalForMetric | W | test_window_percentile_is_not_the_mean_of_step_percentiles |
+| `signoz_query_metrics` | formulaQueries need the primary's groupBy to match series | accurate | SigNoz formula join on labels | W | test_query_metrics_limit_order_having_and_typed_formula_queries |
+| `signoz_query_metrics` | source=meter reads Cost Meter data | accurate | metrics_helper.go; SigNoz meter source | W | none: the e2e cast has no meter data |
+| `signoz_execute_builder_query` | start and end required; missing or zero standalone and formula-result limits normalize to 100; formula inputs get none | accurate | query_builder.go precondition; pkg/querybuilder/bounds.go ApplyBounds | EF / W | test_execute_builder_query_bounds_builder_ai_query_without_an_order, test_formula_input_limit_drops_series_and_says_so |
+| `signoz_execute_builder_query` | requestType has no default | accurate | querybuildertypesv5 request validation | EF | test_execute_builder_query (query_response_paths) |
+| `signoz_list_services` | sorted by name, paginated, limit 50 max 1000; follow nextOffset | accurate | services.go | C | test_services_sorted_by_name_and_paged_without_gaps |
+| `signoz_list_services` | absence means no trace activity in the window | accurate | SigNoz services module scope | W | test_services_ns_and_ms_windows |
+| `signoz_get_service_top_operations` | highest p99 first, limit 100 max 5000; p50/p95/p99 ns, numCalls, errorCount | accurate | services.go; SigNoz top operations | C | test_top_operations_keep_the_slowest_within_limit |
+| `signoz_get_service_top_operations` | tags is a JSON-encoded string | accurate | services.go tags parsing | EF | test_service_top_operations_lists_the_seeded_operation |
+| `signoz_get_service_map` | environment, cluster, namespace narrow the graph; direction default both; limit 50 max 1000 | accurate | services.go serviceMapTags | W | test_service_map_reports_one_edge_from_both_ends |
+| `signoz_list_metrics` | lists metrics active in the window; default limit 50; no offset pagination | accurate | metrics.go; plan pass 2 | C | test_list_metrics_path |
+| `signoz_list_metrics` | source=meter lists the usage metrics SigNoz meters (ingestion volume) | accurate | SigNoz meter source | C | none: the e2e cast has no meter data |
+| `signoz_get_field_keys` | data.complete=false when cut; intrinsic and materialized fields on top of the limit | accurate | SigNoz fields API | W | test_field_lookups_honor_limit_and_say_when_cut |
+| `signoz_get_field_keys` | fieldDataType: an array form such as []string reads as its element type | accurate | telemetrytypes/field_datatype.go mapping | C | none: SigNoz's own mapping, no silent result |
+| `signoz_get_field_keys` | fieldContext 'tag' is ignored when listing keys and returns no values | stale | live SigNoz returns no keys and no values for 'tag'; it does not ignore the filter (field_context.go maps tag only in JSON bodies) | W | none: the probe showed empty keys and values; text fixed |
+| `signoz_get_field_keys` | queryType builder_ai_query lists trace-level and gen_ai fields | accurate | SigNoz AI fields | W | test_ai_field_keys_list_per_trace_columns, test_ai_field_keys_filter_to_trace_context |
+| `signoz_get_field_values` | values come from all retained metadata; no time range | accurate | SigNoz fields API | W | test_seeded_resource_attribute_values_discoverable |
+| alert tools | create/update route by exact displayName; ask before creating a channel | accurate | ruletypes threshold channel validation | EF | test_create_alert_unknown_channel_rejected |
+| `signoz_list_alerts` | active, silenced, inhibited default true; limit 50 max 1000 | accurate | alerts.go; Alertmanager API defaults | C | none: handler defaults, handler tests |
+| `signoz_list_alert_rules` | filter keys, labels, bare words; at most 1024 characters; sort updated_at desc; states | accurate | ruletypes/list.go:54; alerts.go | EF | test_list_alert_rules_filters_in_signoz |
+| `signoz_get_alert_history` | 6h default, limit 20 max 10000, order asc, cursor repeats filters | accurate | alerts.go:367-391 | C | test_alert_history_envelope |
+| signoz_get_alert, signoz_delete_alert | rule IDs from signoz_list_alert_rules; UUIDv7 | accurate | ruletypes rule IDs | EF | test_alert_crud_round_trip |
+| dashboard tools | create/update read the guides; dry-run panel queries; update is a full replacement | accurate | plan pass 2 dashboards | EF / W | test_text_panel_create_get_update_patch..., test_panels_save_without_data_or_a_grid_item |
+| `signoz_patch_dashboard` | remove on a missing path is a no-op, add creates parents, result validated, locked rejected | accurate | dashboardtypes/perses_dashboard_patch.go:32 | EF | test_text_panel_create_get_update_patch_defaults_layout_and_cleanup |
+| `signoz_list_dashboards` | limit default 50, clamped at 200; source user or integration; not a filter column | accurate | dashboardtypes/list_v2.go:15 MaxListLimit | EF | test_system_dashboard_is_hidden_but_gettable_and_source_is_not_a_list_filter |
+| signoz_get_dashboard, signoz_delete_dashboard | only source=user dashboards can be written | accurate | plan pass 2 | EF | test_system_dashboard_is_hidden_but_gettable... |
+| signoz_import_dashboard, signoz_list_dashboard_templates | relative template path; every word must match; at most 2048 characters | accurate | dashboard_templates.go | EF | test_template_catalog_import_lifecycle |
+| view tools | full replacement, name immutable, schemaVersion v2 filled in, list limit 50 max 1000, source validated | accurate | views.go; plan pass 2 | EF | test_view_crud_round_trip, test_list_views_without_source_spans_explorers, test_update_view_source_change_moves_view |
+| channel tools | config {kind, spec}; unknown kind or spec field rejected with the requirement; name immutable DNS-1123; routing uses displayName; test defaults false | accurate | plan pass 2 channels; alertmanagertypes | EF | test_every_provider_config_round_trips..., test_local_webhook_test_is_opt_in... |
+| `signoz_list_notification_channels` | page size 20 when omitted, capped at 200 | accurate | alertmanagertypes/channellist.go:12-13 | C | none: SigNoz's own cap, reported in pagination.limit |
+| `signoz_get_trace_details` | includeSpans: include detailed span information (default true) | stale | internal/client/client.go:725 GetTraceDetails never reads it; every call returns up to 1,000 spans | W | none: the parameter has no effect (behaviour item filed separately) |
+| `signoz_get_trace_details` | complete span records; found by ID alone; an unknown ID returns no spans | accurate | SigNoz trace v3 waterfall | C | test_trace_details_finds_a_trace_by_id_alone |
+| `signoz_get_org_overview` | missing fields are unreported, not zero | accurate | plan pass 2 | W | test_org_overview |
+| AI pricing and mapping tools | views, last-hour unpriced models, mapping semantics, 1 to 100 sample spans, nothing saved | accurate | plan pass 2; SigNoz llm pricing and mapping APIs | C | test_ai_pricing_and_mappings.py |
+| docs tools | ranking, limit 10 max 25, section_slug exact, fetch by URL or path and heading | accurate | internal/docs golden tests | C | none: no SigNoz dependency (embedded corpus) |
+| `signoz_submit_feedback` | categories; message at most 2000 characters | accurate | feedback.go | C | none: no SigNoz dependency |
+| alert/instructions | dry-run shape: query_range without queryType, panelType, or unit | accurate | querybuildertypesv5 unknown-field rejection (plan pass 2) | EF | test_older_request_shape_error_names_the_queries_list |
+| alert/instructions | channel list defaults to 20 rows, at most 200 per page | accurate | alertmanagertypes/channellist.go:12-13 | C | none: SigNoz's own cap |
+| alert/instructions | alertType maps to the signal; signal must match alertType | misleading | query-service/rules/threshold_rule.go:295-313: evaluation runs the query whatever alertType says; alertType picks the related traces or logs link in a fired alert's annotations | W | none: the link appears only in a fired alert's notification (UNVERIFIED-12) |
+| alert/instructions | envelope types per compositeQuery.queryType | accurate | ruletypes compositeQuery validation | EF | test_alert_examples_create_and_delete |
+| alert/instructions | source meter works with rolling and cumulative evaluation | accurate | ruletypes evaluation kinds | W | test_alert_examples_create_and_delete (Cost Meter budget example) |
+| alert/instructions | order and limit on a grouped query cap evaluation to the top N | accurate | logsstatementbuilder/statement_builder.go:577-582 __limit_cte; querier applySeriesLimit | W | none: needs an alert to fire on a series outside the top N (UNVERIFIED-2) |
+| alert/instructions | formula functions abs, sqrt, log, exp; selectedQueryName picks the alerted query | accurate | SigNoz formula evaluator; ruletypes selectedQueryName | W | test_alert_examples_create_and_delete |
+| alert/instructions | metric timeAggregation default by type: gauge avg, counters rate | stale | metricsstatementbuilder rewrites only histograms (statement_builder.go:258-270); other types get "invalid time aggregation" (metricstelemetryschema/const.go:353-357) | W | test_rule_on_a_missing_metric_saves (saves; dry-run fails) |
+| alert/instructions | logs/traces having must use an aggregation; alerts evaluate the first aggregation | accurate | query-service/rules/threshold_rule.go:177-183 Aggregations[0] | W | none: needs an alert to fire on a two-aggregation query (UNVERIFIED-4) |
+| alert/instructions | operator reference and data type guardrails | accurate | filterquery sqlcompiler (plan pass 1 row 50) | EF | test_negative_filters_also_match_rows_missing_the_field |
+| alert/instructions | common compositeQuery.unit values | accurate | pkg/units converters | C | test_threshold_unit_converts_only_with_a_query_unit |
+| alert/instructions | tier name sets threshold.name and the lower-case severity | accurate | ruletypes/threshold.go:346-347 | C | none: visible only on a fired alert |
+| alert/instructions | matchType canonical values and aliases avg, sum | accurate | ruletypes/match.go | EF | test_alert_examples_create_and_delete |
+| alert/instructions | op canonical, short, and symbolic forms | accurate | ruletypes/compare.go | EF | test_alert_examples_create_and_delete |
+| alert/instructions | recoveryTarget null uses the target | accurate | ruletypes/threshold.go recoveryTarget | W | none: needs a firing and recovering alert |
+| alert/instructions | evaluation windows are Go durations; largest unit h | accurate | ruletypes/evaluation.go:38-39 valuer.TextDuration | EF | test_create_alert_unknown_channel_rejected (1d rejected) |
+| alert/instructions | cumulative schedule types and fields; SigNoz rejects a schedule missing one | accurate | ruletypes/evaluation.go cumulative schedule validation | EF | test_alert_examples_create_and_delete (budget example) |
+| alert/instructions | usePolicy defaults false; renotify fields | accurate | ruletypes/api_params.go NotificationSettings | C | test_alert_crud_round_trip |
+| alert/instructions | labels.severity does not set a fired alert's severity; reserved labels dropped; list reads the label | accurate | ruletypes/labels.go:309-317 reservedLabelNames; listable_rule.go:159 | C | none: visible only on a fired alert (UNVERIFIED-3) |
+| alert/instructions | platform labels alertname, threshold.name, severity, ruleSource, ruleId | accurate | query-service/rules/threshold_rule.go:280-284 | C | none: visible only on a fired alert |
+| alert/instructions | routing-policy matcher operators | accurate | ruletypes routing policy expression | EF | none: routing policies are not created in e2e |
+| alert/instructions | anomaly rule fields, seasonality values, signed score, outside_bounds absolute | accurate | ruletypes anomaly threshold; anomaly provider | W | test_alert_examples_create_and_delete (metric_anomaly example) |
+| alert/instructions | SigNoz fills only usePolicy=false; annotations get no defaults; unknown keys rejected | accurate | ruletypes/api_params.go (plan pass 2 row 125) | EF | test_alert_crud_round_trip |
+| dashboard/list-filter-guide | grammar: AND, OR, NOT, implicit AND, bare-word free text, quoted phrases | accurate | dashboardtypes list filter (SigNoz filter grammar) | EF | test_system_dashboard_is_hidden_but_gettable_and_source_is_not_a_list_filter |
+| dashboard/list-filter-guide | reserved keys and their operators; tag keys accept EXISTS | accurate | dashboardtypes/list_filter.go operator sets; the compiler rejects REGEXP (live: "REGEXP filtering on name is not supported") | EF | test_text_panel_create_get_update_patch_defaults_layout_and_cleanup |
+| dashboard/list-filter-guide | REGEXP and NOT REGEXP are rejected | accurate | list_filter.go lists REGEXP, but the live compiler rejects it | EF | test_text_panel_create_get_update_patch_defaults_layout_and_cleanup |
+| dashboard/list-filter-guide | EXISTS and NOT EXISTS apply only to tag keys | accurate | list_filter.go: stringSearchOps has no EXISTS | EF | test_text_panel_create_get_update_patch_defaults_layout_and_cleanup |
+| dashboard/list-filter-guide | filter capped at 1024 characters; reservedKeywords echoed | accurate | dashboardtypes/list_v2.go:16,190 | EF | none: SigNoz's error names the cap |
+| dashboard/list-filter-guide | a misspelled tag key matches nothing rather than erroring | accurate | TagKeyOps: any non-reserved key is a tag | W | test_system_dashboard_is_hidden_but_gettable_and_source_is_not_a_list_filter (source is a tag key) |
+| dashboard/patch-instructions | panels map, layouts array of Grid, items 0-based | accurate | dashboardtypes perses replicas | EF | test_text_panel_create_get_update_patch_defaults_layout_and_cleanup |
+| dashboard/patch-instructions | a grid item that references a removed panel is rejected (references unknown panel) | accurate | dashboardtypes/perses_dashboard_data.go:330 | EF | test_text_panel_create_get_update_patch_defaults_layout_and_cleanup |
+| dashboard/patch-instructions | overlapping items are rejected (items overlap) | accurate | dashboardtypes/perses_replicas.go:408 | EF | test_text_panel_create_get_update_patch_defaults_layout_and_cleanup |
+| dashboard/patch-instructions | query-backed panels hold exactly one query | accurate | dashboardtypes/perses_dashboard_data.go:153 | EF | none: needs a query panel patched to two queries; the panel round trips save one query each |
+| dashboard/patch-instructions | name immutable; rename via /spec/display/name; TextPanel queries [] | accurate | plan pass 2 | EF | test_text_panel_create_get_update_patch_defaults_layout_and_cleanup |
+| dashboard/patch-instructions | prose em dashes (5) | style | docs/client-visible-writing-style.md | C | fixed |
+| dashboard/instructions | schemaVersion v6; top-level name generated on create, required on full update | accurate | dashboardtypes/perses_dashboard.go:23; dashboards.go generateName | EF | test_text_panel_create_get_update_patch_defaults_layout_and_cleanup |
+| dashboard/instructions | tags at most 10 | accurate | dashboardtypes/perses_dashboard.go:24,354 | EF | none: SigNoz's error names the cap |
+| dashboard/instructions | grid: 12 columns, x 0-11, width 1-12, items must not overlap | accurate | dashboardtypes/perses_replicas.go:332,408 | EF | test_text_panel_create_get_update_patch_defaults_layout_and_cleanup (overlap) |
+| dashboard/instructions | height "minimum 2" | misleading | perses_replicas.go:332: height at least 1; 2 or more is layout advice | C | fixed |
+| dashboard/instructions | source is server-owned and not a list-filter key | accurate | plan pass 2 | EF | test_system_dashboard_is_hidden_but_gettable... |
+| dashboard/instructions | DynamicVariable signal and attribute; ALL in a dynamic variable means no filter; $var in builder, ClickHouse, PromQL | accurate | querybuildertypesv5 variables (generated spec text) | W | test_dashboard_examples_create_replace_patch_and_delete |
+| dashboard/instructions | ask before wiring a variable into panels | guidance | none | C | none: no SigNoz claim |
+| dashboard/instructions | prose em dash in a label | style | docs/client-visible-writing-style.md | C | fixed |
+| dashboard/widgets-instructions | query count per panel: exactly one; TextPanel queries []; null rejected | accurate | dashboardtypes/perses_dashboard_data.go:153; plan pass 2 | EF | test_text_panel_create_get_update_patch_defaults_layout_and_cleanup |
+| dashboard/widgets-instructions | dry-run envelope per query plugin; requestType per panel kind; executor does not expand variables | accurate | plan pass 2 (saved panel queries dry-run unchanged) | EN | test_saved_panel_queries_dry_run_unchanged_through_execute_builder_query |
+| dashboard/widgets-instructions | missing start or end fails with "missing start or end timestamp" | accurate | query_builder.go precondition and SigNoz validateTimeRange | EF | none: the handler's own precondition, handler tests |
+| dashboard/widgets-instructions | legend rules per panel type | accurate | SigNoz panel rendering (UI) | C | none: UI rendering |
+| dashboard/widgets-instructions | area, top list, scatter, geo map rules | accurate | plan pass 2 | EF | test_area_chart_panel_round_trips..., test_top_list_scatter_plot_and_geo_map_panels_round_trip |
+| dashboard/widgets-instructions | heatmap: rejects AI builder and trace operators; one enabled query; no functions or having; bucketOptions rejected on histograms; exponential histograms unsupported; y scales | accurate | dashboardtypes/perses_replicas.go:101; querybuildertypesv5/validation.go:968-972,1049; heatmap.go:157,172; perses_signoz_plugins.go:1674 | EF | test_histogram_buckets_read_with_rate_and_sum (functions) |
+| dashboard/widgets-instructions | thresholds color labels or backgrounds, no line marker; histogram, list, pie, table, value panel behaviour | accurate | SigNoz panel rendering (UI) | C | none: UI rendering |
+| view/instructions | schemaVersion v2 filled in; server-populated fields stripped; name dropped on update | accurate | views.go | EF | test_view_crud_round_trip |
+| view/instructions | SigNoz accepts a signal that differs from source | accurate | plan pass 2 | W | test_view_with_a_mismatched_signal_saves |
+| view/instructions | the Explorer renders only matching views | accurate (frontend filters views by source) | SigNoz frontend; not in the backend | W | none: UI rendering (UNVERIFIED-10) |
+| view/instructions | changing source moves the view; Cost Meter views are source meter with signal metrics | accurate | plan pass 2 | W | test_update_view_source_change_moves_view, test_view_examples_create_replace_and_delete |
+| view/instructions | time-series limit selects groups over the whole range | accurate | querier applySeriesLimit (plan row 70) | W | test_query_metrics_limit_order_having_and_typed_formula_queries |
+| example resources | request payloads (alert, dashboard, view, channel, query_range) are generated from the SigNoz spec | accurate (generated) | pkg/*/examples.generated.md; make gen | EF | test_spec_examples.py (all five run against SigNoz) |
+| notification-channel/examples | config.spec fields by kind, required and secret flags | accurate (generated) | SigNoz spec (alertmanagertypes) | EF | test_every_provider_config_round_trips_and_update_preserves_it |
+| dashboard/widgets-examples | name a column with the aggregation's alias field, not "as" in the expression | accurate | querybuildertypesv5/validation.go:344-348 "aliasing is not allowed in expression. Use alias field instead" | EF | test_aggregate_logs_several_aggregations_and_having |
+| dashboard/widgets-examples | variables as $name; without $ the literal string matches | accurate | querybuildertypesv5 variables (generated spec text) | W | test_dashboard_examples_create_replace_patch_and_delete |
+| dashboard/widgets-examples | every payload is a server-verified panel | accurate | dashboard_schema_test.go; e2e round trips | EF | test_area_chart_panel..., test_top_list_scatter_plot_and_geo_map_panels_round_trip |
+| dashboard/examples | metrics order key is spaceAggregation(timeAggregation(metric)) or __result; the bare metric name is rejected | accurate | querybuildertypesv5/validation.go:544-553 | EF | none: SigNoz's error lists the valid keys (EF) |
+| dashboard/examples, metrics guide | a pinned temporality overrides metadata; a wrong value returns no data | accurate | querier/querier.go:419-420; metricsstatementbuilder/statement_builder.go:565 | W | test_counter_reducers_say_what_they_measured |
+| alert/examples | Key Notes: aggregation shapes, selectedQueryName, routing, required blocks, signed anomaly targets | accurate | ruletypes (as alert/instructions) | EF | test_alert_examples_create_and_delete |
+| traces/query-builder-guide | operator set; no STARTS WITH, IS NULL, =~; no full-text search on traces | accurate | grammar/FilterQuery.g4; where_clause_visitor.go RejectsBodyFunction | EF | test_promql_matcher_error_names_regexp; test_trace_fields.py |
+| traces/query-builder-guide | isRoot/isEntryPoint semantics, only "= true"; entry spans are requests | accurate | plan pass 1 rows 82-83 | W | test_is_root_selects_root_spans, test_entry_spans_count_each_request_once |
+| traces/query-builder-guide | span columns, kind_string values, response_status_code is a string | accurate | telemetrytraces field definitions | W | test_group_by_resolves_custom_and_intrinsic_trace_fields |
+| traces/query-builder-guide, logs guide | start/end in ms; the timestamp column is nanoseconds; an inline ms value silently matches everything | accurate | telemetry timestamp columns (DateTime64(9)) | W | none: arithmetic on the column type; not pinned |
+| traces/query-builder-guide | SigNoz ignores "tag" when listing keys and returns no values | stale | as the get_field_keys row | W | none: text fixed |
+| logs/query-builder-guide | bare word or quoted phrase is full-text search; search() scopes | accurate | grammar fullText; where_clause_visitor.go VisitSearchCall | W | test_explicit_search_scopes_quoting_and_warning_round_trip |
+| logs/query-builder-guide | resource plus another context defaults to resource with a warning; other multi-context matches are ORed | accurate | querybuilder/key_resolution.go ResolveLogicalFields | W | none: as the logs row |
+| logs/query-builder-guide | body paths filter everywhere, group and select only when listed | accurate | SigNoz body JSON fields | EF | test_unlisted_body_field_cannot_be_grouped |
+| logs/query-builder-guide | severity_text = is case-sensitive; the shortcut matches any case | accurate | logs_helper.go; SigNoz string equality | W | test_severity_shortcut_matches_any_case_as_a_prefix |
+| metrics-aggregation-guide | defaults table, reduceTo rules, bucket recipe, step alignment | accurate | plan pass 1 rows 84-88; rules.go | W | test_window_percentile_is_not_the_mean_of_step_percentiles, test_counter_reducers_say_what_they_measured |
+| metrics-aggregation-guide | the window's percentile lies between what reduceTo min and max return | accurate | a mixture's quantile lies between its components' quantiles | W | test_window_percentile_is_not_the_mean_of_step_percentiles (min 16.667, max 96.875) |
+| metrics-aggregation-guide | SigNoz rejects a percentile on a non-histogram and a non-delta exponential histogram | accurate | querybuildertypesv5/validation.go:389,400 | EF | none: SigNoz's error names the rule |
+| metrics-aggregation-guide | formula functions: exp, log, ln, sqrt, sin, cos, tan, abs, ceil, floor | stale | querybuildertypesv5/formula.go:757-763 GetSupportedFunctions has no ceil or floor | EN | none: SigNoz's error names the undefined function (live: Undefined function ceil) |
+| metrics-aggregation-guide | summaries: query .quantile with both aggregations | accurate | rules.go:50-52 | EF | none: the handler's own error names the fix |
+| metrics-aggregation-guide | groupBy and filter keys need no context prefix; REGEXP for =~ | accurate | plan pass 1 rows 68-69 | EF | test_promql_matcher_error_names_regexp |
+| ai/query-builder-guide | two-pass trace rows, window-only aggregations, token and cost definitions, per-trace keys, level rules, ordering, grouping | accurate | SigNoz AI statement builder | W | test_ai_traces.py (17 tests), test_ai_pricing_and_mappings.py |
+| promql/instructions | quoted selector, dotted labels, forms that return no data | accurate | plan pass 1 row 90 | EN | test_window_percentile_is_not_the_mean_of_step_percentiles (PromQL), test_promql_matcher_error_names_regexp |
+| dashboard/query-builder-example | histogram and summary suffixes are dotted; span metrics count spans | accurate | plan pass 2 rows 155-157 | EF | test_metadata_lookup_matches_the_exact_name, test_span_metrics_count_every_span_and_say_so |
+| dashboard/query-builder-example | aggregation set including rate_sum and rate_avg | accurate | SigNoz aggregation registry | EF | test_aggregation_set_matches_backend |
+| dashboard/query-builder-example | auto step: logs/traces window/300 floored to 5s, metrics at least 60s, at most 1,500 points | accurate | querybuilder/time.go:16-17 RecommendedStepInterval | W | test_window_percentile_is_not_the_mean_of_step_percentiles |
+| dashboard/query-builder-example | 24 hours -> 5min steps (300 points) | stale | time.go RecommendedStepInterval: 86400/300 = 288, floored to 285 s | C | fixed |
+| dashboard/query-builder-example | trace operator example joins two filter conditions with => | stale | querybuildertypesv5/trace_operator.go:43: the expression combines builder query names (A => B && NOT C) | EF | none: SigNoz's error names the unknown query |
+| dashboard/query-builder-example | pitfall: "status = 'active' not status = active" | misleading | grammar/FilterQuery.g4: a bare word is a value | C | fixed |
+| dashboard/query-builder-example | negative operators skip the existence check; positive ones add it | accurate | querybuildertypesv5/builder_elements.go AddDefaultExistsFilter | W | test_negative_filters_also_match_rows_missing_the_field |
+| dashboard/query-builder-example | escape only \' and \; RE2 regex; precedence NOT > AND > OR | accurate | grammar QUOTED_TEXT; ClickHouse match() | EF | test_body_regexp_with_doubled_backslashes_matches_the_message |
+| dashboard/query-builder-example | has/hasToken body JSON functions and their errors | accurate | querybuilder/key_resolution.go function doc URLs | EF | none: SigNoz's errors name the rule |
+| dashboard/query-builder-example | meter data is bucketed hourly | accurate | querybuilder/time.go RecommendedStepIntervalForMeter (min 3600) | C | none: the e2e cast has no meter data |
+| dashboard/query-builder-example | banned word "Leverage" | style | docs/client-visible-writing-style.md | C | fixed |
+| ClickHouse schema resources (3) | tables, columns, types, indexes | accurate (generated) | generated from the collector migrations bundled with the server | EN | none: generated; SigNoz's own error names a wrong column (the descriptions say to follow it) |
+| ClickHouse example resources (3) | resource CTE, ts_bucket_start window with a 1800 s lead, attribute access, rate with lagInFrame, GLOBAL IN on distributed tables | accurate | logsstatementbuilder/statement_builder.go (SigNoz builds the same CTE and GLOBAL IN); SigNoz docs pages cited in each resource | EN | none: the e2e cast is single-shard, and these SQL examples are not executed (spec ClickHouse requests run in test_query_builder_examples_execute) |
+| docs/sitemap | the indexed docs catalog | accurate (generated) | internal/docs corpus from signoz.io/docs/manifest.json | C | internal/docs golden tests |
+| `signoz_query_metrics` | decisions note: "stepInterval: Ns (caller-provided)" after SigNoz raised the step | stale (result text) | metrics_query.go:106-118, 237-242; SigNoz raises a step below 60 s (data.meta.stepIntervals) | W | test_counter_reducers_say_what_they_measured (10 s requested, 60 s used) |
+| signoz_aggregate_logs, signoz_aggregate_traces | an alias in the expression (count() as total) | missing | querybuildertypesv5/validation.go:344-348: "aliasing is not allowed in expression. Use alias field instead", a field these tools do not have | EN | test_aggregate_logs_several_aggregations_and_having |
+| signoz_aggregate_traces, signoz_aggregate_logs | an orderBy that names the query (A) fails | accurate | querybuildertypesv5/validation.go:556-590: the error lists the valid keys | EF | test_order_keys_the_guides_teach |
+| promql/instructions | single quotes are wrong in a quoted selector | stale | live SigNoz returns the same series for {'X'} and {"X"}; SigNoz's own spec text uses single quotes | C | test_window_percentile_is_not_the_mean_of_step_percentiles |
+| generated condition.compositeQuery.queries | envelope types per queryType (narrower than the alert guide's table) | consistency, not established | ruletypes/alerting.go:122 states the rule; no check enforces either list at save | EF | none: which combinations evaluate needs firing rules |
+| prompts (4) | tool names, parameters, and steps match the tools | accurate | tool schemas; plan pass 2 | C | test_logs.py, test_trace_fields.py |
+| latency_analysis prompt | description "Query latency metrics" | misleading | pkg/prompts/prompts.go: the steps use traces only | C | fixed |
+| manifest.json | signoz_get_trace_details "return every span's complete record" | stale | internal/client/client.go:727: at most 1,000 spans | C | fixed |
+| manifest.json | the other 47 tool entries | accurate | tool descriptions | C | none: no SigNoz claim beyond the tools' |
+| coded errors | parameter validation messages name the field and the tool to call | accurate | handler code (78 call sites) | EF | tool_error_codes_test.go |
+| coded errors | scoped-role telemetry denial: resource.service.name, resource.deployment.environment.name, signoz.workspace.key.id; PromQL and ClickHouse not key-scoped | accurate | telemetrytypes/selector.go telemetryGrantKeys, telemetryGrantQueryTypes | EF | none: needs a scoped role (enterprise authorization) the e2e cast does not configure |
+| coded errors | 401 and 403 recovery: re-authenticate or request access | accurate | errs.go upstreamError | EF | test_invalid_api_key_surfaces_coded_error, test_unknown_rule_id_is_coded_not_found |
+
+### Formerly unverified claims
+
+| Claim (where it was marked not verified) | Verdict | Checked against | e2e |
+|---|---|---|---|
+| A pinned temporality returns no data (metrics guide, first pass) | accurate | `querier/querier.go:419-420` fills an unknown temporality from metadata; `metricsstatementbuilder/statement_builder.go:565` filters samples by a pinned one | `test_counter_reducers_say_what_they_measured` (delta on a cumulative counter returns nothing) |
+| Order and limit on a grouped alert query cap evaluation to the top N | accurate | `logsstatementbuilder/statement_builder.go:577-582` builds `__limit_cte`; the querier's `applySeriesLimit` for metrics; rules run the same builders | none: needs an alert to fire, or not, on a series outside the top N |
+| labels.severity does not set a fired alert's severity | accurate | `ruletypes/threshold.go:346-347` stamps the tier name as `threshold.name` and, lower-cased, as `severity`; `ruletypes/labels.go:309-317` skips rule labels with reserved names; `listable_rule.go:159` reads the rule's own label | none: severity is visible only on a fired alert |
+| Alerts evaluate the first aggregation | accurate | `query-service/rules/threshold_rule.go:177-183` reads `Aggregations[0]` | none: needs a two-aggregation rule to fire |
+| Metric timeAggregation defaults by type for alerts | stale | `metricsstatementbuilder/statement_builder.go:258-270` rewrites only histograms; `metricstelemetryschema/const.go:353-357` returns "invalid time aggregation"; live: such a rule saves | `test_rule_on_a_missing_metric_saves` (the rule saves; its dry-run fails) |
+| Evaluation windows are Go durations, largest unit h | accurate | `ruletypes/evaluation.go:38-39` (`valuer.TextDuration`); live: `time: unknown unit "d"` | `test_create_alert_unknown_channel_rejected` |
+| Removing a panel without its grid item, overlapping items, and a second query are rejected | accurate | `dashboardtypes/perses_dashboard_data.go:330` (unknown panel), `perses_replicas.go:408` (overlap), `perses_dashboard_data.go:153` (one query) | `test_text_panel_create_get_update_patch_defaults_layout_and_cleanup` (the first two; a second query needs a query panel) |
+| Heatmap panel rules | accurate | `dashboardtypes/perses_replicas.go:101`; `querybuildertypesv5/validation.go:968-972,1049`; `heatmap.go:157,172` | `test_histogram_buckets_read_with_rate_and_sum` (functions rejected) |
+| List filter: REGEXP rejected, EXISTS only on tag keys | accurate | `dashboardtypes/list_filter.go` lists REGEXP in its operator sets, but the live compiler rejects it ("REGEXP filtering on name is not supported"); EXISTS is only in `TagKeyOps` | `test_text_panel_create_get_update_patch_defaults_layout_and_cleanup` |
+| The explorer shows only views whose signal matches | not verifiable here | the frontend lists views by `sourcePage`; rendering a mismatched view needs the UI | none: UI |
+| signoz_list_alerts takes Alertmanager label matchers =, !=, =~, !~ | accurate | `alertmanagertypes/alert.go:270-280` parses each filter with Alertmanager's `compat.Matcher` | none: matching needs a firing alert; live, a regex matcher is accepted |
+| ClickHouse examples use GLOBAL IN | accurate | SigNoz's own statement builders join distributed tables with `GLOBAL IN` (`logsstatementbuilder/statement_builder.go:582`) | none: the e2e cast is single-shard, where a plain IN also works |
+| An alertType that does not match the query signal (second pass: effect unknown) | established | `query-service/rules/threshold_rule.go:295-313`: evaluation runs the query whatever alertType says; alertType picks the related traces or logs link in a fired alert's annotations, and the rule list's `alert_type` | none: the link is only in a fired alert's notification; the alert guide now says this |
+
+### Order keys and aliases (the third SigNoz/nerve-pod#482 example)
+
+- Taught today: the traces and logs guides say an aggregate orders by an aggregation expression, an
+  index, or a groupBy key, and that the query name (A), `__result`, and `timestamp` are not order keys
+  there; the aggregate tools' `orderBy` parameters say the same; the dashboard examples resource gives
+  the metrics order key (`spaceAggregation(timeAggregation(metric))` or `__result`); the widgets
+  examples resource says to name a column with the aggregation's `alias` field, not `as` inside the
+  expression.
+- SigNoz's errors: an order key that is not valid now reads `invalid order by key 'A' for order by
+  clause #1 in query 'A'`, followed by the valid keys and suggestions
+  (`querybuildertypesv5/validation.go:556-590`), and the client sees all of it. That error states
+  its fix, so no text was added; `test_order_keys_the_guides_teach` now pins it.
+- `aliasing is not allowed in expression. Use alias field instead`
+  (`querybuildertypesv5/validation.go:344-348`) names a field that `signoz_aggregate_logs` and
+  `signoz_aggregate_traces` do not have. Their `aggregations` descriptions now say to write no
+  alias; `test_aggregate_logs_several_aggregations_and_having` pins the rejection.
+
+### Totals
+
+- Surfaces: 80, each read in full: the instructions, 48 tools, 25 resources, 4 prompts, the
+  manifest, and the coded errors.
+- Claim rows: 287 across the three passes (45, 65, and 177).
+- Status after this pass: 230 accurate, 36 stale or misleading, 15 missing, 3 style violations, 1
+  not verifiable here (the explorer's rendering of a mismatched view), 1 open consistency item (the
+  envelope types an alert query accepts), and 1 guidance row with no SigNoz claim. Every stale,
+  misleading, missing, and style row is fixed except the open item.
+- The 12 claims the earlier passes marked not verified: 10 accurate, 1 stale and fixed, 1 not
+  verifiable here. Six of them now have an e2e assertion.
+
 ## Silent traps
 
 | Trap | Status | Reason |
@@ -546,6 +875,17 @@ These fixes have not been reviewed again.
 - e2e, 2026-11-22: `test_service_map_reports_one_edge_from_both_ends` now also asserts the units
   note names the callee side and that the caller's client spans give a different p99 (210 ms
   against the edge's 200 ms). It and `test_trace_fields.py` pass on a fresh v0.151.0 cast.
+- Third audit pass: the handler tests cover the step the decisions note now names (requested
+  10 s, used 60 s; and a matching step). e2e assertions added to existing tests:
+  `test_counter_reducers_say_what_they_measured` (a wrong pinned temporality, the raised step),
+  `test_create_alert_unknown_channel_rejected` (a 1d window), `test_rule_on_a_missing_metric_saves`
+  (a rule without timeAggregation saves and its dry-run fails),
+  `test_text_panel_create_get_update_patch_defaults_layout_and_cleanup` (patch and list-filter
+  rejections), `test_histogram_buckets_read_with_rate_and_sum` (heatmap functions),
+  `test_aggregate_logs_several_aggregations_and_having` (alias), `test_order_keys_the_guides_teach`
+  (order key), and `test_window_percentile_is_not_the_mean_of_step_percentiles` (single-quoted
+  PromQL). The full e2e suite passes on a fresh v0.151.0 cast (118 passed, 1 skipped as on main),
+  and `make ci` passes.
 - `GOTOOLCHAIN=go1.26.11 make ci` with a temporary module cache (a locally modified cache entry
   fails `go mod verify`) and protocol and conformance port overrides (another local process holds
   port 18080). Full e2e suite against v0.151.0.
@@ -553,14 +893,16 @@ These fixes have not been reviewed again.
 ## Outcome
 
 Shipped as planned, plus the `step_alignment` rule the eval found, the fixes from four
-review rounds (C1 to C28, less the declined C13, C14 and C26), and the second audit pass with its
-fixes. Deferred:
+review rounds (C1 to C28, less the declined C13, C14 and C26), and the second and third audit
+passes with their fixes. The third pass covers all 80 client-visible surfaces and resolves the 12
+claims the earlier passes left unverified (see "Formerly unverified claims"). Left open:
 
-- `GLOBAL IN` for ClickHouse SQL: not verifiable on the single-shard e2e cast.
-- The other 10 claims marked not verified in this pass (alert top-N, severity labels, first aggregation,
-  metric defaults for alerts, evaluation formats, patch rejections, heatmap rules, list-filter
-  rules, Alertmanager matchers, explorer rendering of mismatched views), and an alertType that does
-  not match its query signal.
+- Explorer rendering of a view whose signal does not match its source: needs the UI.
+- The envelope types an alert query accepts: SigNoz's generated field text and the alert guide
+  name different sets, and SigNoz enforces neither at save; which combinations evaluate needs
+  firing rules.
+- SigNoz-dependent claims whose e2e column says why there is no test: most need an alert to fire,
+  a UI to render, a scoped role, meter data, or a multi-shard cluster.
 - Review findings C13, C14, and C26 (a sentence that predates this PR; a limit-plus-offset formula
   input; an offset carried into the retried bucket query).
 - Measurement-note cases left as too rare in the fifth review (M8, M12, M13, and parts of M1, M3,

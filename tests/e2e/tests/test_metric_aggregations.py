@@ -100,6 +100,23 @@ def test_histogram_buckets_read_with_rate_and_sum(mcp_client: MCPClient, test_id
     # returns counts: two points of one observation per bucket, cumulative by le.
     assert rates == {"10": 2, "100": 4, "+Inf": 6}, f"bucket counts: {rates}"
 
+    # A heatmap point is a count per bucket, so SigNoz rejects functions on a heatmap request, as the
+    # widgets guide says.
+    now = int(time.time() * 1000)
+    spec = {
+        "name": "A",
+        "signal": "metrics",
+        "aggregations": [{"metricName": metric, "spaceAggregation": "count"}],
+        "functions": [{"name": "absolute"}],
+    }
+    request = {"schemaVersion": "v1", "start": now - 3_600_000, "end": now, "requestType": "heatmap"}
+    request["compositeQuery"] = {"queries": [{"type": "builder_query", "spec": spec}]}
+    heatmap = mcp_client.call_tool(
+        "signoz_execute_builder_query", {"searchContext": "latency heatmap", "query": request}
+    )
+    assert heatmap.get("isError", False), first_text_block(heatmap)[:300]
+    assert "functions are not supported for heatmap requests" in first_text_block(heatmap)
+
 
 def test_metadata_lookup_matches_the_exact_name(mcp_client: MCPClient, test_id: str, telemetry: None) -> None:
     """A longer neighbor never lends its metadata, and a missing name gets the search instruction."""
@@ -218,6 +235,8 @@ def test_window_percentile_is_not_the_mean_of_step_percentiles(
     # a delta one.
     guide_query = 'histogram_quantile(0.95, sum by (le) (increase({{"{}.bucket", "service.name"="{}"}}[3600s])))'
     assert _execute(mcp_client, guide_query.format(cumulative, service)) == [WINDOW_P95]
+    # Single quotes select the same series: the PromQL guide does not call them wrong.
+    assert _execute(mcp_client, guide_query.replace('"', "'").format(cumulative, service)) == [WINDOW_P95]
     assert _execute(mcp_client, guide_query.format(delta, service)) == []
 
     # Each bucket's count over the window, which the note's same-tool route reads, gives the
@@ -332,6 +351,27 @@ def test_counter_reducers_say_what_they_measured(mcp_client: MCPClient, test_id:
     # the tolerance is one step's samples.
     sample_count = _scalar_values(first_text_block(samples))[0]
     assert sample_count == pytest.approx(total / 5, abs=6), f"samples {sample_count}, count {total}"
+
+    # A pinned temporality filters the samples by it, so the wrong one returns no data (the guides say to omit it).
+    def pinned(temporality: str) -> list[float]:
+        args = {"metricType": "sum", "isMonotonic": True, "temporality": temporality, "requestType": "scalar"}
+        result = mcp_client.call_tool(
+            "signoz_query_metrics",
+            {"searchContext": f"rate of {metric}", "metricName": metric, "reduceTo": "avg", "timeRange": "1h", **args},
+        )
+        assert not result.get("isError", False), first_text_block(result)[:400]
+        return _scalar_values(first_text_block(result))
+
+    assert pinned("delta") == [], "a cumulative counter pinned as delta matches no samples"
+    assert pinned("cumulative") == pytest.approx([0.5], rel=0.05)
+
+    # SigNoz raises a step below its 60 s minimum; the decisions note names the step it used.
+    raised = mcp_client.call_tool(
+        "signoz_query_metrics",
+        {"searchContext": f"rate of {metric}", "metricName": metric, "stepInterval": "10", "timeRange": "1h"},
+    )
+    assert json.loads(first_text_block(raised))["data"]["meta"]["stepIntervals"] == {"A": 60}
+    assert "stepInterval: 60s (SigNoz used this step; 10s was requested)" in note_blocks(raised), note_blocks(raised)
 
     # A window-long step that starts mid-step reaches back before the window for a counter rate.
     boundary_s = int(time.time() - 1800) // 600 * 600

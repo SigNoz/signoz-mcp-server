@@ -75,7 +75,7 @@
               "name": "timeRange"
             }
           ],
-          "description": "Query latency metrics, aggregate trace durations, and identify slow operations for a service.",
+          "description": "Aggregate trace latency, find the slowest operations, and inspect a slow trace for a service.",
           "name": "latency_analysis"
         }
       ],

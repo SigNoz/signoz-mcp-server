@@ -167,6 +167,38 @@ def test_text_panel_create_get_update_patch_defaults_layout_and_cleanup(mcp_clie
         assert patched_spec["headerOptions"] == {"hide": False}
         assert patched_data["spec"]["layouts"] == dashboard["spec"]["layouts"]
 
+        # The patch guide's rejections: a grid item left pointing at a removed panel, and overlapping items.
+        def rejected_patch(description: str, patch: list) -> str:
+            result = mcp_client.call_tool(
+                "signoz_patch_dashboard", {"searchContext": description, "id": dashboard_id, "patch": patch}
+            )
+            assert result.get("isError", False), f"SigNoz accepted {description}: {text_blocks(result)[:300]}"
+            return text_blocks(result)
+
+        orphaned = rejected_patch(
+            "remove a panel but not its grid item", [{"op": "remove", "path": "/spec/panels/explicit"}]
+        )
+        assert "references unknown panel" in orphaned, orphaned
+        item = dict(patched_data["spec"]["layouts"][0]["spec"]["items"][0], content={"$ref": "#/spec/panels/overlap"})
+        overlap = rejected_patch(
+            "add a panel on top of another",
+            [
+                {"op": "add", "path": "/spec/panels/overlap", "value": _panel(patched_data, "explicit")},
+                {"op": "add", "path": "/spec/layouts/0/spec/items/-", "value": item},
+            ],
+        )
+        assert "overlap" in overlap, overlap
+
+        # The list-filter guide: REGEXP and EXISTS on a reserved key are rejected, EXISTS on a tag key is not.
+        def listed(filter_expression: str) -> dict:
+            return mcp_client.call_tool(
+                "signoz_list_dashboards", {"searchContext": "find dashboards", "filter": filter_expression}
+            )
+
+        assert "REGEXP filtering" in text_blocks(listed("name REGEXP 'mcp-e2e.*'"))
+        assert "EXISTS is not allowed" in text_blocks(listed("name EXISTS"))
+        assert not listed("mcp_e2e_tag EXISTS").get("isError", False)
+
         deleted_result = assert_tool_ok(
             mcp_client.call_tool(
                 "signoz_delete_dashboard",

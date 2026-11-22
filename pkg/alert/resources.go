@@ -43,7 +43,7 @@ The envelope type must match compositeQuery.queryType:
 
 ### Builder query spec (builder_query)
 - name: query identifier (A, B, C, …)
-- signal: "metrics" | "logs" | "traces" (must match alertType)
+- signal: "metrics" | "logs" | "traces". Match alertType to it: SigNoz evaluates the query whatever alertType says, but builds the related logs or traces link of a fired alert from alertType.
 - source (metrics only): "meter" to alert on Cost Meter usage/billing metrics (e.g. signoz.meter.log.size); omit otherwise. Works with either evaluation kind: cumulative for daily/monthly spend budgets, rolling for rate/over-time meter alerts.
 - stepInterval: interval in seconds (60 for most alerts)
 - aggregations: see "Aggregation shapes" below
@@ -97,7 +97,7 @@ Use this shape when spec.signal = "metrics":
 ` + "```" + `
 
 - metricName: the metric you're querying.
-- timeAggregation: per-series time aggregation. Common: avg, max, min, sum, rate, increase, count, count_distinct, latest. Default by metric type: gauge -> avg, cumulative counter -> rate, delta counter -> rate.
+- timeAggregation: per-series time aggregation. Common: avg, max, min, sum, rate, increase, count, count_distinct, latest. Set it on every metric query except a histogram percentile: SigNoz applies no default to an alert query and saves a rule without it, but the query then fails with "invalid time aggregation". Use avg for a gauge and rate or increase for a counter.
 - spaceAggregation: cross-series aggregation. Common: sum, avg, min, max, count. For histograms: p50, p75, p90, p95, p99.
 
 ### Logs / traces signal — expression shape

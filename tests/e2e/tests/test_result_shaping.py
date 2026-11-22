@@ -57,6 +57,11 @@ def test_aggregate_logs_several_aggregations_and_having(mcp_client: MCPClient, t
     columns, rows = aggregate_columns_and_row_count(first_text_block(result))
     assert "__result_0" in columns and "__result_1" in columns, f"both aggregations must be returned: {columns}"
     assert rows == 1, f"having must keep only the service with more than one log: {first_text_block(result)[:600]}"
+    # An alias inside the expression is rejected, and this tool has no alias field, so its aggregations
+    # description says to write none.
+    aliased = _aggregate_logs(mcp_client, aggregations="count() as total", filter=scope)
+    assert aliased.get("isError", False), first_text_block(aliased)[:300]
+    assert "aliasing is not allowed in expression" in first_text_block(aliased)
     assert big in first_text_block(result) and small not in first_text_block(result)
 
 

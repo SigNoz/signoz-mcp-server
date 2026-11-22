@@ -27,7 +27,7 @@
           "inputSchema": {
             "properties": {
               "aggregations": {
-                "description": "Aggregation expressions to compute, written as the Query Builder writes them: count(), count_distinct(user_id), avg(duration), sum(bytes), min(x), max(x), p50(x) to p99(x), rate(), or a conditional such as countIf(severity_text = 'ERROR'). One expression or an array; results come back as __result_0, __result_1, ... in that order. Example: [\"count()\", \"p99(duration)\"]. SigNoz validates the expressions.",
+                "description": "Aggregation expressions to compute, written as the Query Builder writes them: count(), count_distinct(user_id), avg(duration), sum(bytes), min(x), max(x), p50(x) to p99(x), rate(), or a conditional such as countIf(severity_text = 'ERROR'). One expression or an array, with no alias: SigNoz rejects count() as total. Results come back as __result_0, __result_1, ... in that order. Example: [\"count()\", \"p99(duration)\"]. SigNoz validates the expressions.",
                 "items": {
                   "type": "string"
                 },
@@ -178,7 +178,7 @@
           "inputSchema": {
             "properties": {
               "aggregations": {
-                "description": "Aggregation expressions to compute, written as the Query Builder writes them: count(), count_distinct(name), avg(duration_nano), sum(x), min(x), max(x), p50(duration_nano) to p99(duration_nano), rate(), or a conditional such as countIf(has_error = true). duration_nano is span latency in nanoseconds. One expression or an array; results come back as __result_0, __result_1, ... in that order. Example: [\"count()\", \"p99(duration_nano)\"]. SigNoz validates the expressions.",
+                "description": "Aggregation expressions to compute, written as the Query Builder writes them: count(), count_distinct(name), avg(duration_nano), sum(x), min(x), max(x), p50(duration_nano) to p99(duration_nano), rate(), or a conditional such as countIf(has_error = true). duration_nano is span latency in nanoseconds. One expression or an array, with no alias: SigNoz rejects count() as total. Results come back as __result_0, __result_1, ... in that order. Example: [\"count()\", \"p99(duration_nano)\"]. SigNoz validates the expressions.",
                 "items": {
                   "type": "string"
                 },
@@ -6089,7 +6089,7 @@
           "inputSchema": {
             "properties": {
               "fieldContext": {
-                "description": "Restrict results to a single field context (optional). Valid values: 'resource' (resource attributes, e.g. service.name, k8s.namespace.name), 'attribute' (user-ingested span/log attributes), 'scope' (instrumentation scope), 'log' / 'span' / 'metric' (intrinsic columns of the logs/traces/metrics signal), 'body' (fields inside a JSON log body). For span/log attributes use 'attribute', not the legacy Query Builder context 'tag': SigNoz ignores 'tag' when listing keys and returns no values for it. 'trace' (fields of a whole trace rather than one span, such as values computed over all of its spans; write them with the trace. prefix in queries).",
+                "description": "Restrict results to a single field context (optional). Valid values: 'resource' (resource attributes, e.g. service.name, k8s.namespace.name), 'attribute' (user-ingested span/log attributes), 'scope' (instrumentation scope), 'log' / 'span' / 'metric' (intrinsic columns of the logs/traces/metrics signal), 'body' (fields inside a JSON log body). For span/log attributes use 'attribute', not the legacy Query Builder context 'tag': SigNoz returns no keys and no values for 'tag'. 'trace' (fields of a whole trace rather than one span, such as values computed over all of its spans; write them with the trace. prefix in queries).",
                 "enum": [
                   "resource",
                   "attribute",
@@ -6166,7 +6166,7 @@
           "inputSchema": {
             "properties": {
               "fieldContext": {
-                "description": "Restrict results to a single field context (optional). Valid values: 'resource' (resource attributes, e.g. service.name, k8s.namespace.name), 'attribute' (user-ingested span/log attributes), 'scope' (instrumentation scope), 'log' / 'span' / 'metric' (intrinsic columns of the logs/traces/metrics signal), 'body' (fields inside a JSON log body). For span/log attributes use 'attribute', not the legacy Query Builder context 'tag': SigNoz ignores 'tag' when listing keys and returns no values for it. Set this when the same key name exists in more than one context to disambiguate which one to fetch values for.",
+                "description": "Restrict results to a single field context (optional). Valid values: 'resource' (resource attributes, e.g. service.name, k8s.namespace.name), 'attribute' (user-ingested span/log attributes), 'scope' (instrumentation scope), 'log' / 'span' / 'metric' (intrinsic columns of the logs/traces/metrics signal), 'body' (fields inside a JSON log body). For span/log attributes use 'attribute', not the legacy Query Builder context 'tag': SigNoz returns no keys and no values for 'tag'. Set this when the same key name exists in more than one context to disambiguate which one to fetch values for.",
                 "enum": [
                   "resource",
                   "attribute",
@@ -7278,7 +7278,7 @@
           "inputSchema": {
             "properties": {
               "includeSpans": {
-                "description": "Include detailed span information (default: true).",
+                "description": "Has no effect: every call returns the trace's spans as complete records, up to 1,000.",
                 "type": [
                   "boolean",
                   "string"

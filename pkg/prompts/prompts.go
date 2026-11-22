@@ -21,7 +21,7 @@ func RegisterPrompts(addPrompt func(mcp.Prompt, mcp.PromptHandlerFunc)) {
 
 	addPrompt(
 		mcp.NewPrompt("latency_analysis",
-			mcp.WithPromptDescription("Query latency metrics, aggregate trace durations, and identify slow operations for a service."),
+			mcp.WithPromptDescription("Aggregate trace latency, find the slowest operations, and inspect a slow trace for a service."),
 			mcp.WithArgument("service", mcp.ArgumentDescription("Service name to analyze"), mcp.RequiredArgument()),
 			mcp.WithArgument("timeRange", mcp.ArgumentDescription("Time range to analyze (e.g., '1h', '6h', '24h'). Defaults to '1h'.")),
 		),

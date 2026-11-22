@@ -104,7 +104,10 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 	// Step interval: use caller-provided value or let the backend decide
 	stepInterval := mqr.StepInterval
 	callerProvidedStep := stepInterval > 0
+	// stepDecision is filled in once SigNoz reports the step it used.
+	stepDecision := -1
 	if callerProvidedStep {
+		stepDecision = len(decisions)
 		decisions = append(decisions, fmt.Sprintf("stepInterval: %ds (caller-provided)", stepInterval))
 	} else if mqr.StepIntervalInvalid != "" {
 		// Present but not a plain positive integer of seconds (e.g. "1h", "60s",
@@ -238,8 +241,11 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 	// differ from a caller's (SigNoz raises a step below its minimum); when it
 	// reports none, they name no step.
 	effectiveStep := responseStepIntervals(ctx, h.logger, "signoz_query_metrics", result)["A"]
-	if effectiveStep > 0 && !callerProvidedStep {
+	switch {
+	case effectiveStep > 0 && !callerProvidedStep:
 		decisions = append(decisions, fmt.Sprintf("stepInterval: %ds (backend-determined)", effectiveStep))
+	case effectiveStep > 0 && effectiveStep != stepInterval:
+		decisions[stepDecision] = fmt.Sprintf("stepInterval: %ds (SigNoz used this step; %ds was requested)", effectiveStep, stepInterval)
 	}
 	backendWarnings := extractBackendWarningMessages(result)
 	warnBackendWarnings(ctx, h.logger, "signoz_query_metrics", backendWarnings)

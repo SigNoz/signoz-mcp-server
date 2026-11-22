@@ -56,7 +56,7 @@ func ApplyDefaults(p MetricQueryParams, requestType string) (ResolvedAggregation
 			fmt.Sprintf("timeAggregation: %s (caller-provided)", p.TimeAggregation),
 			fmt.Sprintf("spaceAggregation: %s (caller-provided)", p.SpaceAggregation))
 	default:
-		return r, fmt.Errorf("unknown metricType %q — valid values: gauge, sum, histogram, exponential_histogram, summary", p.MetricType)
+		return r, fmt.Errorf("unknown metricType %q; valid values: gauge, sum, histogram, exponential_histogram, summary", p.MetricType)
 	}
 
 	if requestType == "scalar" && p.ReduceTo != "" {
@@ -75,7 +75,7 @@ func applyGaugeDefaults(p MetricQueryParams, r *ResolvedAggregation) {
 		r.Decisions = append(r.Decisions, fmt.Sprintf("timeAggregation: %s (caller-provided)", p.TimeAggregation))
 	} else {
 		r.TimeAggregation = "avg"
-		r.Decisions = append(r.Decisions, "timeAggregation: avg (default for gauge — averages samples within each time bucket)")
+		r.Decisions = append(r.Decisions, "timeAggregation: avg (default for gauge: averages samples within each time bucket)")
 	}
 
 	if p.SpaceAggregation != "" {
@@ -83,7 +83,7 @@ func applyGaugeDefaults(p MetricQueryParams, r *ResolvedAggregation) {
 		r.Decisions = append(r.Decisions, fmt.Sprintf("spaceAggregation: %s (caller-provided)", p.SpaceAggregation))
 	} else {
 		r.SpaceAggregation = "sum"
-		r.Decisions = append(r.Decisions, "spaceAggregation: sum (default for gauge — sums across series/dimensions)")
+		r.Decisions = append(r.Decisions, "spaceAggregation: sum (default for gauge: sums across series/dimensions)")
 	}
 }
 
@@ -93,7 +93,7 @@ func applyCounterDefaults(p MetricQueryParams, r *ResolvedAggregation) {
 		r.Decisions = append(r.Decisions, fmt.Sprintf("timeAggregation: %s (caller-provided)", p.TimeAggregation))
 	} else {
 		r.TimeAggregation = "rate"
-		r.Decisions = append(r.Decisions, "timeAggregation: rate (default for monotonic counter — per-second rate of change)")
+		r.Decisions = append(r.Decisions, "timeAggregation: rate (default for monotonic counter: per-second rate of change)")
 	}
 
 	if p.SpaceAggregation != "" {
@@ -101,7 +101,7 @@ func applyCounterDefaults(p MetricQueryParams, r *ResolvedAggregation) {
 		r.Decisions = append(r.Decisions, fmt.Sprintf("spaceAggregation: %s (caller-provided)", p.SpaceAggregation))
 	} else {
 		r.SpaceAggregation = "sum"
-		r.Decisions = append(r.Decisions, "spaceAggregation: sum (default for counter — sums rates across series)")
+		r.Decisions = append(r.Decisions, "spaceAggregation: sum (default for counter: sums rates across series)")
 	}
 }
 
@@ -130,7 +130,7 @@ func applyHistogramDefaults(p MetricQueryParams, metricType string, r *ResolvedA
 		r.TimeAggregation = p.TimeAggregation
 		r.Decisions = append(r.Decisions, fmt.Sprintf("timeAggregation: %s (caller-provided)", p.TimeAggregation))
 	} else {
-		r.Decisions = append(r.Decisions, fmt.Sprintf("timeAggregation: (empty) — automatic for %s percentiles", metricType))
+		r.Decisions = append(r.Decisions, fmt.Sprintf("timeAggregation: (empty), automatic for %s percentiles", metricType))
 	}
 
 	if p.SpaceAggregation != "" {
@@ -138,6 +138,6 @@ func applyHistogramDefaults(p MetricQueryParams, metricType string, r *ResolvedA
 		r.Decisions = append(r.Decisions, fmt.Sprintf("spaceAggregation: %s (caller-provided)", p.SpaceAggregation))
 	} else {
 		r.SpaceAggregation = "p99"
-		r.Decisions = append(r.Decisions, fmt.Sprintf("spaceAggregation: p99 (default for %s — 99th percentile)", metricType))
+		r.Decisions = append(r.Decisions, fmt.Sprintf("spaceAggregation: p99 (default for %s: 99th percentile)", metricType))
 	}
 }

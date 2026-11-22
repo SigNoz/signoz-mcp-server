@@ -8,6 +8,7 @@ direct routing to a channel that does not exist, and the history endpoint keeps
 the items/total envelope the completeness note parses.
 """
 
+import time
 from contextlib import ExitStack
 
 from fixtures.mcpclient import MCPClient, assert_tool_ok
@@ -139,6 +140,19 @@ def test_create_alert_unknown_channel_rejected(mcp_client: MCPClient, test_id: s
     assert "mcp-e2e-no-such-channel" in body, f"rejection does not name the unknown channel: {body!r}"
     assert name not in listed_rule_names(mcp_client), "rejected rule was persisted anyway"
 
+    # Evaluation windows are Go durations, so a day unit is rejected, as the alert guide says.
+    day_window = threshold_rule(f"{name}-day-window")
+    day_window["evaluation"] = {"kind": "rolling", "spec": {"evalWindow": "1d", "frequency": "1m"}}
+    rejected = mcp_client.call_tool(
+        "signoz_create_alert", {"searchContext": "create an alert over one day", **day_window}
+    )
+    if not rejected.get("isError", False):
+        leaked = (first_block_json(rejected).get("data") or {}).get("id")
+        if isinstance(leaked, str) and leaked:
+            delete_rule(mcp_client, leaked)
+        raise AssertionError(f"SigNoz accepted a 1d window: {first_text_block(rejected)[:300]}")
+    assert 'unknown unit "d"' in first_text_block(rejected), first_text_block(rejected)[:300]
+
 
 def test_alert_history_envelope(mcp_client: MCPClient, test_id: str) -> None:
     """History keeps the data.items/total envelope the completeness note parses (empty timeline is fine).
@@ -242,3 +256,22 @@ def test_rule_on_a_missing_metric_saves(mcp_client: MCPClient, test_id: str) -> 
     aggregation["metricName"] = f"mcp_e2e_missing_{test_id.replace('-', '_')}"
     rule_id = create_rule(mcp_client, rule)
     delete_rule(mcp_client, rule_id)
+
+    # A metric query with no timeAggregation saves too, but SigNoz fails it at query time:
+    # the alert guide says to set it, because SigNoz applies no default.
+    gauge = f"mcp_e2e_no_time_aggregation_{test_id.replace('-', '_')}"
+    seed_metrics(f"mcp-e2e-{test_id}", gauge, value=1.0, count=2, age_seconds=120)
+    rule = threshold_rule(f"mcp-e2e-{test_id}-no-time-aggregation")
+    spec = rule["condition"]["compositeQuery"]["queries"][0]["spec"]
+    spec["aggregations"] = [{"metricName": gauge, "spaceAggregation": "sum"}]
+    delete_rule(mcp_client, create_rule(mcp_client, rule))
+
+    def dry_run() -> str | None:
+        now = int(time.time() * 1000)
+        query = {"schemaVersion": "v1", "start": now - 3_600_000, "end": now, "requestType": "time_series"}
+        query["compositeQuery"] = {"queries": [{"type": "builder_query", "spec": spec}]}
+        result = mcp_client.call_tool("signoz_execute_builder_query", {"searchContext": "dry-run it", "query": query})
+        text = first_text_block(result)
+        return text if result.get("isError", False) and "invalid time aggregation" in text else None
+
+    wait_for(dry_run, f"a dry-run of {gauge} without timeAggregation to fail")
