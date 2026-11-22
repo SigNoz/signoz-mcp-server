@@ -151,3 +151,16 @@ def test_update_view_source_change_moves_view(mcp_client: MCPClient, test_id: st
     finally:
         delete_view(mcp_client, view_id)
         assert view_gone(mcp_client, view_id), f"view {view_id} remained after cleanup"
+
+
+def test_view_with_a_mismatched_signal_saves(mcp_client: MCPClient, test_id: str) -> None:
+    """Pins why the view tools say to match signal to source: SigNoz does not check it."""
+    spec = {
+        "displayName": "mismatched",
+        "panelType": "list",
+        "requestType": "raw",
+        "queries": [{"type": "builder_query", "spec": {"name": "A", "signal": "logs", "limit": 100}}],
+    }
+    view_id = create_view(mcp_client, f"mcp-e2e-{test_id}-mismatch", source="traces", spec=spec)
+    delete_view(mcp_client, view_id)
+    assert view_gone(mcp_client, view_id)

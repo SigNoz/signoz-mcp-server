@@ -1,7 +1,9 @@
 package tools
 
 import (
+	"bytes"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -9,6 +11,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
@@ -184,6 +187,189 @@ func TestQueryMetrics_ReportsIsMonotonicSigNozDidNotReturn(t *testing.T) {
 				}
 			}
 			require.Contains(t, text.String(), tc.wantNote)
+		})
+	}
+}
+
+// A caller who sends metricType gets the temporality and monotonicity they
+// left out from the metadata, and keeps every value they sent; an isMonotonic
+// that is not a boolean is rejected before any lookup. A lookup that fails
+// leaves the query running on the caller's values, logged and noted.
+func TestQueryMetrics_FillsOnlyTheMetadataACallerLeftOut(t *testing.T) {
+	const cumulativeCounter = `{"type":"sum","temporality":"cumulative","isMonotonic":true}`
+	type aggregation struct {
+		Temporality     string `json:"temporality"`
+		TimeAggregation string `json:"timeAggregation"`
+	}
+	tests := []struct {
+		name           string
+		metadataStatus int
+		args           map[string]any
+		wantLookups    int
+		want           []string
+		wantSent       map[string]aggregation
+		wantWarn       string
+		wantCode       string // the call fails with this code and sends no query
+	}{
+		{
+			name: "metricType alone on a cumulative counter", metadataStatus: http.StatusOK,
+			args:        map[string]any{"metricType": "sum"},
+			wantLookups: 1,
+			want:        []string{"metricType: sum (caller-provided)", "temporality: cumulative (auto-fetched)", "isMonotonic: true (auto-fetched)", "timeAggregation: rate"},
+			wantSent:    map[string]aggregation{"A": {"", "rate"}},
+		},
+		{
+			name: "the caller's monotonicity wins", metadataStatus: http.StatusOK,
+			args:        map[string]any{"metricType": "sum", "isMonotonic": "false"},
+			wantLookups: 1,
+			want:        []string{"isMonotonic: false (caller-provided)", "temporality: cumulative (auto-fetched)", "timeAggregation: avg"},
+			wantSent:    map[string]aggregation{"A": {"", "avg"}},
+		},
+		{
+			name: "the caller's monotonicity wins when the type is fetched too", metadataStatus: http.StatusOK,
+			args:        map[string]any{"isMonotonic": false},
+			wantLookups: 1,
+			want:        []string{"metricType: sum (auto-fetched)", "isMonotonic: false (caller-provided)", "timeAggregation: avg"},
+			wantSent:    map[string]aggregation{"A": {"cumulative", "avg"}},
+		},
+		{
+			name: "an isMonotonic that is not a boolean is rejected", metadataStatus: http.StatusOK,
+			args:     map[string]any{"metricType": "sum", "isMonotonic": "yes"},
+			wantCode: CodeValidationFailed,
+			want:     []string{`"isMonotonic"`, `"yes"`},
+		},
+		{
+			name: "a metadata lookup the caller may not make", metadataStatus: http.StatusForbidden,
+			args:        map[string]any{"metricType": "sum"},
+			wantLookups: 1,
+			wantCode:    CodePermissionDenied,
+		},
+		{
+			name: "every value sent needs no lookup", metadataStatus: http.StatusInternalServerError,
+			args:     map[string]any{"metricType": "sum", "isMonotonic": true, "temporality": "delta"},
+			want:     []string{"temporality: delta (caller-provided)", "isMonotonic: true (caller-provided)", "timeAggregation: rate"},
+			wantSent: map[string]aggregation{"A": {"delta", "rate"}},
+		},
+		{
+			name: "a sent false is the caller's, so it needs no lookup either", metadataStatus: http.StatusInternalServerError,
+			args:     map[string]any{"metricType": "sum", "isMonotonic": false, "temporality": "cumulative"},
+			want:     []string{"temporality: cumulative (caller-provided)", "isMonotonic: false (caller-provided)", "timeAggregation: avg"},
+			wantSent: map[string]aggregation{"A": {"cumulative", "avg"}},
+		},
+		{
+			name: "a failed lookup keeps the query running", metadataStatus: http.StatusInternalServerError,
+			args:        map[string]any{"metricType": "sum"},
+			wantLookups: 1,
+			want:        []string{"temporality: unknown (metadata lookup failed; SigNoz resolves it)", "isMonotonic: unknown (metadata lookup failed; assumed false)", "timeAggregation: avg"},
+			wantSent:    map[string]aggregation{"A": {"", "avg"}},
+			wantWarn:    "Metric metadata lookup failed",
+		},
+		{
+			name: "a metric missing from the metadata", metadataStatus: http.StatusNotFound,
+			args:        map[string]any{"metricType": "sum", "isMonotonic": true},
+			wantLookups: 1,
+			want:        []string{"temporality: unknown (metric not found in metadata; SigNoz resolves it)", "timeAggregation: rate"},
+			wantSent:    map[string]aggregation{"A": {"", "rate"}},
+			wantWarn:    "Metric not found in metadata",
+		},
+		{
+			name: "a formula sub-query with metricType alone", metadataStatus: http.StatusOK,
+			args: map[string]any{
+				"metricType": "sum", "isMonotonic": true, "temporality": "cumulative", "formula": "A / B",
+				"formulaQueries": []any{map[string]any{"name": "B", "metricName": "http.requests", "metricType": "sum"}},
+			},
+			wantLookups: 1,
+			want:        []string{"query B: temporality: cumulative (auto-fetched)", "query B: isMonotonic: true (auto-fetched)", "query B: timeAggregation: rate"},
+			wantSent:    map[string]aggregation{"A": {"cumulative", "rate"}, "B": {"", "rate"}},
+		},
+		{
+			name: "a formula sub-query's monotonicity wins when its type is fetched", metadataStatus: http.StatusOK,
+			args: map[string]any{
+				"metricType": "sum", "isMonotonic": true, "temporality": "cumulative", "formula": "A / B",
+				"formulaQueries": []any{map[string]any{"name": "B", "metricName": "http.requests", "isMonotonic": false}},
+			},
+			wantLookups: 1,
+			want:        []string{"query B: timeAggregation: avg"},
+			wantSent:    map[string]aggregation{"A": {"cumulative", "rate"}, "B": {"", "avg"}},
+		},
+		{
+			name: "a formula sub-query that sends false", metadataStatus: http.StatusInternalServerError,
+			args: map[string]any{
+				"metricType": "sum", "isMonotonic": true, "temporality": "cumulative", "formula": "A / B",
+				"formulaQueries": []any{map[string]any{"name": "B", "metricName": "http.requests", "metricType": "sum", "isMonotonic": false, "temporality": "cumulative"}},
+			},
+			want:     []string{"query B: isMonotonic: false (caller-provided)", "query B: timeAggregation: avg"},
+			wantSent: map[string]aggregation{"A": {"cumulative", "rate"}, "B": {"cumulative", "avg"}},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			lookups := 0
+			sent := map[string]aggregation{}
+			backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				switch r.URL.Path {
+				case "/api/v2/metrics/metadata":
+					lookups++
+					w.WriteHeader(tc.metadataStatus)
+					_, _ = w.Write([]byte(`{"status":"success","data":` + cumulativeCounter + `}`))
+				case "/api/v5/query_range":
+					var request struct {
+						CompositeQuery struct {
+							Queries []struct {
+								Spec struct {
+									Name         string        `json:"name"`
+									Aggregations []aggregation `json:"aggregations"`
+								} `json:"spec"`
+							} `json:"queries"`
+						} `json:"compositeQuery"`
+					}
+					require.NoError(t, json.NewDecoder(r.Body).Decode(&request))
+					for _, query := range request.CompositeQuery.Queries {
+						if len(query.Spec.Aggregations) > 0 {
+							sent[query.Spec.Name] = query.Spec.Aggregations[0]
+						}
+					}
+					_, _ = w.Write([]byte(`{"status":"success","data":{"type":"time_series","data":{"results":[]}}}`))
+				default:
+					t.Errorf("unexpected API request: %s %s", r.Method, r.URL.Path)
+					w.WriteHeader(http.StatusBadRequest)
+				}
+			}))
+			t.Cleanup(backend.Close)
+			var logs bytes.Buffer
+			h := &Handler{
+				logger:         slog.New(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn})),
+				clientOverride: signozclient.NewClient(logpkg.New("error"), backend.URL, "test-api-key", "SIGNOZ-API-KEY", nil),
+			}
+			args := map[string]any{"metricName": "http.requests", "timeRange": "1h"}
+			for key, value := range tc.args {
+				args[key] = value
+			}
+
+			result, err := h.handleQueryMetrics(testCtx(), makeToolRequest("signoz_query_metrics", args))
+			require.NoError(t, err)
+			if tc.wantCode != "" {
+				require.Equal(t, tc.wantCode, resultCode(t, result))
+				for _, text := range tc.want {
+					require.Contains(t, textContent(t, result), text)
+				}
+				require.Equal(t, tc.wantLookups, lookups, "metadata lookups")
+				require.Empty(t, sent, "no query is sent")
+				return
+			}
+			notes := resultNotes(t, result)
+			for _, text := range tc.want {
+				require.Contains(t, notes, text)
+			}
+			require.Equal(t, tc.wantLookups, lookups, "metadata lookups")
+			require.Equal(t, tc.wantSent, sent, "aggregations sent upstream")
+			if tc.wantWarn == "" {
+				require.Empty(t, logs.String())
+			} else {
+				require.Contains(t, logs.String(), tc.wantWarn)
+				require.NotContains(t, logs.String(), "test-api-key")
+			}
 		})
 	}
 }

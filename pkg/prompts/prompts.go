@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
+	"github.com/SigNoz/signoz-mcp-server/pkg/querybuilder"
 )
 
 // RegisterPrompts registers all MCP prompts on the server.
@@ -20,7 +21,7 @@ func RegisterPrompts(addPrompt func(mcp.Prompt, mcp.PromptHandlerFunc)) {
 
 	addPrompt(
 		mcp.NewPrompt("latency_analysis",
-			mcp.WithPromptDescription("Query latency metrics, aggregate trace durations, and identify slow operations for a service."),
+			mcp.WithPromptDescription("Aggregate trace latency, find the slowest operations, and inspect a slow trace for a service."),
 			mcp.WithArgument("service", mcp.ArgumentDescription("Service name to analyze"), mcp.RequiredArgument()),
 			mcp.WithArgument("timeRange", mcp.ArgumentDescription("Time range to analyze (e.g., '1h', '6h', '24h'). Defaults to '1h'.")),
 		),
@@ -62,7 +63,7 @@ func handleDebugServiceErrors(_ context.Context, req mcp.GetPromptRequest) (*mcp
 					Text: fmt.Sprintf(`Investigate errors for the service "%s" over the last %s. Follow these steps:
 
 1. Use signoz_search_logs with service="%s" and severity="ERROR" and timeRange="%s" to find recent error logs. If it returns no rows with a `+"`key service.name not found in metadata`"+` warning, or fails with `+"`key service.name not found`"+`, this workspace's logs don't carry that attribute. Call signoz_get_field_keys(signal="logs", fieldContext="resource") to discover available keys, pick a suitable one (e.g. k8s.deployment.name), confirm the matching value with signoz_get_field_values, and retry; or search without a service filter.
-2. Use signoz_aggregate_traces with error="true", service="%s", aggregation="count", groupBy="name", timeRange="%s" to see which operations are failing.
+2. Use signoz_aggregate_traces with error="true", service="%s", aggregations=["count()"], groupBy="name", timeRange="%s" to see which operations are failing.
 3. Use signoz_get_service_top_operations with service="%s" to see its operations ranked by p99 latency.
 4. Summarize: what errors are occurring, which operations are affected, and what the likely root cause is.`, service, timeRange, service, timeRange, service, timeRange, service),
 				},
@@ -87,7 +88,7 @@ func handleLatencyAnalysis(_ context.Context, req mcp.GetPromptRequest) (*mcp.Ge
 					Text: fmt.Sprintf(`Analyze p99 latency for the service "%s" over the last %s. Follow these steps:
 
 1. Use signoz_aggregate_traces with service="%s", aggregations=["p99(duration_nano)"], groupBy="name", timeRange="%s" to find the slowest operations.
-2. Use signoz_aggregate_traces with service="%s", aggregations=["p99(duration_nano)"], requestType="time_series", timeRange="%s" to see how latency has changed over time.
+2. Use signoz_aggregate_traces with service="%s", aggregations=["p99(duration_nano)"], filter="`+querybuilder.EntrySpanFilter+`", requestType="time_series", timeRange="%s" to see how request latency has changed over time.
 3. Use signoz_search_traces with service="%s", minDuration="1s", timeRange="%s" to find specific slow traces (>1s).
 4. For the slowest trace found, use signoz_get_trace_details to examine the span breakdown.
 5. Summarize: which operations are slow, whether latency is trending up, and what spans contribute most to latency.`, service, timeRange, service, timeRange, service, timeRange, service, timeRange),

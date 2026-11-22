@@ -33,8 +33,8 @@
         "kind": "text",
         "uri": "signoz://alert/instructions",
         "mimeType": "text/markdown",
-        "serializedLength": 22423,
-        "sha256": "a33d4591545ae95828935edbf0d90231f1fed0ab964f6ea198460d95ae7ef1f4"
+        "serializedLength": 23303,
+        "sha256": "68e5705bd535eb0d0e0ce944d1773e1e20005aba2dc816561234ad7b5718f051"
       }
     ]
   },
@@ -137,8 +137,8 @@
         "kind": "text",
         "uri": "signoz://dashboard/instructions",
         "mimeType": "text/markdown",
-        "serializedLength": 7803,
-        "sha256": "e848a5d58c78eb6a2e84973fe1f84218bf1e8b09e8ea95c361bbbf1632d8fb39"
+        "serializedLength": 7802,
+        "sha256": "150ce4748926f40b1cfff164558ac09e04a55fc46e495d359dfcface617df3f0"
       }
     ]
   },
@@ -163,8 +163,8 @@
         "kind": "text",
         "uri": "signoz://dashboard/patch-instructions",
         "mimeType": "text/markdown",
-        "serializedLength": 5379,
-        "sha256": "1352848bd541f2477c799c7ea507ccbcf619c8087c6649901a1e71eec31f1bbb"
+        "serializedLength": 5361,
+        "sha256": "d8615acde39ede1cd90030d7a00b0b0b586570c14e0a3fa6762f4e024c10e519"
       }
     ]
   },
@@ -176,8 +176,8 @@
         "kind": "text",
         "uri": "signoz://dashboard/query-builder-example",
         "mimeType": "text/markdown",
-        "serializedLength": 17751,
-        "sha256": "e4174aac51850acd8c0904f9e192e2fb7ae31d525028d16b4ac6ee92fc680e67"
+        "serializedLength": 17892,
+        "sha256": "0323beb283cfb75577bcb89449f44d91b7d0e2de6be325cf83dfaea5b47502dd"
       }
     ]
   },
@@ -241,8 +241,8 @@
         "kind": "text",
         "uri": "signoz://metrics-aggregation-guide",
         "mimeType": "text/markdown",
-        "serializedLength": 12900,
-        "sha256": "ced7c89b335757a0b9e4306eb9b2b94d775981b5e96e0c8f6bbc1bddf73201af"
+        "serializedLength": 14925,
+        "sha256": "f809fa5586860e39908039e0d651cd670711b5726da953fe4669095306e34784"
       }
     ]
   },
@@ -267,8 +267,8 @@
         "kind": "text",
         "uri": "signoz://promql/instructions",
         "mimeType": "text/markdown",
-        "serializedLength": 10903,
-        "sha256": "475ae5dfaf511e81032dcbce49fc205785905e2d785379d8b02006e8000ac29e"
+        "serializedLength": 10736,
+        "sha256": "a2162634136df2dae1c42011ec38cecd5673d0275b82697d879c27a18aebe71e"
       }
     ]
   },
@@ -293,8 +293,8 @@
         "kind": "text",
         "uri": "signoz://traces/query-builder-guide",
         "mimeType": "text/markdown",
-        "serializedLength": 11939,
-        "sha256": "6f2a2a55bed78eb758883e8e5e414264a7860fdbb72b7c8e25049cced24e129b"
+        "serializedLength": 12295,
+        "sha256": "e9ce1114d3e741a523c5c1bc64ad91dd1f2b5ac8b99ae1e98f81659bcfbc41e1"
       }
     ]
   },

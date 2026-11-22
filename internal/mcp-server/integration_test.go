@@ -19,6 +19,7 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/internal/handler/tools"
 	"github.com/SigNoz/signoz-mcp-server/pkg/dashboard"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
+	otelpkg "github.com/SigNoz/signoz-mcp-server/pkg/otel"
 	"github.com/SigNoz/signoz-mcp-server/pkg/version"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -33,6 +34,13 @@ func buildTestServer(t *testing.T) *mcp.Server {
 
 func buildTestServerWithDocs(t *testing.T, docs *docsindex.IndexRegistry) *mcp.Server {
 	t.Helper()
+	return buildTestServerWithDocsAndMeters(t, docs, nil)
+}
+
+// buildTestServerWithDocsAndMeters is buildTestServerWithDocs recording to
+// meters, when set.
+func buildTestServerWithDocsAndMeters(t *testing.T, docs *docsindex.IndexRegistry, meters *otelpkg.Meters) *mcp.Server {
+	t.Helper()
 	initClickhouseSchemaOnce.Do(dashboard.InitClickhouseSchema)
 
 	log := logpkg.New("error")
@@ -45,7 +53,7 @@ func buildTestServerWithDocs(t *testing.T, docs *docsindex.IndexRegistry) *mcp.S
 		handler.SetDocsIndex(docs)
 	}
 
-	m := NewMCPServer(log, handler, cfg, nil, nil)
+	m := NewMCPServer(log, handler, cfg, nil, meters)
 	s := m.newSDKServer()
 	m.registerHandlers(s)
 	return s

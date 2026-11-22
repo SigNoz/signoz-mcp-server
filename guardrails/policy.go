@@ -2,8 +2,11 @@
 // repository's package-local TestGuardrail_* tests.
 package guardrails
 
+// MaxServerInstructionsBytes matches the 4,096 characters Claude Code and Noz
+// keep of server instructions; MaxServerPreambleBytes is the self-contained
+// opening Codex's guidance asks for, which carries the tool routing.
 const (
-	MaxServerInstructionsBytes   = 2048
+	MaxServerInstructionsBytes   = 4096
 	MaxServerPreambleBytes       = 512
 	MaxToolDescriptionBytes      = 1024
 	MaxParameterDescriptionBytes = 1024

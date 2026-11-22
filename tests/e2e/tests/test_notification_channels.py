@@ -2,6 +2,7 @@
 
 import pytest
 
+from e2e.tests.test_alerts import create_rule, delete_rule, threshold_rule
 from fixtures.mcpclient import MCPClient, assert_tool_ok, text_blocks
 from fixtures.results import first_block_json
 from fixtures.seeded import channel_gone, channel_id_by_name, create_channel, delete_channel
@@ -297,3 +298,25 @@ def test_update_unsets_template_field_by_omission_never_by_blanking(mcp_client: 
     finally:
         delete_channel(mcp_client, channel_id)
         assert channel_gone(mcp_client, channel_id), "blanked-field channel remained after cleanup"
+
+
+def test_channel_an_alert_routes_to_cannot_be_deleted(mcp_client: MCPClient, test_id: str) -> None:
+    """Pins the delete tool's rule: SigNoz refuses, naming the rule's own routing policy with the rule's ID."""
+    name = f"mcp-e2e-{test_id}-routed"
+    channel_id = create_channel(mcp_client, name, {"kind": "webhook", "spec": {"url": "http://example.invalid/routed"}})
+    rule_id = ""
+    try:
+        rule_id = create_rule(mcp_client, threshold_rule(f"mcp-e2e-{test_id}-rule", channels=[name]))
+        refused = mcp_client.call_tool(
+            "signoz_delete_notification_channel", {"searchContext": "delete the channel", "id": channel_id}
+        )
+        assert refused.get("isError", False), "a channel an alert routes to was deleted"
+        text = text_blocks(refused)
+        # SigNoz's own refusal names the rule's ID, and the recovery the tool adds to it names the tool to check it.
+        assert "used by the following routing policies" in text and rule_id in text, text
+        assert "signoz_get_alert" in text, text
+    finally:
+        if rule_id:
+            delete_rule(mcp_client, rule_id)
+        delete_channel(mcp_client, channel_id)
+    assert channel_gone(mcp_client, channel_id)

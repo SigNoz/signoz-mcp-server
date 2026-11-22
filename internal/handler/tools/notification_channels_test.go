@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 )
 
 const testNotificationChannelID = "019947a7-f200-7000-8000-000000000001"
@@ -104,4 +105,33 @@ func TestNotificationChannelFailuresKeepTheProviderSecretOutOfLogs(t *testing.T)
 			t.Fatalf("notification channel log leaked provider URL: %s", logs.String())
 		}
 	})
+}
+
+// SigNoz names an alert rule's own routing policy with the rule's ID, so the
+// error says how to tell a rule from a routing policy and re-route each.
+func TestDeleteNotificationChannel_InUseSaysTheIDsCanBeAlertRules(t *testing.T) {
+	h, _ := newAIToolsHandler(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"status":"error","error":{"code":"invalid_input","message":"channel \"ops\" cannot be deleted because it is used by the following routing policies: [01a1feb2-2b14-7360-bab7-1f5130e30541]"}}`))
+	})
+	result, err := h.handleDeleteNotificationChannel(testCtx(), makeToolRequest("signoz_delete_notification_channel", map[string]any{"id": "0199c47d-f61b-7833-bc5f-c0730f12f046"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.IsError {
+		t.Fatalf("a channel in use must fail: %v", result.Content)
+	}
+	var text strings.Builder
+	for _, content := range result.Content {
+		if block, ok := mcp.AsTextContent(content); ok {
+			text.WriteString(block.Text + "\n")
+		}
+	}
+	// SigNoz's refusal is kept; the recovery says a UUID name is an alert rule to check with
+	// signoz_get_alert and re-route with signoz_update_alert, and any other name a routing policy.
+	for _, want := range []string{"used by the following routing policies", "UUID", "signoz_get_alert", "signoz_update_alert", "routing policy in SigNoz settings"} {
+		if !strings.Contains(text.String(), want) {
+			t.Fatalf("delete error lacks %q:\n%s", want, text.String())
+		}
+	}
 }

@@ -8,8 +8,12 @@ direct routing to a channel that does not exist, and the history endpoint keeps
 the items/total envelope the completeness note parses.
 """
 
+import time
+from contextlib import ExitStack
+
 from fixtures.mcpclient import MCPClient, assert_tool_ok
 from fixtures.results import first_block_json, first_text_block, note_blocks
+from fixtures.telemetry import seed_metrics, wait_for
 
 SERVER_POPULATED_FIELDS = ("id", "state", "createdAt", "updatedAt", "createdBy", "updatedBy", "webUrl")
 
@@ -136,6 +140,19 @@ def test_create_alert_unknown_channel_rejected(mcp_client: MCPClient, test_id: s
     assert "mcp-e2e-no-such-channel" in body, f"rejection does not name the unknown channel: {body!r}"
     assert name not in listed_rule_names(mcp_client), "rejected rule was persisted anyway"
 
+    # Evaluation windows are Go durations, so a day unit is rejected, as the alert guide says.
+    day_window = threshold_rule(f"{name}-day-window")
+    day_window["evaluation"] = {"kind": "rolling", "spec": {"evalWindow": "1d", "frequency": "1m"}}
+    rejected = mcp_client.call_tool(
+        "signoz_create_alert", {"searchContext": "create an alert over one day", **day_window}
+    )
+    if not rejected.get("isError", False):
+        leaked = (first_block_json(rejected).get("data") or {}).get("id")
+        if isinstance(leaked, str) and leaked:
+            delete_rule(mcp_client, leaked)
+        raise AssertionError(f"SigNoz accepted a 1d window: {first_text_block(rejected)[:300]}")
+    assert 'unknown unit "d"' in first_text_block(rejected), first_text_block(rejected)[:300]
+
 
 def test_alert_history_envelope(mcp_client: MCPClient, test_id: str) -> None:
     """History keeps the data.items/total envelope the completeness note parses (empty timeline is fine).
@@ -196,3 +213,74 @@ def test_list_alert_rules_filters_in_signoz(mcp_client: MCPClient, test_id: str)
             except AssertionError as exc:
                 failures.append(f"{rule_id}: {exc}")
         assert not failures, f"rules left behind: {failures}"
+
+
+def test_threshold_unit_converts_only_with_a_query_unit(mcp_client: MCPClient, test_id: str, telemetry: None) -> None:
+    """Pins the alert-unit rule: a targetUnit converts only to a set compositeQuery.unit.
+
+    The series holds 2 (nanoseconds) and both rules set target 1 with targetUnit s. With query
+    unit ns the target becomes 1e9, so "below" fires only if SigNoz converted it; with no query
+    unit the target stays 1, so "above" fires only if SigNoz did not convert it.
+    """
+    metric = f"mcp_e2e_alert_unit_{test_id.replace('-', '_')}"
+    seed_metrics(f"mcp-e2e-{test_id}", metric, value=2.0, count=24)
+
+    def rule(name: str, unit: str, op: str) -> dict:
+        body = threshold_rule(name)
+        query = body["condition"]["compositeQuery"]
+        query["queries"][0]["spec"]["aggregations"] = [
+            {"metricName": metric, "timeAggregation": "max", "spaceAggregation": "max"}
+        ]
+        query["unit"] = unit
+        body["condition"]["thresholds"]["spec"][0].update({"target": 1, "targetUnit": "s", "op": op})
+        return body
+
+    def state(rule_id: str) -> str:
+        result = mcp_client.call_tool("signoz_get_alert", {"searchContext": "alert state", "id": rule_id})
+        return (first_block_json(result).get("data") or {}).get("state") or ""
+
+    with ExitStack() as cleanup:
+        converted = create_rule(mcp_client, rule(f"mcp-e2e-{test_id}-ns", "ns", "below"))
+        cleanup.callback(delete_rule, mcp_client, converted)
+        unconverted = create_rule(mcp_client, rule(f"mcp-e2e-{test_id}-none", "", "above"))
+        cleanup.callback(delete_rule, mcp_client, unconverted)
+        # The ruler evaluates every minute.
+        wait_for(lambda: state(converted) == "firing", "2 ns below a target converted to 1e9 ns", timeout=300)
+        wait_for(lambda: state(unconverted) == "firing", "2 ns above an unconverted target of 1", timeout=300)
+
+
+def test_rule_on_a_missing_metric_saves(mcp_client: MCPClient, test_id: str) -> None:
+    """Pins why the alert tools say to dry-run the query: SigNoz saves a rule whose query has no data."""
+    rule = threshold_rule(f"mcp-e2e-{test_id}-missing")
+    aggregation = rule["condition"]["compositeQuery"]["queries"][0]["spec"]["aggregations"][0]
+    aggregation["metricName"] = f"mcp_e2e_missing_{test_id.replace('-', '_')}"
+    rule_id = create_rule(mcp_client, rule)
+    delete_rule(mcp_client, rule_id)
+
+    # A metric query with no timeAggregation saves too, but SigNoz fails it at query time:
+    # the alert guide says to set it, because SigNoz applies no default.
+    gauge = f"mcp_e2e_no_time_aggregation_{test_id.replace('-', '_')}"
+    seed_metrics(f"mcp-e2e-{test_id}", gauge, value=1.0, count=2, age_seconds=120)
+    rule = threshold_rule(f"mcp-e2e-{test_id}-no-time-aggregation")
+    spec = rule["condition"]["compositeQuery"]["queries"][0]["spec"]
+    spec["aggregations"] = [{"metricName": gauge, "spaceAggregation": "sum"}]
+    rule_id = create_rule(mcp_client, rule)
+    try:
+        fetched = assert_tool_ok(
+            mcp_client.call_tool("signoz_get_alert", {"searchContext": "read the saved rule", "id": rule_id})
+        )
+    finally:
+        delete_rule(mcp_client, rule_id)
+    # The query SigNoz saved, so a default added at creation would show here.
+    spec = first_block_json(fetched)["data"]["condition"]["compositeQuery"]["queries"][0]["spec"]
+    assert not spec["aggregations"][0].get("timeAggregation"), f"SigNoz saved a timeAggregation: {spec['aggregations']}"
+
+    def dry_run() -> str | None:
+        now = int(time.time() * 1000)
+        query = {"schemaVersion": "v1", "start": now - 3_600_000, "end": now, "requestType": "time_series"}
+        query["compositeQuery"] = {"queries": [{"type": "builder_query", "spec": spec}]}
+        result = mcp_client.call_tool("signoz_execute_builder_query", {"searchContext": "dry-run it", "query": query})
+        text = first_text_block(result)
+        return text if result.get("isError", False) and "invalid time aggregation" in text else None
+
+    wait_for(dry_run, f"a dry-run of {gauge} without timeAggregation to fail")

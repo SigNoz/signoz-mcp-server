@@ -24,7 +24,7 @@ Layout [Critical]:
 - Set x as the horizontal starting position (0-11, where 0 is leftmost).
 - Set y as the vertical starting position (0+, increments as rows stack downward).
 - Set width in grid units (1-12, where 12 spans full width).
-- Set height in grid units (minimum 2, typical range 2-10 depending on panel type).
+- Set height in grid units (at least 1; 2 to 10 is typical, depending on panel type).
 - Link each grid item to its panel with content.$ref = "#/spec/panels/<panelId>". Panels live in the spec.panels MAP keyed by id; the grid item references that id (it is not repeated as a separate layout id).
 - Ensure no panels overlap by verifying that no two grid items occupy the same grid coordinates.
 - Allocate sufficient height for any chart with legends; treat legend space as a mandatory vertical requirement and size height accordingly to keep legends fully visible.
@@ -86,7 +86,7 @@ Variable Configuration:
 - Reference variables using $var syntax across Query Builder, ClickHouse SQL, and PromQL; use IN for multi-select inputs.
 - Chain variables by constraining one variable using another, but rely on dynamic variables for automatic dependency handling.
 
-Applying Variables to Panels [Critical — MUST prompt the user]:
+Applying Variables to Panels [Critical: MUST prompt the user]:
 - Before wiring a new variable into panel queries, ALWAYS ask the user which panels it should apply to. Never silently inject a variable reference into every panel.
 - Present the current panels as a list (id + title) and offer two choices: (a) apply to all panels, or (b) pick a subset. Wait for the user's selection before generating any queries that reference the variable.
 - Only inject $<var_name> into the filter expressions / queries of panels the user selected; leave the rest untouched.
