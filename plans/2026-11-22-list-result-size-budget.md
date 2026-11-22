@@ -188,6 +188,15 @@ return.
   and prefers deriving a list to checking a hand-kept copy of it. The guardrails and the e2e
   walk repeated what the handler tests pin: the fit with notices, and the pagination of a cut.
 
+### 2026-11-22 — Review of the later commits (codex-loop)
+
+- Decision: the guardrail reads `pagination.truncated` from the decoded page, not the text, and
+  fails if `tools/list` returns a second page it did not read.
+- Decision: the handler test of a cut page compares each item's whole padded string, so a
+  shortened item fails it. The e2e walk requires every page to hold a dashboard.
+- Decision: OUT-7 says a tool that pages with `offset` must apply the budget, not fit it: the
+  first item comes back even when it alone is over the budget.
+
 ## Reference Links
 
 - [SigNoz/nerve-pod#673: bound MCP tool results to a size budget](https://github.com/SigNoz/nerve-pod/issues/673)

@@ -1,6 +1,7 @@
 package mcp_server
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -69,6 +70,9 @@ func TestGuardrail_OffsetToolResultsFitTheirSizeBudget(t *testing.T) {
 	// held to the budget without being added to a list here.
 	listed, _ := protocolPOST(t, httpHandler, protocolRequestJSON(t, 900, "tools/list", map[string]any{}), headers).wire["result"].(map[string]any)
 	registered, _ := listed["tools"].([]any)
+	if cursor, _ := listed["nextCursor"].(string); cursor != "" {
+		t.Fatal("tools/list returned a second page; follow nextCursor here so that no tool that pages with offset escapes this test")
+	}
 	pagesWithOffset := map[string]bool{}
 	for _, entry := range registered {
 		tool, _ := entry.(map[string]any)
@@ -110,7 +114,13 @@ func TestGuardrail_OffsetToolResultsFitTheirSizeBudget(t *testing.T) {
 			if textBytes > config.DefaultMaxResultBytes {
 				t.Fatalf("%s delivered %d bytes of text, over the default %d-byte result size budget. Return its page through listResult or rawSearchResult, which keep the leading whole items that fit (OUT-7). Only when SigNoz returns its items in no fixed order, name it in guardrails.UnbudgetedOffsetTools with the reason.", name, textBytes, config.DefaultMaxResultBytes)
 			}
-			if block0, _ := content[0].(map[string]any)["text"].(string); !strings.Contains(block0, `"truncated":true`) {
+			block0, _ := content[0].(map[string]any)["text"].(string)
+			var page struct {
+				Pagination struct {
+					Truncated bool `json:"truncated"`
+				} `json:"pagination"`
+			}
+			if err := json.Unmarshal([]byte(block0), &page); err != nil || !page.Pagination.Truncated {
 				t.Fatalf("%s returned its page without a budget cut, so this test proved nothing. Make its route here answer with a page over %d bytes: %.300s", name, config.DefaultMaxResultBytes, block0)
 			}
 		})

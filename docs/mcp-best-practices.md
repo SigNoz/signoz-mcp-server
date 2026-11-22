@@ -200,9 +200,10 @@ evolution.
   result larger than it shows its model, so a new tool SHOULD keep its text
   blocks within the result size budget (`MCP_MAX_RESULT_BYTES`): give a list a
   `limit` with a default and a maximum, and state the largest result the tool
-  can return in the PR. A tool that pages with `offset` MUST fit the budget:
+  can return in the PR. A tool that pages with `offset` MUST apply the budget:
   return the page through `listResult` or `rawSearchResult`, which end an
-  over-budget page on a whole item and say so (OUT-3). A cut is safe only over
+  over-budget page on a whole item and say so (OUT-3). The first item always
+  comes back, even when it alone is over the budget. A cut is safe only over
   a fixed order, so a new `offset` tool MUST return one. The tools whose
   upstream order is not fixed are not cut and are named, with the reason, in
   `guardrails.UnbudgetedOffsetTools`.
@@ -347,7 +348,7 @@ For any PR touching a client-visible MCP surface, review the applicable items:
 - [ ] Handles returned where they save a lookup; reads write back cleanly (OUT-1, OUT-2)
 - [ ] Truncation/pagination explicit with next step; partial success only for independent items (OUT-3, OUT-4)
 - [ ] Notes on a structured result also appear in `structuredContent.notes`, added through `appendNotes` (OUT-6)
-- [ ] A new tool's largest result is bounded and stated; a tool that pages with `offset` returns a fixed order and fits the result size budget (OUT-7)
+- [ ] A new tool's largest result is bounded and stated; a tool that pages with `offset` returns a fixed order and applies the result size budget (OUT-7)
 
 **Errors**
 - [ ] Stable tool-error `code`; validation text names field, problem, accepted forms, next action (ERR-1, ERR-2)

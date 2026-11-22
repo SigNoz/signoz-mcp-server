@@ -76,7 +76,7 @@ the PR. Budgets and CI mechanics live in `guardrails/README.md`. In the same PR:
 - Add an e2e test in `tests/e2e/tests/` when the behavior depends on SigNoz.
 - Bound a new tool's result (OUT-7): give a list a `limit` with a default and a maximum, and
   state the largest result the tool can return in the PR. A tool that pages with `offset` also
-  returns a fixed order and fits the result size budget: return its page through `listResult`
+  returns a fixed order and applies the result size budget: return its page through `listResult`
   or `rawSearchResult`, and give it a route in
   `TestGuardrail_OffsetToolResultsFitTheirSizeBudget`.
 - Client-visible text follows `docs/client-visible-writing-style.md`.

@@ -284,6 +284,7 @@ func TestListToolOverBudgetEndsThePageOnAWholeItem(t *testing.T) {
 			t.Run(list.tool+name, func(t *testing.T) {
 				harness := newListBudgetHarness(t, list, list.itemsPadded(40, padding))
 				result := list.call(t, harness.server, 20, 10)
+				wantPadding := strings.ReplaceAll(padding, `\u003c`, "<") // as the client reads it
 
 				size := textBytes(result)
 				require.LessOrEqual(t, size, listBudget, "the result's text blocks must fit the budget: %s", allTextBlocks(result))
@@ -291,7 +292,7 @@ func TestListToolOverBudgetEndsThePageOnAWholeItem(t *testing.T) {
 				returned := len(delivered.items)
 				require.True(t, returned >= 1 && returned < 20, "want a partial page, got %d of 20 items", returned)
 				for i, item := range delivered.items {
-					require.Contains(t, string(item), fmt.Sprintf(`item-%03d `, 10+i), "item %d must be upstream item %d, whole", i, 10+i)
+					require.Contains(t, string(item), fmt.Sprintf(`item-%03d `, 10+i)+wantPadding, "item %d must be upstream item %d, whole", i, 10+i)
 				}
 				require.Greater(t, size+len(delivered.items[returned-1])+1, listBudget, "another item would have fit; the page must keep every leading item that fits")
 

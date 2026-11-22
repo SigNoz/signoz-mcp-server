@@ -105,6 +105,7 @@ def test_list_dashboards_pages_by_result_size(
         offset, pages = 0, []
         while True:
             page = first_block_json(assert_tool_ok(list_page(small_budget_client, offset)))
+            assert page["data"]["dashboards"], f"the page at offset {offset} is empty, so it cannot count as one"
             pages.append(page)
             pagination = page.get("pagination")
             if pagination is None or not pagination["hasMore"]:
