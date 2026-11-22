@@ -2,7 +2,7 @@
 
 Status: In Progress
 Issue: [SigNoz/nerve-pod#673](https://github.com/SigNoz/nerve-pod/issues/673)
-PR:
+PR: https://github.com/SigNoz/signoz-mcp-server/pull/478
 
 ## Context
 
@@ -184,6 +184,6 @@ and pass `ruff`.
 
 ## Outcome
 
-In progress. SigNoz/agent-skills needs a companion change (CMP-3):
-`signoz-explaining-dashboards` teaches raising `offset` by `limit` until `total` is covered, which
-skips dashboards after a budget cut.
+In progress. SigNoz/agent-skills needs a companion change (CMP-3), tracked in
+SigNoz/nerve-pod#436: `signoz-explaining-dashboards` teaches raising `offset` by `limit` until
+`total` is covered, which skips dashboards after a budget cut.
