@@ -331,6 +331,7 @@ dimension, just like any other metric.
 
 - Auto-calculated as: max(60, (end - start) / 300 / 1000) seconds
 - Targets approximately 300 data points per series
-- Minimum: 60 seconds; 3600 seconds for Cost Meter (see Cost Meter above)
+- Minimum: 60 seconds
+- Cost Meter has its own, larger steps (see Cost Meter above)
 - Can be overridden with the stepInterval parameter; SigNoz raises a value below its minimum for the window
 `
