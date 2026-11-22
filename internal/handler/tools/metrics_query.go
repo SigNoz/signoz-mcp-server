@@ -234,14 +234,12 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 		return upstreamQueryError(err, "metrics"), nil
 	}
 
-	// The notes use the step SigNoz reports, which can differ from a caller's
-	// (SigNoz raises a step below its minimum).
-	effectiveStep := stepInterval
-	if si := extractStepInterval(result); si > 0 {
-		effectiveStep = si
-		if !callerProvidedStep {
-			decisions = append(decisions, fmt.Sprintf("stepInterval: %ds (backend-determined)", si))
-		}
+	// The notes use the step SigNoz reports for the primary query, which can
+	// differ from a caller's (SigNoz raises a step below its minimum); when it
+	// reports none, they name no step.
+	effectiveStep := responseStepIntervals(ctx, h.logger, "signoz_query_metrics", result)["A"]
+	if effectiveStep > 0 && !callerProvidedStep {
+		decisions = append(decisions, fmt.Sprintf("stepInterval: %ds (backend-determined)", effectiveStep))
 	}
 	backendWarnings := extractBackendWarningMessages(result)
 	warnBackendWarnings(ctx, h.logger, "signoz_query_metrics", backendWarnings)

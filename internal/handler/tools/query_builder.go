@@ -153,7 +153,7 @@ func (h *Handler) handleExecuteBuilderQuery(ctx context.Context, req mcp.CallToo
 		requestType, _ := queryObj["requestType"].(string)
 		notes = append(notes, queryBoundsDecisionsNote(applied, requestType))
 	}
-	notes = append(notes, h.recordMeasurementNotes(ctx, "signoz_execute_builder_query", builderQueryMeasurementNotes(queryObj, data))...)
+	notes = append(notes, h.recordMeasurementNotes(ctx, "signoz_execute_builder_query", builderQueryMeasurementNotes(queryObj, responseStepIntervals(ctx, h.logger, "signoz_execute_builder_query", data)))...)
 	warnings := extractBackendWarningMessages(data)
 	warnBackendWarnings(ctx, h.logger, "signoz_execute_builder_query", warnings)
 	warnUnparsedWarningEnvelope(ctx, h.logger, "signoz_execute_builder_query", data, len(warnings))

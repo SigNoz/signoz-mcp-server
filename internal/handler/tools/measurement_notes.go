@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -63,33 +64,144 @@ func (h *Handler) recordMeasurementNotes(ctx context.Context, toolName string, n
 
 // --- traces ---
 
-var (
-	// One service.name (optionally resource.-prefixed) with = or a one-value IN.
-	singleServicePattern = regexp.MustCompile(`(?i)(?:resource\.)?service\.name\s*(?:=\s*'((?:[^'\\]|\\.)*)'|IN\s*\(\s*'((?:[^'\\]|\\.)*)'\s*\))`)
-	serviceKeyPattern    = regexp.MustCompile(`(?i)\bservice\.name\b`)
-	widenPattern         = regexp.MustCompile(`(?i)\b(?:OR|NOT)\b`)
-	// A predicate on the span name narrows to chosen operations; service.name
-	// and other dotted keys ending in name are excluded by the leading boundary.
-	spanNamePredicatePattern = regexp.MustCompile(`(?i)(?:^|[\s(])(?:span\.)?name\s*(?:=|!=|<>|\bIN\b|\bNOT\b|\bLIKE\b|\bILIKE\b|\bCONTAINS\b|\bREGEXP\b|\bEXISTS\b)`)
-	spanKindPattern          = regexp.MustCompile(`(?i)(?:^|[\s(])(?:span\.)?kind(?:_string)?\s*(?:=|!=|<>|\bIN\b|\bNOT\b)`)
-	requestShapedAggregation = regexp.MustCompile(`(?i)^\s*(?:count\(\s*\)|rate\(\s*\)|(?:p\d{2}|avg|median)\(\s*duration_nano\s*\))\s*$`)
+var requestShapedAggregation = regexp.MustCompile(`(?i)^\s*(?:count\(\s*\)|rate\(\s*\)|(?:p\d{2}|avg|median)\(\s*duration_nano\s*\))\s*$`)
+
+// filterToken is one token of a filter expression: a quoted literal, holding
+// its unquoted value; a run of comparison characters such as = or !=; one of
+// ( ) and ,; or any other run of non-space characters, which is a key or a
+// keyword such as AND or IN. Matching keys on tokens keeps a longer key such
+// as k8s.service.name, and text inside a literal, from reading as a key.
+type filterToken struct {
+	text    string
+	literal bool
+}
+
+// is reports whether the token is a key or keyword equal to one of words,
+// ignoring case. A literal is never a key.
+func (t filterToken) is(words ...string) bool {
+	if t.literal {
+		return false
+	}
+	for _, word := range words {
+		if strings.EqualFold(t.text, word) {
+			return true
+		}
+	}
+	return false
+}
+
+const (
+	filterSpace      = " \t\r\n"
+	filterComparison = "=!<>"
+	filterBreaks     = filterSpace + filterComparison + `'"(),`
 )
 
-// filterService returns the one service a filter is scoped to, or "" when it
-// names none or more than one, or has an OR or NOT that can widen the scope.
+func tokenizeFilter(filter string) []filterToken {
+	var tokens []filterToken
+	for i := 0; i < len(filter); {
+		switch c := filter[i]; {
+		case strings.IndexByte(filterSpace, c) >= 0:
+			i++
+		case c == '\'' || c == '"':
+			var value strings.Builder
+			i++
+			for ; i < len(filter) && filter[i] != c; i++ {
+				if filter[i] == '\\' && i+1 < len(filter) {
+					i++
+				}
+				value.WriteByte(filter[i])
+			}
+			tokens = append(tokens, filterToken{text: value.String(), literal: true})
+			i++ // the closing quote
+		case c == '(' || c == ')' || c == ',':
+			tokens = append(tokens, filterToken{text: string(c)})
+			i++
+		case strings.IndexByte(filterComparison, c) >= 0:
+			j := i + 1
+			for j < len(filter) && strings.IndexByte(filterComparison, filter[j]) >= 0 {
+				j++
+			}
+			tokens = append(tokens, filterToken{text: filter[i:j]})
+			i = j
+		default:
+			j := i + 1
+			for j < len(filter) && strings.IndexByte(filterBreaks, filter[j]) < 0 {
+				j++
+			}
+			tokens = append(tokens, filterToken{text: filter[i:j]})
+			i = j
+		}
+	}
+	return tokens
+}
+
+// comparedValue reads the comparison that starts the tokens after a key: = with
+// a literal, or IN with a one-literal list. It returns the literal and the number
+// of tokens the comparison spans, or ok false for any other comparison.
+func comparedValue(tokens []filterToken) (value string, length int, ok bool) {
+	switch {
+	case len(tokens) >= 2 && tokens[0].is("=") && tokens[1].literal:
+		return tokens[1].text, 2, true
+	case len(tokens) >= 4 && tokens[0].is("IN") && tokens[1].is("(") && tokens[2].literal && tokens[3].is(")"):
+		return tokens[2].text, 4, true
+	}
+	return "", 0, false
+}
+
+func isServiceKey(t filterToken) bool { return t.is("service.name", "resource.service.name") }
+
+// filterService returns the one service a filter is scoped to: the value its
+// only service.name or resource.service.name key is compared with, by = or a
+// one-value IN. It returns "" when the filter names no service or more than
+// one, or has an OR or NOT that can widen the scope.
 func filterService(filter string) string {
-	if len(serviceKeyPattern.FindAllStringIndex(filter, -1)) != 1 || widenPattern.MatchString(filter) {
+	tokens := tokenizeFilter(filter)
+	service, keys := "", 0
+	for i, token := range tokens {
+		if token.is("OR", "NOT") {
+			return ""
+		}
+		if isServiceKey(token) {
+			keys++
+			service, _, _ = comparedValue(tokens[i+1:])
+		}
+	}
+	if keys != 1 {
 		return ""
 	}
-	match := singleServicePattern.FindStringSubmatch(filter)
-	if match == nil {
-		return ""
+	return service
+}
+
+// filterIsOnlyService reports whether a filter is nothing but one service
+// predicate, possibly in parentheses.
+func filterIsOnlyService(filter string) bool {
+	tokens := tokenizeFilter(filter)
+	for len(tokens) >= 2 && tokens[0].is("(") && tokens[len(tokens)-1].is(")") {
+		tokens = tokens[1 : len(tokens)-1]
 	}
-	value := match[1]
-	if value == "" {
-		value = match[2]
+	if len(tokens) == 0 || !isServiceKey(tokens[0]) {
+		return false
 	}
-	return strings.ReplaceAll(value, `\'`, `'`)
+	_, length, ok := comparedValue(tokens[1:])
+	return ok && 1+length == len(tokens)
+}
+
+// narrowsSpans reports a predicate that picks spans on purpose: one on the span
+// name, which picks operations, or on the span kind other than kind = 'Server',
+// such as outgoing client calls. Server spans still include nested ones.
+func narrowsSpans(tokens []filterToken) bool {
+	for i, token := range tokens {
+		if token.is("name", "span.name") {
+			return true
+		}
+		if token.is("kind", "kind_string", "span.kind", "span.kind_string") {
+			rest := tokens[i+1:]
+			if len(rest) < 2 || !rest[0].is("=") || !rest[1].literal || !strings.EqualFold(rest[1].text, "server") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // traceAllSpansNote fires on an ungrouped count, rate, or latency over every
@@ -111,12 +223,7 @@ func traceAllSpansNote(filter, callerFilter string, groupBy int, aggregations []
 			return measurementNote{}, false
 		}
 	}
-	if spanNamePredicatePattern.MatchString(filter) {
-		return measurementNote{}, false
-	}
-	// A kind other than server is a deliberate choice of spans, such as
-	// outgoing client calls; server spans still include nested ones.
-	if spanKindPattern.MatchString(filter) && !strings.Contains(lower, "server") {
+	if narrowsSpans(tokenizeFilter(filter)) {
 		return measurementNote{}, false
 	}
 	matched := false
@@ -204,7 +311,9 @@ func stepPhrase(step int64) string {
 // of the window. For an explicit-bucket histogram, each bucket's count, read
 // with increase and summed by le, gives a single percentile by interpolation;
 // the limit must return every bucket of every group, because SigNoz applies it
-// to the reduced series. A having filter can drop buckets, so it gets no recipe.
+// to the reduced series. Like SigNoz's own percentile, a rank in the +Inf
+// bucket takes the highest finite bound. A having filter can drop buckets, so
+// it gets no recipe.
 func percentileOfStepsNote(m metricMeasurement) (measurementNote, bool) {
 	match := percentilePattern.FindStringSubmatch(strings.ToLower(m.SpaceAggregation))
 	if m.RequestType != "scalar" || match == nil {
@@ -230,14 +339,20 @@ func percentileOfStepsNote(m metricMeasurement) (measurementNote, bool) {
 			perGroup = " within each group"
 		}
 		text += fmt.Sprintf(
-			" For a single %s, query %s again with timeAggregation increase, spaceAggregation sum, reduceTo sum, groupBy %s, and a limit that returns every bucket of every group, then interpolate%s within the first bucket whose count reaches %s%% of the total.",
+			" For a single %s, query %s again with timeAggregation increase, spaceAggregation sum, reduceTo sum, groupBy %s, and a limit that returns every bucket of every group, then interpolate%s within the first bucket whose count reaches %s%% of the total; if that is the +Inf bucket, take the highest finite bound, as SigNoz does.",
 			percentile, m.MetricName, strings.Join(keys, ", "), perGroup, match[1])
 	}
 	return measurementNote{rule: rulePercentileOfSteps, text: text}, true
 }
 
+// explicitBucketHistogram reports a histogram with le buckets: its type when
+// known, or else a bucket series name, as SigNoz (X.bucket) and Prometheus
+// (X_bucket) store them.
 func explicitBucketHistogram(m metricMeasurement) bool {
-	return m.MetricType == "histogram" || m.MetricType == "" && strings.HasSuffix(m.MetricName, ".bucket")
+	if m.MetricType != "" {
+		return m.MetricType == "histogram"
+	}
+	return strings.HasSuffix(m.MetricName, ".bucket") || strings.HasSuffix(m.MetricName, "_bucket")
 }
 
 // stepAlignmentNote fires when the caller sets a scalar step at least as long
@@ -245,27 +360,36 @@ func explicitBucketHistogram(m metricMeasurement) bool {
 // starts steps at multiples of the step since the Unix epoch, so the window
 // spans two steps: the first reaches back before the window, except that a
 // cumulative histogram percentile with no timeAggregation has no earlier
-// sample to take a rate from and leaves that first step out.
+// sample to take a rate from and leaves that first step out, which leaves
+// nothing when the next step starts at or after the window's end. An unset
+// step is shorter, but SigNoz still aligns the start down to a step and the
+// end down to a minute, so the note promises no exact window.
 func stepAlignmentNote(m metricMeasurement) (measurementNote, bool) {
 	stepMs, windowMs := m.StepSeconds*1000, m.EndMs-m.StartMs
 	if m.RequestType != "scalar" || !m.CallerStep || stepMs <= 0 || windowMs <= 0 || stepMs < windowMs || m.StartMs%stepMs == 0 {
 		return measurementNote{}, false
 	}
 	first := m.StartMs - m.StartMs%stepMs
+	next := first + stepMs
 	firstText := time.UnixMilli(first).UTC().Format(time.RFC3339)
-	boundary := time.UnixMilli(first + stepMs).UTC().Format(time.RFC3339)
+	nextText := time.UnixMilli(next).UTC().Format(time.RFC3339)
+	cumulative := fmt.Sprintf("the result starts at %s and leaves out the window before it", nextText)
+	if next >= m.EndMs {
+		cumulative = fmt.Sprintf("the first step is left out and the next starts at %s, at or after the window's end, so the result can be empty", nextText)
+	}
 	percentile := percentilePattern.MatchString(strings.ToLower(m.SpaceAggregation))
 	var effect string
 	switch {
 	case percentile && strings.EqualFold(m.Temporality, "cumulative") && m.TimeAggregation == "":
-		effect = fmt.Sprintf("for this cumulative histogram the result starts at %s and leaves out the window before it", boundary)
+		effect = "for this cumulative histogram " + cumulative
 	case strings.EqualFold(m.Temporality, "delta") || (!percentile && m.MetricType != ""):
 		effect = fmt.Sprintf("the first step starts at %s, before the window, and counts data from before it", firstText)
 	default:
-		effect = fmt.Sprintf("the first step starts at %s, before the window, and counts data from before it, or, for a cumulative histogram percentile, the result starts at %s and leaves out the window before it", firstText, boundary)
+		effect = fmt.Sprintf("the first step starts at %s, before the window, and counts data from before it, or, for a cumulative histogram percentile, %s", firstText, cumulative)
 	}
 	return measurementNote{rule: ruleStepAlignment, text: fmt.Sprintf(
-		"note: SigNoz starts steps at multiples of %ds since the Unix epoch, so this %ds step does not cover the window as one step: %s. For one value over the window, leave stepInterval unset and choose reduceTo for the question.",
+		"note: SigNoz starts steps at multiples of %ds since the Unix epoch, so this %ds step does not cover the window as one step: %s. "+
+			"Leave stepInterval unset so SigNoz picks a shorter step whose steps stay close to the window, though it still aligns the start down to a step and the end down to a minute, and choose reduceTo for the question.",
 		m.StepSeconds, m.StepSeconds, effect)}, true
 }
 
@@ -290,7 +414,8 @@ func rateSummedNote(m metricMeasurement) (measurementNote, bool) {
 
 // counterRunningTotalNote fires when a cumulative counter is read with a time
 // aggregation other than rate or increase. A cumulative counter's value is its
-// running total since it started, and count counts its samples.
+// running total since it started, and count counts its samples. A scalar keeps
+// the caller's reduceTo, so the count in the window also needs reduceTo sum.
 func counterRunningTotalNote(m metricMeasurement) (measurementNote, bool) {
 	if m.MetricType != "sum" || !m.IsMonotonic || !strings.EqualFold(m.Temporality, "cumulative") {
 		return measurementNote{}, false
@@ -307,14 +432,21 @@ func counterRunningTotalNote(m metricMeasurement) (measurementNote, bool) {
 	default:
 		return measurementNote{}, false
 	}
+	increase := "timeAggregation increase"
+	if m.RequestType == "scalar" {
+		increase += " with reduceTo sum"
+	}
 	return measurementNote{rule: ruleCounterRunningTotal, text: fmt.Sprintf(
-		"note: %s is a cumulative counter, so timeAggregation %s %s. For the count in the window, use timeAggregation increase; for per second, use rate.",
-		m.MetricName, timeAggregation, reads)}, true
+		"note: %s is a cumulative counter, so timeAggregation %s %s. For the count in the window, use %s; for per second, use rate.",
+		m.MetricName, timeAggregation, reads, increase)}, true
 }
 
 // spanMetricsAllSpansNote fires on SigNoz's span metrics for one service with
 // no span-kind or operation narrowing. The collector records one call per
-// span, so a request with several spans counts several times.
+// span, so a request with several spans counts several times. The trace query
+// it suggests covers only the service; when the metric query also filters or
+// groups, the note says to carry those over rather than offer a call that
+// answers a wider question.
 func spanMetricsAllSpansNote(m metricMeasurement) (measurementNote, bool) {
 	calls := m.MetricName == spanMetricsCallsMetric || m.MetricName == spanMetricsLatencyCount
 	latency := m.MetricName == spanMetricsLatencyBucket
@@ -334,11 +466,24 @@ func spanMetricsAllSpansNote(m metricMeasurement) (measurementNote, bool) {
 			return measurementNote{}, false
 		}
 	}
+	onlyService := filterIsOnlyService(m.Filter)
+	filter := "filter " + querybuilder.EntrySpanFilter
+	if !onlyService {
+		filter = "filter (" + querybuilder.EntrySpanFilter + ") AND this query's other filter conditions"
+	}
+	if len(m.GroupBy) > 0 {
+		filter += ", grouped by this query's groupBy"
+	}
 	if calls {
+		services := ""
+		if onlyService && len(m.GroupBy) == 0 {
+			// signoz_list_services answers for the whole service only.
+			services = "signoz_list_services (numCalls, callRate), or "
+		}
 		return measurementNote{rule: ruleSpanMetricsAllSpans, text: fmt.Sprintf(
 			"note: %s counts every span of service %q, one per span, so one request that records several spans counts several times. "+
-				"For the service's requests, use signoz_list_services (numCalls, callRate), or signoz_aggregate_traces with service %q and filter "+querybuilder.EntrySpanFilter+".",
-			m.MetricName, service, service)}, true
+				"For the service's requests, use %ssignoz_aggregate_traces with count() or rate(), service %q, and %s.",
+			m.MetricName, service, services, service, filter)}, true
 	}
 	percentile := "p95"
 	if match := percentilePattern.FindStringSubmatch(strings.ToLower(m.SpaceAggregation)); match != nil {
@@ -346,16 +491,18 @@ func spanMetricsAllSpansNote(m metricMeasurement) (measurementNote, bool) {
 	}
 	return measurementNote{rule: ruleSpanMetricsAllSpans, text: fmt.Sprintf(
 		"note: %s records the duration of every span of service %q, including spans inside each request. "+
-			"For the service's request latency, use signoz_aggregate_traces with %s(duration_nano), service %q, and filter "+querybuilder.EntrySpanFilter+".",
-		m.MetricName, service, percentile, service)}, true
+			"For the service's request latency, use signoz_aggregate_traces with %s(duration_nano), service %q, and %s.",
+		m.MetricName, service, percentile, service, filter)}, true
 }
 
 // --- signoz_execute_builder_query ---
 
 // builderQueryMeasurementNotes runs the trace and metric rules over each
 // enabled builder query of a query_range request, plus the formula-input
-// limit rule. Metric types are unknown here, so the counter rule does not run.
-func builderQueryMeasurementNotes(request map[string]any, response json.RawMessage) []measurementNote {
+// limit rule. steps is the step SigNoz used per query name. Metric types are
+// unknown here, so the counter rule does not run. Each per-query note names
+// its query, because two queries can measure the same way.
+func builderQueryMeasurementNotes(request map[string]any, steps map[string]int64) []measurementNote {
 	var notes []measurementNote
 	for _, input := range querybuilder.LimitedFormulaInputs(request) {
 		notes = append(notes, measurementNote{rule: ruleFormulaInputLimit, text: fmt.Sprintf(
@@ -364,8 +511,7 @@ func builderQueryMeasurementNotes(request map[string]any, response json.RawMessa
 	}
 
 	requestType, _ := request["requestType"].(string)
-	startMs, endMs := int64(numberValue(request["start"])), int64(numberValue(request["end"]))
-	steps := responseStepIntervals(response)
+	startMs, endMs := epochMillis(int64(numberValue(request["start"]))), epochMillis(int64(numberValue(request["end"])))
 	composite, _ := request["compositeQuery"].(map[string]any)
 	queries, _ := composite["queries"].([]any)
 	formulaInputs := querybuilder.FormulaInputNames(request)
@@ -388,8 +534,13 @@ func builderQueryMeasurementNotes(request map[string]any, response json.RawMessa
 		}
 		groupBy := specGroupByNames(spec["groupBy"])
 		aggregations, _ := spec["aggregations"].([]any)
+		var queryNotes []measurementNote
 		switch spec["signal"] {
 		case "traces":
+			// A raw or trace request lists spans; it aggregates nothing.
+			if requestType != "scalar" && requestType != "time_series" {
+				continue
+			}
 			var expressions []string
 			for _, item := range aggregations {
 				if object, ok := item.(map[string]any); ok {
@@ -399,7 +550,7 @@ func builderQueryMeasurementNotes(request map[string]any, response json.RawMessa
 				}
 			}
 			if note, ok := traceAllSpansNote(filter, filter, len(groupBy), expressions, ""); ok {
-				notes = append(notes, note)
+				queryNotes = append(queryNotes, note)
 			}
 		case "metrics":
 			if len(aggregations) == 0 {
@@ -411,7 +562,7 @@ func builderQueryMeasurementNotes(request map[string]any, response json.RawMessa
 			spaceAggregation, _ := aggregation["spaceAggregation"].(string)
 			reduceTo, _ := aggregation["reduceTo"].(string)
 			temporality, _ := aggregation["temporality"].(string)
-			notes = append(notes, metricMeasurementNotes(metricMeasurement{
+			queryNotes = metricMeasurementNotes(metricMeasurement{
 				MetricName:       metricName,
 				Temporality:      temporality,
 				TimeAggregation:  timeAggregation,
@@ -426,10 +577,31 @@ func builderQueryMeasurementNotes(request map[string]any, response json.RawMessa
 				HasHaving:        havingExpression(spec["having"]) != "",
 				StartMs:          startMs,
 				EndMs:            endMs,
-			})...)
+			})
+		}
+		for _, note := range queryNotes {
+			note.text = strings.Replace(note.text, "note: ", fmt.Sprintf("note: in query %q, ", name), 1)
+			notes = append(notes, note)
 		}
 	}
 	return notes
+}
+
+// epochMillis reads an epoch of any resolution as milliseconds, the way
+// SigNoz's ToMilliSecs coerces a query_range request's start and end: it
+// scales the value to 13 digits, the width of a millisecond epoch today.
+func epochMillis(epoch int64) int64 {
+	if epoch <= 0 {
+		return epoch
+	}
+	digits := len(strconv.FormatInt(epoch, 10))
+	for ; digits < 13; digits++ {
+		epoch *= 10
+	}
+	for ; digits > 13; digits-- {
+		epoch /= 10
+	}
+	return epoch
 }
 
 func numberValue(value any) float64 {
@@ -474,19 +646,4 @@ func specGroupByNames(raw any) []string {
 		}
 	}
 	return names
-}
-
-// responseStepIntervals reads data.meta.stepIntervals, keyed by query name.
-func responseStepIntervals(response json.RawMessage) map[string]int64 {
-	var body struct {
-		Data struct {
-			Meta struct {
-				StepIntervals map[string]int64 `json:"stepIntervals"`
-			} `json:"meta"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(response, &body); err != nil {
-		return nil
-	}
-	return body.Data.Meta.StepIntervals
 }

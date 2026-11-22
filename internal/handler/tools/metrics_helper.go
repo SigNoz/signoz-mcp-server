@@ -1,12 +1,15 @@
 package tools
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
+	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/SigNoz/signoz-mcp-server/pkg/querybuilder"
 )
 
@@ -201,10 +204,13 @@ func buildGroupByFields(names []string) []querybuilder.FieldKey {
 	return fields
 }
 
-// extractStepInterval parses meta.stepIntervals from the backend response JSON
-// and returns the step interval for the first query (typically "A").
-// Returns 0 if not found or on parse error.
-func extractStepInterval(response json.RawMessage) int64 {
+// responseStepIntervals reads data.meta.stepIntervals from a query_range
+// response: the step in seconds SigNoz used for each query, by query name,
+// which can differ from the step asked for. SigNoz leaves a query out when it
+// skipped it, such as one on a missing metric, and SQL queries have no step,
+// so a missing entry is not an error; metadata that does not decode is, and
+// is WARN-logged.
+func responseStepIntervals(ctx context.Context, logger *slog.Logger, toolName string, response json.RawMessage) map[string]int64 {
 	var resp struct {
 		Data struct {
 			Meta struct {
@@ -213,13 +219,13 @@ func extractStepInterval(response json.RawMessage) int64 {
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(response, &resp); err != nil {
-		return 0
+		if logger == nil {
+			logger = slog.Default()
+		}
+		logger.WarnContext(ctx, "qb step intervals unparsed", slog.String("tool", toolName), logpkg.ErrAttr(err))
+		return nil
 	}
-	// Return the first (usually "A") step interval
-	for _, v := range resp.Data.Meta.StepIntervals {
-		return v
-	}
-	return 0
+	return resp.Data.Meta.StepIntervals
 }
 
 // --- helpers ---

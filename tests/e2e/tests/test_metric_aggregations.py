@@ -313,18 +313,25 @@ def test_counter_reducers_say_what_they_measured(mcp_client: MCPClient, test_id:
 
     wait_for(ingested, f"counter {metric} at 0.5 per second")
 
+    total = _scalar_values(first_text_block(scalar("increase", "sum")))[0]
+    # The window holds about 3,540 seconds of the series; SigNoz aligns it to the step.
+    assert total == pytest.approx(0.5 * 3540, rel=0.05), f"increase with sum: {total}"
     summed = scalar(None, "sum")
     assert "reduceTo sum added up the per-second rate of each 60s step" in note_blocks(summed), note_blocks(summed)
-    assert _scalar_values(first_text_block(summed))[0] > 20, "a sum of per-step rates grows with the step count"
-    total = _scalar_values(first_text_block(scalar("increase", "sum")))
-    # The window holds about 3,540 seconds of the series; SigNoz aligns it to the step.
-    assert total[0] == pytest.approx(0.5 * 3540, rel=0.05), f"increase with sum: {total}"
+    # Each 60s step holds its increase over 60, so the sum is the count over 60: neither a count nor a rate.
+    # The tolerance is one step's rate, in case a minute passes between the two calls.
+    summed_rates = _scalar_values(first_text_block(summed))[0]
+    assert summed_rates == pytest.approx(total / 60, abs=0.5), f"summed per-step rates {summed_rates}, count {total}"
 
     latest = scalar("latest", "last")
     assert f"{metric} is a cumulative counter, so timeAggregation latest reads its running total" in note_blocks(latest)
     assert _scalar_values(first_text_block(latest))[0] == pytest.approx(0.5 * 70 * 60, rel=0.01), "the running total"
     samples = scalar("count", "sum")
     assert "counts the counter's samples" in note_blocks(samples), note_blocks(samples)
+    # Each 10s sample adds 5 to the counter, so the window holds a fifth as many samples as events;
+    # the tolerance is one step's samples.
+    sample_count = _scalar_values(first_text_block(samples))[0]
+    assert sample_count == pytest.approx(total / 5, abs=6), f"samples {sample_count}, count {total}"
 
     # A window-long step that starts mid-step reaches back before the window for a counter rate.
     boundary_s = int(time.time() - 1800) // 600 * 600
@@ -341,6 +348,8 @@ def test_counter_reducers_say_what_they_measured(mcp_client: MCPClient, test_id:
         for point in one.get("values") or []
     ]
     assert timestamps == [(boundary_s - 600) * 1000, boundary_s * 1000], f"counter steps around {boundary_s}"
+    # The notes read the step SigNoz used from data.meta.stepIntervals, by query name.
+    assert json.loads(first_text_block(series))["data"]["meta"]["stepIntervals"] == {"A": 600}
     note = note_blocks(
         mcp_client.call_tool(
             "signoz_query_metrics",

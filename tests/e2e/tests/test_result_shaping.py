@@ -323,23 +323,35 @@ def test_query_metrics_limit_order_having_and_typed_formula_queries(
 
 
 def test_formula_input_limit_drops_series_and_says_so(mcp_client: MCPClient, test_id: str, telemetry: None) -> None:
-    """Pins the formula-input note: a limit on an input applies before the formula and drops its other series."""
-    metric = f"mcp_e2e_{test_id.replace('-', '_')}_formula_gauge"
+    """Pins the formula-input note: a limit on an input applies before the formula and drops its other series.
+
+    A ranks the services 1, 2, 3 and B ranks them the other way, 30, 20, 10.
+    seed_metrics writes each gauge as value and value + 1, so the averages are
+    0.5 higher and A + B is 32, 23, 14. A limit of 1 on A keeps A's top service,
+    whose sum is the smallest; a limit applied to the formula would keep the largest.
+    """
+    prefix = f"mcp_e2e_{test_id.replace('-', '_')}_formula"
+    metric_a, metric_b = f"{prefix}_a", f"{prefix}_b"
     services = [f"mcp-e2e-{test_id}-{i}" for i in range(3)]
     for i, service in enumerate(services):
-        seed_metrics(service, metric, value=float(i + 1), count=2)
+        seed_metrics(service, metric_a, value=float(i + 1), count=2)
+        seed_metrics(service, metric_b, value=float(10 * (3 - i)), count=2)
 
     def request(limit_on_input: bool) -> dict:
         now = int(time.time() * 1000)
-        spec = {
-            "signal": "metrics",
-            "aggregations": [
-                {"metricName": metric, "timeAggregation": "avg", "spaceAggregation": "sum", "reduceTo": "avg"}
-            ],
-            "groupBy": [{"name": "service.name"}],
-            "filter": {"expression": f"service.name LIKE 'mcp-e2e-{test_id}-%'"},
-        }
-        first = {**spec, "name": "A"}
+
+        def spec(name: str, metric: str) -> dict:
+            return {
+                "name": name,
+                "signal": "metrics",
+                "aggregations": [
+                    {"metricName": metric, "timeAggregation": "avg", "spaceAggregation": "sum", "reduceTo": "avg"}
+                ],
+                "groupBy": [{"name": "service.name"}],
+                "filter": {"expression": f"service.name LIKE 'mcp-e2e-{test_id}-%'"},
+            }
+
+        first = spec("A", metric_a)
         if limit_on_input:
             first.update({"limit": 1, "order": [{"key": {"name": "__result"}, "direction": "desc"}]})
         return {
@@ -350,13 +362,13 @@ def test_formula_input_limit_drops_series_and_says_so(mcp_client: MCPClient, tes
             "compositeQuery": {
                 "queries": [
                     {"type": "builder_query", "spec": first},
-                    {"type": "builder_query", "spec": {**spec, "name": "B"}},
+                    {"type": "builder_query", "spec": spec("B", metric_b)},
                     {"type": "builder_formula", "spec": {"name": "F", "expression": "A + B"}},
                 ]
             },
         }
 
-    def formula_groups(limit_on_input: bool) -> tuple[int, str]:
+    def formula_rows(limit_on_input: bool) -> tuple[list[list], str]:
         result = mcp_client.call_tool(
             "signoz_execute_builder_query",
             {"searchContext": "sum two queries per service", "query": request(limit_on_input)},
@@ -364,10 +376,12 @@ def test_formula_input_limit_drops_series_and_says_so(mcp_client: MCPClient, tes
         assert not result.get("isError", False), first_text_block(result)[:400]
         results = first_block_json(result)["data"]["data"]["results"]
         rows = [row for r in results if r.get("queryName") == "F" for row in r.get("data") or []]
-        return len(rows), note_blocks(result)
+        return rows, note_blocks(result)
 
-    wait_for(lambda: formula_groups(False)[0] == len(services), f"all {len(services)} services through the formula")
-    groups, notes = formula_groups(True)
-    assert groups == 1, f"a limit of 1 on input A must leave one formula group, got {groups}"
+    wait_for(lambda: len(formula_rows(False)[0]) == len(services), f"all {len(services)} services through the formula")
+    rows, notes = formula_rows(True)
+    assert [(row[0], row[-1]) for row in rows] == [(services[2], 14)], (
+        f"a limit of 1 on input A keeps A's top service: {rows}"
+    )
     assert 'query "A" is a formula input with limit 1' in notes, notes
-    assert "is a formula input" not in formula_groups(False)[1]
+    assert "is a formula input" not in formula_rows(False)[1]
