@@ -275,13 +275,14 @@ Even log and span volume are queried this way, as metrics with ` + "`signal: \"m
 
 ### Hourly aggregation — use ` + "`stepInterval: 3600`" + `
 
-Meter data is aggregated in 1-hour buckets, so always set ` + "`stepInterval: 3600`" + ` (as in the
-example below). A smaller step adds no resolution and a query window shorter than 1 hour yields at
-most the current, still-incomplete hour (the build tested returns it flagged ` + "`partial: true`" + `;
-some versions return no data). Use a window of at least a few hours. When **signoz_query_metrics**
-is called without ` + "`stepInterval`" + ` it sends none and the backend auto-derives roughly
-` + "`max(60, window/300)`" + ` seconds, below 3600 for any window shorter than ~12.5 days, so pass
-` + "`stepInterval: 3600`" + ` explicitly for meter queries.
+Meter data is aggregated in 1-hour buckets, so a meter step is never below 3600 seconds. SigNoz
+raises a smaller ` + "`stepInterval`" + ` to its minimum for the window, and picks the step itself
+when ` + "`stepInterval`" + ` is omitted; over long windows that minimum is more than an hour. For
+hourly buckets pass ` + "`stepInterval: 3600`" + ` (as in the example below). When SigNoz raises the
+step you passed, the **signoz_query_metrics** note names the step it applied. A query window
+shorter than 1 hour yields at most the current, still-incomplete hour (the build tested returns
+it flagged ` + "`partial: true`" + `; some versions return no data). Use a window of at least a few
+hours.
 
 ### Discover the current meter metrics
 
@@ -330,6 +331,6 @@ dimension, just like any other metric.
 
 - Auto-calculated as: max(60, (end - start) / 300 / 1000) seconds
 - Targets approximately 300 data points per series
-- Minimum: 60 seconds
-- Can be overridden with the stepInterval parameter
+- Minimum: 60 seconds; 3600 seconds for Cost Meter (see Cost Meter above)
+- Can be overridden with the stepInterval parameter; SigNoz raises a value below its minimum for the window
 `
