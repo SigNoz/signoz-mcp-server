@@ -28,9 +28,10 @@ def _walk_pages(search: Callable[..., dict]) -> tuple[list[dict], int]:
     offset, pages, collected = 0, 0, []
     while True:
         body = first_block_json(assert_tool_ok(search(offset=str(offset), maxResultBytes=str(SMALL_BUDGET))))
-        collected.extend(_rows(body))
+        rows, pagination = _rows(body), body["pagination"]
+        assert rows, f"the page at offset {offset} is empty, so it cannot count as one: {pagination}"
+        collected.extend(rows)
         pages += 1
-        pagination = body["pagination"]
         if not pagination["hasMore"]:
             return collected, pages
         assert pagination["nextOffset"] > offset and pages <= SEEDED, f"paging must make progress: {pagination}"
