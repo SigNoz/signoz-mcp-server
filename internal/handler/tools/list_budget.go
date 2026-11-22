@@ -43,9 +43,8 @@ func (h *Handler) listResult(ctx context.Context, toolName string, payload []byt
 	return h.budgetedListResult(ctx, toolName, payload, shape, withClampNote(limitClamped, notes)...)
 }
 
-// unbudgetedListResult is listResult without the budget, for a list SigNoz
-// returns in no fixed order (signoz_list_views, signoz_get_ai_pricing). A cut
-// makes the caller continue from an offset, and an item that moved between
+// unbudgetedListResult is for a list SigNoz returns in no fixed order. After a
+// cut the caller continues from an offset, where an item that moved between
 // the two calls would come back twice or not at all.
 func (h *Handler) unbudgetedListResult(ctx context.Context, payload []byte, limitClamped bool, notes ...string) *mcp.CallToolResult {
 	return structuredResultWithNotes(ctx, h.logger, payload, withClampNote(limitClamped, notes)...)
@@ -62,12 +61,9 @@ func withClampNote(limitClamped bool, notes []string) []string {
 		paginate.MaxLimit)}, notes...)
 }
 
-// budgetedListResult returns payload as a structured result with notes. A
-// result that fits the server's result size budget is returned as built. One
-// that does not keeps its leading whole items that fit, sets
-// pagination.hasMore, nextOffset, truncated, and maxResultBytes, and says so
-// in a note. Items are never shortened, because a caller may write one back
-// through an update tool, so a page always keeps its first item whole.
+// budgetedListResult cuts a page over the result size budget to its leading
+// whole items that fit. Items are never shortened, because a caller may write
+// one back through an update tool, so the first item always stays whole.
 func (h *Handler) budgetedListResult(ctx context.Context, toolName string, payload []byte, shape listShape, notes ...string) *mcp.CallToolResult {
 	page := &listPage{h: h, budget: h.defaultResultBytes(), payload: payload, shape: shape, notes: notes}
 	return deliverFitted(ctx, func(extra []string) (*mcp.CallToolResult, pageOutcome) {
@@ -126,32 +122,40 @@ func (p *listPage) fit(ctx context.Context, extra []string) (*mcp.CallToolResult
 		result := structuredResultWithNotes(ctx, p.h.logger, p.split.render(keep, p.budget), append(cut, extra...)...)
 		return result, textBytes(result)
 	}
-	// Estimate the items that fit from their encoded lengths, then walk to the
-	// longest prefix that does: block 0 is re-encoded with the notes, so an
-	// item's delivered length can differ from its length here.
-	_, used := build(0)
-	keep := 0
-	for _, item := range p.split.items[:total-1] {
-		used += len(item) + 1
-		if used > p.budget {
+	result, size := build(1)
+	if size > p.budget {
+		return result, pageOutcome{dropped: total - 1, textBytes: size, overBudget: true}
+	}
+	estimate, used := 1, size
+	for _, item := range p.split.items[1 : total-1] {
+		if used += len(item) + 1; used > p.budget {
 			break
 		}
-		keep++
+		estimate++
 	}
-	keep = max(keep, 1)
-	result, size := build(keep)
-	for size > p.budget && keep > 1 {
-		keep--
-		result, size = build(keep)
-	}
-	for size <= p.budget && keep < total-1 {
-		next, nextSize := build(keep + 1)
-		if nextSize > p.budget {
-			break
+	// Block 0 is re-encoded with the notes (\u003c becomes <), so the estimate
+	// can be far off. Probe it and its neighbor, then bisect: the first low
+	// items fit, and the first high do not or are the whole page.
+	low, high := 1, total
+	for probe, tries := estimate, 0; low+1 < high; tries++ {
+		probe = min(max(probe, low+1), high-1)
+		next, nextSize := build(probe)
+		fits := nextSize <= p.budget
+		if fits {
+			low, result, size = probe, next, nextSize
+		} else {
+			high = probe
 		}
-		keep, result, size = keep+1, next, nextSize
+		switch {
+		case tries == 0 && fits:
+			probe = low + 1
+		case tries == 0:
+			probe = high - 1
+		default:
+			probe = low + (high-low)/2
+		}
 	}
-	return result, pageOutcome{dropped: total - keep, textBytes: size, overBudget: size > p.budget}
+	return result, pageOutcome{dropped: total - low, textBytes: size}
 }
 
 // listSplit is a list page split at its items, so a cut can keep a prefix of
@@ -248,10 +252,8 @@ func (s *listSplit) render(keep, budget int) []byte {
 	return value
 }
 
-// cutPagination returns the pagination object of a page the budget ended
-// after keep items: hasMore is true, nextOffset follows the last item kept,
-// count (on the tools that report it) is keep, and truncated and
-// maxResultBytes are added. total is unchanged.
+// cutPagination is the pagination object of a page the budget ended after
+// keep items. total is left as it was: it counts the list, not the page.
 func (s *listSplit) cutPagination(keep, budget int) []jsonMember {
 	members := append([]jsonMember(nil), s.pagination...)
 	set := func(key, value string) {

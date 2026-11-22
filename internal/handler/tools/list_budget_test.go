@@ -103,9 +103,15 @@ var budgetedListTools = []budgetedListTool{
 
 // items returns count items of the tool, each padded by paddingBytes.
 func (l budgetedListTool) items(count, paddingBytes int) []string {
+	return l.itemsPadded(count, strings.Repeat("p", paddingBytes))
+}
+
+// itemsPadded returns count items of the tool, each carrying padding, which is
+// written into a JSON string as it is.
+func (l budgetedListTool) itemsPadded(count int, padding string) []string {
 	items := make([]string, count)
 	for i := range items {
-		items[i] = l.item(i, strings.Repeat("p", paddingBytes))
+		items[i] = l.item(i, padding)
 	}
 	return items
 }
@@ -180,13 +186,21 @@ func readDeliveredList(t *testing.T, result *mcp.CallToolResult, itemsAt string)
 	return list
 }
 
-// cutPagination is the pagination object a list tool reports after the budget
-// ended its page at offset after returned of total items, with limit 20.
-func (l budgetedListTool) cutPagination(offset, returned, total int) string {
-	if l.tool == "signoz_list_notification_channels" {
-		return fmt.Sprintf(`{"count":%d,"hasMore":true,"limit":20,"nextOffset":%d,"offset":%d,"truncated":true,"maxResultBytes":%d}`, returned, offset+returned, offset, listBudget)
+// outputSchemaMismatches returns the schema paths at which a result did not
+// match its tool's output schema.
+func (b budgetHarness) outputSchemaMismatches(t *testing.T) []string {
+	t.Helper()
+	var metrics metricdata.ResourceMetrics
+	require.NoError(t, b.reader.Collect(context.Background(), &metrics))
+	var paths []string
+	mismatches, _ := oteltest.FindInt64SumMetric(metrics, "mcp.tool.validation.mismatches")
+	for _, point := range mismatches.DataPoints {
+		if direction, _ := point.Attributes.Value("validation.direction"); direction.AsString() == "output" {
+			path, _ := point.Attributes.Value("validation.path")
+			paths = append(paths, path.AsString())
+		}
 	}
-	return fmt.Sprintf(`{"total":%d,"offset":%d,"limit":20,"hasMore":true,"nextOffset":%d,"truncated":true,"maxResultBytes":%d}`, total, offset, offset+returned, listBudget)
+	return paths
 }
 
 // unorderedListTools page with offset over a list SigNoz returns in no fixed
@@ -212,10 +226,9 @@ var unorderedListTools = []budgetedListTool{
 	},
 }
 
-// SigNoz returns saved views and AI pricing items in no fixed order. A cut
-// would make the caller continue from an offset, where an item that moved
-// between the two calls comes back twice or not at all, so a page over the
-// budget is returned whole, as before.
+// SigNoz returns saved views and AI pricing items in no fixed order, so a page
+// over the budget is returned whole: after a cut, an item that moved between
+// two calls would come back twice or not at all.
 func TestListToolsWithoutAFixedOrderReturnAnOverBudgetPageWhole(t *testing.T) {
 	for _, list := range unorderedListTools {
 		t.Run(list.tool, func(t *testing.T) {
@@ -261,36 +274,53 @@ func TestListToolWithinBudgetReturnsThePageAsBuilt(t *testing.T) {
 // Over budget, a list page keeps its leading whole items that fit and says
 // where the next page starts, in pagination and in a note; total stays.
 func TestListToolOverBudgetEndsThePageOnAWholeItem(t *testing.T) {
+	paddings := map[string]string{
+		"": strings.Repeat("p", 400),
+		// SigNoz writes < as \u003c: six bytes upstream that reach the client as one.
+		" with strings SigNoz escaped": strings.Repeat(`\u003c`, 400),
+	}
 	for _, list := range budgetedListTools {
-		t.Run(list.tool, func(t *testing.T) {
-			harness := newListBudgetHarness(t, list, list.items(40, 400))
-			result := list.call(t, harness.server, 20, 10)
+		for name, padding := range paddings {
+			t.Run(list.tool+name, func(t *testing.T) {
+				harness := newListBudgetHarness(t, list, list.itemsPadded(40, padding))
+				result := list.call(t, harness.server, 20, 10)
 
-			size := textBytes(result)
-			require.LessOrEqual(t, size, listBudget, "the result's text blocks must fit the budget: %s", allTextBlocks(result))
-			delivered := readDeliveredList(t, result, list.itemsAt)
-			returned := len(delivered.items)
-			require.True(t, returned >= 1 && returned < 20, "want a partial page, got %d of 20 items", returned)
-			for i, item := range delivered.items {
-				require.Contains(t, string(item), fmt.Sprintf(`item-%03d `, 10+i), "item %d must be upstream item %d, whole", i, 10+i)
-			}
-			require.Greater(t, size+len(delivered.items[returned-1])+1, listBudget, "another item would have fit; the page must keep every leading item that fits")
-			require.JSONEq(t, list.cutPagination(10, returned, 40), delivered.paginationJSON)
-			if list.tool == "signoz_list_dashboards" {
-				var data struct {
-					Total int `json:"total"`
+				size := textBytes(result)
+				require.LessOrEqual(t, size, listBudget, "the result's text blocks must fit the budget: %s", allTextBlocks(result))
+				delivered := readDeliveredList(t, result, list.itemsAt)
+				returned := len(delivered.items)
+				require.True(t, returned >= 1 && returned < 20, "want a partial page, got %d of 20 items", returned)
+				for i, item := range delivered.items {
+					require.Contains(t, string(item), fmt.Sprintf(`item-%03d `, 10+i), "item %d must be upstream item %d, whole", i, 10+i)
 				}
-				require.NoError(t, json.Unmarshal(delivered.object["data"], &data))
-				require.Equal(t, 40, data.Total, "SigNoz's own total stays")
-			}
+				require.Greater(t, size+len(delivered.items[returned-1])+1, listBudget, "another item would have fit; the page must keep every leading item that fits")
 
-			note := fmt.Sprintf("note: returned %d items (limit 20); the result size budget of %d bytes ended this page, so more results exist (hasMore=true). Fetch the next page with offset=%d", returned, listBudget, 10+returned)
-			if list.windowed {
-				note += ", and pass window.startMs and window.endMs as start and end so the page does not shift"
-			}
-			require.Contains(t, trailingTextBlocks(result), note+".")
-			require.Equal(t, map[string]int64{budgetEventRowsDropped: 1}, harness.budgetEvents(t, list.tool))
-		})
+				wantPagination := fmt.Sprintf(`{"total":40,"offset":10,"limit":20,"hasMore":true,"nextOffset":%d,"truncated":true,"maxResultBytes":4000}`, 10+returned)
+				if list.tool == "signoz_list_notification_channels" {
+					wantPagination = fmt.Sprintf(`{"count":%d,"hasMore":true,"limit":20,"nextOffset":%d,"offset":10,"truncated":true,"maxResultBytes":4000}`, returned, 10+returned)
+				}
+				require.JSONEq(t, wantPagination, delivered.paginationJSON)
+				if list.tool == "signoz_list_dashboards" {
+					var data struct {
+						Total int `json:"total"`
+					}
+					require.NoError(t, json.Unmarshal(delivered.object["data"], &data))
+					require.Equal(t, 40, data.Total, "SigNoz's own total stays")
+				}
+
+				note := fmt.Sprintf("note: returned %d items (limit 20); the result size budget of 4000 bytes ended this page, so more results exist (hasMore=true). Fetch the next page with offset=%d.", returned, 10+returned)
+				if list.windowed {
+					note = fmt.Sprintf("note: returned %d items (limit 20); the result size budget of 4000 bytes ended this page, so more results exist (hasMore=true). Fetch the next page with offset=%d, and pass window.startMs and window.endMs as start and end so the page does not shift.", returned, 10+returned)
+				}
+				require.Contains(t, trailingTextBlocks(result), note)
+
+				structured, err := json.Marshal(result.StructuredContent)
+				require.NoError(t, err)
+				require.JSONEq(t, textContent(t, result), string(structured), "structuredContent must carry the same cut page as the text block")
+				require.Empty(t, harness.outputSchemaMismatches(t), "the cut page does not match the tool's output schema; declare the pagination fields a cut adds")
+				require.Equal(t, map[string]int64{budgetEventRowsDropped: 1}, harness.budgetEvents(t, list.tool))
+			})
+		}
 	}
 }
 
@@ -317,7 +347,11 @@ func TestListToolReturnsAnOversizedFirstItemWhole(t *testing.T) {
 				require.Contains(t, string(delivered.items[0]), "item-000 "+padding, "the item keeps every byte of its long string")
 				require.Greater(t, textBytes(result), listBudget)
 				if tc.items > 1 {
-					require.JSONEq(t, list.cutPagination(0, 1, 2), delivered.paginationJSON)
+					wantPagination := `{"total":2,"offset":0,"limit":20,"hasMore":true,"nextOffset":1,"truncated":true,"maxResultBytes":4000}`
+					if list.tool == "signoz_list_notification_channels" {
+						wantPagination = `{"count":1,"hasMore":true,"limit":20,"nextOffset":1,"offset":0,"truncated":true,"maxResultBytes":4000}`
+					}
+					require.JSONEq(t, wantPagination, delivered.paginationJSON)
 				} else {
 					require.NotContains(t, delivered.paginationJSON, truncatedKey, "a page the budget did not cut keeps its pagination")
 				}
@@ -351,52 +385,6 @@ func TestListToolBudgetCountsDecoratorNotices(t *testing.T) {
 				require.Contains(t, string(item), fmt.Sprintf(`item-%03d `, i))
 			}
 			require.Contains(t, delivered.paginationJSON, fmt.Sprintf(`"nextOffset":%d`, len(delivered.items)))
-		})
-	}
-}
-
-// After a cut, text block 0 and structuredContent carry the same page, and
-// every note reaches structuredContent.notes as well as its own text block.
-func TestListToolCutPageKeepsTextAndStructuredContentAlike(t *testing.T) {
-	for _, list := range budgetedListTools {
-		t.Run(list.tool, func(t *testing.T) {
-			harness := newListBudgetHarness(t, list, list.items(40, 400))
-			result := list.call(t, harness.server, 20, 0)
-			require.NotNil(t, result.StructuredContent)
-
-			structured, err := json.Marshal(result.StructuredContent)
-			require.NoError(t, err)
-			require.JSONEq(t, string(structured), textContent(t, result))
-			var page struct {
-				Notes []string `json:"notes"`
-			}
-			require.NoError(t, json.Unmarshal(structured, &page))
-			require.Equal(t, trailingTextBlocks(result), page.Notes)
-			require.Contains(t, strings.Join(page.Notes, "\n"), "result size budget")
-			require.Contains(t, string(structured), `"truncated":true`)
-		})
-	}
-}
-
-// A cut page of a tool with an output schema still validates against it.
-func TestListToolCutPageMatchesItsOutputSchema(t *testing.T) {
-	for _, list := range budgetedListTools {
-		if list.tool != "signoz_list_alerts" && list.tool != "signoz_list_alert_rules" {
-			continue // the other list tools advertise no output schema
-		}
-		t.Run(list.tool, func(t *testing.T) {
-			harness := newListBudgetHarness(t, list, list.items(40, 400))
-			result := list.call(t, harness.server, 20, 0)
-			require.Contains(t, readDeliveredList(t, result, list.itemsAt).paginationJSON, `"truncated":true`)
-
-			var metrics metricdata.ResourceMetrics
-			require.NoError(t, harness.reader.Collect(context.Background(), &metrics))
-			mismatches, _ := oteltest.FindInt64SumMetric(metrics, "mcp.tool.validation.mismatches")
-			for _, point := range mismatches.DataPoints {
-				direction, _ := point.Attributes.Value("validation.direction")
-				path, _ := point.Attributes.Value("validation.path")
-				require.NotEqual(t, "output", direction.AsString(), "the cut page does not match the output schema at %s; declare the pagination fields a cut adds", path.AsString())
-			}
 		})
 	}
 }
