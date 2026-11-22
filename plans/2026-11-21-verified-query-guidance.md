@@ -362,7 +362,7 @@ the tools and guides of that subject.
 | `signoz_list_metrics` | source=meter lists the usage metrics SigNoz meters (ingestion volume) | accurate | SigNoz meter source | C | none: the e2e cast has no meter data |
 | `signoz_get_field_keys` | data.complete=false when cut; intrinsic and materialized fields on top of the limit | accurate | SigNoz fields API | W | test_field_lookups_honor_limit_and_say_when_cut |
 | `signoz_get_field_keys` | fieldDataType: an array form such as []string reads as its element type | accurate | telemetrytypes/field_datatype.go mapping | C | none: SigNoz's own mapping, no silent result |
-| `signoz_get_field_keys` | fieldContext 'tag' is ignored when listing keys and returns no values | stale | field_context.go maps tag to attribute only in JSON bodies, not on the fields endpoints; what comes back for 'tag' differs by signal, so the text now says only that it is not read as 'attribute' there | W | none: the probe showed empty keys and values; text fixed |
+| `signoz_get_field_keys` | fieldContext 'tag' is ignored when listing keys and returns no values | partly accurate | field_context.go maps tag to attribute only in JSON bodies, not on the fields endpoints. Live, SigNoz drops the filter for 'tag' and returns keys from every context; an earlier probe that read this as an empty result was wrong. The text says only that 'tag' is not read as 'attribute' there | W | `test_field_keys_context_filter_is_honored`: under 'tag' a resource key comes back that 'attribute' leaves out |
 | `signoz_get_field_keys` | queryType builder_ai_query lists trace-level and gen_ai fields | accurate | SigNoz AI fields | W | test_ai_field_keys_list_per_trace_columns, test_ai_field_keys_filter_to_trace_context |
 | `signoz_get_field_values` | values come from all retained metadata; no time range | accurate | SigNoz fields API | W | test_seeded_resource_attribute_values_discoverable |
 | alert tools | create/update route by exact displayName; ask before creating a channel | accurate | ruletypes threshold channel validation | EF | test_create_alert_unknown_channel_rejected |
@@ -908,6 +908,30 @@ A second round resolved D1 to D10, accepted the part of D2 that was declined, an
 
 A third round resolved D11 to D13 and approved. It left one nit, declined as too rare: D14, a key
 written with a data-type suffix such as `resource.operation:string` is not recognised.
+
+### 2026-11-22 — Tests brought in line with `docs/testing.md`
+
+An audit of this PR's tests against the testing standard found five departures. A test-only commit
+fixes them; no production code changed.
+
+- One behaviour, one layer: e2e repeated about fifteen note, decision, and recovery sentences that
+  the handler tests already pin. e2e now asserts what only a live SigNoz shows: the numbers, its
+  own error text, and the step and metadata it reported.
+- Wording pins: fourteen handler-test literals of 70 characters or more asserted near-whole
+  sentences. They now assert the computed values and the terms that carry the meaning, and were
+  checked to fail against three deliberately broken behaviours.
+- Internals: `TestParseMetricsQueryArgs_IsMonotonicGarbage` asserted an unexported field and had to
+  be edited for a refactor that changed no behaviour. The handler test now covers the rejection.
+- The span-attribute test's metric half goes through a real session too.
+- e2e now pins that metric filters read `attribute.service.name` and `resource.service.name` from
+  the same label set, and what `fieldContext=tag` returns. The summary claim in the alert guide has
+  no e2e: no fixture seeds a summary, and it would need a summary seeder plus a rule on its
+  quantile series.
+
+Still open against that standard: the note triggers hand-copy parts of SigNoz's filter grammar
+(operator spellings, field-context aliases, timestamp scaling). Three review rounds found five
+mismatches by reading SigNoz source that no test had caught. A wrong trigger adds or drops a note
+and never changes a result. Deriving these from SigNoz is tracked in SigNoz/nerve-pod#674.
 
 ### 2026-11-21 — Mutation-side rules on the tools, schema pointers kept
 
