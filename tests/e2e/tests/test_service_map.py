@@ -74,7 +74,9 @@ def test_service_map_reports_one_edge_from_both_ends(mcp_client: MCPClient, test
 
     in_environment = service_map(mcp_client, caller, "downstream", environment)
     assert [(e["parent"], e["child"]) for e in first_block_json(in_environment)["data"]] == [(caller, callee)]
-    assert "callee" in note_blocks(in_environment), "the units note says whose spans an edge's latency comes from"
+    assert "come from the callee's spans" in note_blocks(in_environment), (
+        "the units note says whose spans an edge's latency comes from"
+    )
     elsewhere = service_map(mcp_client, caller, "downstream", f"{environment}-other")
     assert first_block_json(elsewhere)["data"] == []
     assert "the graph has no edges for this time range and filters" in note_blocks(elsewhere)

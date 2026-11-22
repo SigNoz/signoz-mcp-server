@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -194,12 +195,54 @@ func comparedValues(tokens []filterToken) (values []string, length int, ok bool)
 	return nil, 0, false
 }
 
-func isServiceKey(t filterToken) bool { return t.is("service.name", "resource.service.name") }
+var (
+	// filterOperators are the keywords that, like a comparison, follow a key.
+	filterOperators = []string{"IN", "NOT", "LIKE", "ILIKE", "BETWEEN", "EXISTS", "REGEXP", "CONTAINS"}
+	filterKeywords  = append([]string{"AND", "OR"}, filterOperators...)
+	// filterContexts are the prefixes SigNoz reads as a field context and drops
+	// from a key, as in span.isRoot or resource.service.name.
+	filterContexts = map[string]bool{
+		"resource": true, "scope": true, "tag": true, "point": true, "attribute": true, "event": true, "body": true,
+		"spanfield": true, "span": true, "logfield": true, "log": true, "metric": true, "tracefield": true, "trace": true,
+	}
+)
 
-// hasKey reports whether any token outside a literal is one of keys.
-func hasKey(tokens []filterToken, keys ...string) bool {
-	for _, token := range tokens {
-		if token.is(keys...) {
+const serviceKeyName = "service.name"
+
+// filterKey is one predicate key of a filter: where it sits, its name in lower
+// case without a field-context prefix, and the tokens that follow it.
+type filterKey struct {
+	index int
+	name  string
+	rest  []filterToken
+}
+
+// filterKeys returns a filter's predicate keys. A key is a word followed by a
+// comparison or an operator keyword, so an unquoted value, such as the service
+// in service.name == operation, is not one.
+func filterKeys(tokens []filterToken) []filterKey {
+	var keys []filterKey
+	for i, token := range tokens {
+		if !token.word() || token.is(filterKeywords...) || i+1 == len(tokens) {
+			continue
+		}
+		next := tokens[i+1]
+		if next.literal || strings.IndexByte(filterComparison, next.text[0]) < 0 && !next.is(filterOperators...) {
+			continue
+		}
+		name := strings.ToLower(token.text)
+		if context, rest, found := strings.Cut(name, "."); found && filterContexts[context] {
+			name = rest
+		}
+		keys = append(keys, filterKey{index: i, name: name, rest: tokens[i+1:]})
+	}
+	return keys
+}
+
+// hasFilterKey reports whether any predicate key is one of names.
+func hasFilterKey(keys []filterKey, names ...string) bool {
+	for _, key := range keys {
+		if slices.Contains(names, key.name) {
 			return true
 		}
 	}
@@ -207,25 +250,28 @@ func hasKey(tokens []filterToken, keys ...string) bool {
 }
 
 // filterService returns the one service a filter is scoped to: the value its
-// only service.name or resource.service.name key is compared with, by = or a
-// one-value IN. It returns "" when the filter names no service or more than
-// one, or has an OR or NOT that can widen the scope.
+// only service.name key is compared with, by equality or a one-value IN. It
+// returns "" when the filter names no service or more than one, or has an OR or
+// NOT that can widen the scope.
 func filterService(filter string) string {
 	tokens := tokenizeFilter(filter)
-	service, keys := "", 0
-	for i, token := range tokens {
+	for _, token := range tokens {
 		if token.is("OR", "NOT") {
 			return ""
 		}
-		if isServiceKey(token) {
-			keys++
-			service = ""
-			if values, _, ok := comparedValues(tokens[i+1:]); ok && len(values) == 1 {
-				service = values[0]
-			}
+	}
+	service, found := "", 0
+	for _, key := range filterKeys(tokens) {
+		if key.name != serviceKeyName {
+			continue
+		}
+		found++
+		service = ""
+		if values, _, ok := comparedValues(key.rest); ok && len(values) == 1 {
+			service = values[0]
 		}
 	}
-	if keys != 1 {
+	if found != 1 {
 		return ""
 	}
 	return service
@@ -238,28 +284,30 @@ func filterIsOnlyService(filter string) bool {
 	for len(tokens) >= 2 && tokens[0].is("(") && tokens[len(tokens)-1].is(")") {
 		tokens = tokens[1 : len(tokens)-1]
 	}
-	if len(tokens) == 0 || !isServiceKey(tokens[0]) {
+	keys := filterKeys(tokens)
+	if len(keys) != 1 || keys[0].index != 0 || keys[0].name != serviceKeyName {
 		return false
 	}
-	values, length, ok := comparedValues(tokens[1:])
+	values, length, ok := comparedValues(keys[0].rest)
 	return ok && len(values) == 1 && 1+length == len(tokens)
 }
 
 // narrowsSpans reports a predicate that picks spans on purpose: one on the span
 // name, which picks operations, or on the span kind other than equality to
 // Server, such as outgoing client calls. Server spans still include nested ones.
-func narrowsSpans(tokens []filterToken) bool {
-	for i, token := range tokens {
-		if token.is("name", "span.name") {
+func narrowsSpans(keys []filterKey) bool {
+	for _, key := range keys {
+		switch key.name {
+		case "name":
 			return true
-		}
-		if token.is("kind", "kind_string", "span.kind", "span.kind_string") {
-			values, _, ok := comparedValues(tokens[i+1:])
+		case "kind", "kind_string":
+			values, _, ok := comparedValues(key.rest)
 			if !ok {
 				return true
 			}
 			for _, value := range values {
-				if !strings.EqualFold(value, "server") {
+				// kind holds the OTLP number, where 2 is the server kind.
+				if !strings.EqualFold(value, "server") && (key.name != "kind" || value != "2") {
 					return true
 				}
 			}
@@ -282,8 +330,8 @@ func traceAllSpansNote(filter, callerFilter string, groupBy int, aggregations []
 		return measurementNote{}, false
 	}
 	// Entry, root, parent, and ID keys already scope the spans.
-	tokens := tokenizeFilter(filter)
-	if hasKey(tokens, "isRoot", "isEntryPoint", "parent_span_id", "trace_id", "span_id") || narrowsSpans(tokens) {
+	keys := filterKeys(tokenizeFilter(filter))
+	if hasFilterKey(keys, "isroot", "isentrypoint", "parent_span_id", "trace_id", "span_id") || narrowsSpans(keys) {
 		return measurementNote{}, false
 	}
 	matched := false
@@ -523,7 +571,8 @@ func spanMetricsAllSpansNote(m metricMeasurement) (measurementNote, bool) {
 		return measurementNote{}, false
 	}
 	service := filterService(m.Filter)
-	if service == "" || hasKey(tokenizeFilter(m.Filter), "span.kind", "operation") {
+	// The span.kind label reads as a span-context kind key.
+	if service == "" || hasFilterKey(filterKeys(tokenizeFilter(m.Filter)), "kind", "span.kind", "operation") {
 		return measurementNote{}, false
 	}
 	var groups []string
@@ -549,7 +598,7 @@ func spanMetricsAllSpansNote(m metricMeasurement) (measurementNote, bool) {
 		call = fmt.Sprintf("signoz_aggregate_traces with %s, service %q, and filter (%s) AND this query's other conditions", aggregation, service, querybuilder.EntrySpanFilter)
 	}
 	if len(groups) > 0 {
-		call += ", grouped by the same keys"
+		call += ", grouped by " + strings.Join(groups, ", ")
 	}
 	switch {
 	case m.RequestType == "scalar":
@@ -588,8 +637,24 @@ func spanMetricsAllSpansNote(m metricMeasurement) (measurementNote, bool) {
 // unknown here, so the counter rule does not run. Each per-query note names
 // its query, because two queries can measure the same way.
 func builderQueryMeasurementNotes(request map[string]any, steps map[string]int64) []measurementNote {
+	composite, _ := request["compositeQuery"].(map[string]any)
+	queries, _ := composite["queries"].([]any)
+	// SigNoz skips a metrics query on a missing metric and reports no step for
+	// it, so it has no measurement to describe, as a formula input or alone.
+	skipped := make(map[string]bool)
+	for _, raw := range queries {
+		envelope, _ := raw.(map[string]any)
+		spec, _ := envelope["spec"].(map[string]any)
+		if name, _ := spec["name"].(string); envelope["type"] == "builder_query" && spec["signal"] == "metrics" && steps[name] <= 0 {
+			skipped[name] = true
+		}
+	}
+
 	var notes []measurementNote
 	for _, input := range querybuilder.LimitedFormulaInputs(request) {
+		if skipped[input.QueryName] {
+			continue
+		}
 		notes = append(notes, measurementNote{rule: ruleFormulaInputLimit, text: fmt.Sprintf(
 			"note: query %q is a formula input with limit %d, which SigNoz applies before the formula runs, so the formula combined only its top %d series. Remove limit from formula inputs to combine every series.",
 			input.QueryName, input.Limit, input.Limit)})
@@ -597,8 +662,6 @@ func builderQueryMeasurementNotes(request map[string]any, steps map[string]int64
 
 	requestType, _ := request["requestType"].(string)
 	startMs, endMs := epochMillis(int64(numberValue(request["start"]))), epochMillis(int64(numberValue(request["end"])))
-	composite, _ := request["compositeQuery"].(map[string]any)
-	queries, _ := composite["queries"].([]any)
 	formulaInputs := querybuilder.FormulaInputNames(request)
 	for _, raw := range queries {
 		envelope, _ := raw.(map[string]any)
@@ -638,9 +701,7 @@ func builderQueryMeasurementNotes(request map[string]any, steps map[string]int64
 				queryNotes = append(queryNotes, note)
 			}
 		case "metrics":
-			// SigNoz skips a query on a missing metric and reports no step for
-			// it, so there is no measurement to describe.
-			if len(aggregations) == 0 || steps[name] <= 0 {
+			if len(aggregations) == 0 || skipped[name] {
 				continue
 			}
 			aggregation, _ := aggregations[0].(map[string]any)

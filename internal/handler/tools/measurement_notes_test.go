@@ -131,6 +131,10 @@ func TestAggregateTraces_SaysWhenItCountsEverySpanOfAService(t *testing.T) {
 		{name: "p95 latency from the filter", args: map[string]any{"filter": "service.name = 'frontend'", "aggregations": []any{"p95(duration_nano)"}}, wantNote: true, wantFix: "add AND (isEntryPoint = true OR isRoot = true) to the filter"},
 		{name: "server spans still nest", args: map[string]any{"service": "frontend", "filter": "kind_string = 'Server'", "aggregations": "rate()"}, wantNote: true, wantFix: "add AND (isEntryPoint = true OR isRoot = true) to the filter"},
 		{name: "entry spans", args: map[string]any{"service": "frontend", "filter": "isEntryPoint = true OR isRoot = true", "aggregations": "count()"}},
+		{name: "root spans by a qualified key", args: map[string]any{"service": "frontend", "filter": "span.isRoot = true", "aggregations": "count()"}},
+		{name: "server spans by kind number", args: map[string]any{"service": "frontend", "filter": "kind IN [2]", "aggregations": "count()"}, wantNote: true, wantFix: "add AND (isEntryPoint = true OR isRoot = true) to the filter"},
+		{name: "client spans by kind number", args: map[string]any{"service": "frontend", "filter": "kind = 3", "aggregations": "count()"}},
+		{name: "an unquoted value that reads like a key", args: map[string]any{"filter": "service.name = 'frontend' AND http.target == name", "aggregations": "count()"}, wantNote: true, wantFix: "add AND (isEntryPoint = true OR isRoot = true) to the filter"},
 		{name: "grouped by operation", args: map[string]any{"service": "frontend", "aggregations": "count()", "groupBy": "name"}},
 		{name: "one operation", args: map[string]any{"service": "frontend", "operation": "GET /cart", "aggregations": "count()"}},
 		{name: "client spans on purpose", args: map[string]any{"service": "frontend", "filter": "kind_string = 'Client'", "aggregations": "count()"}},
@@ -200,7 +204,7 @@ func TestQueryMetrics_SaysWhatAScalarReductionMeasured(t *testing.T) {
 			args:     map[string]any{"spaceAggregation": "p95", "reduceTo": "avg", "filter": "service.name = 'frontend'"},
 			wantRule: "percentile_of_steps",
 			want: []string{
-				"reduceTo avg combined the p95 of each 60s step, so this is not the p95 over the whole window.",
+				"reduceTo avg", "the p95 of each 60s step",
 				"query http.server.duration.bucket again with timeAggregation increase, spaceAggregation sum, reduceTo sum, groupBy le",
 				"every bucket of every group", "95% of the total", "+Inf", "highest finite bound",
 			},
@@ -342,6 +346,16 @@ func TestQueryMetrics_SaysWhatAScalarReductionMeasured(t *testing.T) {
 			want:     []string{`counts every span of service "operations-api"`},
 		},
 		{
+			name: "span metrics for a service whose unquoted name reads like a label", metadata: deltaCounter,
+			args:     map[string]any{"metricName": "signoz_calls_total", "filter": "service.name == operation", "timeAggregation": "increase", "reduceTo": "sum"},
+			wantRule: "span_metrics_all_spans",
+			want:     []string{`counts every span of service "operation"`},
+		},
+		{
+			name: "span metrics for one operation by a qualified key", metadata: deltaCounter,
+			args: map[string]any{"metricName": "signoz_calls_total", "filter": "service.name = 'frontend' AND attribute.operation = 'GET /cart'", "timeAggregation": "increase", "reduceTo": "sum"},
+		},
+		{
 			name: "span metrics for one service and more", metadata: deltaCounter,
 			args:     map[string]any{"metricName": "signoz_calls_total", "filter": "service.name = 'frontend' AND status.code = 'STATUS_CODE_ERROR'", "timeAggregation": "increase", "reduceTo": "sum"},
 			wantRule: "span_metrics_all_spans",
@@ -365,8 +379,8 @@ func TestQueryMetrics_SaysWhatAScalarReductionMeasured(t *testing.T) {
 			name: "span latency per environment", metadata: deltaHistogram,
 			args:     map[string]any{"metricName": "signoz_latency.bucket", "filter": "resource.service.name = 'frontend'", "groupBy": "deployment.environment, le", "spaceAggregation": "p99", "reduceTo": "max"},
 			wantRule: "span_metrics_all_spans",
-			want:     []string{"grouped by the same keys", "Write those keys as span fields"},
-			absent:   []string{"other conditions"},
+			want:     []string{"grouped by deployment.environment, over the same window", "Write those keys as span fields"},
+			absent:   []string{"other conditions", "grouped by deployment.environment, le"},
 		},
 		{
 			name: "span latency per bucket", metadata: deltaHistogram,
@@ -424,13 +438,15 @@ func TestQueryMetrics_NotesNameOnlyTheStepSigNozReported(t *testing.T) {
 	tests := []struct {
 		name     string
 		meta     string
+		wantStep string
 		wantWarn bool
 	}{
-		{name: "no step reported", meta: `{}`},
-		{name: "no step for the query", meta: `{"stepIntervals":{}}`},
-		{name: "step metadata that does not decode", meta: `{"stepIntervals":{"A":"300s"}}`, wantWarn: true},
-		{name: "a null step", meta: `{"stepIntervals":{"A":null}}`, wantWarn: true},
-		{name: "a negative step", meta: `{"stepIntervals":{"A":-300}}`, wantWarn: true},
+		{name: "no step reported", meta: `{}`, wantStep: "each step"},
+		{name: "no step for the query", meta: `{"stepIntervals":{}}`, wantStep: "each step"},
+		{name: "step metadata that does not decode", meta: `{"stepIntervals":{"A":"300s"}}`, wantStep: "each step", wantWarn: true},
+		{name: "a null step", meta: `{"stepIntervals":{"A":null}}`, wantStep: "each step", wantWarn: true},
+		{name: "a negative step", meta: `{"stepIntervals":{"A":-300}}`, wantStep: "each step", wantWarn: true},
+		{name: "a malformed step beside a valid one", meta: `{"stepIntervals":{"A":300,"B":1.5}}`, wantStep: "each 300s step", wantWarn: true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -445,7 +461,7 @@ func TestQueryMetrics_NotesNameOnlyTheStepSigNozReported(t *testing.T) {
 				t.Fatal(err)
 			}
 			notes := resultNotes(t, result)
-			if want := "reduceTo avg combined the p95 of each step, so this is not the p95 over the whole window."; !strings.Contains(notes, want) {
+			if want := "the p95 of " + tc.wantStep; !strings.Contains(notes, want) {
 				t.Errorf("notes lack %q:\n%s", want, notes)
 			}
 			if got := strings.Contains(logs.String(), "qb step intervals unparsed"); got != tc.wantWarn {
@@ -505,6 +521,7 @@ func TestExecuteBuilderQuery_SaysWhatEachQueryMeasured(t *testing.T) {
 	}{
 		{name: "limited formula input", requestType: "scalar", queries: []any{metricsQuery("A", map[string]any{"limit": 1}), metricsQuery("B", nil), formula}, wantRule: "formula_input_limit", want: []string{`query "A" is a formula input with limit 1`}},
 		{name: "unlimited formula inputs", requestType: "scalar", queries: []any{metricsQuery("A", nil), metricsQuery("B", nil), formula}},
+		{name: "limited formula input SigNoz skipped", requestType: "scalar", queries: []any{metricsQuery("A", nil), metricsQuery("B", map[string]any{"limit": 1}), formula}},
 		{name: "all spans of one service", requestType: "time_series", queries: []any{traces(nil)}, wantRule: "trace_all_spans", want: []string{`note: in query "A", this aggregates every span of service "frontend"`}},
 		{name: "all spans of one service in a list of spans", requestType: "raw", queries: []any{traces(map[string]any{"aggregations": []any{map[string]any{"expression": "count()"}}})}},
 		{name: "two queries that measure the same way", requestType: "scalar", queries: []any{traces(nil), traces(map[string]any{"name": "B"})}, wantRule: "trace_all_spans", wantCount: 2, want: []string{`note: in query "A", this aggregates every span`, `note: in query "B", this aggregates every span`}},
