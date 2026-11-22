@@ -46,7 +46,7 @@ error that does not; **C** cosmetic. Sources are SigNoz paths at `9d5c5871cb` or
 | Claim | Status | Checked against | Mode | Was taught | Now |
 |---|---|---|---|---|---|
 | Which tool answers which question | missing | handlers; eval tool choice | W | nowhere | instructions preamble and routing list |
-| A service's requests are its entry spans | missing in instructions | `pkg/modules/services/implservices/module.go` scope `isRoot = true OR isEntryPoint = true`; e2e `test_entry_spans_count_each_request_once` | W | `aggregations` parameter only | instructions, tool descriptions, traces guide, note |
+| A service's requests are its entry spans | missing in instructions | `pkg/modules/services/implservices/module.go` scope `isRoot = true OR isEntryPoint = true`; e2e `test_entry_spans_count_each_request_once` | W | `aggregations` parameter only | instructions, the `signoz_aggregate_traces` and `signoz_execute_builder_query` descriptions, traces guide, note |
 | Negative operators match missing fields | accurate | `querybuildertypesv5/builder_elements.go` `AddDefaultExistsFilter` only for positive operators | W | instructions rule 4 | unchanged (text only, see traps) |
 | Operators by type; bool takes = and != | accurate | `pkg/parser/filterquery/sqlcompiler/compiler.go` `BuildBoolComparison` | EF | rule 3 | unchanged |
 | On key not found, discover keys | accurate | e2e `test_missing_filter_key_returns_no_rows_with_the_taught_warning` | W (no rows plus warning) | rule 2 | unchanged |
@@ -59,8 +59,8 @@ error that does not; **C** cosmetic. Sources are SigNoz paths at `9d5c5871cb` or
 | Surface | Claim | Status | Checked against | Mode | Now |
 |---|---|---|---|---|---|
 | `signoz_aggregate_traces` | "Before calling, read signoz://traces/query-builder-guide" | imperative only | decision 4 | W | replaced by the entry-span rule; pointer kept as reference |
-| `signoz_aggregate_traces` `aggregations` | entry spans count each request once | accurate | e2e (SigNoz/signoz-mcp-server#474) | W | unchanged |
-| `signoz_query_metrics` | routing for a service's request rate | missing | eval of SigNoz/signoz-mcp-server#474 (Sonnet took the rate from `signoz_calls_total`) | W | description names `signoz_list_services` and the entry filter |
+| `signoz_aggregate_traces` `aggregations` | entry spans count each request once | accurate | e2e (SigNoz/signoz-mcp-server#474) | W | sentence removed; the tool description carries it |
+| `signoz_query_metrics` | routing for a service's request rate | missing | eval of SigNoz/signoz-mcp-server#474 (Sonnet took the rate from `signoz_calls_total`) | W | description names `signoz_list_services` and `signoz_aggregate_traces` |
 | `signoz_query_metrics` `reduceTo` | "avg for a typical value" | misleading for percentiles | `postprocess.go` per-step reduction; new e2e | W | rewritten; same-tool bucket-count route |
 | `signoz_query_metrics` `reduceTo` | summing rates is not a count | accurate | new e2e `test_counter_reducers_say_what_they_measured` | W | unchanged, plus note |
 | `signoz_query_metrics` `timeAggregation` | running total on cumulative counters | missing | `statement_builder.go` `buildTemporalAggCumulativeOrUnspecified`; e2e `test_counter_max_reads_the_running_total` and new latest/count checks | W | added |
@@ -71,7 +71,7 @@ error that does not; **C** cosmetic. Sources are SigNoz paths at `9d5c5871cb` or
 | `signoz_query_metrics` | grouped time-series top-N ranked over the whole window | accurate | `querier` `applySeriesLimit` | W | unchanged (text only) |
 | `signoz_execute_builder_query` | guides "required" | imperative only | decision 4 | W | rules inline; pointers kept |
 | `signoz_execute_builder_query` | a formula input limit drops series | accurate, previously unverified | new e2e `test_formula_input_limit_drops_series_and_says_so` | W | unchanged, plus note |
-| `signoz_list_services` | counts requests at entry spans | missing | `module.go` scope | W (models chose other tools) | added |
+| `signoz_list_services` | counts requests at entry spans | missing | `module.go` scope | W (models chose other tools) | added, without the filter expression |
 | `signoz_list_services` | callRate per second; errorRate in percent | accurate | eval truth (1,200 requests over 1,500 s = 0.8) | C | unchanged |
 | `signoz_get_service_top_operations` `tags` | span-attribute tags match | accurate now (SigNoz/nerve-pod#482 cited it as stale) | `implservices/helpers.go` `buildFilterExpression`; e2e `test_service_top_operations_lists_the_seeded_operation` | EN | unchanged |
 | `signoz_search_logs`, `signoz_search_traces`, `signoz_aggregate_logs` | "Read the guide before unfamiliar fields" | imperative only | decision 4 | W | key discovery stated; pointer kept |
@@ -187,6 +187,7 @@ own text; they were spot-checked, not edited.
 | `signoz_get_field_keys`, `signoz_get_field_values` | no time range; data.complete=false when cut | accurate | e2e `test_field_lookups_honor_limit_and_say_when_cut` | W | unchanged |
 | `signoz_get_trace_details` | found by ID alone | accurate | e2e `test_trace_details_finds_a_trace_by_id_alone` | C | unchanged |
 | `signoz_get_service_map` | paired calls only; a window under a minute can be empty | accurate | e2e `test_service_map.py` | W | unchanged |
+| `signoz_get_service_map` | which side an edge's latency and errorRate are measured on | missing | the collector's service-calls view takes them from the callee's span; e2e `test_service_map.py` | W (found in the eval) | description and units note name the callee side |
 | `signoz_get_org_overview` | missing fields are unreported, not zero | accurate | e2e `test_org_overview` | W | unchanged |
 | AI pricing and mapping tools | views, unpriced models in the last hour, mapping groups | accurate | e2e `test_ai_pricing_and_mappings.py` | C | unchanged |
 | `signoz_search_docs`, `signoz_fetch_doc` | ranking, sections, headings | accurate | `internal/docs` golden tests | C | unchanged |
@@ -231,6 +232,7 @@ multi-shard cluster.
 | An alert or panel saved on a query with no data | text on the alert and dashboard tools and the alert guide (dry-run first) | SigNoz saves both; detecting it would need a query at save time |
 | A patched panel without its grid item | text on `signoz_patch_dashboard` | SigNoz saves it outside the layout; pinned in e2e |
 | A view whose query signal differs from its source | text on `signoz_create_view` | SigNoz saves it; pinned in e2e; the explorer side is not verified |
+| A caller-side latency read from a service map edge | text on `signoz_get_service_map` and its units note on every graph result | an edge between two services reports the callee's spans; found in the eval; pinned in e2e |
 
 ## Files to Modify
 
@@ -373,6 +375,37 @@ C25 and C27, accepted C26 as declined, and kept C20 open.
   routing policy in SigNoz settings when it does not.
 - C28: this plan's deferred list no longer names C24.
 
+### 2026-11-22 — The entry-span filter in three always-loaded texts
+
+- Decision: the filter expression stays in the server instructions, the `signoz_aggregate_traces`
+  and `signoz_execute_builder_query` descriptions, and the result notes. It leaves the
+  `aggregations` parameter of `signoz_aggregate_traces`, which loads with that tool's description,
+  and the `signoz_list_services` and `signoz_query_metrics` descriptions, which take no trace
+  filter and now name the tool to use. The Go copies read `querybuilder.EntrySpanFilter`; the
+  metrics guide repeats it by hand because the query builder tests import that guide.
+- Rationale: the maintainer asked whether six always-loaded copies overfit the eval. No round had
+  compared fewer copies, and the only gain from the rule was Haiku on request p95.
+- Check (EVL-1 round 6, three builds: main, the branch before the trim, the branch after it): the
+  four trace prompts gave the same pass counts before and after the trim. A new negative, the p95
+  latency of checkout-web's outgoing calls to inventory-api, never drew the entry filter on any
+  build.
+
+### 2026-11-22 — Service map edges say which side they measure
+
+- Finding: on that new negative both branch builds did worse than main with Haiku (3 of 6 and 4 of
+  6 against 6 of 6). The branch's instructions route dependency questions to
+  `signoz_get_service_map`, and every miss reported the edge's p95, the callee's latency, for a
+  caller-side question. The tool said only "latency in nanoseconds".
+- Source: the collector's `dependency_graph_minutes_service_calls_mv_v2` view joins a parent span
+  and a child span in another service and takes its quantiles and error count from the child. The
+  database and messaging views take theirs from the caller's own span.
+- Decision: the description says the latency is as the callee service recorded it, and the units
+  note says where the caller's side is: `signoz_aggregate_traces` on the caller with
+  `kind_string = 'Client'`, which covers every outgoing call the caller makes. The routing line
+  stays.
+- Check (round 7, the same negative on main, the trimmed branch, and the fixed branch): Haiku
+  6 of 6, 4 of 6, 6 of 6; Sonnet 3 of 3 on each. No fixed-branch session answered from the edge.
+
 ### 2026-11-21 — Mutation-side rules on the tools, schema pointers kept
 
 - Decision: rules that prevent a wrong result with no error go on the tool: the alert unit rule,
@@ -411,6 +444,15 @@ C25 and C27, accepted C26 as declined, and kept C20 open.
   round (the second-pass round had Haiku 3/6 → 6/6); the span-count and worst-minute negatives held.
   The alert prompt passed in both builds; dry-running the query before creating the rule went from
   1 of 9 to 7 of 9, at about one more turn per session.
+- EVL-1 round 6 (111 sessions; main, before the entry-span trim, after it): request p95 Haiku
+  5/6, 6/6, 6/6; request rate Haiku 4/6, 6/6, 6/6; entry-span p95 and the span-count negative
+  passed in every build; Sonnet passed every prompt in every build. Outgoing-call p95 (new
+  negative): Haiku 6/6, 3/6, 4/6, every miss the service map edge's p95.
+- EVL-1 round 7 (27 sessions; main, trimmed, service map text fixed), outgoing-call p95: Haiku
+  6/6, 4/6, 6/6; Sonnet 3/3 in each.
+- e2e, 2026-11-22: `test_service_map_reports_one_edge_from_both_ends` now also asserts the units
+  note names the callee side and that the caller's client spans give a different p99 (210 ms
+  against the edge's 200 ms). It and `test_trace_fields.py` pass on a fresh v0.151.0 cast.
 - `GOTOOLCHAIN=go1.26.11 make ci` with a temporary module cache (a locally modified cache entry
   fails `go mod verify`) and protocol and conformance port overrides (another local process holds
   port 18080). Full e2e suite against v0.151.0.
