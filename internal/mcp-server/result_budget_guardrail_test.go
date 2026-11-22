@@ -9,10 +9,62 @@ import (
 	"testing"
 	"time"
 
+	"github.com/SigNoz/signoz-mcp-server/guardrails"
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
 	"github.com/SigNoz/signoz-mcp-server/internal/handler/tools"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 )
+
+// The tools each budget guardrail below sends through the production handler.
+// TestGuardrail_OffsetToolsAreBudgetedOrExempt holds every tool with an offset
+// parameter to one of these lists or to guardrails.UnbudgetedOffsetTools.
+var (
+	budgetedRowSearchTools = []string{"signoz_search_logs", "signoz_search_traces"}
+	budgetedListTools      = []struct {
+		tool    string
+		itemsAt []string
+		// strict tools reject undeclared arguments instead of serving them with a notice.
+		strict bool
+	}{
+		{tool: "signoz_list_services", itemsAt: []string{"data"}},
+		{tool: "signoz_get_service_map", itemsAt: []string{"data"}},
+		{tool: "signoz_list_alerts", itemsAt: []string{"data"}},
+		{tool: "signoz_list_alert_rules", itemsAt: []string{"data"}},
+		{tool: "signoz_list_notification_channels", itemsAt: []string{"channels"}, strict: true},
+		{tool: "signoz_list_dashboards", itemsAt: []string{"data", "dashboards"}},
+	}
+)
+
+// TestGuardrail_OffsetToolsAreBudgetedOrExempt catches a tool that pages with
+// offset and ships without a result size budget: one that neither budget
+// guardrail below exercises and guardrails.UnbudgetedOffsetTools does not
+// excuse. It also catches an exemption that no longer applies.
+func TestGuardrail_OffsetToolsAreBudgetedOrExempt(t *testing.T) {
+	budgeted := map[string]bool{}
+	for _, tool := range budgetedRowSearchTools {
+		budgeted[tool] = true
+	}
+	for _, tc := range budgetedListTools {
+		budgeted[tc.tool] = true
+	}
+	_, listedTools := initializedWireCatalog(t)
+	pagesWithOffset := map[string]bool{}
+	for _, tool := range listedTools {
+		if _, ok := schemaProperties(t, tool.Name, inputSchema(t, tool))["offset"]; ok {
+			pagesWithOffset[tool.Name] = true
+		}
+	}
+	for tool := range pagesWithOffset {
+		if _, exempt := guardrails.UnbudgetedOffsetTools[tool]; !budgeted[tool] && !exempt {
+			t.Errorf("%s pages with offset but has no result size budget. Return its page through listResult or rawSearchResult and add it to a budget guardrail in this file (OUT-7). Only when SigNoz returns its items in no fixed order, add it to guardrails.UnbudgetedOffsetTools with the reason.", tool)
+		}
+	}
+	for tool := range guardrails.UnbudgetedOffsetTools {
+		if !pagesWithOffset[tool] || budgeted[tool] {
+			t.Errorf("guardrails.UnbudgetedOffsetTools excuses %s, which is budgeted or no longer pages with offset. Remove the entry.", tool)
+		}
+	}
+}
 
 // TestGuardrail_RowSearchResultsFitTheirSizeBudget catches a raw row tool
 // whose delivered text outgrows its result size budget: what MCP clients
@@ -63,7 +115,7 @@ func TestGuardrail_RowSearchResultsFitTheirSizeBudget(t *testing.T) {
 		{name: "per-call budget", arguments: map[string]any{"limit": 200, "maxResultBytes": "5000"}, budget: 5000},
 		{name: "with decorator notices", arguments: map[string]any{"limit": 200, "maxResultBytes": 5000, "stray_argument_one": 1, "stray_argument_two": 2}, budget: 5000},
 	} {
-		for _, tool := range []string{"signoz_search_logs", "signoz_search_traces"} {
+		for _, tool := range budgetedRowSearchTools {
 			t.Run(tool+" "+tc.name, func(t *testing.T) {
 				response := protocolPOST(t, httpHandler, protocolRequestJSON(t, 900+index, "tools/call", map[string]any{
 					"name": tool, "arguments": tc.arguments,
@@ -162,29 +214,13 @@ func TestGuardrail_ListResultsFitTheirSizeBudget(t *testing.T) {
 		stray[fmt.Sprintf("unknown_argument_with_a_long_name_%02d", i)] = "x"
 	}
 	id := 950
-	for _, tc := range []struct {
-		tool      string
-		arguments map[string]any
-		itemsAt   []string
-		// strict tools reject undeclared arguments instead of serving them with a notice.
-		strict bool
-	}{
-		{tool: "signoz_list_services", itemsAt: []string{"data"}},
-		{tool: "signoz_get_service_map", itemsAt: []string{"data"}},
-		{tool: "signoz_list_alerts", itemsAt: []string{"data"}},
-		{tool: "signoz_list_alert_rules", itemsAt: []string{"data"}},
-		{tool: "signoz_list_notification_channels", itemsAt: []string{"channels"}, strict: true},
-		{tool: "signoz_list_dashboards", itemsAt: []string{"data", "dashboards"}},
-	} {
+	for _, tc := range budgetedListTools {
 		for _, withNotices := range []bool{false, true} {
 			if withNotices && tc.strict {
 				continue
 			}
 			name := tc.tool + " server default"
 			arguments := map[string]any{"limit": 200}
-			for key, value := range tc.arguments {
-				arguments[key] = value
-			}
 			if withNotices {
 				name = tc.tool + " with decorator notices"
 				for key, value := range stray {

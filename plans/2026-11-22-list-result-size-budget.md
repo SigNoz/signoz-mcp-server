@@ -147,11 +147,22 @@ return.
 - Declined: a shorter guardrail test. It is the only test that sends every covered tool through
   full registration and the validation decorator.
 
+### 2026-11-22 — A rule and a guardrail for new paging tools
+
+- Decision: OUT-7 in `docs/mcp-best-practices.md` requires a tool that pages with `offset` to
+  return a fixed order and fit the result size budget.
+  `TestGuardrail_OffsetToolsAreBudgetedOrExempt` reads the registered tools and fails for one
+  with `offset` that is in neither budget guardrail nor `guardrails.UnbudgetedOffsetTools`,
+  which names saved views and AI pricing with the reason.
+- Rationale: both budget guardrails named their tools in a list, so a new list tool would have
+  shipped unbounded with nothing failing. The evidence for the rule (EVL-2) is production usage:
+  the oversized list results measured in SigNoz/nerve-pod#673. Added after the codex-loop review.
+
 ## Reference Links
 
 - [SigNoz/nerve-pod#673: bound MCP tool results to a size budget](https://github.com/SigNoz/nerve-pod/issues/673)
 - [SigNoz/signoz-mcp-server#476: the raw search budget](https://github.com/SigNoz/signoz-mcp-server/pull/476)
-- [OUT-3, OUT-5, OUT-6, CMP-1, CMP-2, CMP-3 in the MCP best practices](../docs/mcp-best-practices.md)
+- [OUT-3, OUT-5, OUT-6, OUT-7, CMP-1, CMP-2, CMP-3 in the MCP best practices](../docs/mcp-best-practices.md)
 
 ## Verification
 
@@ -175,6 +186,8 @@ restored after) and failed on the assertion meant for it:
   through the budget.
 - `TestGuardrail_ListResultsFitTheirSizeBudget`: an over-budget page returned whole, `nextOffset`
   as `offset + limit`, `truncated` not set, and notices appended after the cut.
+- `TestGuardrail_OffsetToolsAreBudgetedOrExempt`: the saved views exemption removed; dashboards
+  removed from the budgeted list; a budgeted tool also listed as exempt.
 
 The raw search tests pass with their expectations unchanged.
 

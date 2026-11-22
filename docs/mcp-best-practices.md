@@ -196,6 +196,15 @@ evolution.
   A payload that is not a JSON object, or that already owns a top-level
   `notes` field, keeps the note as text only and logs a WARN. Text-only
   results keep notes as text blocks.
+- **[OUT-7] Bounded pages.** A tool that pages with `offset` MUST fit its text
+  blocks into the result size budget (`MCP_MAX_RESULT_BYTES`): return the page
+  through `listResult` or `rawSearchResult`, which end an over-budget page on
+  a whole item and say so (OUT-3). A cut is safe only over a fixed order, so a
+  new `offset` tool MUST return one. The tools whose upstream order is not
+  fixed are not cut and are named, with the reason, in
+  `guardrails.UnbudgetedOffsetTools`.
+  `TestGuardrail_OffsetToolsAreBudgetedOrExempt` rejects an `offset` tool that
+  is neither budgeted nor named there.
 
 ## 8. Errors and recovery
 
@@ -335,6 +344,7 @@ For any PR touching a client-visible MCP surface, review the applicable items:
 - [ ] Handles returned where they save a lookup; reads write back cleanly (OUT-1, OUT-2)
 - [ ] Truncation/pagination explicit with next step; partial success only for independent items (OUT-3, OUT-4)
 - [ ] Notes on a structured result also appear in `structuredContent.notes`, added through `appendNotes` (OUT-6)
+- [ ] A tool that pages with `offset` returns a fixed order and fits the result size budget (OUT-7)
 
 **Errors**
 - [ ] Stable tool-error `code`; validation text names field, problem, accepted forms, next action (ERR-1, ERR-2)

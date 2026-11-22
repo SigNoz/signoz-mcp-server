@@ -74,6 +74,9 @@ the PR. Budgets and CI mechanics live in `guardrails/README.md`. In the same PR:
   alter. Never re-record the catalog.
 - Update `guardrails/tests.txt` when a `TestGuardrail_*` test is added, removed, or renamed.
 - Add an e2e test in `tests/e2e/tests/` when the behavior depends on SigNoz.
+- A tool that pages with `offset` returns a fixed order and fits the result size budget (OUT-7):
+  return its page through `listResult` or `rawSearchResult`, and add the tool to a budget
+  guardrail in `internal/mcp-server/result_budget_guardrail_test.go`.
 - Client-visible text follows `docs/client-visible-writing-style.md`.
 - `docs/` has no stale references.
 - A breaking change (CMP-1) ships with a compatibility path and a migration note (CMP-2). The

@@ -29,6 +29,15 @@ const (
 // during initialize. Some clients combine alias + separator + tool name.
 var OfficialServerAliases = []string{"signoz", "signoz-mcp-server", "SigNozMCP"}
 
+// UnbudgetedOffsetTools are the tools that page with offset but are not cut to
+// the result size budget, each with its reason. Every other tool with an
+// offset parameter must pass a result size budget guardrail. Adding an entry
+// requires explicit guardrail review.
+var UnbudgetedOffsetTools = map[string]string{
+	"signoz_get_ai_pricing": "SigNoz returns unpriced models with equal span counts in no fixed order, so a cut page could repeat or skip one",
+	"signoz_list_views":     "SigNoz returns saved views in no fixed order, so a cut page could repeat or skip one",
+}
+
 // GrandfatheredWideSchemaProperties pins the exact property inventory of the
 // only schemas allowed above MaxTopLevelProperties. Adding or changing an
 // entry requires explicit guardrail review.
