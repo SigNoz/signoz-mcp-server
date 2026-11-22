@@ -195,6 +195,7 @@ func TestRowSearchOverBudgetEndsThePageOnAWholeRow(t *testing.T) {
 				require.Contains(t, notes, fmt.Sprintf("result size budget of %d bytes ended this page", tc.budget))
 				require.Contains(t, notes, fmt.Sprintf("offset=%d, and pass the start and end from the window note", 40+returned))
 				require.Contains(t, notes, "selectFields")
+				require.NotContains(t, strings.Join(trailingTextBlocks(result), "\n"), "maxResultBytes", "a cut note must not point at the override: a model cannot know what its client can show")
 				require.Equal(t, map[string]int64{budgetEventRowsDropped: 1}, harness.budgetEvents(t, tool))
 			})
 		}

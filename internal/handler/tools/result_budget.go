@@ -315,7 +315,7 @@ func budgetCompletenessNote(meta pagination, budgetBytes int, selectFields bool)
 	if selectFields {
 		note += " To fit more rows in a page, name only the fields you need in selectFields."
 	}
-	return note + " Raise maxResultBytes only if your client can show a larger result."
+	return note
 }
 
 func shortenedRowNote(budgetBytes int, selectFields bool) string {

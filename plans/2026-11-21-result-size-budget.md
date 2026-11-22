@@ -176,6 +176,15 @@ are fitted with those notices counted.
   The guardrail and the e2e walk repeated rules the handler tests pin: the per-call budget, the
   notices counted in the budget, and the pagination fields of a cut page.
 
+### 2026-11-22 — The cut note does not name the override
+
+- Decision: the note on a cut page no longer ends with "Raise maxResultBytes only if your client
+  can show a larger result." The parameter description still says so.
+- Rationale: the sentence reached a model on every cut, and a model cannot know what its client
+  can show. Raising the budget to its maximum returns a result larger than most clients pass
+  on, which is the failure the budget exists to prevent. The note on a shortened first row
+  keeps its mention: there the override is one of two ways to read the full value.
+
 ## Reference Links
 
 - [SigNoz/nerve-pod#673: bound MCP tool results to a size budget](https://github.com/SigNoz/nerve-pod/issues/673)
