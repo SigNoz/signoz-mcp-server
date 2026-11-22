@@ -1,7 +1,6 @@
 package mcp_server
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -15,156 +14,10 @@ import (
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 )
 
-// The tools each budget guardrail below sends through the production handler.
-// TestGuardrail_OffsetToolsAreBudgetedOrExempt holds every tool with an offset
-// parameter to one of these lists or to guardrails.UnbudgetedOffsetTools.
-var (
-	budgetedRowSearchTools = []string{"signoz_search_logs", "signoz_search_traces"}
-	budgetedListTools      = []struct {
-		tool    string
-		itemsAt []string
-		// strict tools reject undeclared arguments instead of serving them with a notice.
-		strict bool
-	}{
-		{tool: "signoz_list_services", itemsAt: []string{"data"}},
-		{tool: "signoz_get_service_map", itemsAt: []string{"data"}},
-		{tool: "signoz_list_alerts", itemsAt: []string{"data"}},
-		{tool: "signoz_list_alert_rules", itemsAt: []string{"data"}},
-		{tool: "signoz_list_notification_channels", itemsAt: []string{"channels"}, strict: true},
-		{tool: "signoz_list_dashboards", itemsAt: []string{"data", "dashboards"}},
-	}
-)
-
-// TestGuardrail_OffsetToolsAreBudgetedOrExempt catches a tool that pages with
-// offset and ships without a result size budget: one that neither budget
-// guardrail below exercises and guardrails.UnbudgetedOffsetTools does not
-// excuse. It also catches an exemption that no longer applies.
-func TestGuardrail_OffsetToolsAreBudgetedOrExempt(t *testing.T) {
-	budgeted := map[string]bool{}
-	for _, tool := range budgetedRowSearchTools {
-		budgeted[tool] = true
-	}
-	for _, tc := range budgetedListTools {
-		budgeted[tc.tool] = true
-	}
-	_, listedTools := initializedWireCatalog(t)
-	pagesWithOffset := map[string]bool{}
-	for _, tool := range listedTools {
-		if _, ok := schemaProperties(t, tool.Name, inputSchema(t, tool))["offset"]; ok {
-			pagesWithOffset[tool.Name] = true
-		}
-	}
-	for tool := range pagesWithOffset {
-		if _, exempt := guardrails.UnbudgetedOffsetTools[tool]; !budgeted[tool] && !exempt {
-			t.Errorf("%s pages with offset but has no result size budget. Return its page through listResult or rawSearchResult and add it to a budget guardrail in this file (OUT-7). Only when SigNoz returns its items in no fixed order, add it to guardrails.UnbudgetedOffsetTools with the reason.", tool)
-		}
-	}
-	for tool := range guardrails.UnbudgetedOffsetTools {
-		if !pagesWithOffset[tool] || budgeted[tool] {
-			t.Errorf("guardrails.UnbudgetedOffsetTools excuses %s, which is budgeted or no longer pages with offset. Remove the entry.", tool)
-		}
-	}
-}
-
-// TestGuardrail_RowSearchResultsFitTheirSizeBudget catches a raw row tool
-// whose delivered text outgrows its result size budget: what MCP clients
-// truncate, drop, or move to a file. Both tools go through the production HTTP
-// handler against a SigNoz stub that returns about 400 KB of rows; the text
-// blocks on the wire, notes and decorator notices included, must fit.
-func TestGuardrail_RowSearchResultsFitTheirSizeBudget(t *testing.T) {
-	rows := make([]string, 200)
-	for i := range rows {
-		rows[i] = fmt.Sprintf(`{"timestamp":"2026-11-21T10:00:00Z","data":{"id":"row-%03d","trace_id":"trace-%03d","duration_nano":9007199254740993,"body":%q}}`,
-			i, i, strings.Repeat("payload ", 250))
-	}
-	body := `{"status":"success","data":{"type":"raw","data":{"results":[{"queryName":"A","nextCursor":"c","rows":[` + strings.Join(rows, ",") + `]}]}}}`
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v5/query_range" {
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(body))
-	}))
-	t.Cleanup(upstream.Close)
-
-	logger := logpkg.New("error")
-	cfg := &config.Config{
-		URL:             upstream.URL,
-		APIKey:          "budget-guardrail-key",
-		TransportMode:   "http",
-		Host:            "127.0.0.1",
-		Port:            "0",
-		ClientCacheSize: 1,
-		ClientCacheTTL:  time.Minute,
-		MaxRequestBytes: 1 << 20,
-	}
-	handler := tools.NewHandler(logger, cfg)
-	server := NewMCPServer(logger, handler, cfg, nil, nil)
-	sdkServer := server.newSDKServer()
-	handler.RegisterLogsHandlers(sdkServer)
-	handler.RegisterTracesHandlers(sdkServer)
-	httpHandler := server.buildHTTP(sdkServer).Handler
-
-	for index, tc := range []struct {
-		name      string
-		arguments map[string]any
-		budget    int
-	}{
-		{name: "server default", arguments: map[string]any{"limit": 200}, budget: config.DefaultMaxResultBytes},
-		{name: "per-call budget", arguments: map[string]any{"limit": 200, "maxResultBytes": "5000"}, budget: 5000},
-		{name: "with decorator notices", arguments: map[string]any{"limit": 200, "maxResultBytes": 5000, "stray_argument_one": 1, "stray_argument_two": 2}, budget: 5000},
-	} {
-		for _, tool := range budgetedRowSearchTools {
-			t.Run(tool+" "+tc.name, func(t *testing.T) {
-				response := protocolPOST(t, httpHandler, protocolRequestJSON(t, 900+index, "tools/call", map[string]any{
-					"name": tool, "arguments": tc.arguments,
-				}), http.Header{"Mcp-Protocol-Version": {"2025-11-25"}})
-				if response.status != http.StatusOK {
-					t.Fatalf("status = %d, want 200; body=%.400s", response.status, response.body)
-				}
-				result, _ := response.wire["result"].(map[string]any)
-				if result == nil || result["isError"] == true {
-					t.Fatalf("want a successful tool result, got %.400s", response.body)
-				}
-				content, _ := result["content"].([]any)
-				textBytes := 0
-				for _, block := range content {
-					text, _ := block.(map[string]any)["text"].(string)
-					textBytes += len(text)
-				}
-				if textBytes > tc.budget {
-					t.Fatalf("%s delivered %d bytes of text, over its %d-byte result size budget. Fit whole rows into the budget in rawSearchResult and count every note the decorators append.", tool, textBytes, tc.budget)
-				}
-
-				block0, _ := content[0].(map[string]any)["text"].(string)
-				var page struct {
-					Pagination struct {
-						Returned   int  `json:"returned"`
-						HasMore    bool `json:"hasMore"`
-						NextOffset int  `json:"nextOffset"`
-						Truncated  bool `json:"truncated"`
-					} `json:"pagination"`
-				}
-				if err := json.Unmarshal([]byte(block0), &page); err != nil {
-					t.Fatalf("block 0 is not valid JSON: %v", err)
-				}
-				if got := page.Pagination; got.Returned < 1 || !got.HasMore || !got.Truncated || got.NextOffset != got.Returned {
-					t.Fatalf("pagination = %+v, want at least one row, hasMore and truncated true, and nextOffset = returned", got)
-				}
-			})
-		}
-	}
-}
-
-// TestGuardrail_ListResultsFitTheirSizeBudget catches a list tool whose
-// delivered text outgrows the server's result size budget. Each budgeted list
-// tool goes through the production HTTP handler against a
-// SigNoz stub whose 200 items come to about 45 KB; the text blocks on the
-// wire, notes and decorator notices included, must fit, and the page must say
-// where the next one starts. Items are smaller than the notices, so a notice
-// appended after the cut cannot hide in the space a cut leaves.
-func TestGuardrail_ListResultsFitTheirSizeBudget(t *testing.T) {
+// TestGuardrail_OffsetToolResultsFitTheirSizeBudget catches a tool that pages
+// with offset and that the production server, as configured by default, lets
+// outgrow the result size budget. The handler tests pin how a page is cut.
+func TestGuardrail_OffsetToolResultsFitTheirSizeBudget(t *testing.T) {
 	padding := strings.Repeat("payload ", 20)
 	items := func(format string) string {
 		list := make([]string, 200)
@@ -173,7 +26,9 @@ func TestGuardrail_ListResultsFitTheirSizeBudget(t *testing.T) {
 		}
 		return strings.Join(list, ",")
 	}
+	// Each route answers with 200 items, about 45 KB: more than the default budget.
 	routes := map[string]string{
+		"/api/v5/query_range":           `{"status":"success","data":{"type":"raw","data":{"results":[{"queryName":"A","nextCursor":"c","rows":[` + items(`{"timestamp":"2026-11-21T10:00:00Z","data":{"id":"row-%03d","trace_id":"trace-%d","body":%q}}`) + `]}]}}}`,
 		"/api/v2/services":              `{"status":"success","data":[` + items(`{"serviceName":"svc-%03d","p99":1,"tag":"%d %s"}`) + `]}`,
 		"/api/v1/dependency_graph":      `[` + items(`{"parent":"svc-%03d","child":"redis","callCount":3,"tag":"%d %s"}`) + `]`,
 		"/api/v1/alerts":                `{"status":"success","data":[` + items(`{"labels":{"ruleId":"rule-%03d","alertname":"%d %s"},"status":{"state":"active"}}`) + `]}`,
@@ -208,77 +63,56 @@ func TestGuardrail_ListResultsFitTheirSizeBudget(t *testing.T) {
 	sdkServer := server.newSDKServer()
 	handler.RegisterAllToolHandlers(sdkServer)
 	httpHandler := server.buildHTTP(sdkServer).Handler
+	headers := http.Header{"Mcp-Protocol-Version": {"2025-11-25"}}
 
-	stray := map[string]any{}
-	for i := range 10 {
-		stray[fmt.Sprintf("unknown_argument_with_a_long_name_%02d", i)] = "x"
-	}
-	id := 950
-	for _, tc := range budgetedListTools {
-		for _, withNotices := range []bool{false, true} {
-			if withNotices && tc.strict {
-				continue
-			}
-			name := tc.tool + " server default"
-			arguments := map[string]any{"limit": 200}
-			if withNotices {
-				name = tc.tool + " with decorator notices"
-				for key, value := range stray {
-					arguments[key] = value
-				}
-			}
-			id++
-			t.Run(name, func(t *testing.T) {
-				response := protocolPOST(t, httpHandler, protocolRequestJSON(t, id, "tools/call", map[string]any{
-					"name": tc.tool, "arguments": arguments,
-				}), http.Header{"Mcp-Protocol-Version": {"2025-11-25"}})
-				if response.status != http.StatusOK {
-					t.Fatalf("status = %d, want 200; body=%.400s", response.status, response.body)
-				}
-				result, _ := response.wire["result"].(map[string]any)
-				if result == nil || result["isError"] == true {
-					t.Fatalf("want a successful tool result, got %.400s", response.body)
-				}
-				content, _ := result["content"].([]any)
-				textBytes := 0
-				for _, block := range content {
-					text, _ := block.(map[string]any)["text"].(string)
-					textBytes += len(text)
-				}
-				if textBytes > config.DefaultMaxResultBytes {
-					t.Fatalf("%s delivered %d bytes of text, over its %d-byte result size budget. Route the page through listResult or budgetedListResult, which keep the leading whole items that fit with every note the decorators append.", tc.tool, textBytes, config.DefaultMaxResultBytes)
-				}
-				if withNotices {
-					last, _ := content[len(content)-1].(map[string]any)["text"].(string)
-					if !strings.Contains(last, "this tool ignored the arguments") {
-						t.Fatalf("the ignored-arguments notice must be the last block, got %.200q", last)
-					}
-				}
-
-				block0, _ := content[0].(map[string]any)["text"].(string)
-				var page map[string]json.RawMessage
-				if err := json.Unmarshal([]byte(block0), &page); err != nil {
-					t.Fatalf("block 0 is not a JSON object: %v", err)
-				}
-				var pagination struct {
-					Offset     int  `json:"offset"`
-					HasMore    bool `json:"hasMore"`
-					NextOffset int  `json:"nextOffset"`
-					Truncated  bool `json:"truncated"`
-				}
-				if err := json.Unmarshal(page["pagination"], &pagination); err != nil {
-					t.Fatalf("block 0 has no pagination object: %v", err)
-				}
-				holder := page
-				for _, key := range tc.itemsAt[:len(tc.itemsAt)-1] {
-					_ = json.Unmarshal(holder[key], &holder)
-				}
-				var listed []json.RawMessage
-				_ = json.Unmarshal(holder[tc.itemsAt[len(tc.itemsAt)-1]], &listed)
-				if len(listed) < 1 || !pagination.HasMore || !pagination.Truncated || pagination.NextOffset != pagination.Offset+len(listed) {
-					t.Fatalf("%s returned %d items with pagination %+v; want at least one item, hasMore and truncated true, and nextOffset = offset + items returned", tc.tool, len(listed), pagination)
-				}
-			})
+	// The tools come from the registry, so a new one that pages with offset is
+	// held to the budget without being added to a list here.
+	listed, _ := protocolPOST(t, httpHandler, protocolRequestJSON(t, 900, "tools/list", map[string]any{}), headers).wire["result"].(map[string]any)
+	registered, _ := listed["tools"].([]any)
+	pagesWithOffset := map[string]bool{}
+	for _, entry := range registered {
+		tool, _ := entry.(map[string]any)
+		schema, _ := tool["inputSchema"].(map[string]any)
+		properties, _ := schema["properties"].(map[string]any)
+		if _, ok := properties["offset"]; ok {
+			pagesWithOffset[tool["name"].(string)] = true
 		}
+	}
+	if len(pagesWithOffset) == 0 {
+		t.Fatal("tools/list returned no tool with an offset parameter; this test read the registry wrong")
+	}
+	for name := range guardrails.UnbudgetedOffsetTools {
+		if !pagesWithOffset[name] {
+			t.Errorf("guardrails.UnbudgetedOffsetTools names %s, which is not a registered tool that pages with offset. Remove the entry.", name)
+		}
+	}
+
+	id := 900
+	for name := range pagesWithOffset {
+		if _, unbudgeted := guardrails.UnbudgetedOffsetTools[name]; unbudgeted {
+			continue
+		}
+		id++
+		t.Run(name, func(t *testing.T) {
+			response := protocolPOST(t, httpHandler, protocolRequestJSON(t, id, "tools/call", map[string]any{
+				"name": name, "arguments": map[string]any{"limit": 200},
+			}), headers)
+			result, _ := response.wire["result"].(map[string]any)
+			if response.status != http.StatusOK || result == nil || result["isError"] == true {
+				t.Fatalf("%s returned no page (status %d): %.400s\nA tool that pages with offset needs a route in this test that answers with a page over the budget (OUT-7).", name, response.status, response.body)
+			}
+			content, _ := result["content"].([]any)
+			textBytes := 0
+			for _, block := range content {
+				text, _ := block.(map[string]any)["text"].(string)
+				textBytes += len(text)
+			}
+			if textBytes > config.DefaultMaxResultBytes {
+				t.Fatalf("%s delivered %d bytes of text, over the default %d-byte result size budget. Return its page through listResult or rawSearchResult, which keep the leading whole items that fit (OUT-7). Only when SigNoz returns its items in no fixed order, name it in guardrails.UnbudgetedOffsetTools with the reason.", name, textBytes, config.DefaultMaxResultBytes)
+			}
+			if block0, _ := content[0].(map[string]any)["text"].(string); !strings.Contains(block0, `"truncated":true`) {
+				t.Fatalf("%s returned its page without a budget cut, so this test proved nothing. Make its route here answer with a page over %d bytes: %.300s", name, config.DefaultMaxResultBytes, block0)
+			}
+		})
 	}
 }
