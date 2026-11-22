@@ -32,6 +32,7 @@ const (
 	MCPClientRootsKey            = attribute.Key("mcp.client.capability.roots")
 	MCPClientSamplingKey         = attribute.Key("mcp.client.capability.sampling")
 	MCPClientElicitationKey      = attribute.Key("mcp.client.capability.elicitation")
+	MCPResourceURIKey            = attribute.Key("mcp.resource.uri")
 	MCPSearchContextKey          = attribute.Key("mcp.search_context")
 	MCPTenantURLKey              = attribute.Key("mcp.tenant_url")
 	MCPToolIsErrorKey            = attribute.Key("mcp.tool.is_error")

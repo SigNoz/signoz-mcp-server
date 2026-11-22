@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -183,7 +184,7 @@ func spanAttrValue(attrs []attribute.KeyValue, key attribute.Key) (attribute.Val
 func callReceiving(t *testing.T, server *MCPServer, ctx context.Context, method string, req mcp.Request, result mcp.Result, err error) (mcp.Result, error) {
 	t.Helper()
 	isRegisteredTool := func(name string) bool { return name == "probe" }
-	return server.receivingMiddleware(isRegisteredTool)(func(context.Context, string, mcp.Request) (mcp.Result, error) {
+	return server.receivingMiddleware(isRegisteredTool, nil)(func(context.Context, string, mcp.Request) (mcp.Result, error) {
 		return result, err
 	})(ctx, method, req)
 }
@@ -813,7 +814,7 @@ func TestReceivingMiddlewarePassesToolOutcomesThroughAndRecoversPanics(t *testin
 				}
 				return tt.result, tt.err
 			}
-			result, gotErr := server.receivingMiddleware(func(name string) bool { return name == "probe" })(next)(context.Background(), "tools/call", request)
+			result, gotErr := server.receivingMiddleware(func(name string) bool { return name == "probe" }, nil)(next)(context.Background(), "tools/call", request)
 			if tt.panicValue != nil {
 				var rpcErr *jsonrpc.Error
 				if !errors.As(gotErr, &rpcErr) || rpcErr.Code != jsonrpc.CodeInternalError || rpcErr.Message != "Internal error" {
@@ -879,6 +880,74 @@ func TestReceivingMiddlewareKeepsUnknownToolNamesOutOfMetricsAndSpans(t *testing
 	}
 	if strings.Contains(spans[0].Name, requestedName) {
 		t.Fatalf("span name = %q, want bounded unknown-tool name", spans[0].Name)
+	}
+}
+
+// A client can ask for any URI, so a resources/read span names the resource
+// only when the server serves it, and no metric carries the URI.
+func TestResourceReadSpansNameOnlyRegisteredResources(t *testing.T) {
+	traceExporter := tracetest.NewInMemoryExporter()
+	traceProvider := sdktrace.NewTracerProvider(sdktrace.WithSyncer(traceExporter))
+	previousTracerProvider := otel.GetTracerProvider()
+	otel.SetTracerProvider(traceProvider)
+	t.Cleanup(func() {
+		otel.SetTracerProvider(previousTracerProvider)
+		_ = traceProvider.Shutdown(context.Background())
+	})
+	const guide = "signoz://metrics-aggregation-guide"
+	madeUp := "signoz://" + strings.Repeat("x", 4096)
+
+	client, err := newIntegrationClient(t, buildTestServer(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.ReadResource(context.Background(), &mcp.ReadResourceParams{URI: guide}); err != nil {
+		t.Fatalf("read %s: %v", guide, err)
+	}
+	if _, err := client.ReadResource(context.Background(), &mcp.ReadResourceParams{URI: madeUp}); err == nil {
+		t.Fatal("reading a URI the server does not serve succeeded")
+	}
+	var recorded []string
+	for _, span := range traceExporter.GetSpans() {
+		if span.Name != "resources/read" {
+			continue
+		}
+		for _, attr := range span.Attributes {
+			if attr.Key == otelpkg.MCPResourceURIKey {
+				recorded = append(recorded, attr.Value.AsString())
+			}
+		}
+	}
+	if want := []string{guide, unknownResourceURI}; !slices.Equal(recorded, want) {
+		t.Fatalf("mcp.resource.uri on resources/read spans = %q, want %q", recorded, want)
+	}
+
+	reader := sdkmetric.NewManualReader()
+	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	t.Cleanup(func() { _ = meterProvider.Shutdown(context.Background()) })
+	meters, err := otelpkg.NewMeters(meterProvider)
+	if err != nil {
+		t.Fatal(err)
+	}
+	logger := logpkg.New("error")
+	cfg := &config.Config{ClientCacheSize: 1, ClientCacheTTL: time.Minute}
+	server := NewMCPServer(logger, tools.NewHandler(logger, cfg), cfg, noopanalytics.New(), meters)
+	read := server.receivingMiddleware(nil, func(uri string) bool { return uri == guide })(func(context.Context, string, mcp.Request) (mcp.Result, error) {
+		return &mcp.ReadResourceResult{}, nil
+	})
+	if _, err := read(context.Background(), "resources/read", &mcp.ReadResourceRequest{Params: &mcp.ReadResourceParams{URI: guide}}); err != nil {
+		t.Fatal(err)
+	}
+	var metrics metricdata.ResourceMetrics
+	if err := reader.Collect(context.Background(), &metrics); err != nil {
+		t.Fatal(err)
+	}
+	methodCalls, found := oteltest.FindInt64SumMetric(metrics, "mcp.method.calls")
+	if !found || len(methodCalls.DataPoints) != 1 {
+		t.Fatalf("mcp.method.calls = %#v, found=%t; want one datapoint", methodCalls.DataPoints, found)
+	}
+	if strings.Contains(methodCalls.DataPoints[0].Attributes.Encoded(attribute.DefaultEncoder()), guide) {
+		t.Fatal("metric attributes carry the resource URI")
 	}
 }
 

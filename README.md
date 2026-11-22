@@ -812,6 +812,9 @@ attribute. If the query is invalid Bleve query-string syntax, search drops that 
 continues with text matching, and records `mcp.docs.query_string_dropped=true`. Empty or
 whitespace-only queries remain validation errors.
 
+`resources/read` spans record `mcp.resource.uri`, the URI of the resource that was read. A
+URI the server does not serve is recorded as `unknown`. The URI is not a metric attribute.
+
 #### `signoz_fetch_doc`
 
 Fetch one known official SigNoz docs page's full Markdown or a requested heading. Use `signoz_search_docs` to discover a page first; accepted inputs are `https://signoz.io/docs/...` URLs or `/docs/...` paths.

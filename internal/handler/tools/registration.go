@@ -45,12 +45,22 @@ func (h *Handler) claimRegistration(s *mcp.Server, kind registrationKind, key st
 // registration path for this server. The runtime observer uses this state to
 // keep unknown, attacker-controlled names out of telemetry dimensions.
 func (h *Handler) HasRegisteredTool(s *mcp.Server, name string) bool {
-	if h == nil || s == nil || name == "" {
+	return h.hasRegistration(s, registrationTool, name)
+}
+
+// HasRegisteredResource reports whether uri was registered as a resource for
+// this server, so a URI the client made up stays out of span attributes.
+func (h *Handler) HasRegisteredResource(s *mcp.Server, uri string) bool {
+	return h.hasRegistration(s, registrationResource, uri)
+}
+
+func (h *Handler) hasRegistration(s *mcp.Server, kind registrationKind, key string) bool {
+	if h == nil || s == nil || key == "" {
 		return false
 	}
 	h.registrationMu.RLock()
 	defer h.registrationMu.RUnlock()
-	_, ok := h.registrations[registrationKey{server: s, kind: registrationTool, name: name}]
+	_, ok := h.registrations[registrationKey{server: s, kind: kind, name: key}]
 	return ok
 }
 

@@ -19,9 +19,10 @@ Decisions made with the maintainer before work began:
    `MaxServerInstructionsBytes` goes from 2,048 to 4,096. No other budget changes.
 4. Rules move onto the parameter or tool they apply to, each verified against SigNoz first;
    "read signoz://..." imperatives give way to the rule, and a pointer may stay as further reading.
-5. Out of scope: resource-URI span attributes, client-specific always-load hints, new tools or parameters,
+5. Out of scope: client-specific always-load hints, new tools or parameters,
    any guide-read gate (SUR-10), a guide-delivery tool (SigNoz/nerve-pod#157), and skill changes
-   (SigNoz/nerve-pod#436).
+   (SigNoz/nerve-pod#436). Resource-URI span attributes were out of scope at first; the
+   maintainer moved them in on 2026-11-22 (see Key Decisions).
 
 ## Approach
 
@@ -849,6 +850,18 @@ describe them.
   as `server.address`, as an example, since instrumentation decides which attributes exist.
 - `signoz_list_services` now says callRate is numCalls divided by the whole requested window, so a
   service active for part of it reads lower than its rate while active.
+
+### 2026-11-22 — `resources/read` spans carry the resource URI
+
+- Decision: a `resources/read` span records `mcp.resource.uri`. A registered resource records its
+  URI; any other URI records `unknown`, because a client can ask for anything. The URI is not a
+  metric attribute.
+- Rationale: SigNoz/nerve-pod#667's done bar asks for it. Without it no OpenTelemetry signal says
+  which guide was read: the span carried only the method name, and the analytics event that holds
+  the URI is off by default. This was out of scope at first (decision 5); the maintainer moved it
+  in so this PR can close the issue.
+- Check: `TestResourceReadSpansNameOnlyRegisteredResources` reads a guide and a made-up URI through
+  a real session and checks the span attribute and the method metric.
 
 ### 2026-11-21 — Mutation-side rules on the tools, schema pointers kept
 
