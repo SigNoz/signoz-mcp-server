@@ -329,13 +329,15 @@ def test_formula_input_limit_drops_series_and_says_so(mcp_client: MCPClient, tes
     seed_metrics writes each gauge as value and value + 1, so the averages are
     0.5 higher and A + B is 32, 23, 14. A limit of 1 on A keeps A's top service,
     whose sum is the smallest; a limit applied to the formula would keep the largest.
+    The samples are aged into completed minutes, so the query never reads one
+    sample of a pair without the other.
     """
     prefix = f"mcp_e2e_{test_id.replace('-', '_')}_formula"
     metric_a, metric_b = f"{prefix}_a", f"{prefix}_b"
     services = [f"mcp-e2e-{test_id}-{i}" for i in range(3)]
     for i, service in enumerate(services):
-        seed_metrics(service, metric_a, value=float(i + 1), count=2)
-        seed_metrics(service, metric_b, value=float(10 * (3 - i)), count=2)
+        seed_metrics(service, metric_a, value=float(i + 1), count=2, age_seconds=120)
+        seed_metrics(service, metric_b, value=float(10 * (3 - i)), count=2, age_seconds=120)
 
     def request(limit_on_input: bool) -> dict:
         now = int(time.time() * 1000)
@@ -378,7 +380,11 @@ def test_formula_input_limit_drops_series_and_says_so(mcp_client: MCPClient, tes
         rows = [row for r in results if r.get("queryName") == "F" for row in r.get("data") or []]
         return rows, note_blocks(result)
 
-    wait_for(lambda: len(formula_rows(False)[0]) == len(services), f"all {len(services)} services through the formula")
+    unlimited = {services[0]: 32, services[1]: 23, services[2]: 14}
+    wait_for(
+        lambda: {row[0]: row[-1] for row in formula_rows(False)[0]} == unlimited,
+        f"A + B for all {len(services)} services through the formula",
+    )
     rows, notes = formula_rows(True)
     assert [(row[0], row[-1]) for row in rows] == [(services[2], 14)], (
         f"a limit of 1 on input A keeps A's top service: {rows}"

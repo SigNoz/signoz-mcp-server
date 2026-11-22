@@ -208,24 +208,36 @@ func buildGroupByFields(names []string) []querybuilder.FieldKey {
 // response: the step in seconds SigNoz used for each query, by query name,
 // which can differ from the step asked for. SigNoz leaves a query out when it
 // skipped it, such as one on a missing metric, and SQL queries have no step,
-// so a missing entry is not an error; metadata that does not decode is, and
-// is WARN-logged.
+// so a missing entry is not an error. SigNoz declares each step an unsigned
+// integer, so metadata that does not decode, or an entry that is null,
+// negative, or fractional, is a contract change: it is WARN-logged and the
+// entry is left out.
 func responseStepIntervals(ctx context.Context, logger *slog.Logger, toolName string, response json.RawMessage) map[string]int64 {
+	if logger == nil {
+		logger = slog.Default()
+	}
 	var resp struct {
 		Data struct {
 			Meta struct {
-				StepIntervals map[string]int64 `json:"stepIntervals"`
+				StepIntervals map[string]json.RawMessage `json:"stepIntervals"`
 			} `json:"meta"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(response, &resp); err != nil {
-		if logger == nil {
-			logger = slog.Default()
-		}
 		logger.WarnContext(ctx, "qb step intervals unparsed", slog.String("tool", toolName), logpkg.ErrAttr(err))
 		return nil
 	}
-	return resp.Data.Meta.StepIntervals
+	steps := make(map[string]int64, len(resp.Data.Meta.StepIntervals))
+	for name, raw := range resp.Data.Meta.StepIntervals {
+		step, err := strconv.ParseUint(strings.TrimSpace(string(raw)), 10, 63)
+		if err != nil {
+			logger.WarnContext(ctx, "qb step intervals unparsed",
+				slog.String("tool", toolName), slog.String("query", name), slog.String("step", string(raw)))
+			continue
+		}
+		steps[name] = int64(step)
+	}
+	return steps
 }
 
 // --- helpers ---

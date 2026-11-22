@@ -47,9 +47,6 @@ def test_service_map_reports_one_edge_from_both_ends(mcp_client: MCPClient, test
     assert edge["errorRate"] == 100, "errorRate is a percentage: every seeded call failed"
     assert edge["p99"] == CALLEE_DURATION_NS, "latency percentiles are nanoseconds of the callee span"
     assert edge["callRate"] > 0
-    assert "On an edge between two services, p50 to p99 and errorRate come from the callee's spans" in note_blocks(
-        service_map(mcp_client, caller, "downstream")
-    )
 
     def client_p99() -> int | None:
         result = assert_tool_ok(
@@ -75,8 +72,9 @@ def test_service_map_reports_one_edge_from_both_ends(mcp_client: MCPClient, test
     upstream = first_block_json(service_map(mcp_client, callee, "upstream"))["data"]
     assert [(e["parent"], e["child"], e["callCount"]) for e in upstream] == [(caller, callee, edge["callCount"])]
 
-    in_environment = first_block_json(service_map(mcp_client, caller, "downstream", environment))["data"]
-    assert [(e["parent"], e["child"]) for e in in_environment] == [(caller, callee)]
+    in_environment = service_map(mcp_client, caller, "downstream", environment)
+    assert [(e["parent"], e["child"]) for e in first_block_json(in_environment)["data"]] == [(caller, callee)]
+    assert "callee" in note_blocks(in_environment), "the units note says whose spans an edge's latency comes from"
     elsewhere = service_map(mcp_client, caller, "downstream", f"{environment}-other")
     assert first_block_json(elsewhere)["data"] == []
     assert "the graph has no edges for this time range and filters" in note_blocks(elsewhere)
