@@ -215,13 +215,17 @@ restored after) and failed:
 - The wire-catalog diff is the `maxResultBytes` property of the two tools, 14 lines, added by
   hand; `TestGuardrail_WireCatalogGoldens` passes.
 
-CI on the PR (commit 574fd07): all 13 checks pass. The e2e job, against a foundry cast of the
+CI on the PR, before it was restacked on SigNoz/signoz-mcp-server#477: all 13 checks pass. The e2e job, against a foundry cast of the
 pinned SigNoz release, ran 109 tests with 1 skipped (the existing skip in `test_logs.py`). It
 includes `test_search_logs_pages_by_result_size` and `test_search_traces_pages_by_result_size`
 from the new `test_result_budget.py`, and the `test_ai_traces.py` tests whose helper now sends
 `maxResultBytes`.
 
 Not run locally: the e2e suite. `foundryctl` is not installed on the development machine.
+
+The branch was then rebased onto SigNoz/signoz-mcp-server#477, with one conflict, in
+`tests/README.md`. The full local suite passes on the rebased branch. CI starts only on a pull
+request whose base is `main`, so it runs here again once that PR merges.
 
 ## Outcome
 
