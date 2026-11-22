@@ -118,8 +118,8 @@ variables: `--reuse`, `--teardown`, `--foundry-binary-path`, `--license-key`.
   `signoz_search_traces` rows into several pages, and following `pagination.nextOffset` returns
   every seeded row once, in order.
 - `test_list_result_budget.py` — against a native server with a small `MCP_MAX_RESULT_BYTES`
-  (the list tools take no per-call budget), `signoz_list_dashboards` ends each page on a whole
-  dashboard, and following `pagination.nextOffset` returns every created dashboard once.
+  (the list tools take no per-call budget), SigNoz's dashboard list splits into several pages,
+  and following `pagination.nextOffset` returns every created dashboard once, in order.
 - `test_logs.py` — seeded log search, explicit scoped/unscoped search grammar,
   quoted terms, body-only legacy search text, and upstream warning preservation.
 - `test_dashboards.py` — TextPanel create/get/update/patch/default/layout

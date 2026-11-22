@@ -206,8 +206,8 @@ evolution.
   a fixed order, so a new `offset` tool MUST return one. The tools whose
   upstream order is not fixed are not cut and are named, with the reason, in
   `guardrails.UnbudgetedOffsetTools`.
-  `TestGuardrail_OffsetToolsAreBudgetedOrExempt` rejects an `offset` tool that
-  is neither budgeted nor named there.
+  `TestGuardrail_OffsetToolResultsFitTheirSizeBudget` reads the registered
+  tools and rejects an `offset` tool that is neither budgeted nor named there.
 
 ## 8. Errors and recovery
 

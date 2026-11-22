@@ -55,7 +55,8 @@ return.
 - `internal/mcp-server/testdata/wire-catalog/tools-list.json`: those two schemas and the
   dashboard list text only
 - `internal/handler/tools/list_budget_test.go`: handler tests
-- `internal/mcp-server/result_budget_guardrail_test.go`: `TestGuardrail_ListResultsFitTheirSizeBudget`
+- `internal/mcp-server/result_budget_guardrail_test.go`:
+  `TestGuardrail_OffsetToolResultsFitTheirSizeBudget`
 - `guardrails/tests.txt`, `guardrails/README.md`
 - `tests/fixtures/mcpserver.py`, `tests/e2e/tests/test_list_result_budget.py`, `tests/README.md`
 - `pkg/otel/attr.go`: the budget attribute comment names list items
@@ -152,12 +153,40 @@ return.
 - Decision: OUT-7 in `docs/mcp-best-practices.md` asks every new tool to bound its result and
   state its largest one in the PR, and requires a tool that pages with `offset` to return a
   fixed order and fit the result size budget.
-  `TestGuardrail_OffsetToolsAreBudgetedOrExempt` reads the registered tools and fails for one
-  with `offset` that is in neither budget guardrail nor `guardrails.UnbudgetedOffsetTools`,
-  which names saved views and AI pricing with the reason.
+  `TestGuardrail_OffsetToolResultsFitTheirSizeBudget` reads the registered tools and holds each
+  one with `offset` to the default budget, unless `guardrails.UnbudgetedOffsetTools` names it;
+  that list holds saved views and AI pricing with the reason.
 - Rationale: both budget guardrails named their tools in a list, so a new list tool would have
   shipped unbounded with nothing failing. The evidence for the rule (EVL-2) is production usage:
   the oversized list results measured in SigNoz/nerve-pod#673. Added after the codex-loop review.
+
+### 2026-11-22 — Bot review: a bounded search for the items that fit
+
+- Decision: the fit probes its estimate and the item after it, then bisects. A cut page is
+  re-encoded with its note, which writes `\u003c` as `<`, so an item can be much shorter
+  delivered than upstream and the estimate far too low. The fit used to rebuild the page once
+  per extra item: 108 ms for a 1,000-item page whose items each hold a few such characters, and
+  11 ms now, with the same items kept.
+- Decision: comments over three lines are cut to the reason, as `CLAUDE.md` asks.
+
+### 2026-11-22 — One layer per rule in the tests
+
+- Decision: one guardrail, `TestGuardrail_OffsetToolResultsFitTheirSizeBudget`, replaces the row
+  search guardrail, the list guardrail, and the check that every `offset` tool was in one of
+  their lists. It reads the tools from the registry and keeps the one thing the wire adds: at
+  the default configuration, through the production HTTP handler, an over-budget page comes
+  back within the default budget. This reverses the decline above: the handler tests also run
+  full registration and the validation decorator.
+- Decision: the handler test of a cut page takes over the two checks that had their own tests
+  (`structuredContent` carries the cut page; the cut page matches its output schema), states
+  its expected pagination and note where it asserts them, and gains strings SigNoz escaped.
+  The notes reaching `structuredContent.notes` is pinned by the tests of `appendNotes`.
+- Decision: the e2e test keeps what needs real SigNoz: its dashboard list splits into several
+  pages, following `nextOffset` returns every dashboard once, in order, and `data.total` counts
+  the whole list at every offset.
+- Rationale: `docs/testing.md` pins a rule once, at the lowest layer that runs the real code,
+  and prefers deriving a list to checking a hand-kept copy of it. The guardrails and the e2e
+  walk repeated what the handler tests pin: the fit with notices, and the pagination of a cut.
 
 ## Reference Links
 
@@ -172,23 +201,20 @@ restored after) and failed on the assertion meant for it:
 
 - `TestListToolWithinBudgetReturnsThePageAsBuilt`: a page that fits sent down the cut path.
 - `TestListToolOverBudgetEndsThePageOnAWholeItem`: an over-budget page returned whole; a page one
-  item short of the longest prefix; `nextOffset` as `offset + limit`; `truncated` not set; the
-  channel `count` not updated; the window advice dropped.
+  item short of the longest prefix; the search stopped before the longest prefix when SigNoz
+  escaped the strings; `nextOffset` as `offset + limit`; `truncated` not set; the channel
+  `count` not updated; the window advice dropped; a cut page built as text only; `Truncated`
+  and `MaxResultBytes` removed from `paginate.Metadata`.
 - `TestListToolReturnsAnOversizedFirstItemWhole`: the over-budget WARN and counter dropped for a
   lone item; a page allowed to keep zero items.
 - `TestListToolBudgetCountsDecoratorNotices`: notices appended after the cut.
-- `TestListToolCutPageKeepsTextAndStructuredContentAlike`: a cut page built as text only;
-  `truncated` not set.
-- `TestListToolCutPageMatchesItsOutputSchema`: `Truncated` and `MaxResultBytes` removed from
-  `paginate.Metadata`.
 - `TestListDashboardsFailsOpenOnABodyItCannotPage`: the fail-open WARN and counter removed; a
   `null` total read as 0.
 - `TestListToolsWithoutAFixedOrderReturnAnOverBudgetPageWhole`: saved views or AI pricing sent
   through the budget.
-- `TestGuardrail_ListResultsFitTheirSizeBudget`: an over-budget page returned whole, `nextOffset`
-  as `offset + limit`, `truncated` not set, and notices appended after the cut.
-- `TestGuardrail_OffsetToolsAreBudgetedOrExempt`: the saved views exemption removed; dashboards
-  removed from the budgeted list; a budgeted tool also listed as exempt.
+- `TestGuardrail_OffsetToolResultsFitTheirSizeBudget`: the default budget not applied when the
+  operator sets none (all eight tools fail); the saved views exemption removed; an exemption
+  for a tool that does not page with `offset`.
 
 The raw search tests pass with their expectations unchanged.
 
@@ -197,13 +223,11 @@ The raw search tests pass with their expectations unchanged.
 `check-repo-docs` pass. `check-deps` fails only in `go mod verify`, on a modified local
 module-cache copy of `gopsutil`; `go mod tidy -diff` is clean.
 
-e2e: CI starts only on a pull request whose base is `main`, so the e2e workflow was started by
-hand on the branch. After the stack was rebased onto SigNoz/signoz-mcp-server#477, the run at
-4a6beb9, which holds all three changes of the stack, passed 113 tests with 1 skipped. It
-includes `test_list_dashboards_pages_by_result_size`, the refactored native-server fixture the
-whole suite shares, and the new tests of the two PRs below this one. The suite did not run
-locally (`foundryctl` is not installed). The other CI jobs have not run on this pull request;
-they start when it targets `main`.
+e2e: the suite does not run locally (`foundryctl` is not installed). A run started by hand at
+4a6beb9, which holds all three changes of the stack, passed 113 tests with 1 skipped, including
+`test_list_dashboards_pages_by_result_size` and the refactored native-server fixture the whole
+suite shares. The e2e test was reduced after that run (see the decision above); CI has run on
+this pull request since it joined the GitHub stack, and its `e2e` check covers that version.
 
 ## Outcome
 

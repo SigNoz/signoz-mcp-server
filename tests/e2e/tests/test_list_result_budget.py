@@ -1,11 +1,13 @@
 """Result size budget on the list tools against the pinned release.
 
 The list tools take no per-call budget, so this test runs a second server with
-a small MCP_MAX_RESULT_BYTES. A page over it ends on a whole item, and
-following pagination.nextOffset returns every item exactly once.
+a small MCP_MAX_RESULT_BYTES. It splits SigNoz's real dashboard list into
+several pages, and following pagination.nextOffset returns every dashboard
+exactly once, in order. The handler tests pin how a page is cut and what its
+pagination says.
 """
 
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 
 import pytest
 
@@ -15,13 +17,6 @@ from fixtures.results import first_block_json
 
 CREATED = 8
 DESCRIPTION = "A dashboard created to page the dashboard list by result size. " * 5
-
-
-def _text_bytes(result: dict) -> int:
-    """UTF-8 bytes of every text block, the number the budget bounds."""
-    return sum(
-        len(block.get("text", "").encode("utf-8")) for block in result.get("content", []) if block.get("type") == "text"
-    )
 
 
 @pytest.fixture(scope="module")
@@ -37,36 +32,10 @@ def _without_web_url(items: list[dict]) -> list[dict]:
     return [{key: value for key, value in item.items() if key != "webUrl"} for item in items]
 
 
-def _walk_pages(list_page: Callable[[int], dict], items_of: Callable[[dict], list]) -> tuple[list, int]:
-    """Follow nextOffset from offset 0; every page must be whole items within the budget."""
-    offset, pages, collected = 0, 0, []
-    while True:
-        result = assert_tool_ok(list_page(offset))
-        body = first_block_json(result)
-        items, pagination = items_of(body), body.get("pagination")
-        assert items, f"a page with items left must return at least one: {pagination}"
-        if len(items) > 1:
-            assert _text_bytes(result) <= SMALL_RESULT_BUDGET, (
-                f"page at offset {offset} holds {len(items)} items and is over its budget: {_text_bytes(result)} bytes"
-            )
-        collected.extend(items)
-        pages += 1
-        if pagination is None or not pagination["hasMore"]:
-            assert pagination is None or not pagination.get("truncated"), pagination
-            break
-        assert pagination["truncated"] and pagination["maxResultBytes"] == SMALL_RESULT_BUDGET, (
-            f"with limit {pagination['limit']} only the budget can end this page: {pagination}"
-        )
-        assert pagination["offset"] == offset and pagination["nextOffset"] == offset + len(items), pagination
-        offset = pagination["nextOffset"]
-        assert pages <= CREATED, "paging must make progress"
-    return collected, pages
-
-
 def test_list_dashboards_pages_by_result_size(
     mcp_client: MCPClient, small_budget_client: MCPClient, test_id: str
 ) -> None:
-    """SigNoz's dashboard page gains pagination only when the budget cuts it, and the walk covers total."""
+    """A small budget splits SigNoz's dashboard list into pages that add up to the whole list."""
     prefix = f"mcp-e2e-list-budget-{test_id}"
     created: list[str] = []
 
@@ -130,27 +99,30 @@ def test_list_dashboards_pages_by_result_size(
             body = first_block_json(result)
             created.append(body.get("data", body)["id"])
 
-        full = first_block_json(assert_tool_ok(list_page(mcp_client, 0)))
-        assert "pagination" not in full, "a dashboard page that fits keeps SigNoz's body without pagination"
-        assert full["data"]["total"] == CREATED
-        assert sorted(item["id"] for item in full["data"]["dashboards"]) == sorted(created)
+        full = first_block_json(assert_tool_ok(list_page(mcp_client, 0)))["data"]
+        assert sorted(item["id"] for item in full["dashboards"]) == sorted(created)
 
-        pages = []
+        offset, pages = 0, []
+        while True:
+            page = first_block_json(assert_tool_ok(list_page(small_budget_client, offset)))
+            pages.append(page)
+            pagination = page.get("pagination")
+            if pagination is None or not pagination["hasMore"]:
+                break
+            assert pagination["nextOffset"] > offset and len(pages) <= CREATED, (
+                f"paging must make progress: {pagination}"
+            )
+            offset = pagination["nextOffset"]
 
-        def small_page(offset: int) -> dict:
-            result = list_page(small_budget_client, offset)
-            pages.append(first_block_json(assert_tool_ok(result)))
-            return result
-
-        collected, count = _walk_pages(small_page, lambda body: body["data"]["dashboards"])
-        assert count > 1, f"a {SMALL_RESULT_BUDGET}-byte budget must split {CREATED} dashboards into several pages"
-        assert _without_web_url(collected) == _without_web_url(full["data"]["dashboards"]), (
-            "following nextOffset must return every dashboard once, whole, in order"
+        assert len(pages) > 1, (
+            f"a {SMALL_RESULT_BUDGET}-byte budget must split SigNoz's list of {CREATED} dashboards into several pages"
         )
-        for page in pages:
-            assert page["data"]["total"] == CREATED, "a cut keeps SigNoz's total"
-            if "pagination" in page:
-                assert page["pagination"]["total"] == CREATED, page["pagination"]
+        collected = [item for page in pages for item in page["data"]["dashboards"]]
+        assert _without_web_url(collected) == _without_web_url(full["dashboards"]), (
+            "following nextOffset must return every dashboard SigNoz holds once, whole, in order"
+        )
+        # A cut page reports SigNoz's total, so it must count the whole list at every offset.
+        assert [page["data"]["total"] for page in pages] == [CREATED] * len(pages)
     finally:
         remaining = []
         for dashboard_id in created:
