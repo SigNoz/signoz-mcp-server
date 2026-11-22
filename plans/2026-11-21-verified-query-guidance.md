@@ -906,6 +906,9 @@ A second round resolved D1 to D10, accepted the part of D2 that was declined, an
   `timeAggregation`.
 - D13: SigNoz reads `spanfield.` as `span.`, so `spanfield.isRoot` counts as a root filter.
 
+A third round resolved D11 to D13 and approved. It left one nit, declined as too rare: D14, a key
+written with a data-type suffix such as `resource.operation:string` is not recognised.
+
 ### 2026-11-21 — Mutation-side rules on the tools, schema pointers kept
 
 - Decision: rules that prevent a wrong result with no error go on the tool: the alert unit rule,
