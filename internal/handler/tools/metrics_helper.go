@@ -19,8 +19,7 @@ const metricsLegacyQueryAliasError = `parameter validation failed: "query" is no
 type metricsQueryRequest struct {
 	MetricName       string
 	MetricType       string
-	IsMonotonic      bool
-	IsMonotonicSet   bool // the caller sent isMonotonic, so a false is theirs
+	IsMonotonic      *bool // nil when the caller did not send it, so a false is theirs
 	Temporality      string
 	TimeAggregation  string
 	SpaceAggregation string
@@ -53,14 +52,13 @@ type formulaSubQuery struct {
 	Name             string   `json:"name" jsonschema:"Query name the formula references, for example B."`
 	MetricName       string   `json:"metricName" jsonschema:"Metric to query, for example http_requests_total."`
 	MetricType       string   `json:"metricType,omitempty" jsonschema:"gauge, sum, histogram, exponential_histogram, or summary. Omit to auto-fetch it with temporality and monotonicity."`
-	IsMonotonic      bool     `json:"isMonotonic,omitempty" jsonschema:"Whether a sum metric only increases. Auto-fetched when omitted."`
+	IsMonotonic      *bool    `json:"isMonotonic,omitempty" jsonschema:"Whether a sum metric only increases. Auto-fetched when omitted."`
 	Temporality      string   `json:"temporality,omitempty" jsonschema:"cumulative, delta, or unspecified. Auto-fetched when omitted."`
 	TimeAggregation  string   `json:"timeAggregation,omitempty" jsonschema:"Aggregation over time buckets: latest, sum, avg, min, max, count, count_distinct, rate, or increase. Defaulted by metric type."`
 	SpaceAggregation string   `json:"spaceAggregation,omitempty" jsonschema:"Aggregation across series: sum, avg, min, max, count, or p50 to p99 for histograms. Defaulted by metric type."`
 	GroupBy          []string `json:"groupBy,omitempty" jsonschema:"Field names to group by, as an array or a comma-separated string. Use the same groupBy as the primary query so the formula can match series."`
 	Filter           string   `json:"filter,omitempty" jsonschema:"Filter expression, for example \"service.name = 'checkout'\"."`
 	ReduceTo         string   `json:"reduceTo,omitempty" jsonschema:"Required when requestType is scalar: how to reduce each series to one value (last, max, min, avg, sum, count, or median)."`
-	IsMonotonicSet   bool     `json:"-"`
 }
 
 // formulaSubQuerySchema is the formulaQueries item schema, derived from
@@ -115,7 +113,7 @@ func parseMetricsQueryArgs(args map[string]any) (*metricsQueryRequest, error) {
 	if v, present, err := parseBoolArg(args, "isMonotonic"); err != nil {
 		return nil, err
 	} else if present {
-		req.IsMonotonic, req.IsMonotonicSet = v, true
+		req.IsMonotonic = &v
 	}
 
 	groupBy, err := parseFieldNameList("groupBy", args["groupBy"])
@@ -172,9 +170,6 @@ func parseMetricsQueryArgs(args map[string]any) (*metricsQueryRequest, error) {
 			}
 			if err := json.Unmarshal(data, &req.FormulaQueries); err != nil {
 				return nil, fmt.Errorf(`%s "formulaQueries" has the wrong shape: %v; each item is {name, metricName, metricType, isMonotonic, temporality, timeAggregation, spaceAggregation, reduceTo, groupBy, filter}`, validationErrorPrefix, err)
-			}
-			for i, item := range items {
-				req.FormulaQueries[i].IsMonotonicSet = item["isMonotonic"] != nil
 			}
 		}
 	}

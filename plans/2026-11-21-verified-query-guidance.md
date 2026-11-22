@@ -830,6 +830,10 @@ These fixes have not been reviewed again.
 Four bugs this PR's texts sit on, fixed here because each is small and the texts would otherwise
 describe them.
 
+- Whether the caller sent isMonotonic is the field itself: a `*bool`, nil when it was not sent.
+  It first shipped as a second `IsMonotonicSet` flag kept in step by hand; a request built without
+  the parser would have left the flag false and let the lookup override the caller's value. The
+  published schema is unchanged.
 - `metricType` alone skipped the metadata lookup (SigNoz/nerve-pod#674 item 6), so `metricType:
   sum` defaulted to avg and the counter notes stayed off. With `metricType` set, the tool now
   fetches whichever of temporality and isMonotonic the caller left out, for the primary query and

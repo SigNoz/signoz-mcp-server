@@ -230,6 +230,12 @@ func TestQueryMetrics_FillsOnlyTheMetadataACallerLeftOut(t *testing.T) {
 			wantSent: map[string]aggregation{"A": {"delta", "rate"}},
 		},
 		{
+			name: "a sent false is the caller's, so it needs no lookup either", metadataStatus: http.StatusInternalServerError,
+			args:     map[string]any{"metricType": "sum", "isMonotonic": false, "temporality": "cumulative"},
+			want:     []string{"temporality: cumulative (caller-provided)", "isMonotonic: false (caller-provided)", "timeAggregation: avg"},
+			wantSent: map[string]aggregation{"A": {"cumulative", "avg"}},
+		},
+		{
 			name: "a failed lookup keeps the query running", metadataStatus: http.StatusInternalServerError,
 			args:        map[string]any{"metricType": "sum"},
 			wantLookups: 1,
@@ -254,6 +260,15 @@ func TestQueryMetrics_FillsOnlyTheMetadataACallerLeftOut(t *testing.T) {
 			wantLookups: 1,
 			want:        []string{"query B: temporality: cumulative (auto-fetched)", "query B: isMonotonic: true (auto-fetched)", "query B: timeAggregation: rate"},
 			wantSent:    map[string]aggregation{"A": {"cumulative", "rate"}, "B": {"cumulative", "rate"}},
+		},
+		{
+			name: "a formula sub-query that sends false", metadataStatus: http.StatusInternalServerError,
+			args: map[string]any{
+				"metricType": "sum", "isMonotonic": true, "temporality": "cumulative", "formula": "A / B",
+				"formulaQueries": []any{map[string]any{"name": "B", "metricName": "http.requests", "metricType": "sum", "isMonotonic": false, "temporality": "cumulative"}},
+			},
+			want:     []string{"query B: isMonotonic: false (caller-provided)", "query B: timeAggregation: avg"},
+			wantSent: map[string]aggregation{"A": {"cumulative", "rate"}, "B": {"cumulative", "avg"}},
 		},
 	}
 	for _, tc := range tests {

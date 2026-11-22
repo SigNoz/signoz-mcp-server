@@ -93,7 +93,7 @@ func TestParseMetricsQueryArgs_IsMonotonicGarbage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !req.IsMonotonic {
+	if req.IsMonotonic == nil || !*req.IsMonotonic {
 		t.Fatal("expected IsMonotonic=true")
 	}
 }

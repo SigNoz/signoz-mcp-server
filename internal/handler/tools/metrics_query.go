@@ -65,6 +65,7 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 	decisions = append(decisions, fmt.Sprintf("metricName: %s", mqr.MetricName))
 
 	// Auto-fetch metric metadata if not provided
+	isMonotonic := false
 	if mqr.MetricType == "" {
 		meta, fetchErr := h.fetchMetricMetadata(ctx, client, mqr.MetricName, mqr.Source)
 		if fetchErr != nil {
@@ -76,7 +77,7 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 		}
 		if meta != nil {
 			mqr.MetricType = meta.MetricType
-			mqr.IsMonotonic = meta.IsMonotonic
+			isMonotonic = meta.IsMonotonic
 			mqr.Temporality = meta.Temporality
 			decisions = append(decisions, fmt.Sprintf("metricType: %s (auto-fetched)", mqr.MetricType))
 			// Absent fields are reported as unknown/assumed, not authoritative.
@@ -86,9 +87,9 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 				decisions = append(decisions, fmt.Sprintf("temporality: %s (auto-fetched)", mqr.Temporality))
 			}
 			if meta.IsMonotonicMissing {
-				decisions = append(decisions, fmt.Sprintf("isMonotonic: unknown (not returned by metadata; assumed %t)", mqr.IsMonotonic))
+				decisions = append(decisions, fmt.Sprintf("isMonotonic: unknown (not returned by metadata; assumed %t)", isMonotonic))
 			} else {
-				decisions = append(decisions, fmt.Sprintf("isMonotonic: %t (auto-fetched)", mqr.IsMonotonic))
+				decisions = append(decisions, fmt.Sprintf("isMonotonic: %t (auto-fetched)", isMonotonic))
 			}
 		} else {
 			// User-correctable (wrong metric name); coded like the formula not-found path.
@@ -96,8 +97,9 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 		}
 	} else {
 		decisions = append(decisions, fmt.Sprintf("metricType: %s (caller-provided)", mqr.MetricType))
-		decisions = append(decisions, h.fillOmittedMetricMetadata(ctx, client, mqr.MetricName, mqr.MetricType, mqr.Source,
-			&mqr.Temporality, &mqr.IsMonotonic, mqr.IsMonotonicSet)...)
+		var filled []string
+		filled, isMonotonic = h.fillOmittedMetricMetadata(ctx, client, mqr.MetricName, mqr.MetricType, mqr.Source, &mqr.Temporality, mqr.IsMonotonic)
+		decisions = append(decisions, filled...)
 	}
 
 	// Step interval: use caller-provided value or let the backend decide
@@ -120,7 +122,7 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 	// Apply defaults for primary query
 	resolved, err := metricsrules.ApplyDefaults(metricsrules.MetricQueryParams{
 		MetricType:       mqr.MetricType,
-		IsMonotonic:      mqr.IsMonotonic,
+		IsMonotonic:      isMonotonic,
 		Temporality:      mqr.Temporality,
 		TimeAggregation:  mqr.TimeAggregation,
 		SpaceAggregation: mqr.SpaceAggregation,
@@ -260,7 +262,7 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 		notes = append(notes, h.recordMeasurementNotes(ctx, "signoz_query_metrics", metricMeasurementNotes(metricMeasurement{
 			MetricName:       mqr.MetricName,
 			MetricType:       mqr.MetricType,
-			IsMonotonic:      mqr.IsMonotonic,
+			IsMonotonic:      isMonotonic,
 			Temporality:      mqr.Temporality,
 			TimeAggregation:  resolved.TimeAggregation,
 			SpaceAggregation: resolved.SpaceAggregation,
@@ -354,20 +356,22 @@ func (h *Handler) fetchMetricMetadata(ctx context.Context, client metricMetadata
 
 // fillOmittedMetricMetadata fills the temporality and monotonicity that a
 // caller who sent metricType left out; a value the caller sent always wins. A
-// failed or empty lookup keeps the query running on the caller's values.
-func (h *Handler) fillOmittedMetricMetadata(ctx context.Context, client metricMetadataClient, metricName, metricType, source string, temporality *string, isMonotonic *bool, isMonotonicSet bool) []string {
-	var decisions []string
+// failed or empty lookup keeps the query running on the caller's values. sent
+// is the caller's isMonotonic, nil when it was not sent; the monotonicity to
+// use is returned.
+func (h *Handler) fillOmittedMetricMetadata(ctx context.Context, client metricMetadataClient, metricName, metricType, source string, temporality *string, sent *bool) (decisions []string, isMonotonic bool) {
 	if *temporality != "" {
 		decisions = append(decisions, fmt.Sprintf("temporality: %s (caller-provided)", *temporality))
 	}
-	if isMonotonicSet {
-		decisions = append(decisions, fmt.Sprintf("isMonotonic: %t (caller-provided)", *isMonotonic))
+	if sent != nil {
+		isMonotonic = *sent
+		decisions = append(decisions, fmt.Sprintf("isMonotonic: %t (caller-provided)", isMonotonic))
 	}
 	// A gauge has neither value, and only a sum has a monotonicity.
 	needTemporality := *temporality == "" && !strings.EqualFold(metricType, "gauge")
-	needMonotonic := !isMonotonicSet && strings.EqualFold(metricType, "sum")
+	needMonotonic := sent == nil && strings.EqualFold(metricType, "sum")
 	if !needTemporality && !needMonotonic {
-		return decisions
+		return decisions, isMonotonic
 	}
 
 	meta, err := h.fetchMetricMetadata(ctx, client, metricName, source)
@@ -399,14 +403,14 @@ func (h *Handler) fillOmittedMetricMetadata(ctx context.Context, client metricMe
 		case unknown != "":
 			decisions = append(decisions, fmt.Sprintf("isMonotonic: unknown (%s; assumed false)", unknown))
 		case meta.IsMonotonicMissing:
-			*isMonotonic = meta.IsMonotonic
-			decisions = append(decisions, fmt.Sprintf("isMonotonic: unknown (not returned by metadata; assumed %t)", *isMonotonic))
+			isMonotonic = meta.IsMonotonic
+			decisions = append(decisions, fmt.Sprintf("isMonotonic: unknown (not returned by metadata; assumed %t)", isMonotonic))
 		default:
-			*isMonotonic = meta.IsMonotonic
-			decisions = append(decisions, fmt.Sprintf("isMonotonic: %t (auto-fetched)", *isMonotonic))
+			isMonotonic = meta.IsMonotonic
+			decisions = append(decisions, fmt.Sprintf("isMonotonic: %t (auto-fetched)", isMonotonic))
 		}
 	}
-	return decisions
+	return decisions, isMonotonic
 }
 
 // parseExactMetricMetadata decodes a GetMetricMetadata body. It returns nil
@@ -514,7 +518,7 @@ func normalizeMetricType(t string) string {
 // resolveFormulaSubQuery applies defaults for a formula sub-query, auto-fetching metadata if needed.
 func resolveFormulaSubQuery(ctx context.Context, h *Handler, client metricMetadataClient, fq *formulaSubQuery, requestType, source string, decisions *[]string) (*metricsrules.ResolvedAggregation, error) {
 	metricType := fq.MetricType
-	isMonotonic := fq.IsMonotonic
+	isMonotonic := false
 	temporality := fq.Temporality
 
 	// Auto-fetch if needed
@@ -542,7 +546,9 @@ func resolveFormulaSubQuery(ctx context.Context, h *Handler, client metricMetada
 			return nil, errors.New(metricNotFoundMessage(fq.MetricName, fq.Name))
 		}
 	} else {
-		for _, d := range h.fillOmittedMetricMetadata(ctx, client, fq.MetricName, metricType, source, &temporality, &isMonotonic, fq.IsMonotonicSet) {
+		var filled []string
+		filled, isMonotonic = h.fillOmittedMetricMetadata(ctx, client, fq.MetricName, metricType, source, &temporality, fq.IsMonotonic)
+		for _, d := range filled {
 			*decisions = append(*decisions, fmt.Sprintf("query %s: %s", fq.Name, d))
 		}
 	}
