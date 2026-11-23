@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "built_at": "2026-11-19T10:23:32.288779Z",
+  "built_at": "2026-11-23T10:26:26.455406739Z",
   "sitemap_hash": "6c477b07237f2491960b28d0d297d971ba05ee69cc9482721fc9dbcc8f256550",
   "pages": [
     {
@@ -78,8 +78,8 @@
     {
       "url": "https://signoz.io/docs/install/docker-swarm.md",
       "title": "Install SigNoz on Docker Swarm - Self-Hosted Setup",
-      "sha256": "acbb52dcdd2e94bfdfffd4293d6a0f10da50b6ac6b73f14ea6e368f0bcbed071",
-      "fetched_at": "2026-11-19T15:53:13.8977+05:30"
+      "sha256": "0bc84bf4cfae938c1c40a1af4b62a12ad460aa35beb48ca833cb3b68730b7c89",
+      "fetched_at": "2026-11-23T10:26:26.316743915Z"
     },
     {
       "url": "https://signoz.io/docs/install/docker-selinux.md",
@@ -174,8 +174,8 @@
     {
       "url": "https://signoz.io/docs/install/azure-container-apps.md",
       "title": "Deploying to Azure Container Apps",
-      "sha256": "cde5c6d956120829e9911cd33bf1e81b4db522a37d260ec8192fe8504b7e6a6d",
-      "fetched_at": "2026-11-19T15:53:14.860628+05:30"
+      "sha256": "1da48dea18812097a7096307cd58395ef13e6b000f1cca7b6ee0bd3c422f9423",
+      "fetched_at": "2026-11-23T10:26:26.3395577Z"
     },
     {
       "url": "https://signoz.io/docs/install/marketplaces.md",
@@ -618,8 +618,8 @@
     {
       "url": "https://signoz.io/docs/manage/administrator-guide/sso/user-guides/sso-google.md",
       "title": "Single Sign-on Authentication With Google Workspace",
-      "sha256": "d17dd4ec623af068f83bbd554798a5c189243af36edf89414c9e9f4d08832e93",
-      "fetched_at": "2026-11-19T15:53:14.232838+05:30"
+      "sha256": "2ba29c32a5b19a6b07f21624c94bd0d53dd027c2d51e0543e6e29a70ccf652f6",
+      "fetched_at": "2026-11-23T10:26:26.345964188Z"
     },
     {
       "url": "https://signoz.io/docs/manage/administrator-guide/sso/user-guides/saml-keycloak.md",
@@ -672,8 +672,8 @@
     {
       "url": "https://signoz.io/docs/manage/administrator-guide/workspace-url.md",
       "title": "Edit Your Workspace URL",
-      "sha256": "cc9e23a00619de8b75afa578a9b1d67ce522911b1e8894b2a195b1b1f551d083",
-      "fetched_at": "2026-11-19T15:53:14.427297+05:30"
+      "sha256": "57789c2c9f96f4f14af11de1f279161f8b692b578715f39ece8cb46b148c2a81",
+      "fetched_at": "2026-11-23T10:26:26.40620567Z"
     },
     {
       "url": "https://signoz.io/docs/telemetry.md",
@@ -2256,8 +2256,8 @@
     {
       "url": "https://signoz.io/docs/userguide/drop-metrics.md",
       "title": "How to Drop and Filter OpenTelemetry Metrics",
-      "sha256": "762ea4545f0930a4eb9b5ba373e80feea86d29c4e223af4bbe9f25232b9bdeb6",
-      "fetched_at": "2026-11-19T15:53:18.338379+05:30"
+      "sha256": "880dac6fc158649bc54b4c1806c0c11e203dddab904c6ab74e2509e05f22417e",
+      "fetched_at": "2026-11-23T10:26:26.342533459Z"
     },
     {
       "url": "https://signoz.io/docs/metrics-management/dropping-metric-labels.md",
@@ -3570,8 +3570,8 @@
     {
       "url": "https://signoz.io/docs/alerts-management/notification-channel/webhook.md",
       "title": "Configure Webhook Channel",
-      "sha256": "0453a3ff566f7fa1845a1d0b7f127d101dd68988257722e793ba5a1def18eeb4",
-      "fetched_at": "2026-11-19T15:53:22.818859+05:30"
+      "sha256": "629c505ef595930c48693e95c4cd8791b95033aa87f133d95e84334e377e6d5e",
+      "fetched_at": "2026-11-23T10:26:26.335056416Z"
     },
     {
       "url": "https://signoz.io/docs/alerts-management/notification-channel/incident-io.md",
@@ -4421,9 +4421,9 @@
     },
     {
       "url": "https://signoz.io/docs/aws-monitoring/elb.md",
-      "title": "Monitor AWS ELB (Classic) with SigNoz",
-      "sha256": "66b1316c0233fb83db0b391a66753e1b373fa4f9f3a93ba0f796d9519e23ced4",
-      "fetched_at": "2026-11-19T15:53:18.339582+05:30"
+      "title": "Monitor AWS ELB Access Logs and CloudWatch Metrics",
+      "sha256": "7f5e484f6eb811072dd73231d74463680d631538abac5b5313823a4a786bce55",
+      "fetched_at": "2026-11-23T10:26:26.325984191Z"
     },
     {
       "url": "https://signoz.io/docs/aws-monitoring/lambda.md",
@@ -4608,8 +4608,8 @@
     {
       "url": "https://signoz.io/docs/integrations/aws/one-click-aws-integrations.md",
       "title": "AWS One-Click Integration - Collect AWS Metrics and Logs",
-      "sha256": "c9d969c1cb48385ac202e47291fed329deb9f58d0dd7152f5bd092379c9fc9f9",
-      "fetched_at": "2026-11-19T15:53:20.734236+05:30"
+      "sha256": "a38867ceede8d468d425f6c4415ec3d284b6dc768bcd70ea4ced18a195828c41",
+      "fetched_at": "2026-11-23T10:26:26.350859427Z"
     },
     {
       "url": "https://signoz.io/docs/integrations/aws/alb.md",
@@ -4674,8 +4674,8 @@
     {
       "url": "https://signoz.io/docs/integrations/aws/s3-sync.md",
       "title": "S3 Sync - Send Logs from Amazon S3 Buckets to SigNoz",
-      "sha256": "8aa936ff7155b1c4b3ea1bf5d9c714b81de4748a49c2e5e74f0de7446410fca9",
-      "fetched_at": "2026-11-19T15:53:22.371676+05:30"
+      "sha256": "4bbdf254d5fe71c6fa082b3df969753d2b35e5ac83dde9e735a8d2c63b169a62",
+      "fetched_at": "2026-11-23T10:26:26.353280838Z"
     },
     {
       "url": "https://signoz.io/docs/integrations/aws/sns.md",
@@ -5130,8 +5130,8 @@
     {
       "url": "https://signoz.io/docs/ingestion/signoz-cloud/overview.md",
       "title": "Ingestion Overview for SigNoz Cloud",
-      "sha256": "7ca33a810006ee3c1bcc8789bec5cd76464aa29b50ddb4b948584081a8d76fd0",
-      "fetched_at": "2026-11-19T15:53:26.833718+05:30"
+      "sha256": "81a092db0cd7677b18f16f57b61f1ad73207aff25826f07acdf3bba295502096",
+      "fetched_at": "2026-11-23T10:26:26.339129433Z"
     },
     {
       "url": "https://signoz.io/docs/ingestion/signoz-cloud/keys.md",
@@ -5447,9 +5447,9 @@
     },
     {
       "url": "https://signoz.io/docs/azure-monitoring/bootstrapping/collector-setup.md",
-      "title": "Central Collector Setup",
-      "sha256": "0616bc33c2a386d14802ac0f1fa1e96ddc04c001b46c179409e755bb355f12cd",
-      "fetched_at": "2026-11-19T15:53:31.108359+05:30"
+      "title": "Set Up a Central OpenTelemetry Collector on Azure VM or AKS",
+      "sha256": "2d495412c6286e53d757c0c1a26406e9368e0ee9904be0806c7f2c4acba4129d",
+      "fetched_at": "2026-11-23T10:26:26.33735772Z"
     },
     {
       "url": "https://signoz.io/docs/azure-monitoring/bootstrapping/data-ingestion.md",
@@ -5591,9 +5591,9 @@
     },
     {
       "url": "https://signoz.io/docs/gcp-monitoring/bootstrapping/pubsub-topic-creation.md",
-      "title": "Creating Pub/Sub Topic",
-      "sha256": "884936fa2c9cb52ef4a8690d898fadbccb6e46cf2a47ab60741df74be6ace979",
-      "fetched_at": "2026-11-19T15:53:31.8055+05:30"
+      "title": "Create a GCP Pub/Sub Topic and Subscription for SigNoz Logs",
+      "sha256": "5c02ebff32167e41518919514be3ce3b1cef5f5f905698a761dd9e0a775a7792",
+      "fetched_at": "2026-11-23T10:26:26.329586244Z"
     },
     {
       "url": "https://signoz.io/docs/gcp-monitoring/bootstrapping/log-router-setup.md",
@@ -5856,8 +5856,8 @@
     {
       "url": "https://signoz.io/docs/faqs/general.md",
       "title": "General FAQs",
-      "sha256": "1d4800225a5f89874586ec7d5007c474c1c221b2e0778248f958e2c569b90acb",
-      "fetched_at": "2026-11-19T15:53:31.833507+05:30"
+      "sha256": "087e56c69fa97f134302b0ee207d8d066f17b2d55714c621b69a4943a7bda09d",
+      "fetched_at": "2026-11-23T10:26:26.343984919Z"
     },
     {
       "url": "https://signoz.io/docs/faqs/product.md",

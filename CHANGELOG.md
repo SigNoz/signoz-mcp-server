@@ -28,6 +28,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+
+## [1.0.0] - 2026-11-23
+
+### Added
+- route questions in the instructions and say what a query measured ([#475](https://github.com/SigNoz/signoz-mcp-server/pull/475))
+- accept RFC 3339 and relative start and end on time-windowed tools ([#467](https://github.com/SigNoz/signoz-mcp-server/pull/467))
+- cap top operations with a limit and state units on service tools ([#465](https://github.com/SigNoz/signoz-mcp-server/pull/465))
+- move to SigNoz v0.151.0, teach its new panels and heatmaps, and fix scoped-role service filters ([#466](https://github.com/SigNoz/signoz-mcp-server/pull/466))
+- add signoz_get_service_map for service dependencies ([#460](https://github.com/SigNoz/signoz-mcp-server/pull/460))
+- refresh the docs index from the website manifest ([#458](https://github.com/SigNoz/signoz-mcp-server/pull/458))
+
+### Fixed
+- say when SigNoz raised the requested step ([#477](https://github.com/SigNoz/signoz-mcp-server/pull/477))
+- say when a text search only looked in the log body ([#473](https://github.com/SigNoz/signoz-mcp-server/pull/473))
+- say which spans count as a service's requests ([#474](https://github.com/SigNoz/signoz-mcp-server/pull/474))
+- show notes to clients that read only structured content ([#472](https://github.com/SigNoz/signoz-mcp-server/pull/472))
+- teach a smaller step to find when a change happened ([#468](https://github.com/SigNoz/signoz-mcp-server/pull/468))
+- skip fallback page fetches when sitemap is unchanged ([#462](https://github.com/SigNoz/signoz-mcp-server/pull/462))
+
+### Documentation
+- ask for new tools to use routes in the SigNoz spec ([#461](https://github.com/SigNoz/signoz-mcp-server/pull/461))
+
+### Other
+- Revert "feat(oauth): sign in with your SigNoz account" ([#469](https://github.com/SigNoz/signoz-mcp-server/pull/469))
+
 ## [0.20.0] - 2026-11-18
 
 ### Added
@@ -594,3 +619,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [0.18.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.17.0...v0.18.0
 [0.19.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.18.0...v0.19.0
 [0.20.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.19.0...v0.20.0
+[1.0.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.20.0...v1.0.0
