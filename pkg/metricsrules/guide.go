@@ -293,13 +293,14 @@ Even log and span volume are queried this way, as metrics with ` + "`signal: \"m
 
 ### Hourly aggregation — use ` + "`stepInterval: 3600`" + `
 
-Meter data is aggregated in 1-hour buckets, so always set ` + "`stepInterval: 3600`" + ` (as in the
-example below). A smaller step adds no resolution and a query window shorter than 1 hour yields at
-most the current, still-incomplete hour (the build tested returns it flagged ` + "`partial: true`" + `;
-some versions return no data). Use a window of at least a few hours. When **signoz_query_metrics**
-is called without ` + "`stepInterval`" + ` it sends none and the backend auto-derives roughly
-` + "`max(60, window/300)`" + ` seconds, below 3600 for any window shorter than ~12.5 days, so pass
-` + "`stepInterval: 3600`" + ` explicitly for meter queries.
+Meter data is aggregated in 1-hour buckets, so a meter step is never below 3600 seconds. SigNoz
+raises a smaller ` + "`stepInterval`" + ` to its minimum for the window, and picks the step itself
+when ` + "`stepInterval`" + ` is omitted; over long windows that minimum is more than an hour. For
+hourly buckets pass ` + "`stepInterval: 3600`" + ` (as in the example below). When SigNoz raises the
+step you passed, the **signoz_query_metrics** note names the step it applied. A query window
+shorter than 1 hour yields at most the current, still-incomplete hour (the build tested returns
+it flagged ` + "`partial: true`" + `; some versions return no data). Use a window of at least a few
+hours.
 
 ### Discover the current meter metrics
 
@@ -349,7 +350,8 @@ dimension, just like any other metric.
 - Auto-calculated as (end - start) / 300 seconds, rounded down to a multiple of 60, with a minimum of 60
 - Windows from a day up to a week round it to the nearest 300 seconds, and longer windows to the nearest 1800
 - Targets approximately 300 data points per series
-- Can be overridden with the stepInterval parameter
+- Can be overridden with the stepInterval parameter; SigNoz raises a value below its minimum for the window
+- Cost Meter has its own, larger steps (see Cost Meter above)
 - Steps start at multiples of the step since the Unix epoch, so a window that does not start on such a
   multiple is split across one more step
 `

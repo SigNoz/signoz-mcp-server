@@ -121,6 +121,7 @@ func (h *Handler) handleAggregateLogs(ctx context.Context, req mcp.CallToolReque
 	}
 
 	notes := append([]string{windowNote(reqData.StartTime, reqData.EndTime)}, aggregateNotes(reqData)...)
+	notes = append(notes, aggregateStepNote(ctx, h.logger, "signoz_aggregate_logs", reqData, result))
 	return aggregateResult(ctx, h.logger, "signoz_aggregate_logs", result, reqData.LimitClamped, notes...), nil
 }
 
