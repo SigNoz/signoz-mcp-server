@@ -1,8 +1,8 @@
 # Plan: Feedback Rule In Server Instructions
 
-Status: In Progress
+Status: Done
 Issue: https://github.com/SigNoz/nerve-pod/issues/636
-PR:
+PR: https://github.com/SigNoz/signoz-mcp-server/pull/482
 
 ## Context
 
@@ -70,9 +70,9 @@ The rule is static: it is also sent when `FEEDBACK_ENABLED=false`.
 
 ## Verification
 
-- `go test ./internal/mcp-server -count=1`, `make check-fmt check-build check-guardrails
-  check-repo-docs`: pass. `TestGuardrail_WireContractBudgets` and `TestGuardrail_WireCatalogGoldens`
-  cover the budget and the recorded `initialize` response.
+- `make check-fmt lint check-build test-race check-guardrails check-protocol check-conformance
+  check-e2e-style check-repo-docs`: no failures. `TestGuardrail_WireContractBudgets` and
+  `TestGuardrail_WireCatalogGoldens` cover the budget and the recorded `initialize` response.
 - Before and after check (EVL-1, EVL-2). The server built from `main` and from this branch, in
   stdio mode against a local fake SigNoz, with Segment delivery pointed at a dead proxy so nothing
   left the machine. Client: Claude Code 2.1.331 headless with claude-sonnet-5-5, which deferred tool
@@ -92,9 +92,17 @@ The rule is static: it is also sent when `FEEDBACK_ENABLED=false`.
 - Limits of that check: one client, one model, three runs per cell, and a fake SigNoz. It shows the
   rule changes behavior for a client that defers tool loading. It does not measure other clients,
   and feedback the user states in passing is still sent only sometimes.
-- Not run: `make ci` in full locally (`check-deps` fails on this machine's modified module cache)
-  and the e2e suite; CI runs both.
+- Not run locally: `make check-deps`, which fails on this machine's modified Go module cache
+  (`go.mod` and `go.sum` are unchanged), and the e2e suite. CI runs both.
 
 ## Outcome
 
-Pending.
+Shipped as planned: rule 10 in the server instructions and the same text in the recorded
+`initialize` response. No tool, schema, or configuration changed.
+
+- SigNoz/agent-skills needs no companion change: the rule is additive and changes nothing skills
+  teach.
+- Noz copies the recorded `initialize` response into its test fixtures, so it picks the rule up at
+  its next snapshot refresh. Its own prompt already gives the same instruction.
+- Deferred: a reminder on unexpected tool errors, which Sanity also uses, and a check on a second
+  client. Neither has an issue yet.
