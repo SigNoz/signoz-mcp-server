@@ -1,7 +1,9 @@
 package tools
 
 import (
+	"bytes"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -31,6 +33,8 @@ func TestExecuteBuilderQuery_DropsMisplacedSearchContext(t *testing.T) {
 	h, requests := newAIToolsHandler(t, func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(reply))
 	})
+	var logs bytes.Buffer
+	h.logger = slog.New(slog.NewTextHandler(&logs, nil))
 	server := newMCPTestServer()
 	h.RegisterQueryBuilderV5Handlers(server)
 	result := callTestToolFromJSONRPC(testCtx(), t, server, json.RawMessage(
@@ -42,6 +46,9 @@ func TestExecuteBuilderQuery_DropsMisplacedSearchContext(t *testing.T) {
 	require.Len(t, calls, 1)
 	require.Equal(t, "/api/v5/query_range", calls[0].Path)
 	require.JSONEq(t, query, calls[0].Body, "strip only searchContext from the upstream query")
+	require.Contains(t, logs.String(), "level=WARN")
+	require.Contains(t, logs.String(), "validation.path=query.searchContext")
+	require.NotContains(t, logs.String(), "Count logs in that window")
 }
 
 // SigNoz exhausts its memory on a raw query whose start is missing or 0
