@@ -11,9 +11,34 @@ import (
 
 	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
+	"github.com/stretchr/testify/require"
 )
 
 const testNotificationChannelID = "019947a7-f200-7000-8000-000000000001"
+
+func TestListNotificationChannels_MalformedSearchContextDoesNotBlock(t *testing.T) {
+	h, requests := newAIToolsHandler(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"status":"success","data":{"channels":[],"total":0}}`))
+	})
+	s := newMCPTestServer()
+	h.RegisterNotificationChannelHandlers(s)
+
+	result := callTestToolFromJSONRPC(testCtx(), t, s, json.RawMessage(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"signoz_list_notification_channels","arguments":{"limit":"7","searchContext":{"unexpected":true}}}}`))
+	require.False(t, result.IsError, "searchContext must not block listing channels: %s", textContent(t, result))
+	require.Contains(t, textContent(t, result), `"limit":7`)
+	require.Contains(t, textContent(t, result), `Input validation notice: parameter \"searchContext\"`)
+
+	result = callTestToolFromJSONRPC(testCtx(), t, s, json.RawMessage(`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"signoz_list_notification_channels","arguments":{"unexpected":true,"searchContext":{"unexpected":true}}}}`))
+	require.Equal(t, CodeValidationFailed, resultCode(t, result))
+	require.Contains(t, resultText(t, result), `"unexpected" is not a parameter of this tool`)
+
+	calls := requests()
+	require.Len(t, calls, 1, "only the valid list request should reach SigNoz")
+	require.Equal(t, http.MethodGet, calls[0].Method)
+	require.Equal(t, "/api/v2/notification_channels", calls[0].Path)
+	require.Contains(t, calls[0].Query, "limit=7")
+	require.NotContains(t, calls[0].Query, "searchContext")
+}
 
 // TestNotificationChannelFailuresKeepTheProviderSecretOutOfLogs pins the
 // credential contract from CLAUDE.md through the full production path (real
