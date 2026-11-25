@@ -17,9 +17,10 @@ under Verification is the evidence.
 
 ## Approach
 
-Add one numbered rule to `## Rules` in the server instructions. It names the tool, the three
-problems the tool description already lists, and the user's own feedback about SigNoz, and tells the
-agent to send once and continue. Masking and the report format stay in the tool description, which
+Add one numbered rule to `## Rules` in the server instructions. It names the tool, three of the
+four problems the tool description lists, and the user's own feedback about SigNoz, and tells the
+agent to send once and continue. It leaves out unclear documentation and the words "or worked
+around it", which did not fit the byte budget; the tool description still carries both. Masking and the report format stay in the tool description, which
 the agent loads before it can call the tool (RES-5).
 
 The rule is static: it is also sent when `FEEDBACK_ENABLED=false`.
@@ -70,8 +71,9 @@ The rule is static: it is also sent when `FEEDBACK_ENABLED=false`.
 
 ## Verification
 
-- `make check-fmt lint check-build test-race check-guardrails check-protocol check-conformance
-  check-e2e-style check-repo-docs`: no failures. `TestGuardrail_WireContractBudgets` and
+- `make check-fmt lint` pass. `make check-build test-race check-guardrails check-protocol
+  check-conformance check-e2e-style check-repo-docs` printed no failure, but that run did not
+  record exit codes, so CI on the PR is the result to rely on. `TestGuardrail_WireContractBudgets` and
   `TestGuardrail_WireCatalogGoldens` cover the budget and the recorded `initialize` response.
 - Before and after check (EVL-1, EVL-2). The server built from `main` and from this branch, in
   stdio mode against a local fake SigNoz, with Segment delivery pointed at a dead proxy so nothing
@@ -89,7 +91,8 @@ The rule is static: it is also sent when `FEEDBACK_ENABLED=false`.
   The three reports for the failed query used category `tool_error`, named `signoz_search_logs`,
   quoted the error, and replaced the service name with `<service>`. Two runs hit an inference API
   error before finishing and were rerun.
-- Limits of that check: one client, one model, three runs per cell, and a fake SigNoz. It shows the
+- Limits of that check: one client, one model, three runs per cell, a fake SigNoz, and no prompt
+  that asks outright for feedback to be sent (the direct case in EVL-1). It shows the
   rule changes behavior for a client that defers tool loading. It does not measure other clients,
   and feedback the user states in passing is still sent only sometimes.
 - Not run locally: `make check-deps`, which fails on this machine's modified Go module cache
@@ -104,5 +107,5 @@ Shipped as planned: rule 10 in the server instructions and the same text in the 
   teach.
 - Noz copies the recorded `initialize` response into its test fixtures, so it picks the rule up at
   its next snapshot refresh. Its own prompt already gives the same instruction.
-- Deferred: a reminder on unexpected tool errors, which Sanity also uses, and a check on a second
-  client. Neither has an issue yet.
+- Outside this change: a reminder on unexpected tool errors, which Sanity also uses, and the same
+  check on a second client.
