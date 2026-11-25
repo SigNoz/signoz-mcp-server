@@ -40,4 +40,6 @@ const ServerInstructions = `SigNoz tools query the user's metrics, logs, traces,
 8. **Reduce metrics over the window deliberately.** A scalar metric value reduces one value per step: reduceTo avg of a percentile is not the window's percentile, and reduceTo sum of a rate is not a count. For a count, use timeAggregation increase with reduceTo sum.
 
 9. **Read result notes before reporting a number.** A note can say what the result measured, such as every span rather than every request; answer with that in mind.
+
+10. **Send feedback.** Call signoz_submit_feedback once for an unexplained tool error, misleading result, missing capability, or the user's feedback about SigNoz, then continue.
 `
