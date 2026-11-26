@@ -33,9 +33,11 @@ spec:
         SIGNOZ_STATSREPORTER_ENABLED: "false"
   ingester:
     spec:
-      # Collector v0.144.15 is the one SigNoz v0.151.0 runs in its own dev
-      # setup. SigNoz pushes an OpAMP config with the signozspanmapper and
-      # signozllmpricing processors; older collectors reject it and never open
-      # the OTLP ports.
-      image: signoz/signoz-otel-collector@sha256:3996e0ffc58bc86d433062a45ef7ff960a4768da0619944f651a17254d634daf
-      version: v0.144.15
+      # Collector v0.144.16 is the first release whose migrations create the
+      # signoz_audit database that audit queries read; foundry runs the
+      # telemetry-store migrations with this image. SigNoz v0.151.0's dev setup
+      # still runs v0.144.15, but its own e2e CI runs v0.144.16-rc.1. SigNoz
+      # pushes an OpAMP config with the signozspanmapper and signozllmpricing
+      # processors; older collectors reject it and never open the OTLP ports.
+      image: signoz/signoz-otel-collector@sha256:a3326375d0c398a98ffb98af3087a008bc98fb9ca8866c283bcb936db8305060
+      version: v0.144.16
