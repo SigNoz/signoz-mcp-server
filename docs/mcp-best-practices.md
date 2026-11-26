@@ -382,10 +382,12 @@ tool, so it can change how agents answer questions that never needed it.
 4. **Repeat each prompt.** Run every prompt at least three times per build and
    report the passes out of the runs. A single run per build cannot separate a
    change from run-to-run variation.
-5. **Read the negatives first.** The change passes when no negative does worse
-   than on the base branch and the direct and indirect prompts improve. A
+5. **Read the negatives first.** The change passes when no prompt passes less
+   often than on the base branch and the prompts it targets pass more often. A
    negative that gets worse is a finding even when every target prompt
-   improves. Compare turns per session too when the change adds a step.
+   improves. A target prompt that already passed on the base branch is a
+   result to report, not a failure. Compare turns per session too when the
+   change adds a step.
 6. **Record it in the PR and the plan.** Give the client and its version, the
    model, both commits, the backend and its data, the prompts, and one row per
    prompt with the passes per build. Say whether the client loaded tools up
