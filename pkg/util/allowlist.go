@@ -59,7 +59,8 @@ func (a InstanceURLAllowlist) Configured() bool {
 // under a wildcard suffix. An unconfigured allowlist allows nothing.
 func (a InstanceURLAllowlist) AllowsHost(host string) bool {
 	host = strings.ToLower(strings.TrimSpace(host))
-	if host == "" {
+	// A "%" (IPv6 zone) is not part of the host that gets dialed.
+	if host == "" || strings.Contains(host, "%") {
 		return false
 	}
 	if _, ok := a.exact[host]; ok {
