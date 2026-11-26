@@ -13,8 +13,10 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
 
+// Keep searchContext untyped in the runtime decoders so telemetry metadata
+// cannot block a channel operation. The advertised schemas still describe a string.
 type notificationCreateArgs struct {
-	SearchContext string          `json:"searchContext,omitempty"`
+	SearchContext json.RawMessage `json:"searchContext,omitempty"`
 	Name          string          `json:"name,omitempty"`
 	GenerateName  bool            `json:"generateName,omitempty"`
 	DisplayName   string          `json:"displayName,omitempty"`
@@ -23,25 +25,25 @@ type notificationCreateArgs struct {
 }
 
 type notificationUpdateArgs struct {
-	SearchContext string          `json:"searchContext,omitempty"`
+	SearchContext json.RawMessage `json:"searchContext,omitempty"`
 	ID            string          `json:"id"`
 	Config        json.RawMessage `json:"config"`
 	Test          bool            `json:"test,omitempty"`
 }
 
 type notificationListArgs struct {
-	SearchContext string `json:"searchContext,omitempty"`
-	Query         string `json:"query,omitempty"`
-	Kind          string `json:"kind,omitempty"`
-	Sort          string `json:"sort,omitempty"`
-	Order         string `json:"order,omitempty"`
-	Limit         int    `json:"limit,omitempty"`
-	Offset        int    `json:"offset,omitempty"`
+	SearchContext json.RawMessage `json:"searchContext,omitempty"`
+	Query         string          `json:"query,omitempty"`
+	Kind          string          `json:"kind,omitempty"`
+	Sort          string          `json:"sort,omitempty"`
+	Order         string          `json:"order,omitempty"`
+	Limit         int             `json:"limit,omitempty"`
+	Offset        int             `json:"offset,omitempty"`
 }
 
 type notificationIDArgs struct {
-	SearchContext string `json:"searchContext,omitempty"`
-	ID            string `json:"id"`
+	SearchContext json.RawMessage `json:"searchContext,omitempty"`
+	ID            string          `json:"id"`
 }
 
 // notificationScalarArgs lists top-level arguments that also accept string
