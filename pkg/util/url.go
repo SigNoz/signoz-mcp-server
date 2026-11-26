@@ -44,6 +44,11 @@ func NormalizeSigNozURL(rawURL string) (string, error) {
 			return "", fmt.Errorf("host must be ASCII; use the punycode form")
 		}
 	}
+	// originOf does not re-escape "%", so a decoded IPv6 zone or %25 escape
+	// would re-parse as a different host than the one dialed.
+	if strings.Contains(rawHost, "%") {
+		return "", fmt.Errorf("host must not include %% or an IPv6 zone")
+	}
 	host := strings.ToLower(rawHost)
 	if host == "localhost" || host == "0.0.0.0" || host == "::" {
 		return "", fmt.Errorf("host %q is not allowed", host)

@@ -148,6 +148,18 @@ func TestNormalizeSigNozURLRejectsNonASCIIHost(t *testing.T) {
 	}
 }
 
+func TestNormalizeSigNozURLRejectsPercentInHost(t *testing.T) {
+	for _, raw := range []string{
+		"http://[::1%25.example.com]:8080",
+		"http://[::1%2525.example.com]:8080",
+		"http://tenant%25.example.com",
+	} {
+		if got, err := NormalizeSigNozURL(raw); err == nil {
+			t.Errorf("NormalizeSigNozURL(%q) = %q, want error", raw, got)
+		}
+	}
+}
+
 func TestNormalizeSigNozURLCanonicalizesOrigin(t *testing.T) {
 	tests := []struct {
 		name string
