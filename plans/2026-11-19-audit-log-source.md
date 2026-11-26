@@ -132,9 +132,11 @@ and row shape.
   guide holds the details.
 - Alternatives rejected: trimming other rules to fit a sentence without evidence; raising the
   guardrail budget.
-- Open (SUR-11): whether the preamble should route questions such as "who deleted a dashboard?"
-  to `source="audit"`. `pkg/instructions` stays unchanged pending a before/after prompt
-  evaluation (EVL-1, EVL-2), run after this change.
+- Open (SUR-11): whether audit questions need routing outside the two log tools. The 2026-11-26
+  evaluation below gives the evidence: "who deleted a dashboard?" reached `source="audit"` in 3
+  of 3 sessions with no routing line, but "who changed the most alert rules?" went to
+  `signoz_list_alert_rules` in 3 of 3 and never tried audit. `pkg/instructions` stays unchanged
+  in this PR; the alert-rule case is a follow-up.
 
 ### 2026-11-20: audit queries match only `signoz.audit.*` events
 
@@ -173,6 +175,47 @@ and row shape.
   `aggregations: null`; `searchScope` `attribute` and `all` return the HTTP 400 above. The handler
   tests use these shapes. No e2e test pins them yet.
 - E2E: pending in the follow-up PR.
+- Before and after evaluation (EVL-1), 2026-11-26. 48 sessions.
+  - Setup: Claude Code 2.1.332 headless, claude-sonnet-5-5 only, tool search on (tools loaded on
+    demand). Fresh session per run in an empty directory, only this server configured over stdio,
+    no skills and no setting sources, built-in tools limited to ToolSearch and the MCP resource
+    tools. Three runs per prompt per build, builds shuffled together within each run.
+  - Builds: `main` 64c46bf6, the PR head before the review fixes 3ee1ba52, and the fixed head
+    71fcf2ba (the later commits change a test fixture and this plan only).
+  - Backend: the e2e SigNoz cast from #470 (v0.151.0). Seeded application error logs for six
+    services, among them an `auth-service` that writes its own "audit: login failed" lines, and
+    eleven audit events inserted as #470's fixture does: one dashboard created and deleted by
+    alice, alert rule updates by bob 4, alice 2, carol 1, and one saved-view update whose
+    `signoz.principal.identn.provider` is `impersonation`.
+  - Pass measures were written before the sessions ran. A session was scored on the calls it
+    made and on its final `ANSWER:` line.
+
+  | Prompt | `main` | Fixed head | Notes |
+  |---|---|---|---|
+  | Negative: error logs for payment-svc | 3 / 3 | 3 / 3 | no session set `source` |
+  | Negative: top 5 services by error logs | 3 / 3 | 3 / 3 | no session set `source` |
+  | Negative: auth-service's own audit lines, failed logins | 3 / 3 | 3 / 3 | no session set `source`; all found the logins |
+  | Direct: show the SigNoz audit logs | 0 / 3 | 3 / 3 | `main` returned the auth-service lines as the audit log |
+  | Indirect: who deleted a dashboard | 0 / 3 | 3 / 3 | filter on `signoz.resource.kind` and `signoz.audit.verb`, no `service`; 7.0 turns on `main`, 5.0 on the fixed head |
+  | Indirect: who changed the most alert rules | 0 / 3 | 0 / 3 | every session called `signoz_list_alert_rules` and answered "no one" |
+
+  Turns on the three negatives averaged 3.3 on `main` and 3.4 on the fixed head.
+
+  | Recovery prompt | 3ee1ba52 | Fixed head | Notes |
+  |---|---|---|---|
+  | Find the 'impersonation' audit event and say who it was | 3 / 3 | 2 / 3 | tool errors 4 against 0, turns 6.0 against 3.7 |
+  | Who deleted a dashboard, audit store emptied | 2 / 3 | 3 / 3 | pass: the answer does not conclude that nobody did; turns 7.0 against 5.0 |
+
+  - On the 'impersonation' prompt every 3ee1ba52 session sent `searchScope` `all` or `attribute`
+    and got SigNoz's HTTP 400 before finding the event. No fixed-head session sent a wide scope.
+    The one fixed-head miss ran the body search, relayed both notes, and stopped without
+    listing the events.
+  - On the emptied store, one 3ee1ba52 session ended "No one"; the others, and every fixed-head
+    session, said the empty result could mean audit events are not recorded.
+  - Limits: one client, one model, three runs per cell. The audit events were inserted into
+    ClickHouse, not emitted by SigNoz. The workspace had no alert rules, so on the alert-rule
+    prompt `signoz_list_alert_rules` returned an empty list. The emptied-store prompt ran after
+    the others, on the same backend with the audit tables truncated.
 
 ## Outcome
 
