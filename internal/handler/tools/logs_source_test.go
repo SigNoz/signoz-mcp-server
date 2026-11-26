@@ -104,7 +104,7 @@ func TestSearchLogs_AuditAcceptsOnlyTheBodyScope(t *testing.T) {
 		spec := envelope["spec"].(map[string]any)
 		require.Equal(t, "(body CONTAINS 'alice') AND event_name LIKE 'signoz.audit.%'", spec["filter"].(map[string]any)["expression"])
 	})
-	for _, scope := range []string{"attribute", "resource", "all"} {
+	for _, scope := range []string{"attribute", "resource", "all", "everywhere"} {
 		t.Run(scope+" scope is rejected", func(t *testing.T) {
 			h, bodies := queryRangeRecorder(t, emptyQueryRangeResponse)
 			result, err := h.handleSearchLogs(testCtx(), makeToolRequest("signoz_search_logs",
@@ -165,8 +165,9 @@ func TestSearchLogs_EmptyAuditPageNotes(t *testing.T) {
 }
 
 // An audit aggregate with nothing in it can also mean SigNoz records no audit
-// events. Without groupBy SigNoz may answer with one zero row instead of none,
-// so that counts as empty too; any grouped row or time-series point does not.
+// events. SigNoz answers an ungrouped count() over nothing with one zero row,
+// so that counts as empty too; a zero from countIf, any grouped row, and any
+// time-series point do not.
 func TestAggregateLogs_EmptyAuditResultNote(t *testing.T) {
 	const countColumn = `{"name":"__result_0","queryName":"A","aggregationIndex":0,"columnType":"aggregation"}`
 	tests := []struct {
@@ -181,12 +182,16 @@ func TestAggregateLogs_EmptyAuditResultNote(t *testing.T) {
 			`{"status":"success","data":{"type":"scalar","data":{"results":[{"queryName":"A","columns":[` + countColumn + `],"data":null}]}}}`, true},
 		{"ungrouped scalar of zero", map[string]any{"source": "audit"},
 			`{"status":"success","data":{"type":"scalar","data":{"results":[{"queryName":"A","columns":[` + countColumn + `],"data":[[0]]}]}}}`, true},
+		{"ungrouped conditional count of zero", map[string]any{"source": "audit", "aggregations": "countIf(severity_text = 'ERROR')"},
+			`{"status":"success","data":{"type":"scalar","data":{"results":[{"queryName":"A","columns":[` + countColumn + `],"data":[[0]]}]}}}`, false},
 		{"ungrouped scalar with a count", map[string]any{"source": "audit"},
 			`{"status":"success","data":{"type":"scalar","data":{"results":[{"queryName":"A","columns":[` + countColumn + `],"data":[[3]]}]}}}`, false},
 		{"grouped row of zero", map[string]any{"source": "audit", "groupBy": "signoz.audit.verb"},
 			`{"status":"success","data":{"type":"scalar","data":{"results":[{"queryName":"A","columns":[],"data":[["delete",0]]}]}}}`, false},
 		{"time series with no results", map[string]any{"source": "audit", "requestType": "time_series"},
 			`{"status":"success","data":{"type":"time_series","data":{"results":[]}}}`, true},
+		{"time series with null aggregations", map[string]any{"source": "audit", "requestType": "time_series"},
+			`{"status":"success","data":{"type":"time_series","data":{"results":[{"queryName":"A","aggregations":null}]}}}`, true},
 		{"time series with a point", map[string]any{"source": "audit", "requestType": "time_series"},
 			`{"status":"success","data":{"type":"time_series","data":{"results":[{"queryName":"A","aggregations":[{"index":0,"alias":"__result_0","series":[{"values":[{"timestamp":1,"value":2}]}]}]}]}}}`, false},
 		{"application logs with no rows", map[string]any{},

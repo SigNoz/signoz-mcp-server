@@ -81,8 +81,8 @@ and row shape.
 ### 2026-11-26: empty audit results carry a note that they are not proof
 
 - Decision: with `source="audit"`, an empty first search page, and an aggregate with no scalar
-  rows or time-series points, or without `groupBy` one scalar row whose values are all zero or
-  null, gets `auditEmptyResultNote`: the result can also mean this SigNoz does not record audit
+  rows or time-series points, or an ungrouped `count()` whose one row is zero, gets
+  `auditEmptyResultNote`: the result can also mean this SigNoz does not record audit
   events (too old, or audit logging not enabled), so it is not proof that nothing happened.
 - Rationale: on a SigNoz without the audit store, or with the auditor on its default `noop`
   provider, the `signoz.audit.%` condition turns every audit query into an empty success, which
@@ -90,9 +90,10 @@ and row shape.
   true when there are simply no matching events (OUT-7). It goes through `appendNotes` like the
   other notes. It is not a counted measurement note: the trigger reads the response, not the
   request shape, like `aiNoRowsNote`. Raised in review on #464.
-- The ungrouped zero row is included because SigNoz may answer an ungrouped `count()` over no
-  rows with one row of `0` instead of none; which shape it returns is not verified against a
-  live SigNoz. A payload the walker cannot read gets no note and a WARN log.
+- The ungrouped zero row is included because SigNoz answers an ungrouped `count()` over no rows
+  with one row of `0`. Only a plain `count()` counts: a zero from `countIf` or another
+  aggregation says nothing about whether events exist. A payload the walker cannot read gets no
+  note and a WARN log.
 - Alternatives rejected: a note on every audit result (noise on non-empty results); probing
   SigNoz for audit support before each query (an extra upstream call per query).
 
@@ -105,8 +106,9 @@ and row shape.
   those scopes.
 - Rationale: those scopes build `search()`, and SigNoz's audit storage does not set
   `SupportsBodyFunctions`, so `RejectsBodyFunction` fails the query (SigNoz
-  `pkg/telemetryschema/audittelemetryschema/storage.go` and `pkg/querybuilder/condition.go`, read
-  in a local checkout at v0.151.0-40; not verified against a live SigNoz). The rejection applies
+  `pkg/telemetryschema/audittelemetryschema/storage.go` and `pkg/querybuilder/condition.go`). The
+  cast e2e SigNoz answers such a query with HTTP 400, "function `search` is only supported for
+  logs". The rejection applies
   whether or not `searchText` is set, so an audit call never reaches the "searchScope ignored"
   path with one of those scopes.
 
@@ -164,8 +166,12 @@ and row shape.
   both tools, the `signoz.audit.*` condition with and without a caller filter, and the
   ignored-value note. Since 2026-11-26 they also cover the audit `searchScope` rejection (no
   request reaches SigNoz), the audit `searchText` note in place of the body-only note, and the
-  empty audit result note on search pages and on scalar and time-series aggregate shapes. The
-  aggregate shapes are fixtures, not recorded SigNoz responses.
+  empty audit result note on search pages and on scalar and time-series aggregate shapes.
+- 2026-11-26, against the e2e SigNoz cast from #470 with an empty audit store, through the server
+  built at 3ee1ba52: an audit search returns `rows: null`; an ungrouped `count()` returns
+  `data: [[0]]`; a grouped `count()` returns `data: []`; a time-series `count()` returns
+  `aggregations: null`; `searchScope` `attribute` and `all` return the HTTP 400 above. The handler
+  tests use these shapes. No e2e test pins them yet.
 - E2E: pending in the follow-up PR.
 
 ## Outcome

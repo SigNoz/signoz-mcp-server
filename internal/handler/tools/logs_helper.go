@@ -114,10 +114,10 @@ func validateAuditSearchScope(scope, source string) error {
 }
 
 // auditAggregateEmpty reports whether an aggregate result holds no audit
-// events: no scalar rows or time-series points, or, without groupBy, one scalar
-// row whose values are all zero or null. known is false when the payload is not
-// a shape it can walk.
-func auditAggregateEmpty(payload []byte, grouped bool) (empty, known bool) {
+// events: no scalar rows or time-series points, or, when zeroRowIsEmpty, one
+// scalar row of zeros, which is how SigNoz answers an ungrouped count() over
+// nothing. known is false when the payload is not a shape it can walk.
+func auditAggregateEmpty(payload []byte, zeroRowIsEmpty bool) (empty, known bool) {
 	var envelope struct {
 		Data struct {
 			Data struct {
@@ -177,7 +177,7 @@ func auditAggregateEmpty(payload []byte, grouped bool) (empty, known bool) {
 	if len(rows) == 0 {
 		return true, true
 	}
-	if grouped || len(rows) > 1 {
+	if !zeroRowIsEmpty || len(rows) > 1 {
 		return false, true
 	}
 	for _, cell := range rows[0] {
@@ -186,6 +186,17 @@ func auditAggregateEmpty(payload []byte, grouped bool) (empty, known bool) {
 		}
 	}
 	return true, true
+}
+
+// onlyPlainCounts reports whether every aggregation is count(). A zero from
+// countIf or count_distinct says nothing about whether events exist.
+func onlyPlainCounts(aggregations []string) bool {
+	for _, aggregation := range aggregations {
+		if strings.ReplaceAll(strings.ToLower(aggregation), " ", "") != "count()" {
+			return false
+		}
+	}
+	return len(aggregations) > 0
 }
 
 func isZeroOrNull(cell any) bool {
@@ -253,11 +264,11 @@ func parseSearchLogsArgs(args map[string]any) (*SearchLogsRequest, error) {
 	severity, _ := args["severity"].(string)
 	searchText, _ := args["searchText"].(string)
 	searchScope, _ := args["searchScope"].(string)
-	if err := validateLogSearchScope(searchScope); err != nil {
-		return nil, err
-	}
 	source, sourceIgnored := readLogSource(args)
 	if err := validateAuditSearchScope(searchScope, source); err != nil {
+		return nil, err
+	}
+	if err := validateLogSearchScope(searchScope); err != nil {
 		return nil, err
 	}
 	filterExpr := buildLogFilterExpr(filter, service, severity, searchText, searchScope)
