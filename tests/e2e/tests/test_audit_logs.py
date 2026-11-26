@@ -140,13 +140,20 @@ def test_empty_audit_results_say_they_are_not_proof(mcp_client: MCPClient, test_
     with_events = wait_for(alice_counted, f"two audit events by {alice} counted")
     assert note not in note_blocks(with_events), "a count of existing events must not carry the empty-audit note"
 
+    # Each call must come back in its own empty shape, or the note below proves less than it says:
+    # an ungrouped count() answers with one row of zero, the other three with nothing.
     empty = {
-        "search": assert_tool_ok(_search(mcp_client, source="audit", filter=nobody)),
-        "ungrouped count": count(nobody),
-        "grouped count": count(nobody, groupBy="signoz.audit.verb"),
-        "time series": count(nobody, requestType="time_series"),
+        "search": (assert_tool_ok(_search(mcp_client, source="audit", filter=nobody)), "raw", "rows", None),
+        "ungrouped count": (count(nobody), "scalar", "data", [[0]]),
+        "grouped count": (count(nobody, groupBy="signoz.audit.verb"), "scalar", "data", []),
+        "time series": (count(nobody, requestType="time_series"), "time_series", "aggregations", None),
     }
-    for shape, result in empty.items():
+    for shape, (result, kind, key, payload) in empty.items():
+        data = first_block_json(result)["data"]
+        assert data["type"] == kind, f"{shape}: SigNoz answered with {data['type']}"
+        assert [r.get(key) for r in data["data"]["results"]] == [payload], (
+            f"{shape}: not the empty shape: {first_text_block(result)[:300]}"
+        )
         assert note in note_blocks(result), f"{shape}: no empty-audit note for {first_text_block(result)[:300]}"
 
 
@@ -155,4 +162,7 @@ def test_search_function_is_rejected_on_audit_events(mcp_client: MCPClient) -> N
     result = _search(mcp_client, source="audit", filter="search('anything')")
 
     assert result.get("isError", False), f"search() on audit events was accepted: {text_blocks(result)[:300]}"
+    # SigNoz's own rejection (a 400), not a failure of ours or an upstream outage.
+    rejection = result.get("structuredContent") or {}
+    assert rejection.get("status") == 400, f"unexpected rejection: {rejection}"
     assert "`search` is only supported for logs" in text_blocks(result)
