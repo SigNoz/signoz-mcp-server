@@ -204,14 +204,17 @@ and row shape.
   | Recovery prompt | 3ee1ba52 | Fixed head | Notes |
   |---|---|---|---|
   | Find the 'impersonation' audit event and say who it was | 3 / 3 | 2 / 3 | tool errors 4 against 0, turns 6.0 against 3.7 |
-  | Who deleted a dashboard, audit store emptied | 2 / 3 | 3 / 3 | pass: the answer does not conclude that nobody did; turns 7.0 against 5.0 |
+  | Who deleted a dashboard, audit store emptied | 3 / 3 | 3 / 3 | pass: the answer says the empty result may mean audit events are not recorded; turns 7.0 against 5.0 |
 
   - On the 'impersonation' prompt every 3ee1ba52 session sent `searchScope` `all` or `attribute`
     and got SigNoz's HTTP 400 before finding the event. No fixed-head session sent a wide scope.
     The one fixed-head miss ran the body search, relayed both notes, and stopped without
     listing the events.
-  - On the emptied store, one 3ee1ba52 session ended "No one"; the others, and every fixed-head
-    session, said the empty result could mean audit events are not recorded.
+  - On the emptied store every session on both builds said the empty result could mean audit
+    events are not recorded. One 3ee1ba52 session still ended its `ANSWER:` line with "No one";
+    every fixed-head session ended it with "Unknown".
+  - The review fixes show fewer tool errors and turns on the recovery prompts and no gain in
+    pass rate. The 'impersonation' miss on the fixed head is open.
   - Limits: one client, one model, three runs per cell. The audit events were inserted into
     ClickHouse, not emitted by SigNoz. The workspace had no alert rules, so on the alert-rule
     prompt `signoz_list_alert_rules` returned an empty list. The emptied-store prompt ran after
