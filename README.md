@@ -1140,6 +1140,7 @@ Lets the agent send feedback to the SigNoz team in two cases. The agent hit a pr
   - `category` (optional) - One of `tool_error`, `confusing_output`, `missing_capability`, `documentation`, `user_feedback`, `user_frustration`, `other`
   - `toolName` (optional) - Name of the tool the report is about. At most 128 characters (`maxLength` in the schema)
   - `model` (optional) - Name or ID of the model the agent runs as, with its effort or thinking level, when it knows them. At most 128 characters (`maxLength` in the schema)
+  - `client` (optional) - Name and version of the app that hosts the agent, such as an editor, CLI, or chat app, when it knows them. At most 128 characters (`maxLength` in the schema)
   - `searchContext` - User's original question
 - **Result**: `Feedback queued for delivery to the SigNoz team.` on success. Delivery is batched after the call returns, so a report can still be lost when the server cannot reach Segment; the server logs that failure. When feedback is turned off, a coded `UNSUPPORTED` error says so and nothing is sent. Invalid arguments return `VALIDATION_FAILED` naming the field.
 - **Annotations**: not read-only and not idempotent, because each call sends one report outside the server.
@@ -1210,7 +1211,8 @@ Each report carries:
 | `feedbackMessage` | The report, at most 2000 characters. The tool tells the agent to mask personal and sensitive data first |
 | `feedbackCategory`, `feedbackToolName` | The optional category and tool name the agent passed |
 | `feedbackModel` | The model, and effort or thinking level, the agent says it runs as, when it passed one. The server cannot check it |
-| `clientName`, `clientVersion`, `protocolVersion` | The MCP client that made the call |
+| `feedbackClient` | The app the agent says hosts it, when it passed one. The server cannot check it, and keeps it apart from `clientName` |
+| `clientName`, `clientVersion`, `protocolVersion` | The MCP client that made the call, when the request carries it. Over HTTP, a client that names itself only when it initializes is missing here |
 | `clientSource` | Whether the call came from a user's MCP client or the SigNoz AI assistant |
 | `serverVersion` | This server's version |
 | `deployment` | `cloud` when the report is about a SigNoz Cloud instance, otherwise `self_hosted` |
@@ -1222,7 +1224,7 @@ Who a report is attributed to depends on the SigNoz instance the call targets:
 
 No API key, tool arguments, or query results are sent in either case. The server logs one line at startup when feedback is on.
 
-The server also records each report it accepts in its own telemetry, before delivery: an `agent feedback received` log line, and the tool call's trace span when an OTLP endpoint is configured. Both carry `mcp.feedback.message` (the full report), `mcp.feedback.category`, `mcp.feedback.tool_name`, and `mcp.feedback.model`. They go where your logs and traces already go, and a report that could not be delivered is still there.
+The server also records each report it accepts in its own telemetry, before delivery: an `agent feedback received` log line, and the tool call's trace span when an OTLP endpoint is configured. Both carry `mcp.feedback.message` (the full report), `mcp.feedback.category`, `mcp.feedback.tool_name`, `mcp.feedback.model`, and `mcp.feedback.client`. They go where your logs and traces already go, and a report that could not be delivered is still there.
 
 To turn feedback off, set this before the server starts:
 

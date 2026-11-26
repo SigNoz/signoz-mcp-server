@@ -177,6 +177,28 @@ Before this change the server sent nothing from a self-hosted install: `ANALYTIC
   self-reported and unchecked, and the README says so. Effort has no field of its own: most agents
   cannot see their own setting, so a separate field would be mostly empty or guessed.
 
+### 2026-11-26 — the agent reports the app that hosts it, in its own property
+
+- Decision: an optional `client` parameter takes the name and version of the app that hosts the
+  agent. It is sent as `feedbackClient` whenever the agent passes it. It is never written to
+  `clientName` or `clientVersion`.
+- Rationale: over stateless HTTP, a client that names itself only in `initialize` reaches the
+  feedback call with no client identity, so reports from those clients showed no client. One
+  report said an editor could not read two `signoz://` resources, and nothing identified the editor.
+- Why its own property: `clientName` and `clientVersion` are what the request said, on every event.
+  An agent's free text would not match those names, and a reported version could be joined to a
+  different reported name.
+- Why one parameter: it mirrors `model`, and a version without a name is of no use.
+- Limits: the value is the agent's claim and the server cannot check it. It does not restore the
+  identity the request lost. The Slack view of a report reads `clientName`, so it shows the new
+  value only after its mapping reads `feedbackClient`.
+- Checked: three headless Claude Code runs with claude-sonnet-5-5 against a fake SigNoz that fails
+  every query. Two reports carried `Claude Code` with no version and one left the field out. None
+  guessed. Other hosts were not tried.
+- Alternatives rejected: filling `clientName` from the agent's value when the request has none,
+  for the reasons above; two parameters; reading the inbound `User-Agent` header, which is
+  unverified and a separate change.
+
 ### 2026-11-13 — no server-instruction rule and no error-text hint yet
 
 - Decision: the tool description carries all the guidance on when to report.
