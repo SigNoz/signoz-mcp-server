@@ -151,7 +151,8 @@ def test_empty_audit_results_say_they_are_not_proof(mcp_client: MCPClient, test_
     for shape, (result, kind, key, payload) in empty.items():
         data = first_block_json(result)["data"]
         assert data["type"] == kind, f"{shape}: SigNoz answered with {data['type']}"
-        assert [r[key] for r in data["data"]["results"] if key in r] == [payload], (
+        results = data["data"]["results"]
+        assert len(results) == 1 and key in results[0] and results[0][key] == payload, (
             f"{shape}: not the empty shape: {first_text_block(result)[:300]}"
         )
         assert note in note_blocks(result), f"{shape}: no empty-audit note for {first_text_block(result)[:300]}"
