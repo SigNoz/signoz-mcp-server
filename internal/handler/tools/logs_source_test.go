@@ -123,6 +123,8 @@ func TestSearchLogs_AuditAcceptsOnlyTheBodyScope(t *testing.T) {
 // scopes SigNoz rejects on audit events.
 func TestSearchLogs_EmptyAuditPageNotes(t *testing.T) {
 	const onePage = `{"status":"success","data":{"type":"raw","data":{"results":[{"queryName":"A","rows":[{"data":{"body":{"message":"alice deleted dashboard"}}}]}]}}}`
+	// What SigNoz returns for an audit search with no rows: rows is null, not [].
+	const nullRows = `{"status":"success","data":{"type":"raw","meta":{"rowsScanned":0,"bytesScanned":0,"durationMs":13,"stepIntervals":{"A":10}},"data":{"results":[{"queryName":"A","nextCursor":"","rows":null}]}}}`
 	tests := []struct {
 		name      string
 		args      map[string]any
@@ -131,6 +133,8 @@ func TestSearchLogs_EmptyAuditPageNotes(t *testing.T) {
 		notWant   []string
 	}{
 		{"audit, empty first page", map[string]any{"source": "audit"}, emptyQueryRangeResponse,
+			[]string{auditEmptyResultNote}, []string{auditSearchTextNote, bodyOnlySearchTextNote}},
+		{"audit, null rows on the first page", map[string]any{"source": "audit"}, nullRows,
 			[]string{auditEmptyResultNote}, []string{auditSearchTextNote, bodyOnlySearchTextNote}},
 		{"audit searchText, empty first page", map[string]any{"source": "audit", "searchText": "alice"}, emptyQueryRangeResponse,
 			[]string{auditEmptyResultNote, auditSearchTextNote}, []string{bodyOnlySearchTextNote}},
