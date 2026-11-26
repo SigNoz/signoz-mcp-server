@@ -175,9 +175,8 @@ events with source="audit" on signoz_search_logs and signoz_aggregate_logs, or w
 "source": "audit" in a logs builder_query spec. Without it, the same filters read application
 logs.
 
-Field discovery does not cover audit attributes: signoz_get_field_keys(source="audit") lists only
-the built-in columns and the resource keys below, and signoz_get_field_values returns no values.
-Use the names below. To see the values present in this workspace, group by the field:
+Field discovery does not list audit attributes: signoz_get_field_keys does not return them and
+signoz_get_field_values returns no values for them. Use the names below. To see the values present in this workspace, group by the field:
   signoz_aggregate_logs(source="audit", aggregations="count()", groupBy="signoz.principal.email")
 
 Bare names resolve to the right context; resource.<key> and attribute.<key> also work.

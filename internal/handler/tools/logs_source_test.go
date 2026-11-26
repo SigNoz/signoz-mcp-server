@@ -89,3 +89,122 @@ func TestLogTools_SourceSelectsAuditEvents(t *testing.T) {
 		}
 	}
 }
+
+// SigNoz does not run search() on audit events, so the scopes that build it are
+// rejected before any request; body still searches the event body.
+func TestSearchLogs_AuditAcceptsOnlyTheBodyScope(t *testing.T) {
+	t.Run("body scope searches the event body", func(t *testing.T) {
+		h, bodies := queryRangeRecorder(t, emptyQueryRangeResponse)
+		result, err := h.handleSearchLogs(testCtx(), makeToolRequest("signoz_search_logs",
+			map[string]any{"timeRange": "1h", "source": "audit", "searchText": "alice", "searchScope": "body"}))
+		require.NoError(t, err)
+		require.False(t, result.IsError, textContent(t, result))
+		require.Len(t, *bodies, 1)
+		_, envelope := sentEnvelope(t, (*bodies)[0])
+		spec := envelope["spec"].(map[string]any)
+		require.Equal(t, "(body CONTAINS 'alice') AND event_name LIKE 'signoz.audit.%'", spec["filter"].(map[string]any)["expression"])
+	})
+	for _, scope := range []string{"attribute", "resource", "all"} {
+		t.Run(scope+" scope is rejected", func(t *testing.T) {
+			h, bodies := queryRangeRecorder(t, emptyQueryRangeResponse)
+			result, err := h.handleSearchLogs(testCtx(), makeToolRequest("signoz_search_logs",
+				map[string]any{"timeRange": "1h", "source": "audit", "searchText": "alice", "searchScope": scope}))
+			require.NoError(t, err)
+			require.Equal(t, CodeValidationFailed, resultCode(t, result))
+			require.Equal(t, `Parameter validation failed: "searchScope" "`+scope+`" is not supported with source="audit" because SigNoz does not run search() on audit events. Omit searchScope to search the event body, or filter on a named audit field instead, such as signoz.principal.email = 'alice@acme.com'`,
+				resultText(t, result))
+			require.Empty(t, *bodies, "a rejected scope must not reach SigNoz")
+		})
+	}
+}
+
+// An empty audit search can also mean SigNoz records no audit events, and an
+// empty audit searchText page points at named audit fields, not at the wider
+// scopes SigNoz rejects on audit events.
+func TestSearchLogs_EmptyAuditPageNotes(t *testing.T) {
+	const onePage = `{"status":"success","data":{"type":"raw","data":{"results":[{"queryName":"A","rows":[{"data":{"body":{"message":"alice deleted dashboard"}}}]}]}}}`
+	tests := []struct {
+		name      string
+		args      map[string]any
+		response  string
+		wantNotes []string
+		notWant   []string
+	}{
+		{"audit, empty first page", map[string]any{"source": "audit"}, emptyQueryRangeResponse,
+			[]string{auditEmptyResultNote}, []string{auditSearchTextNote, bodyOnlySearchTextNote}},
+		{"audit searchText, empty first page", map[string]any{"source": "audit", "searchText": "alice"}, emptyQueryRangeResponse,
+			[]string{auditEmptyResultNote, auditSearchTextNote}, []string{bodyOnlySearchTextNote}},
+		{"audit, rows returned", map[string]any{"source": "audit", "searchText": "alice"}, onePage,
+			nil, []string{auditEmptyResultNote, auditSearchTextNote, bodyOnlySearchTextNote}},
+		{"audit, empty later page", map[string]any{"source": "audit", "offset": "20"}, emptyQueryRangeResponse,
+			nil, []string{auditEmptyResultNote}},
+		{"application logs, empty searchText page", map[string]any{"searchText": "alice"}, emptyQueryRangeResponse,
+			[]string{bodyOnlySearchTextNote}, []string{auditEmptyResultNote, auditSearchTextNote}},
+		{"ignored source, empty first page", map[string]any{"source": "audits"}, emptyQueryRangeResponse,
+			nil, []string{auditEmptyResultNote}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			h, _ := queryRangeRecorder(t, tc.response)
+			args := map[string]any{"timeRange": "1h"}
+			for k, v := range tc.args {
+				args[k] = v
+			}
+			result, err := h.handleSearchLogs(testCtx(), makeToolRequest("signoz_search_logs", args))
+			require.NoError(t, err)
+			require.False(t, result.IsError, textContent(t, result))
+			text := allTextBlocks(result)
+			for _, note := range tc.wantNotes {
+				require.Contains(t, text, note)
+			}
+			for _, note := range tc.notWant {
+				require.NotContains(t, text, note)
+			}
+		})
+	}
+}
+
+// An audit aggregate with nothing in it can also mean SigNoz records no audit
+// events. Without groupBy SigNoz may answer with one zero row instead of none,
+// so that counts as empty too; any grouped row or time-series point does not.
+func TestAggregateLogs_EmptyAuditResultNote(t *testing.T) {
+	const countColumn = `{"name":"__result_0","queryName":"A","aggregationIndex":0,"columnType":"aggregation"}`
+	tests := []struct {
+		name     string
+		args     map[string]any
+		response string
+		want     bool
+	}{
+		{"scalar with no rows", map[string]any{"source": "audit"},
+			`{"status":"success","data":{"type":"scalar","data":{"results":[{"queryName":"A","columns":[` + countColumn + `],"data":[]}]}}}`, true},
+		{"scalar with null rows", map[string]any{"source": "audit"},
+			`{"status":"success","data":{"type":"scalar","data":{"results":[{"queryName":"A","columns":[` + countColumn + `],"data":null}]}}}`, true},
+		{"ungrouped scalar of zero", map[string]any{"source": "audit"},
+			`{"status":"success","data":{"type":"scalar","data":{"results":[{"queryName":"A","columns":[` + countColumn + `],"data":[[0]]}]}}}`, true},
+		{"ungrouped scalar with a count", map[string]any{"source": "audit"},
+			`{"status":"success","data":{"type":"scalar","data":{"results":[{"queryName":"A","columns":[` + countColumn + `],"data":[[3]]}]}}}`, false},
+		{"grouped row of zero", map[string]any{"source": "audit", "groupBy": "signoz.audit.verb"},
+			`{"status":"success","data":{"type":"scalar","data":{"results":[{"queryName":"A","columns":[],"data":[["delete",0]]}]}}}`, false},
+		{"time series with no results", map[string]any{"source": "audit", "requestType": "time_series"},
+			`{"status":"success","data":{"type":"time_series","data":{"results":[]}}}`, true},
+		{"time series with a point", map[string]any{"source": "audit", "requestType": "time_series"},
+			`{"status":"success","data":{"type":"time_series","data":{"results":[{"queryName":"A","aggregations":[{"index":0,"alias":"__result_0","series":[{"values":[{"timestamp":1,"value":2}]}]}]}]}}}`, false},
+		{"application logs with no rows", map[string]any{},
+			`{"status":"success","data":{"type":"scalar","data":{"results":[{"queryName":"A","columns":[` + countColumn + `],"data":[]}]}}}`, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			h, _ := queryRangeRecorder(t, tc.response)
+			args := map[string]any{"timeRange": "1h", "aggregations": "count()"}
+			for k, v := range tc.args {
+				args[k] = v
+			}
+			result, err := h.handleAggregateLogs(testCtx(), makeToolRequest("signoz_aggregate_logs", args))
+			require.NoError(t, err)
+			require.False(t, result.IsError, textContent(t, result))
+			require.Equal(t, tc.want, strings.Contains(allTextBlocks(result),
+				"note: an empty or all-zero audit result can also mean this SigNoz does not record audit events (it is too old, or audit logging is not enabled), so do not read it as proof that nothing happened."),
+				allTextBlocks(result))
+		})
+	}
+}

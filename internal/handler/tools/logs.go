@@ -128,6 +128,16 @@ func (h *Handler) handleAggregateLogs(ctx context.Context, req mcp.CallToolReque
 	if reqData.SourceIgnored {
 		notes = append(notes, sourceIgnoredNote)
 	}
+	if reqData.Source == logSourceAudit {
+		empty, known := auditAggregateEmpty(result, len(reqData.GroupBy) > 0)
+		if !known && !isTrivialBody(result) {
+			h.logger.WarnContext(ctx, "audit aggregate result shape unknown",
+				slog.String("tool", "signoz_aggregate_logs"))
+		}
+		if empty {
+			notes = append(notes, auditEmptyResultNote)
+		}
+	}
 	return aggregateResult(ctx, h.logger, "signoz_aggregate_logs", result, reqData.LimitClamped, notes...), nil
 }
 
@@ -182,8 +192,16 @@ func (h *Handler) handleSearchLogs(ctx context.Context, req mcp.CallToolRequest)
 	if reqData.SourceIgnored {
 		notes = append(notes, sourceIgnoredNote)
 	}
+	if reqData.Source == logSourceAudit && reqData.Offset == 0 {
+		if rows, known := countQueryRangeRows(result); known && rows == 0 {
+			notes = append(notes, auditEmptyResultNote)
+		}
+	}
 	var emptyNote string
-	if reqData.BodyOnlySearchText {
+	switch {
+	case reqData.BodyOnlySearchText && reqData.Source == logSourceAudit:
+		emptyNote = auditSearchTextNote
+	case reqData.BodyOnlySearchText:
 		emptyNote = bodyOnlySearchTextNote
 	}
 	return rawSearchResult(ctx, h.logger, "signoz_search_logs", result, reqData.Limit, reqData.Offset, reqData.LimitClamped, emptyNote, notes...), nil

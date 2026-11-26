@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -94,6 +95,111 @@ func filterForLogSource(filter, source string) string {
 // for audit events.
 const sourceIgnoredNote = `note: source was ignored because only "` + logSourceAudit + `" is supported, so this result covers application logs; set source="` + logSourceAudit + `" for SigNoz audit events.`
 
+// auditEmptyResultNote keeps an empty audit result from reading as proof:
+// SigNoz's auditor defaults to a noop provider, and an older SigNoz has no
+// audit store, so both look the same as no matching events.
+const auditEmptyResultNote = "note: an empty or all-zero audit result can also mean this SigNoz does not record audit events (it is too old, or audit logging is not enabled), so do not read it as proof that nothing happened."
+
+// auditSearchTextNote replaces bodyOnlySearchTextNote for audit events, where
+// the wider scopes build search(), which SigNoz rejects on audit events.
+const auditSearchTextNote = "note: searchText searched only the audit event body. To match a person, object, or outcome, filter on a named audit field instead, such as signoz.principal.email = 'alice@acme.com' or signoz.resource.kind = 'dashboard'; signoz://logs/query-builder-guide lists the audit fields."
+
+// validateAuditSearchScope rejects the scopes that build search(): SigNoz's
+// audit store does not support body functions and fails the whole query.
+func validateAuditSearchScope(scope, source string) error {
+	if source != logSourceAudit || scope == "" || scope == "body" {
+		return nil
+	}
+	return fmt.Errorf(`%s "searchScope" %q is not supported with source="audit" because SigNoz does not run search() on audit events. Omit searchScope to search the event body, or filter on a named audit field instead, such as signoz.principal.email = 'alice@acme.com'`, validationErrorPrefix, scope)
+}
+
+// auditAggregateEmpty reports whether an aggregate result holds no audit
+// events: no scalar rows or time-series points, or, without groupBy, one scalar
+// row whose values are all zero or null. known is false when the payload is not
+// a shape it can walk.
+func auditAggregateEmpty(payload []byte, grouped bool) (empty, known bool) {
+	var envelope struct {
+		Data struct {
+			Data struct {
+				Results json.RawMessage `json:"results"`
+			} `json:"data"`
+		} `json:"data"`
+	}
+	if json.Unmarshal(payload, &envelope) != nil {
+		return false, false
+	}
+	results, ok := decodeArrayOrNull(envelope.Data.Data.Results)
+	if !ok {
+		return false, false
+	}
+	var rows [][]any
+	points := 0
+	for _, raw := range results {
+		// Scalar results carry rows in data; time-series results carry points in
+		// aggregations[].series[].values. Either may be null when empty.
+		var result struct {
+			Data         json.RawMessage `json:"data"`
+			Aggregations json.RawMessage `json:"aggregations"`
+		}
+		if json.Unmarshal(raw, &result) != nil {
+			return false, false
+		}
+		switch {
+		case len(result.Data) > 0:
+			var data [][]any
+			dec := json.NewDecoder(bytes.NewReader(result.Data))
+			dec.UseNumber()
+			if dec.Decode(&data) != nil {
+				return false, false
+			}
+			rows = append(rows, data...)
+		case len(result.Aggregations) > 0:
+			var buckets []struct {
+				Series []struct {
+					Values []json.RawMessage `json:"values"`
+				} `json:"series"`
+			}
+			if json.Unmarshal(result.Aggregations, &buckets) != nil {
+				return false, false
+			}
+			for _, bucket := range buckets {
+				for _, series := range bucket.Series {
+					points += len(series.Values)
+				}
+			}
+		default:
+			return false, false
+		}
+	}
+	if points > 0 {
+		return false, true
+	}
+	if len(rows) == 0 {
+		return true, true
+	}
+	if grouped || len(rows) > 1 {
+		return false, true
+	}
+	for _, cell := range rows[0] {
+		if !isZeroOrNull(cell) {
+			return false, true
+		}
+	}
+	return true, true
+}
+
+func isZeroOrNull(cell any) bool {
+	if cell == nil {
+		return true
+	}
+	number, ok := cell.(json.Number)
+	if !ok {
+		return false
+	}
+	value, err := number.Float64()
+	return err == nil && value == 0
+}
+
 // parseAggregateLogsArgs validates and parses arguments for the aggregate_logs tool.
 func parseAggregateLogsArgs(args map[string]any) (*AggregateRequest, error) {
 	service, _ := args["service"].(string)
@@ -150,6 +256,10 @@ func parseSearchLogsArgs(args map[string]any) (*SearchLogsRequest, error) {
 	if err := validateLogSearchScope(searchScope); err != nil {
 		return nil, err
 	}
+	source, sourceIgnored := readLogSource(args)
+	if err := validateAuditSearchScope(searchScope, source); err != nil {
+		return nil, err
+	}
 	filterExpr := buildLogFilterExpr(filter, service, severity, searchText, searchScope)
 
 	limit, err := intArg(args, "limit", defaultSearchLimit)
@@ -176,7 +286,6 @@ func parseSearchLogsArgs(args map[string]any) (*SearchLogsRequest, error) {
 	if raw := strings.TrimSpace(stringValue(args["orderBy"])); raw != "" {
 		orderKey, orderDir = parseOrderBy(raw)
 	}
-	source, sourceIgnored := readLogSource(args)
 
 	return &SearchLogsRequest{
 		FilterExpression:   filterForLogSource(filterExpr, source),
