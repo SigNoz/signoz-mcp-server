@@ -170,6 +170,7 @@ func TestSearchLogs_EmptyAuditPageNotes(t *testing.T) {
 // time-series point do not.
 func TestAggregateLogs_EmptyAuditResultNote(t *testing.T) {
 	const countColumn = `{"name":"__result_0","queryName":"A","aggregationIndex":0,"columnType":"aggregation"}`
+	const secondColumn = `{"name":"__result_1","queryName":"A","aggregationIndex":1,"columnType":"aggregation"}`
 	tests := []struct {
 		name     string
 		args     map[string]any
@@ -185,9 +186,9 @@ func TestAggregateLogs_EmptyAuditResultNote(t *testing.T) {
 		{"ungrouped conditional count of zero", map[string]any{"source": "audit", "aggregations": "countIf(severity_text = 'ERROR')"},
 			`{"status":"success","data":{"type":"scalar","data":{"results":[{"queryName":"A","columns":[` + countColumn + `],"data":[[0]]}]}}}`, false},
 		{"ungrouped count beside another aggregation, both zero", map[string]any{"source": "audit", "aggregations": []any{"count()", "count_distinct(severity_text)"}},
-			`{"status":"success","data":{"type":"scalar","data":{"results":[{"queryName":"A","columns":[` + countColumn + `],"data":[[0,0]]}]}}}`, true},
+			`{"status":"success","data":{"type":"scalar","data":{"results":[{"queryName":"A","columns":[` + countColumn + `,` + secondColumn + `],"data":[[0,0]]}]}}}`, true},
 		{"ungrouped count above a conditional zero", map[string]any{"source": "audit", "aggregations": []any{"count()", "countIf(severity_text = 'ERROR')"}},
-			`{"status":"success","data":{"type":"scalar","data":{"results":[{"queryName":"A","columns":[` + countColumn + `],"data":[[5,0]]}]}}}`, false},
+			`{"status":"success","data":{"type":"scalar","data":{"results":[{"queryName":"A","columns":[` + countColumn + `,` + secondColumn + `],"data":[[5,0]]}]}}}`, false},
 		{"ungrouped scalar with a count", map[string]any{"source": "audit"},
 			`{"status":"success","data":{"type":"scalar","data":{"results":[{"queryName":"A","columns":[` + countColumn + `],"data":[[3]]}]}}}`, false},
 		{"grouped row of zero", map[string]any{"source": "audit", "groupBy": "signoz.audit.verb"},
