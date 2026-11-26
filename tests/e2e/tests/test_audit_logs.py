@@ -1,7 +1,7 @@
 """SigNoz audit events through the log tools with source="audit"."""
 
-from fixtures.mcpclient import MCPClient, assert_tool_ok
-from fixtures.results import first_block_json, first_text_block, query_range_rows
+from fixtures.mcpclient import MCPClient, assert_tool_ok, text_blocks
+from fixtures.results import first_block_json, first_text_block, note_blocks, query_range_rows
 from fixtures.telemetry import AuditEvent, seed_audit_events, wait_for
 
 
@@ -108,3 +108,51 @@ def test_aggregate_logs_source_audit_counts_audit_events(mcp_client: MCPClient, 
         return found if sum(found.values()) == 3 else None
 
     assert wait_for(counts, "three audit events counted by verb") == {"create": 1, "delete": 2}
+
+
+def test_empty_audit_results_say_they_are_not_proof(mcp_client: MCPClient, test_id: str) -> None:
+    """Each empty shape SigNoz returns for audit events carries the note; a result with events does not."""
+    alice, _, _, _ = _seed(test_id)
+    note = "does not record audit events"
+    nobody = f"signoz.principal.email = 'nobody-{test_id}@e2e.test'"
+
+    def count(filter_expression: str, **arguments: object) -> dict:
+        return assert_tool_ok(
+            mcp_client.call_tool(
+                "signoz_aggregate_logs",
+                {
+                    "searchContext": "count SigNoz audit events",
+                    "source": "audit",
+                    "aggregations": "count()",
+                    "filter": filter_expression,
+                    "timeRange": "1h",
+                    **arguments,
+                },
+            )
+        )
+
+    # Wait for the seeded events first, so the empty results below come from the filter, not from lag.
+    def alice_counted() -> dict | None:
+        result = count(f"signoz.principal.email = '{alice}'")
+        rows = [row for r in first_block_json(result)["data"]["data"]["results"] for row in r.get("data") or []]
+        return result if rows == [[2]] else None
+
+    with_events = wait_for(alice_counted, f"two audit events by {alice} counted")
+    assert note not in note_blocks(with_events), "a count of existing events must not carry the empty-audit note"
+
+    empty = {
+        "search": assert_tool_ok(_search(mcp_client, source="audit", filter=nobody)),
+        "ungrouped count": count(nobody),
+        "grouped count": count(nobody, groupBy="signoz.audit.verb"),
+        "time series": count(nobody, requestType="time_series"),
+    }
+    for shape, result in empty.items():
+        assert note in note_blocks(result), f"{shape}: no empty-audit note for {first_text_block(result)[:300]}"
+
+
+def test_search_function_is_rejected_on_audit_events(mcp_client: MCPClient) -> None:
+    """SigNoz runs search() only on application logs, which is why the audit searchScope rule exists."""
+    result = _search(mcp_client, source="audit", filter="search('anything')")
+
+    assert result.get("isError", False), f"search() on audit events was accepted: {text_blocks(result)[:300]}"
+    assert "`search` is only supported for logs" in text_blocks(result)

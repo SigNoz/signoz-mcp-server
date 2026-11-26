@@ -120,6 +120,9 @@ variables: `--reuse`, `--teardown`, `--foundry-binary-path`, `--license-key`.
   5 s floor, a metric step raised over 7 days, and the Cost Meter step.
 - `test_logs.py` — seeded log search, explicit scoped/unscoped search grammar,
   quoted terms, body-only legacy search text, and upstream warning preservation.
+- `test_audit_logs.py` — audit events through `source="audit"`: the audit row shape,
+  attribute and resource filters, a grouped count, the note on every empty result
+  shape, and SigNoz rejecting `search()` on audit events.
 - `test_dashboards.py` — TextPanel create/get/update/patch/default/layout
   lifecycle, global-config browser links across create/get/list/update/patch with
   a localhost backend and per-request aliases, unset-config fallback, confirmed

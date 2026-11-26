@@ -186,7 +186,7 @@ and row shape.
   built at 3ee1ba52: an audit search returns `rows: null`; an ungrouped `count()` returns
   `data: [[0]]`; a grouped `count()` returns `data: []`; a time-series `count()` returns
   `aggregations: null`; `searchScope` `attribute` and `all` return the HTTP 400 above. The handler
-  tests use these shapes. No e2e test pins them yet.
+  tests use these shapes, and `test_audit_logs.py` pins the note on each of them and the HTTP 400.
 - E2E against SigNoz v0.151.0 with collector v0.144.16 (foundry v0.2.17): `test_audit_logs.py`
   passes. It covers the audit row shape (`body.message`, flat `attributes`,
   `resource.attributes`), bare attribute and resource keys, `severity` and `searchText` on audit
