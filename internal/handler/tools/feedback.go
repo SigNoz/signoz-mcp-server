@@ -18,6 +18,7 @@ const (
 	feedbackMessageMaxChars  = 2000
 	feedbackToolNameMaxChars = 128
 	feedbackModelMaxChars    = 128
+	feedbackClientMaxChars   = 128
 
 	// Delivery is batched after the call returns, so the result can only
 	// promise that the report was queued.
@@ -36,6 +37,9 @@ type Feedback struct {
 	// Model is the model, and effort when known, the agent says it runs as.
 	// The server cannot check it.
 	Model string
+	// Client is the app the agent says hosts it. It is kept apart from the
+	// client name the MCP request carries, which stateless HTTP can lose.
+	Client string
 }
 
 // FeedbackSink delivers an accepted report to the SigNoz team. The identity is
@@ -59,6 +63,7 @@ func (h *Handler) RegisterFeedbackHandlers(s *mcp.Server) {
 		mcp.WithString("category", mcp.Enum(feedbackCategories...), mcp.Description("Kind of feedback. tool_error: a call failed or returned a wrong result. confusing_output: a description, schema, or result misled you. missing_capability: no tool does what the task needs. documentation: docs or signoz:// resources are wrong or unclear. user_feedback: the user's own feedback about SigNoz, such as a bug, a request, or praise. other: anything else.")),
 		mcp.WithString("toolName", maxLength(feedbackToolNameMaxChars), mcp.Description("Exact name of the SigNoz tool the report is about, for example signoz_search_logs. Omit it when the report is about no single tool.")),
 		mcp.WithString("model", maxLength(feedbackModelMaxChars), mcp.Description("Name or ID of the model you are running as and effort/thinking level. Omit it when you do not know it; do not guess.")),
+		mcp.WithString("client", maxLength(feedbackClientMaxChars), mcp.Description("Name and version of the app that hosts you (the editor, CLI, or chat app the user works in), not the model. Give the name alone when you do not know the version. Omit it when you do not know the app; do not guess.")),
 	)
 	h.addTool(s, tool, h.handleSubmitFeedback)
 }
@@ -76,12 +81,14 @@ func (h *Handler) handleSubmitFeedback(ctx context.Context, req mcp.CallToolRequ
 		slog.String(string(otelpkg.MCPFeedbackMessageKey), feedback.Message),
 		slog.String(string(otelpkg.MCPFeedbackCategoryKey), feedback.Category),
 		slog.String(string(otelpkg.MCPFeedbackToolNameKey), feedback.ToolName),
-		slog.String(string(otelpkg.MCPFeedbackModelKey), feedback.Model))
+		slog.String(string(otelpkg.MCPFeedbackModelKey), feedback.Model),
+		slog.String(string(otelpkg.MCPFeedbackClientKey), feedback.Client))
 	trace.SpanFromContext(ctx).SetAttributes(
 		otelpkg.MCPFeedbackMessageKey.String(feedback.Message),
 		otelpkg.MCPFeedbackCategoryKey.String(feedback.Category),
 		otelpkg.MCPFeedbackToolNameKey.String(feedback.ToolName),
-		otelpkg.MCPFeedbackModelKey.String(feedback.Model))
+		otelpkg.MCPFeedbackModelKey.String(feedback.Model),
+		otelpkg.MCPFeedbackClientKey.String(feedback.Client))
 
 	client, err := h.GetClient(ctx)
 	if err != nil {
@@ -138,7 +145,18 @@ func parseFeedback(rawArgs any) (Feedback, *mcp.CallToolResult) {
 		return Feedback{}, validationErrorf("model", "must be at most %d characters; pass only the model's name or ID", feedbackModelMaxChars)
 	}
 
-	return Feedback{Message: message, Category: category, ToolName: strings.TrimSpace(toolName), Model: strings.TrimSpace(model)}, nil
+	client, errResult := optionalStringArg(args, "client")
+	if errResult != nil {
+		return Feedback{}, errResult
+	}
+	if utf8.RuneCountInString(client) > feedbackClientMaxChars {
+		return Feedback{}, validationErrorf("client", "must be at most %d characters; pass only the app's name and version", feedbackClientMaxChars)
+	}
+
+	return Feedback{
+		Message: message, Category: category,
+		ToolName: strings.TrimSpace(toolName), Model: strings.TrimSpace(model), Client: strings.TrimSpace(client),
+	}, nil
 }
 
 func maxLength(chars int) mcp.PropertyOption {

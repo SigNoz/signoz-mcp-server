@@ -46,6 +46,7 @@ func submitFeedbackOverHTTP(t *testing.T) (usage, feedback []analyticsCall) {
 			"category": "tool_error",
 			"toolName": "signoz_search_logs",
 			"model":    "example-model-1",
+			"client":   "Example Editor 1.4",
 		},
 	}))
 	headers := modernHeaders("tools/call", "signoz_submit_feedback")
@@ -96,8 +97,10 @@ func TestFeedback_SelfHostedSigNozSendsTheReportUnderAHashedOrg(t *testing.T) {
 		"feedbackToolName": "signoz_search_logs",
 		"feedbackModel":    "example-model-1",
 		"deployment":       "self_hosted",
-		"clientName":       "protocol-test",
-		"clientVersion":    "1",
+		// The agent's claim travels beside the request's client, never over it.
+		"feedbackClient": "Example Editor 1.4",
+		"clientName":     "protocol-test",
+		"clientVersion":  "1",
 	}
 	for key, value := range want {
 		if event.attrs[key] != value {

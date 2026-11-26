@@ -225,6 +225,10 @@ func (m *MCPServer) recordFeedback(ctx context.Context, identity *signozclient.A
 	if feedback.Model != "" {
 		props[analytics.AttrFeedbackModel] = feedback.Model
 	}
+	// Never written to clientName: that property holds what the request said.
+	if feedback.Client != "" {
+		props[analytics.AttrFeedbackClient] = feedback.Client
+	}
 	if request, ok := ctx.Value(requestContextKey{}).(mcp.Request); ok {
 		attachRequestAnalytics(request, props)
 	}

@@ -8637,6 +8637,11 @@
                 ],
                 "type": "string"
               },
+              "client": {
+                "description": "Name and version of the app that hosts you (the editor, CLI, or chat app the user works in), not the model. Give the name alone when you do not know the version. Omit it when you do not know the app; do not guess.",
+                "maxLength": 128,
+                "type": "string"
+              },
               "message": {
                 "description": "The feedback, in at most 2000 characters. For a problem you hit: what you tried, what you expected, and what happened; name the tool and quote the error text. For the user's feedback: what they said about SigNoz, close to their own words. Describe the user's task in general terms and mask personal or sensitive data with placeholders. Example: \"signoz_search_logs returned VALIDATION_FAILED for filter service.name = '\u003cservice\u003e'; the error did not say which key was invalid.\"",
                 "maxLength": 2000,

@@ -47,6 +47,7 @@ const (
 	MCPFeedbackCategoryKey       = attribute.Key("mcp.feedback.category")
 	MCPFeedbackToolNameKey       = attribute.Key("mcp.feedback.tool_name")
 	MCPFeedbackModelKey          = attribute.Key("mcp.feedback.model")
+	MCPFeedbackClientKey         = attribute.Key("mcp.feedback.client")
 	// MCPResultNoteRuleKey names the measurement-note rule a result carried;
 	// its values are a fixed set owned by the tools package.
 	MCPResultNoteRuleKey = attribute.Key("mcp.result_note.rule")

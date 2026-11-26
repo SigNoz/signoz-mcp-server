@@ -60,7 +60,8 @@ func TestSubmitFeedback_DeliversTheReportWithTheCallersOrg(t *testing.T) {
 		"message": "  signoz_search_logs returned VALIDATION_FAILED without naming the invalid key.  ",
 		"category": "tool_error",
 		"toolName": "signoz_search_logs",
-		"model": "example-model-1"
+		"model": "example-model-1",
+		"client": " Example Editor 1.4 "
 	}`)
 
 	if result.IsError {
@@ -78,6 +79,7 @@ func TestSubmitFeedback_DeliversTheReportWithTheCallersOrg(t *testing.T) {
 		Category: "tool_error",
 		ToolName: "signoz_search_logs",
 		Model:    "example-model-1",
+		Client:   "Example Editor 1.4",
 	}
 	if got.feedback != want {
 		t.Fatalf("delivered feedback = %+v, want %+v", got.feedback, want)
@@ -117,6 +119,7 @@ func TestSubmitFeedback_RejectsInvalidReportsBeforeCallingSigNoz(t *testing.T) {
 		{name: "category of the wrong type", arguments: `{"message":"x","category":7}`, wantText: `"category" must be a string`},
 		{name: "tool name over the limit", arguments: `{"message":"x","toolName":"` + strings.Repeat("t", 129) + `"}`, wantText: `"toolName" must be at most 128 characters`},
 		{name: "model over the limit", arguments: `{"message":"x","model":"` + strings.Repeat("m", 129) + `"}`, wantText: `"model" must be at most 128 characters`},
+		{name: "client over the limit", arguments: `{"message":"x","client":"` + strings.Repeat("c", 129) + `"}`, wantText: `"client" must be at most 128 characters`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -201,12 +204,12 @@ func TestSubmitFeedback_LogsTheFullReportEvenWhenDeliveryFails(t *testing.T) {
 	server := newMCPTestServer()
 	h.RegisterAllToolHandlers(server)
 
-	result := callRegisteredTool(t, server, "signoz_submit_feedback", `{"message":"the alert docs skip anomaly rules","category":"documentation","model":"example-model-1"}`)
+	result := callRegisteredTool(t, server, "signoz_submit_feedback", `{"message":"the alert docs skip anomaly rules","category":"documentation","model":"example-model-1","client":"Example Editor 1.4"}`)
 
 	if !result.IsError {
 		t.Fatalf("call succeeded although the org lookup failed: %s", textContent(t, result))
 	}
-	for _, want := range []string{`"mcp.feedback.message":"the alert docs skip anomaly rules"`, `"mcp.feedback.category":"documentation"`, `"mcp.feedback.model":"example-model-1"`} {
+	for _, want := range []string{`"mcp.feedback.message":"the alert docs skip anomaly rules"`, `"mcp.feedback.category":"documentation"`, `"mcp.feedback.model":"example-model-1"`, `"mcp.feedback.client":"Example Editor 1.4"`} {
 		if !strings.Contains(logs.String(), want) {
 			t.Errorf("log is missing %s:\n%s", want, logs.String())
 		}

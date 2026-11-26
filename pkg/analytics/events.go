@@ -38,6 +38,7 @@ const (
 	AttrFeedbackCategory     = "feedbackCategory"
 	AttrFeedbackToolName     = "feedbackToolName"
 	AttrFeedbackModel        = "feedbackModel"
+	AttrFeedbackClient       = "feedbackClient"
 	AttrServerVersion        = "serverVersion"
 	AttrDeployment           = "deployment"
 )
