@@ -19,8 +19,9 @@ import (
 
 // submitFeedbackOverHTTP sends one signoz_submit_feedback call through the
 // production HTTP handler; SigNoz knows the caller as user sa-1
-// (ada@example.com) in org org-1. Usage analytics is on beside feedback.
-func submitFeedbackOverHTTP(t *testing.T) (usage, feedback []analyticsCall) {
+// (ada@example.com) in org org-1. Usage analytics is on beside feedback. A nil
+// meta sends the request metadata of a client that names itself.
+func submitFeedbackOverHTTP(t *testing.T, meta map[string]any) (usage, feedback []analyticsCall) {
 	t.Helper()
 	signoz := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"status":"success","data":{"id":"sa-1","orgId":"org-1","name":"Ada","email":"ada@example.com"}}`))
@@ -39,7 +40,7 @@ func submitFeedbackOverHTTP(t *testing.T) (usage, feedback []analyticsCall) {
 	sdkServer := server.newSDKServer()
 	server.registerHandlers(sdkServer)
 
-	body := protocolRequestJSON(t, 1, "tools/call", modernParams(nil, map[string]any{
+	body := protocolRequestJSON(t, 1, "tools/call", modernParams(meta, map[string]any{
 		"name": "signoz_submit_feedback",
 		"arguments": map[string]any{
 			"message":  "signoz_search_logs did not say which filter key was invalid.",
@@ -64,7 +65,7 @@ func submitFeedbackOverHTTP(t *testing.T) (usage, feedback []analyticsCall) {
 }
 
 func TestFeedback_SelfHostedSigNozSendsTheReportUnderAHashedOrg(t *testing.T) {
-	usage, feedback := submitFeedbackOverHTTP(t)
+	usage, feedback := submitFeedbackOverHTTP(t, nil)
 
 	if len(feedback) != 1 || feedback[0].event != "MCP Feedback: Submitted" {
 		t.Fatalf("feedback sink got %v, want only the feedback report (no usage events)", eventNames(feedback))
@@ -105,6 +106,28 @@ func TestFeedback_SelfHostedSigNozSendsTheReportUnderAHashedOrg(t *testing.T) {
 	for key, value := range want {
 		if event.attrs[key] != value {
 			t.Fatalf("self-hosted feedback %s = %v, want %v", key, event.attrs[key], value)
+		}
+	}
+}
+
+// A client that names itself only in initialize reaches a stateless call with
+// no clientInfo. The agent's claim must not be promoted into clientName there.
+func TestFeedback_KeepsTheAgentsClientOutOfClientNameWhenTheRequestNamesNoClient(t *testing.T) {
+	_, feedback := submitFeedbackOverHTTP(t, map[string]any{
+		"io.modelcontextprotocol/protocolVersion":    modernProtocolVersion,
+		"io.modelcontextprotocol/clientCapabilities": map[string]any{},
+	})
+
+	if len(feedback) != 1 {
+		t.Fatalf("feedback sink got %d reports, want 1", len(feedback))
+	}
+	attrs := feedback[0].attrs
+	if attrs["feedbackClient"] != "Example Editor 1.4" {
+		t.Fatalf("feedbackClient = %v, want the app the agent named", attrs["feedbackClient"])
+	}
+	for _, key := range []string{"clientName", "clientVersion"} {
+		if value, ok := attrs[key]; ok {
+			t.Fatalf("%s = %v, want it absent because the request named no client", key, value)
 		}
 	}
 }
