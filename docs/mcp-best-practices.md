@@ -128,7 +128,11 @@ evolution.
 - **[SCH-5] `searchContext`.** Every tool's input schema MUST expose a
   top-level `searchContext` string carrying the user's original request
   verbatim. It MUST NOT appear in the JSON Schema `required` list and MUST NOT
-  be described as optional. (Mechanics for typed schemas are in `CLAUDE.md`.)
+  be described as optional. Treat it as advisory metadata at runtime. A
+  missing or malformed value MUST NOT block an otherwise valid call. Keep it
+  out of upstream requests, including when it appears directly inside `query`
+  on `signoz_execute_builder_query`. (Mechanics for typed schemas are in
+  `CLAUDE.md`.)
 - **[SCH-6]** Inputs SHOULD be shaped for the agent's task (flat, task-named
   parameters like `filter`, `limit`, `start`/`end`), not mirror the backend
   payload structure, except for deliberate body-carrying tools (dashboard/alert

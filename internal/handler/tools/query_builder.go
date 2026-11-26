@@ -125,8 +125,11 @@ func (h *Handler) handleExecuteBuilderQuery(ctx context.Context, req mcp.CallToo
 		return validationError("query.start", `is required: set start and end to Unix milliseconds, for example "start": 1697385600000`), nil
 	}
 
-	// The request is forwarded verbatim apart from the result bounds this server
-	// inserts where the caller omitted them; SigNoz validates everything else.
+	if _, misplaced := queryObj["searchContext"]; misplaced {
+		delete(queryObj, "searchContext")
+		h.logger.WarnContext(ctx, "Ignored MCP metadata in Query Builder request",
+			slog.String("validation.path", "query.searchContext"))
+	}
 	applied := querybuilder.ApplyBounds(queryObj)
 	finalQueryJSON, err := json.Marshal(queryObj)
 	if err != nil {
