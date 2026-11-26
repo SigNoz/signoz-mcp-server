@@ -34,8 +34,10 @@ and row shape.
 
 ## Files to Modify
 
-- `internal/handler/tools/logs.go`: `source` parameter and tool description sentence on both tools.
-- `internal/handler/tools/logs_helper.go`: read `source`; note for an ignored value.
+- `internal/handler/tools/logs.go`: `source` parameter and tool description sentence on both tools;
+  audit empty-result and audit `searchText` notes.
+- `internal/handler/tools/logs_helper.go`: read `source`; note for an ignored value; reject
+  `search()` scopes with audit; detect an empty audit aggregate.
 - `internal/handler/tools/query_param_descriptions.go`: `source` description; `service` steer.
 - `internal/handler/tools/aggregate_helper.go`: carry the logs source on `AggregateRequest`.
 - `pkg/querybuilder/request.go`: set `Source` on the logs query for search and aggregate.
@@ -57,6 +59,12 @@ and row shape.
 - Rationale: the user preferred not failing the call; SigNoz itself silently reads application
   logs for unknown values, so the note keeps the fallback from being silent.
 - Alternatives rejected: a coded validation error; forwarding the raw value unchecked.
+- SCH-2 exception (recorded 2026-11-26 after review on #464): SCH-2 says a supplied-but-invalid
+  value MUST be rejected. The fallback stays because the schema enum already lists `audit` as
+  the only value, so only a client that ignores the schema sends another one, and the
+  `sourceIgnoredNote` tells the agent that the rows are application logs and names the valid
+  value, so the substitution is never silent. An empty or null `source` is treated as omitted and
+  gets no note; the README says so.
 
 ### 2026-11-19: `service` stays as is for audit
 
@@ -64,10 +72,43 @@ and row shape.
   `source="audit"`.
 - Rationale: the agent reads the steer while filling the parameter; less code than a special case.
 
-### 2026-11-19: no note on empty audit results
+### 2026-11-19: no note on empty audit results (superseded 2026-11-26)
 
 - Decision: rely on the existing "returned 0 rows" note on search; empty aggregates speak for
   themselves.
+- Superseded by the 2026-11-26 decision below.
+
+### 2026-11-26: empty audit results carry a note that they are not proof
+
+- Decision: with `source="audit"`, an empty first search page, and an aggregate with no scalar
+  rows or time-series points, or without `groupBy` one scalar row whose values are all zero or
+  null, gets `auditEmptyResultNote`: the result can also mean this SigNoz does not record audit
+  events (too old, or audit logging not enabled), so it is not proof that nothing happened.
+- Rationale: on a SigNoz without the audit store, or with the auditor on its default `noop`
+  provider, the `signoz.audit.%` condition turns every audit query into an empty success, which
+  an agent reads as "nobody deleted that dashboard". The note says "can also mean", so it stays
+  true when there are simply no matching events (OUT-7). It goes through `appendNotes` like the
+  other notes. It is not a counted measurement note: the trigger reads the response, not the
+  request shape, like `aiNoRowsNote`. Raised in review on #464.
+- The ungrouped zero row is included because SigNoz may answer an ungrouped `count()` over no
+  rows with one row of `0` instead of none; which shape it returns is not verified against a
+  live SigNoz. A payload the walker cannot read gets no note and a WARN log.
+- Alternatives rejected: a note on every audit result (noise on non-empty results); probing
+  SigNoz for audit support before each query (an extra upstream call per query).
+
+### 2026-11-26: `searchScope` other than `body` is rejected with `source="audit"`
+
+- Decision: with `source="audit"`, `searchScope` `attribute`, `resource`, or `all` returns a coded
+  validation error before any upstream call, naming a named audit field predicate in `filter` as
+  the fix. An empty audit page after a body-only `searchText` gets `auditSearchTextNote`, which
+  points at a named audit field in `filter`, instead of `bodyOnlySearchTextNote`, which points at
+  those scopes.
+- Rationale: those scopes build `search()`, and SigNoz's audit storage does not set
+  `SupportsBodyFunctions`, so `RejectsBodyFunction` fails the query (SigNoz
+  `pkg/telemetryschema/audittelemetryschema/storage.go` and `pkg/querybuilder/condition.go`, read
+  in a local checkout at v0.151.0-40; not verified against a live SigNoz). The rejection applies
+  whether or not `searchText` is set, so an audit call never reaches the "searchScope ignored"
+  path with one of those scopes.
 
 ### 2026-11-19: grandfather `signoz_aggregate_logs` at 16 top-level parameters
 
@@ -82,10 +123,16 @@ and row shape.
 ### 2026-11-19: no audit line in the server instructions
 
 - Decision: leave `pkg/instructions` unchanged, though the issue lists it.
-- Rationale: the instructions are at 2047 of the 2048-byte `MaxServerInstructionsBytes` budget;
-  both log tool descriptions already tell agents to set `source="audit"` for SigNoz audit events,
-  and the logs guide holds the details.
-- Alternatives rejected: trimming other rules to fit a sentence; raising the guardrail budget.
+- Rationale: measured on 2026-11-26 by `TestGuardrail_WireContractBudgets`, the instructions are
+  4091 of the 4096-byte `MaxServerInstructionsBytes` budget and the preamble 510 of the 512-byte
+  `MaxServerPreambleBytes` budget, so a routing line needs other text cut first. Both log tool
+  descriptions already tell agents to set `source="audit"` for SigNoz audit events, and the logs
+  guide holds the details.
+- Alternatives rejected: trimming other rules to fit a sentence without evidence; raising the
+  guardrail budget.
+- Open (SUR-11): whether the preamble should route questions such as "who deleted a dashboard?"
+  to `source="audit"`. `pkg/instructions` stays unchanged pending a before/after prompt
+  evaluation (EVL-1, EVL-2), run after this change.
 
 ### 2026-11-20: audit queries match only `signoz.audit.*` events
 
@@ -115,7 +162,10 @@ and row shape.
 - `go test ./...`, `make check-guardrails`, and `make check-repo-docs` pass. Handler tests cover
   what reaches SigNoz for omitted, empty, `audit`, unsupported, and non-string `source` values on
   both tools, the `signoz.audit.*` condition with and without a caller filter, and the
-  ignored-value note.
+  ignored-value note. Since 2026-11-26 they also cover the audit `searchScope` rejection (no
+  request reaches SigNoz), the audit `searchText` note in place of the body-only note, and the
+  empty audit result note on search pages and on scalar and time-series aggregate shapes. The
+  aggregate shapes are fixtures, not recorded SigNoz responses.
 - E2E: pending in the follow-up PR.
 
 ## Outcome
