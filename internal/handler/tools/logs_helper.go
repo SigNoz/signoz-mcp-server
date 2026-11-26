@@ -115,8 +115,9 @@ func validateAuditSearchScope(scope, source string) error {
 
 // auditAggregateEmpty reports whether an aggregate result holds no audit
 // events: no scalar rows or time-series points, or, when zeroRowIsEmpty, one
-// scalar row of zeros, which is how SigNoz answers an ungrouped count() over
-// nothing. known is false when the payload is not a shape it can walk.
+// scalar row of zeros and nulls, which is how SigNoz answers an ungrouped
+// count() over nothing. known is false when the payload is not a shape it can
+// walk.
 func auditAggregateEmpty(payload []byte, zeroRowIsEmpty bool) (empty, known bool) {
 	var envelope struct {
 		Data struct {
@@ -188,15 +189,15 @@ func auditAggregateEmpty(payload []byte, zeroRowIsEmpty bool) (empty, known bool
 	return true, true
 }
 
-// onlyPlainCounts reports whether every aggregation is count(). A zero from
-// countIf or count_distinct says nothing about whether events exist.
-func onlyPlainCounts(aggregations []string) bool {
+// hasPlainCount reports whether one aggregation is count(). Only its zero says
+// no event matched; a zero from countIf alone says nothing about that.
+func hasPlainCount(aggregations []string) bool {
 	for _, aggregation := range aggregations {
-		if strings.ReplaceAll(strings.ToLower(aggregation), " ", "") != "count()" {
-			return false
+		if strings.ReplaceAll(strings.ToLower(aggregation), " ", "") == "count()" {
+			return true
 		}
 	}
-	return len(aggregations) > 0
+	return false
 }
 
 func isZeroOrNull(cell any) bool {

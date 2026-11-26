@@ -81,7 +81,7 @@ and row shape.
 ### 2026-11-26: empty audit results carry a note that they are not proof
 
 - Decision: with `source="audit"`, an empty first search page, and an aggregate with no scalar
-  rows or time-series points, or an ungrouped `count()` whose one row is zero, gets
+  rows or time-series points, or an ungrouped query with `count()` whose one row is all zero, gets
   `auditEmptyResultNote`: the result can also mean this SigNoz does not record audit
   events (too old, or audit logging not enabled), so it is not proof that nothing happened.
 - Rationale: on a SigNoz without the audit store, or with the auditor on its default `noop`
@@ -91,8 +91,8 @@ and row shape.
   other notes. It is not a counted measurement note: the trigger reads the response, not the
   request shape, like `aiNoRowsNote`. Raised in review on #464.
 - The ungrouped zero row is included because SigNoz answers an ungrouped `count()` over no rows
-  with one row of `0`. Only a plain `count()` counts: a zero from `countIf` or another
-  aggregation says nothing about whether events exist. A payload the walker cannot read gets no
+  with one row of `0`. The zero row counts only when a plain `count()` is among the
+  aggregations: a zero from `countIf` alone says nothing about whether events exist. A payload the walker cannot read gets no
   note and a WARN log.
 - Alternatives rejected: a note on every audit result (noise on non-empty results); probing
   SigNoz for audit support before each query (an extra upstream call per query).

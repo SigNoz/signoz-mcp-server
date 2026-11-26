@@ -8462,7 +8462,7 @@
                 "type": "string"
               },
               "searchText": {
-                "description": "Literal text to find, escaped automatically. By default it matches only the log message (body); text stored in an attribute value, such as error.message or an ID attribute, needs searchScope attribute or all. Combines with filter using AND.",
+                "description": "Literal text to find, escaped automatically. By default it matches only the log message (body); text stored in an attribute value, such as error.message or an ID attribute, needs searchScope attribute or all. Combines with filter using AND. With source=\"audit\" it matches only the event body; for an audit attribute, filter on the named field instead.",
                 "type": "string"
               },
               "selectFields": {

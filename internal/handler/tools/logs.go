@@ -129,7 +129,7 @@ func (h *Handler) handleAggregateLogs(ctx context.Context, req mcp.CallToolReque
 		notes = append(notes, sourceIgnoredNote)
 	}
 	if reqData.Source == logSourceAudit {
-		empty, known := auditAggregateEmpty(result, len(reqData.GroupBy) == 0 && onlyPlainCounts(reqData.Aggregations))
+		empty, known := auditAggregateEmpty(result, len(reqData.GroupBy) == 0 && hasPlainCount(reqData.Aggregations))
 		if !known && !isTrivialBody(result) {
 			h.logger.WarnContext(ctx, "audit aggregate result shape unknown",
 				slog.String("tool", "signoz_aggregate_logs"))
