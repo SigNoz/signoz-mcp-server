@@ -1,6 +1,6 @@
 # Plan: Audit log source on the log tools
 
-Status: In Progress
+Status: Done
 Issue: https://github.com/SigNoz/keystone-pod/issues/214
 PR: #464, #470
 
@@ -47,7 +47,10 @@ and row shape.
 - `internal/mcp-server/testdata/wire-catalog/`: the two tool entries and the guide's list and
   content entries.
 - `README.md`, `manifest.json`: `source` on both log tools.
-- `tests/e2e/`: audit queries through MCP (later step).
+- `tests/casting.yaml`: collector v0.144.16.
+- `tests/fixtures/foundry.py`, `tests/fixtures/telemetry.py`: ClickHouse container name and
+  `seed_audit_events`.
+- `tests/e2e/tests/test_audit_logs.py`: audit search and aggregate through MCP.
 
 ## Key Decisions
 
@@ -149,6 +152,16 @@ and row shape.
 - Alternatives rejected: checking returned rows (cannot cover aggregates); relying on the
   latest-release target alone (leaves the mislabelled result silent).
 
+### 2026-11-20: e2e seeds audit events straight into ClickHouse on collector v0.144.16
+
+- Decision: pin the e2e collector to v0.144.16 and insert audit rows into `signoz_audit` with
+  `clickhouse-client` in the ClickHouse container, as SigNoz's querier integration tests do.
+- Rationale: foundry runs the telemetry-store migrations with the collector image, and v0.144.16
+  is the first collector whose migrations create `signoz_audit`. The cast SigNoz has no license,
+  and its auditor drops events without one, so no API call records a real event.
+- Alternatives rejected: enabling the real auditor (needs a license and an audit pipeline);
+  asserting only the request shape (proves nothing about audit data).
+
 ### 2026-11-19: cast the source until the spec lists `audit`
 
 - Decision: send `apitypes.TelemetrytypesSource("audit")` with a TODO to use the generated
@@ -173,8 +186,14 @@ and row shape.
   built at 3ee1ba52: an audit search returns `rows: null`; an ungrouped `count()` returns
   `data: [[0]]`; a grouped `count()` returns `data: []`; a time-series `count()` returns
   `aggregations: null`; `searchScope` `attribute` and `all` return the HTTP 400 above. The handler
-  tests use these shapes. No e2e test pins them yet.
-- E2E: pending in the follow-up PR.
+  tests use these shapes, and `test_audit_logs.py` pins the note on each of them and the HTTP 400.
+- E2E against SigNoz v0.151.0 with collector v0.144.16 (foundry v0.2.17): `test_audit_logs.py`
+  passes. It covers the audit row shape (`body.message`, flat `attributes`,
+  `resource.attributes`), bare attribute and resource keys, `severity` and `searchText` on audit
+  rows, no audit rows without `source`, and an aggregate grouped by `signoz.audit.verb`. With
+  `source` removed from the request builder, the search test fails.
+- Full e2e suite on SigNoz v0.151.0 and the bumped collector: 107 passed, 1 skipped (the existing
+  `allow_simdjson` skip in `test_logs.py`). SigNoz's own e2e CI runs collector v0.144.16-rc.1.
 - Before and after evaluation (EVL-1), 2026-11-26. 48 sessions.
   - Setup: Claude Code 2.1.332 headless, claude-sonnet-5-5 only, tool search on (tools loaded on
     demand). Fresh session per run in an empty directory, only this server configured over stdio,
@@ -222,5 +241,9 @@ and row shape.
 
 ## Outcome
 
-This PR merges ahead of its e2e test. #470, stacked on it, pins the e2e collector to the first
-release with the `signoz_audit` schema, adds the e2e test, and marks this plan Done.
+Shipped in #464 and #470: `source="audit"` on `signoz_search_logs` and `signoz_aggregate_logs`,
+limited to `signoz.audit.*` events; the audit section of the logs guide; README and manifest
+entries; and e2e coverage on collector v0.144.16. Deviations: no audit line in
+`pkg/instructions` (byte budget). Deferred: replace the `audit` cast with
+`apitypes.TelemetrytypesSourceAudit` once a SigNoz release includes SigNoz/signoz#13655, and
+update SigNoz/agent-skills audit guidance (SigNoz/keystone-pod#214).
