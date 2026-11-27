@@ -1181,6 +1181,7 @@ Runs a SigNoz Query Builder v5 request that the dedicated tools cannot express, 
 | `MCP_SERVER_HOST` | Host/interface for HTTP transport mode (default: empty, which listens on all interfaces). Set to `127.0.0.1` for loopback-only access. | No |
 | `MCP_SERVER_PORT` | Port for HTTP transport mode (default: `8000`)                                 | No |
 | `MCP_MAX_REQUEST_BYTES` | Max inbound MCP HTTP request body size in bytes (default: `4194304` / 4 MiB). Bounds memory from a single oversized request. | No |
+| `MCP_MAX_RESULT_CHARS` | Max text characters in one tool result (default: `50000`). A longer result is cut and ends with a note that says to call again with a smaller `limit` or a narrower query. Tools that declare an output schema are not cut. | No |
 | `CLIENT_CACHE_SIZE` | Maximum cached tenant clients in multi-tenant HTTP mode (default: `256`) | No |
 | `CLIENT_CACHE_TTL_MINUTES` | Tenant-client cache lifetime in minutes (default: `30`) | No |
 | `SIGNOZ_DOCS_REFRESH_INTERVAL` | Interval for the single docs refresh schedule (Go duration, default `6h`, jittered). Set both docs refresh intervals to `0` or `off` to disable scheduled refreshes. See [Memory footprint](#memory-footprint). | No |

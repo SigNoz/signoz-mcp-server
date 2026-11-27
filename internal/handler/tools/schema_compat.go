@@ -100,6 +100,7 @@ func (h *Handler) addTool(s *mcp.Server, tool mcp.Tool, handler mcp.ToolHandlerF
 		handler = h.validationDecorator(tool.Name, input, output, handler)
 	}
 	handler = h.errorCodeDecorator(tool.Name, handler)
+	handler = h.resultSizeDecorator(tool, handler)
 	handler = h.toolInvocationDecorator(tool.Name, handler)
 	h.registerTool(s, tool, handler)
 }
