@@ -132,9 +132,10 @@ docs-index:
 ##@ Generated SigNoz API client
 
 # Bump SIGNOZ_SPEC_REF with each SigNoz release, then run `make gen` and commit the result.
-# Pinned to the v0.151.0 release commit.
+# Pinned to the head of SigNoz/signoz#13745, which adds the trace detail routes. Not a release:
+# move it to the first SigNoz release that has them before this merges.
 SKAFF_VERSION ?= v0.0.9
-SIGNOZ_SPEC_REF ?= 9d5c5871cb56d139a0c4006a30e0d026f706ab07
+SIGNOZ_SPEC_REF ?= eed2c7d1770b531ba64c080e69c9d32705be5569
 SIGNOZ_SPEC_URL := https://raw.githubusercontent.com/SigNoz/signoz/$(SIGNOZ_SPEC_REF)/docs/api/openapi.yml
 SKAFF := bin/skaff-$(SKAFF_VERSION)
 APICLIENT_DIR := internal/apiclient

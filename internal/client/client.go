@@ -21,7 +21,6 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/internal/apiclient/apitypes"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	otelpkg "github.com/SigNoz/signoz-mcp-server/pkg/otel"
-	"github.com/SigNoz/signoz-mcp-server/pkg/querybuilder"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 	"github.com/SigNoz/signoz-mcp-server/pkg/version"
@@ -713,34 +712,6 @@ func (s *SigNoz) GetAIFieldKeys(ctx context.Context, searchText, fieldContext, f
 	return s.callAPI(ctx, DefaultQueryTimeout, func(ctx context.Context, api *apiclient.Client) (*http.Response, error) {
 		return api.GetAIObservabilityFieldsKeys(ctx, params)
 	})
-}
-
-// traceLookupStartMs opens the get_trace_details window. SigNoz narrows a
-// trace_id query to the trace's stored time range, so the window only has to
-// contain the trace. SigNoz reads a timestamp's unit from its digit count, so
-// the floor is the earliest 13-digit millisecond value (2001-09-09).
-const traceLookupStartMs = int64(1_000_000_000_000)
-
-// GetTraceDetails returns the spans of one trace by its ID alone.
-func (s *SigNoz) GetTraceDetails(ctx context.Context, traceID string, includeSpans bool) (json.RawMessage, error) {
-	filterExpression := "trace_id = " + querybuilder.QuoteFilterLiteral(traceID)
-	limit := 1000
-
-	// No selectFields: SigNoz returns each span's complete record, its fields
-	// plus the attributes and resource maps, events, and links.
-	queryPayload, err := querybuilder.SpanSearch(traceLookupStartMs, time.Now().UnixMilli(), querybuilder.TraceSearchOptions{
-		Filter: filterExpression,
-		Limit:  limit,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to build query payload: %w", err)
-	}
-	queryJSON, err := json.Marshal(queryPayload)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal query payload: %w", err)
-	}
-
-	return s.QueryBuilderV5(ctx, queryJSON)
 }
 
 // CreateDashboardRaw creates a v2 (Perses) dashboard from raw JSON bytes.

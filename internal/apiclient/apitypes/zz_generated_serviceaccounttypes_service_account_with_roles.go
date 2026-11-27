@@ -9,12 +9,12 @@ import (
 
 // ServiceaccounttypesServiceAccountWithRoles defines model for ServiceaccounttypesServiceAccountWithRoles.
 type ServiceaccounttypesServiceAccountWithRoles struct {
-	CreatedAt           *time.Time                               `json:"createdAt,omitempty"`
+	CreatedAt           time.Time                                `json:"createdAt"`
 	Email               string                                   `json:"email"`
 	Id                  string                                   `json:"id"`
 	Name                string                                   `json:"name"`
 	OrgId               string                                   `json:"orgId"`
 	ServiceAccountRoles *[]ServiceaccounttypesServiceAccountRole `json:"serviceAccountRoles"`
-	Status              string                                   `json:"status"`
-	UpdatedAt           *time.Time                               `json:"updatedAt,omitempty"`
+	Status              ServiceaccounttypesServiceAccountStatus  `json:"status"`
+	UpdatedAt           time.Time                                `json:"updatedAt"`
 }

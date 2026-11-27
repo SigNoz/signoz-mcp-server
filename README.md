@@ -467,7 +467,7 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 | `signoz_search_logs` | Return individual log records matching filters; `source="audit"` for SigNoz audit events |
 | `signoz_aggregate_traces` | Aggregate span or per-AI-trace statistics and grouped or top-N breakdowns |
 | `signoz_search_traces` | Return span rows or one row per trace (including AI traces), or discover trace IDs |
-| `signoz_get_trace_details` | Get one known trace: up to 1,000 spans and their hierarchy |
+| `signoz_get_trace_details` | Open one known trace: its overview, one span, or a paged list of its spans |
 | `signoz_get_ai_pricing` | List AI model prices, or models seen in the last hour with no price |
 | `signoz_list_ai_attribute_mappings` | List the mapping groups that turn vendor AI span attributes into `gen_ai.*` keys |
 | `signoz_test_ai_attribute_mapping` | Run sample spans through the AI attribute mappings without saving anything |
@@ -954,7 +954,7 @@ Return individual paginated span rows matching service, operation, error, durati
   - `limit` (optional) - Maximum rows to return (default: 20, max: 10000; higher values are clamped; paginate with `offset`)
   - `offset` (optional) - Number of rows to skip (default: 0)
   - `selectFields` (optional) - Fields to return on each span row instead of the complete record; SigNoz always adds `timestamp`, `trace_id`, and `span_id`. An array of field names or a comma-separated string, at most 50. Names can be span columns (`name`, `duration_nano`), resource attributes (`service.name`, `k8s.pod.name`), or span attributes (`http.route`); a `resource.`, `attribute.`, or `span.` prefix picks the context. Discover names with `signoz_get_field_keys` (`signal="traces"`)
-  - **Rows**: with no `selectFields`, each span row is the span's complete record: the span fields plus `attributes` and `resource` maps, `events`, and `links`, the same shape `signoz_get_trace_details` returns. With `selectFields`, each named field is a flat row key
+  - **Rows**: with no `selectFields`, each span row is the span's complete record: the span fields plus `attributes` and `resource` maps, `events`, and `links`. With `selectFields`, each named field is a flat row key
   - `orderBy` (optional) - Row order as `'<expression> <direction>'` (e.g. `'duration_nano desc'`; direction defaults to `desc`). Span rows order by span fields and default to `timestamp desc`. `builder_ai_query` trace rows order by a trace-level field or `trace.last_activity_time`, e.g. `'trace.estimated_total_cost desc'`, and default to latest activity first. `builder_query` trace rows always come back slowest first; SigNoz ignores `orderBy` for them
   - `queryType` (optional) - `builder_query` (default) searches all traces. Set `builder_ai_query` for AI observability queries: it searches AI traces (traces with an LLM, tool, or agent span), its span rows are only those spans, and `filter` also accepts the trace-level fields `trace.llm_call_count`, `trace.tool_call_count`, `trace.distinct_tool_count`, `trace.input_tokens`, `trace.output_tokens`, `trace.total_tokens`, `trace.estimated_total_cost`, and `trace.max_llm_duration_nano`, e.g. `trace.tool_call_count > 10`. An unknown value runs as `builder_query` with an input validation notice
   - `requestType` (optional) - `raw` (default; one row per span) or `trace` (one row per trace). Span-level filters, including `operation`, `error`, `minDuration`, and `maxDuration`, keep the traces with at least one matching span, and `selectFields` does not apply to trace rows. `builder_query` trace rows carry `trace_id`, the root span `name`, `service.name`, `duration_nano`, and `span_count` (the spans matching the filter). `builder_ai_query` trace rows carry the trace-level fields without the `trace.` prefix (such as `llm_call_count`), plus `root_span_name`, `span_count`, `trace_duration_nano`, `error_count`, and the input and output message JSON. An unknown value runs as `raw` with an input validation notice
@@ -988,11 +988,30 @@ Return request counts, rates, latency percentiles, error counts, grouped/top-N b
 
 #### `signoz_get_trace_details`
 
-For a known trace ID, return its spans and hierarchy. Each span comes back as its complete record: the span fields plus `attributes` and `resource` maps, `events`, and `links`. Use `signoz_search_traces` first when the ID is unknown. SigNoz locates the trace by its ID alone, so the tool takes no time window; an ID SigNoz does not know returns no spans.
+For a known trace ID, return the trace in bounded pieces: an overview, one span, or a paged list of spans. Use `signoz_search_traces` first when the ID is unknown. SigNoz locates the trace by its ID alone, so the tool takes no time window; an ID SigNoz does not know returns a `NOT_FOUND` error.
+
+| You send | You get |
+|---|---|
+| `traceId` | Overview: the trace's totals, its services, and the first spans of each view |
+| `traceId` + `spanId` | That span, with every attribute, event, and link. With `includeOverview`, the trace's overview beside it |
+| `traceId` + `scope: all` | Every span of the trace, in tree order |
+| `traceId` + `spanId` + `scope` | `descendants`: the spans below that span. `children`: its direct children. `ancestors`: its parents up to the root |
+| `traceId` + `view: thread` | The conversation of an AI agent trace |
 
 - **Parameters**:
-  - `traceId` (required) - Known trace ID, usually discovered with `signoz_search_traces`
-  - `includeSpans` (optional) - Has no effect: every call returns the trace's spans as complete records, up to 1,000. Boolean (or the strings `"true"`/`"false"`)
+  - `traceId` (required) - 32 hex characters, a dashed UUID, or a whole `traceparent` header
+  - `spanId` (optional) - A span ID of the trace. Alone it returns that span; with `scope`, `view`, or `search` it narrows the list to the spans around it
+  - `includeOverview` (optional) - With `spanId` alone: also return the trace's overview beside the span, with 5 spans in each view. Boolean (or the strings `"true"`/`"false"`)
+  - `scope` (optional) - `all` (the whole trace), or with a `spanId`: `descendants`, `children`, or `ancestors`. Left out, it is `all`, or `descendants` when `spanId` is sent with a `view` or `search`
+  - `view` (optional) - One or more of `error_origins`, `unmarked_failures`, `time_spent`, `ai_usage`, `links`, or `thread` alone. With `traceId` alone the views narrow the overview; a list takes exactly one. Array, or a single string
+  - `search` (optional) - Words, a filter expression, or both, for example `worldpay AND has_error = true`. Returns only the spans that match, as a list
+  - `selectFields` (optional) - Attribute names to return on each span of a list; discover names with `signoz_get_field_keys` (`signal="traces"`). A single span already has every field. Array, or a comma-separated string
+  - `pageSize` (optional) - Spans in each view of the overview (default: 10), in a page of a list (default: 50, max: 1000), or in a page of the thread (default: 20, max: 100)
+  - `cursor` (optional) - The cursor a note of the previous result gave, sent with the same other inputs
+- **Response**: SigNoz's own objects, under SigNoz's keys. Overview: `summary`, `services`, and one object per view (`errorOrigins`, `unmarkedFailures`, `timeSpent`, `aiUsage`, `links`), each with `total` and `items`. Span: `span`, and `traceOverview` with `includeOverview`. List: `total`, `items` (each a `span` with its `treeStats`), and `pagination` (`hasMore`, `nextCursor`). Thread: `spans`, each with its `formattedInput` and `formattedOutput` messages and without attributes, and `pagination`. Every result carries `webUrl` and `notes`
+- **Validation**: this tool checks only which inputs combine. SigNoz validates view names and page sizes, and its error message comes back as it is
+- **Size**: every result stays within 50,000 characters. A list or thread page ends early and gives a `nextCursor`; an overview shortens its views, `errorOrigins` last; in a list or an overview a value over 500 characters is cut, and opening the span with `spanId` returns its values whole; a single span is cut only when it alone is too long. Each note says what was left out and the call that returns it
+- **Retired**: `includeSpans` returns a validation error that names its replacement
 
 #### `signoz_get_ai_pricing`
 

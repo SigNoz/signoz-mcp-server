@@ -5,11 +5,11 @@ package apitypes
 
 // Defines values for RuletypesListSort.
 const (
-	RuletypesListSortCreatedAt RuletypesListSort = "created_at"
-	RuletypesListSortName      RuletypesListSort = "name"
-	RuletypesListSortSeverity  RuletypesListSort = "severity"
-	RuletypesListSortState     RuletypesListSort = "state"
-	RuletypesListSortUpdatedAt RuletypesListSort = "updated_at"
+	RuletypesListSortCreatedAt  RuletypesListSort = "created_at"
+	RuletypesListSortName       RuletypesListSort = "name"
+	RuletypesListSortState      RuletypesListSort = "state"
+	RuletypesListSortThresholds RuletypesListSort = "thresholds"
+	RuletypesListSortUpdatedAt  RuletypesListSort = "updated_at"
 )
 
 // Valid indicates whether the value is a known member of the RuletypesListSort enum.
@@ -19,9 +19,9 @@ func (e RuletypesListSort) Valid() bool {
 		return true
 	case RuletypesListSortName:
 		return true
-	case RuletypesListSortSeverity:
-		return true
 	case RuletypesListSortState:
+		return true
+	case RuletypesListSortThresholds:
 		return true
 	case RuletypesListSortUpdatedAt:
 		return true

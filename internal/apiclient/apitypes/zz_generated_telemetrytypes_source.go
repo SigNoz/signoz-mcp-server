@@ -5,6 +5,7 @@ package apitypes
 
 // Defines values for TelemetrytypesSource.
 const (
+	TelemetrytypesSourceAudit TelemetrytypesSource = "audit"
 	TelemetrytypesSourceEmpty TelemetrytypesSource = ""
 	TelemetrytypesSourceMeter TelemetrytypesSource = "meter"
 )
@@ -12,6 +13,8 @@ const (
 // Valid indicates whether the value is a known member of the TelemetrytypesSource enum.
 func (e TelemetrytypesSource) Valid() bool {
 	switch e {
+	case TelemetrytypesSourceAudit:
+		return true
 	case TelemetrytypesSourceEmpty:
 		return true
 	case TelemetrytypesSourceMeter:

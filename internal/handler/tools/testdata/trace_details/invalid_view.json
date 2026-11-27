@@ -1,0 +1,1 @@
+{"status":"error","error":{"type":"invalid-input","code":"trace_spans_invalid_view","message":"invalid view \"slowest\", expected one of error_origins, unmarked_failures, time_spent, ai_usage, links","errors":[],"suggestions":[]}}
