@@ -121,4 +121,7 @@ func TestInstanceURLAllowlistAllowsURL(t *testing.T) {
 	if al.AllowsURL("://bad-url") {
 		t.Errorf("malformed URL should be denied when allowlist is configured")
 	}
+	if al.AllowsURL("http://[::1%25.us.signoz.cloud]:8080") {
+		t.Errorf("expected a host with an IPv6 zone to be denied")
+	}
 }
