@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
-  "built_at": "2026-11-23T10:26:26.455406739Z",
-  "sitemap_hash": "6c477b07237f2491960b28d0d297d971ba05ee69cc9482721fc9dbcc8f256550",
+  "built_at": "2026-11-27T08:47:08.284549678Z",
+  "sitemap_hash": "f97bf815eacbfc5c2fce491f232fcd3d2d31b82b4d57a6aeafd7fad304e195c5",
   "pages": [
     {
       "url": "https://signoz.io/docs/introduction.md",
@@ -24,8 +24,8 @@
     {
       "url": "https://signoz.io/docs/glossary.md",
       "title": "Glossary of Observability and OpenTelemetry Terms",
-      "sha256": "511c1750f699c3c615f89c6a22c7ea2f785e88b8b6a8707fca3e11eb4f45e75a",
-      "fetched_at": "2026-11-19T15:53:13.725808+05:30"
+      "sha256": "bbcc3295f0f8bb5f4d73a1e397023137289cea4dd536f01cb7acb602b5bccaad",
+      "fetched_at": "2026-11-27T08:47:08.119410931Z"
     },
     {
       "url": "https://signoz.io/docs/roadmap.md",
@@ -238,6 +238,12 @@
       "fetched_at": "2026-11-19T15:53:17.167725+05:30"
     },
     {
+      "url": "https://signoz.io/docs/operate/migration/upgrade-0-152.md",
+      "title": "Upgrade SigNoz Helm Chart to 1.0.0 with ClickHouse Keeper",
+      "sha256": "ebf62a6f33a6ff33a476eac4582f33f0a8688e24597d2a1032d86ad1433190f7",
+      "fetched_at": "2026-11-27T08:47:08.122206881Z"
+    },
+    {
       "url": "https://signoz.io/docs/operate/migration/upgrade-0-150.md",
       "title": "Upgrade SigNoz to v0.150.0 with Alert Rules v2alpha1 Schema",
       "sha256": "32890d406d60f5503f789cf1529d3665725226f87901918029cbcf9434e0a68f",
@@ -414,8 +420,8 @@
     {
       "url": "https://signoz.io/docs/operate/clickhouse.md",
       "title": "ClickHouse",
-      "sha256": "88ca8625e6a54a2f88122f422c9137994335f39ef81bd8ecb44cf8218faf0fa6",
-      "fetched_at": "2026-11-19T15:53:13.88905+05:30"
+      "sha256": "d927fd4c57ce5088babca41b0b7ae88e111cd0c146f0b2810a007145f1ad7ee4",
+      "fetched_at": "2026-11-27T08:47:08.121341798Z"
     },
     {
       "url": "https://signoz.io/docs/operate/clickhouse/distributed-clickhouse.md",
@@ -460,34 +466,34 @@
       "fetched_at": "2026-11-19T15:53:14.035989+05:30"
     },
     {
+      "url": "https://signoz.io/docs/operate/clickhouse/migrate-zookeeper-to-keeper.md",
+      "title": "Migrate ZooKeeper to ClickHouse Keeper in SigNoz Helm Chart",
+      "sha256": "ff8fcb7eeabd799b433682cd054952bd5a66cbc3cac69d69cecd2e6ad9a0e1e2",
+      "fetched_at": "2026-11-27T08:47:08.154030647Z"
+    },
+    {
       "url": "https://signoz.io/docs/operate/clickhouse/clickhouse-queries.md",
       "title": "ClickHouse Queries for Dashboards and Alerts",
       "sha256": "e25539d37457c3f8d700c09068497faa874fdd816ca0fd74c626de14764bc090",
       "fetched_at": "2026-11-19T15:53:13.961692+05:30"
     },
     {
-      "url": "https://signoz.io/docs/userguide/authentication.md",
-      "title": "Authentication and Login: Roles, Invites \u0026 SSO",
-      "sha256": "de2a3b8a4d1d7cd852fb9f158e43229508ec034020f8dc223e70d7588329e04e",
-      "fetched_at": "2026-11-19T15:53:13.984854+05:30"
-    },
-    {
       "url": "https://signoz.io/docs/manage/administrator-guide/iam/overview.md",
       "title": "Authorization Overview",
-      "sha256": "b657a2148f5b490f4667584e0afb2c5b1539d12a8f988ab86d00a93beba82b57",
-      "fetched_at": "2026-11-19T15:53:13.965811+05:30"
+      "sha256": "a6bf198850f380b076601a7c6b3c0ef26a6087799d5cf01e318d6c7a833dc740",
+      "fetched_at": "2026-11-27T08:47:08.118447538Z"
     },
     {
       "url": "https://signoz.io/docs/manage/administrator-guide/iam/roles.md",
       "title": "Roles",
-      "sha256": "d3b739194590645affb4eb0478fd339a79213c72ce034cb2f43cd3ccbc598ad4",
-      "fetched_at": "2026-11-19T15:53:13.968211+05:30"
+      "sha256": "f91a34cc080450ecdf656e1c5e4046e2f23b3c38aaf5175ed9d6bc622b881d17",
+      "fetched_at": "2026-11-27T08:47:08.123895284Z"
     },
     {
-      "url": "https://signoz.io/docs/manage/administrator-guide/iam/invite-team-member.md",
-      "title": "Invite Team Member",
-      "sha256": "97a7f32b22ca8f44b90b48205487b5975603b563c3c66bec341b2ab70358e3ea",
-      "fetched_at": "2026-11-19T15:53:13.971534+05:30"
+      "url": "https://signoz.io/docs/manage/administrator-guide/iam/members.md",
+      "title": "Members",
+      "sha256": "988ccd3ebcdb402c460c329d9bf728f5eba6bfb3953655fa187533234ebca559",
+      "fetched_at": "2026-11-27T08:47:08.11605228Z"
     },
     {
       "url": "https://signoz.io/docs/manage/administrator-guide/iam/service-accounts.md",
@@ -498,32 +504,32 @@
     {
       "url": "https://signoz.io/docs/manage/administrator-guide/iam/reference/transactions.md",
       "title": "Transactions Reference",
-      "sha256": "7bd57ac6809118cb3942b1292ff784c8708758926c22ca26e4d3f36d743d79c4",
-      "fetched_at": "2026-11-19T15:53:13.963319+05:30"
+      "sha256": "b933ed6382f79ee4979a29c43d994147630ca400f22ac3829f5693e16bc3924d",
+      "fetched_at": "2026-11-27T08:47:08.117746617Z"
     },
     {
       "url": "https://signoz.io/docs/manage/administrator-guide/iam/reference/telemetry.md",
       "title": "Telemetry Access Reference",
-      "sha256": "d4d1f243fa6d66e41f7fd09b2c03ffc50d9e499aee2df3e29adfab92c96b7fa8",
-      "fetched_at": "2026-11-19T15:53:13.968219+05:30"
+      "sha256": "4d843d542ac5e7820e114f2f6ba105d2b65e8b53d86219fc0f0775e056cd1f5d",
+      "fetched_at": "2026-11-27T08:47:08.10423877Z"
     },
     {
       "url": "https://signoz.io/docs/manage/administrator-guide/iam/user-guides/self-service-api-keys-for-viewers.md",
       "title": "Self-Service API Keys for Viewers",
-      "sha256": "8dd118c2ad43db8dbfcdd5cabc59467bb738747675229f7d998b2efbb7076952",
-      "fetched_at": "2026-11-19T15:53:13.968123+05:30"
+      "sha256": "541997d7f6dc3e8caf19c968e432ef4d8c5907f23f208101f65bd8b44314827d",
+      "fetched_at": "2026-11-27T08:47:08.121420709Z"
     },
     {
       "url": "https://signoz.io/docs/manage/administrator-guide/iam/user-guides/scope-telemetry-access-by-ingestion-key.md",
       "title": "Scope Telemetry Access by Ingestion Key with Custom Roles",
-      "sha256": "fe63b98ede66f37cad0ed909527e4d355d358b8bbf13dd4e306cd844ea4373df",
-      "fetched_at": "2026-11-19T15:53:13.981026+05:30"
+      "sha256": "13e240097b3626c0c424fce43a1e35118dfd3e0ae48b9892d1f503245431766f",
+      "fetched_at": "2026-11-27T08:47:08.193991542Z"
     },
     {
       "url": "https://signoz.io/docs/manage/administrator-guide/iam/user-guides/scope-telemetry-access-by-service-and-environment.md",
       "title": "Scope Telemetry Access by Service and Environment with Roles",
-      "sha256": "ca25dafc5bfbd1d080e3bd230cd2e0c1451c90bb1525b5d9c08fa7ebed520425",
-      "fetched_at": "2026-11-19T15:53:13.977009+05:30"
+      "sha256": "51e59d8d250b9ecda5822d5fb463cad8c58f8796c01693451d5d6e4edaaacb54",
+      "fetched_at": "2026-11-27T08:47:08.127212805Z"
     },
     {
       "url": "https://signoz.io/docs/manage/administrator-guide/iam/user-guides/multi-tenant-observability-via-api.md",
@@ -534,8 +540,14 @@
     {
       "url": "https://signoz.io/docs/manage/administrator-guide/iam/user-guides/restrict-dashboard-access.md",
       "title": "Restrict Dashboard Access in SigNoz with Custom Roles",
-      "sha256": "b81fc6a18b714d42088202b713fde368433f78121a5907e52336a943da4b4caf",
-      "fetched_at": "2026-11-19T15:53:14.035912+05:30"
+      "sha256": "c14f91c0246d1c1354098f4d34aa47ddc399815d811cf5ab048f93873f122452",
+      "fetched_at": "2026-11-27T08:47:08.12278178Z"
+    },
+    {
+      "url": "https://signoz.io/docs/manage/administrator-guide/iam/user-guides/manage-user-role-assignments.md",
+      "title": "Manage User Role Assignments",
+      "sha256": "cc1c88806cf4f074a14dac771d271e4f02f0278684b20d5b3d09d620c37863e4",
+      "fetched_at": "2026-11-27T08:47:08.152695314Z"
     },
     {
       "url": "https://signoz.io/docs/operate/configuration.md",
@@ -556,16 +568,22 @@
       "fetched_at": "2026-11-19T15:53:14.141243+05:30"
     },
     {
+      "url": "https://signoz.io/docs/manage/administrator-guide/configuration/session-tokens.md",
+      "title": "Configure Session Token Providers in Self-Hosted SigNoz",
+      "sha256": "80847460bede954e30b1a63a53d1b559cda4ea80b28587d339e48bc3efa4081c",
+      "fetched_at": "2026-11-27T08:47:08.137282498Z"
+    },
+    {
       "url": "https://signoz.io/docs/manage/administrator-guide/configuration/jwt-secret.md",
       "title": "JWT Secret Configuration Guide",
-      "sha256": "86957a60cf3573e7a034cd214e09a9c81fc0f8fc7e2a4246576dce064cbb5a7b",
-      "fetched_at": "2026-11-19T15:53:14.141234+05:30"
+      "sha256": "b559abdfc3b14cb9350a8c158494f778c23bf6a88bd10c66aac981a0b7faf123",
+      "fetched_at": "2026-11-27T08:47:08.121980156Z"
     },
     {
       "url": "https://signoz.io/docs/manage/administrator-guide/configuration/root-user.md",
       "title": "Root User Configuration",
-      "sha256": "0d4806ab0e8a0d5e83c45bdd562d1ead7661f049fc41ebf75c9a2f4241f67da1",
-      "fetched_at": "2026-11-19T15:53:13.965697+05:30"
+      "sha256": "b956d357292c9a27e274c7bcdb77819655ac70269abbf8c3317df6fa9dd898d1",
+      "fetched_at": "2026-11-27T08:47:08.155192373Z"
     },
     {
       "url": "https://signoz.io/docs/manage/administrator-guide/configuration/relational-database.md",
@@ -575,69 +593,75 @@
     },
     {
       "url": "https://signoz.io/docs/manage/administrator-guide/configuration/serving-on-external-url.md",
-      "title": "Serving SigNoz on an External URL",
-      "sha256": "d7f871fefd07e485289d4a40ab8230dc278e080b02a9feab5a7d974d3abe616d",
-      "fetched_at": "2026-11-19T15:53:13.976965+05:30"
+      "title": "Serving Self-Hosted SigNoz on an External URL or Base Path",
+      "sha256": "b200ac54a2a0b6f68bcefa36a1125db8266b713d067d7ed04062c75978070060",
+      "fetched_at": "2026-11-27T08:47:08.156255112Z"
+    },
+    {
+      "url": "https://signoz.io/docs/manage/administrator-guide/configuration/api-server-tls.md",
+      "title": "API Server TLS/HTTPS Configuration for Self-Hosted SigNoz",
+      "sha256": "911fd8a10400f2a03a51c463fdc5a69d47109129a0d2259ea5c2ef57c9f6faa0",
+      "fetched_at": "2026-11-27T08:47:08.155178472Z"
     },
     {
       "url": "https://signoz.io/docs/manage/administrator-guide/configuration/impersonation-mode.md",
       "title": "Impersonation Mode",
-      "sha256": "16f5ef06aa74a1a414665c4cb338b3c8629d9114ae30777dcfb2356958e080d3",
-      "fetched_at": "2026-11-19T15:53:13.980718+05:30"
+      "sha256": "03c17445b665ab34b37aa1bd184c80317372b43fd3b45052f79ffa9109a8bb2e",
+      "fetched_at": "2026-11-27T08:47:08.163066163Z"
     },
     {
       "url": "https://signoz.io/docs/manage/administrator-guide/sso/overview.md",
       "title": "Single Sign on (SSO) - Overview",
-      "sha256": "6900103feb63f5fb31f42b2702d3ac1335a493869c8a5b6ae1510bd57a81e41a",
-      "fetched_at": "2026-11-19T15:53:14.141186+05:30"
+      "sha256": "19f76580f74fca3452469416dedd6fc4206bfc96788d617fa56f9e08bad82145",
+      "fetched_at": "2026-11-27T08:47:08.200086515Z"
     },
     {
       "url": "https://signoz.io/docs/manage/administrator-guide/sso/user-guides/saml-jumpcloud.md",
       "title": "SAML Authentication with JumpCloud",
-      "sha256": "91c172de17c4eebb357073b40eb4c3df0e28620a57fa62d78eaff02a6a8dc4b8",
-      "fetched_at": "2026-11-19T15:53:14.044639+05:30"
+      "sha256": "4f5d97637ae494f754aab53bc513bf237645aef9f3d742c00602a8eb9866b653",
+      "fetched_at": "2026-11-27T08:47:08.185599095Z"
     },
     {
       "url": "https://signoz.io/docs/manage/administrator-guide/sso/user-guides/saml-awsso.md",
       "title": "SAML Authentication with AWS SSO",
-      "sha256": "e8ae5b9d262342f1613fc8388e650914806ad939a6afdd7836ded0e7c4c47757",
-      "fetched_at": "2026-11-19T15:53:14.047668+05:30"
+      "sha256": "16e6829af6fd28a66c6adc579f4ceb1faa236e80af061f1c0fcf67c4ae0ba823",
+      "fetched_at": "2026-11-27T08:47:08.199519818Z"
     },
     {
       "url": "https://signoz.io/docs/manage/administrator-guide/sso/user-guides/saml-okta.md",
       "title": "SAML Authentication with Okta",
-      "sha256": "7e2704cadd6f00b7cd64b6b2ed59ccb8d4883c5e8af8c638598b938b6e8a136d",
-      "fetched_at": "2026-11-19T15:53:14.141232+05:30"
+      "sha256": "e89211c4f9927f481f9e87ef2a04189e8f5ccccafe47b1db4de393dc6ceb2c36",
+      "fetched_at": "2026-11-27T08:47:08.188706976Z"
     },
     {
       "url": "https://signoz.io/docs/manage/administrator-guide/sso/user-guides/saml-microsoft-entra.md",
       "title": "SAML Authentication with Microsoft Entra ID",
-      "sha256": "7cf89abb3774110daf799bcc10d2c6556c2667f93053ef1667e35c460a0050ce",
-      "fetched_at": "2026-11-19T15:53:14.232736+05:30"
+      "sha256": "957a6e4806aa55e53f25f24b410c6934b90372b374bf04b6d852178ee2733a2e",
+      "fetched_at": "2026-11-27T08:47:08.198338343Z"
     },
     {
       "url": "https://signoz.io/docs/manage/administrator-guide/sso/user-guides/sso-google.md",
       "title": "Single Sign-on Authentication With Google Workspace",
-      "sha256": "2ba29c32a5b19a6b07f21624c94bd0d53dd027c2d51e0543e6e29a70ccf652f6",
-      "fetched_at": "2026-11-23T10:26:26.345964188Z"
+      "sha256": "497cac5e29989000806cbd9590b7d5848ca0152e60ce6f6dd4d5a56c64664be8",
+      "fetched_at": "2026-11-27T08:47:08.201392203Z"
     },
     {
       "url": "https://signoz.io/docs/manage/administrator-guide/sso/user-guides/saml-keycloak.md",
       "title": "Setting Up SSO SAML 2.0 With Keycloak",
-      "sha256": "34bfa03f73d8d4ce9ba1a09c6e8f85aa9f0d52e17069ec56775bbea9511d682b",
-      "fetched_at": "2026-11-19T15:53:14.232776+05:30"
+      "sha256": "b355b875b93d605b87577479e6a1df017c776a317239c3e565472e68bdf2e152",
+      "fetched_at": "2026-11-27T08:47:08.227785728Z"
     },
     {
       "url": "https://signoz.io/docs/manage/administrator-guide/sso/user-guides/oidc-keycloak.md",
       "title": "Setting Up SSO OIDC With Keycloak",
-      "sha256": "93da5c3fc85f0e90c08e48202347b092b9d96ae823a620cf4322916051691963",
-      "fetched_at": "2026-11-19T15:53:14.232892+05:30"
+      "sha256": "3711c8841d1dd40d9525231e837ea79cf64a7958c9a786e7310195d12bd6984f",
+      "fetched_at": "2026-11-27T08:47:08.192142981Z"
     },
     {
       "url": "https://signoz.io/docs/manage/administrator-guide/sso/user-guides/saml-google.md",
       "title": "SAML Authentication with Google Workspace",
-      "sha256": "14c9719a1d7d8a254e0fb9d0d1a96db57b5bf3f40004e9c32ab75411b8347eee",
-      "fetched_at": "2026-11-19T15:53:14.331912+05:30"
+      "sha256": "8af9cdaac6ff9f0aec8e5f84ddf3dec15c6344bcd77022f2e1de45552d24ddbe",
+      "fetched_at": "2026-11-27T08:47:08.188867202Z"
     },
     {
       "url": "https://signoz.io/docs/production-readiness.md",
@@ -971,9 +995,9 @@
     },
     {
       "url": "https://signoz.io/docs/opentelemetry-collection-agents/opentelemetry-collector/geoip-processor.md",
-      "title": "OpenTelemetry Collector GeoIP Processor",
-      "sha256": "49d8f4744041fb67a0d0ce61fd24c4e95ae28c252c901e31bdb8f15232461d2e",
-      "fetched_at": "2026-11-19T15:53:15.013956+05:30"
+      "title": "OpenTelemetry Collector GeoIP Processor - Add Location Data",
+      "sha256": "6fca656207b7982c308a36521486e20451d24cb783cbedf6fe18c588831d31a1",
+      "fetched_at": "2026-11-27T08:47:08.194183586Z"
     },
     {
       "url": "https://signoz.io/docs/opentelemetry-collection-agents/opentelemetry-collector/ottl.md",
@@ -1824,8 +1848,8 @@
     {
       "url": "https://signoz.io/docs/userguide/logs_query_builder.md",
       "title": "Logs Explorer",
-      "sha256": "2c06998af0feff2556d2fd8c514088cd710d8d01300f9946beec394dd4cd2d5a",
-      "fetched_at": "2026-11-19T15:53:18.950014+05:30"
+      "sha256": "8e925e652d61c9049e6fca131670eefc4ef373443b03590478011841eb6877a9",
+      "fetched_at": "2026-11-27T08:47:08.202333163Z"
     },
     {
       "url": "https://signoz.io/docs/logs-management/querying-logs.md",
@@ -1980,8 +2004,8 @@
     {
       "url": "https://signoz.io/docs/logs-management/logs-api/overview.md",
       "title": "Logs API - Query and Analyze SigNoz Logs over HTTP",
-      "sha256": "ac5f9ab3a9008430207e5b6e46796bd3da46b49aee9c5083dfac683deb46d5fd",
-      "fetched_at": "2026-11-19T15:53:17.366041+05:30"
+      "sha256": "7e5cc90ce01cfbf2766376791c134885ab19047e8bdd82d09c75f465da18a251",
+      "fetched_at": "2026-11-27T08:47:08.234573134Z"
     },
     {
       "url": "https://signoz.io/docs/logs-management/troubleshooting/troubleshooting.md",
@@ -2238,8 +2262,8 @@
     {
       "url": "https://signoz.io/docs/metrics-management/types-and-aggregation.md",
       "title": "Metric Types, Temporality, and Aggregation Explained",
-      "sha256": "e3086240c7bef9d33199dd55b5dafb7f6db87cffc0706b48d0ea8f8e7d097732",
-      "fetched_at": "2026-11-19T15:53:18.134787+05:30"
+      "sha256": "e81747b231db90fc6682cc3e7260ff9f0cfe7e8431a3f0eda3f31ef5a5917328",
+      "fetched_at": "2026-11-27T08:47:08.225424331Z"
     },
     {
       "url": "https://signoz.io/docs/metrics-management/configure-custom-buckets.md",
@@ -2322,8 +2346,8 @@
     {
       "url": "https://signoz.io/docs/metrics-management/troubleshooting/faqs.md",
       "title": "Metrics Management FAQs - Troubleshoot Missing Metrics",
-      "sha256": "c912c9ddcb6e4093017f669b6712e532d179861aca157ed60f41405e9eb85b37",
-      "fetched_at": "2026-11-19T15:53:24.331379+05:30"
+      "sha256": "3a7fba9f551dd59f298829a8d5e8a0cfed3bff50c435b940c563d038bbff72ec",
+      "fetched_at": "2026-11-27T08:47:08.110711622Z"
     },
     {
       "url": "https://signoz.io/docs/cost-meter/overview.md",
@@ -2418,14 +2442,32 @@
     {
       "url": "https://signoz.io/docs/cost-control/attribute-ingestion-volume.md",
       "title": "Attribute Ingestion Volume by Team, Service, and Environment",
-      "sha256": "88205a366eefcac2ca0c8a021300862b920a46995ca64fd0f414f52bd73cb162",
-      "fetched_at": "2026-11-19T15:53:28.375507+05:30"
+      "sha256": "22d6f2880b0672b01a6af64b41877d4805769b9a5bf7a7a35ed729d767b5a3e1",
+      "fetched_at": "2026-11-27T08:47:08.111316084Z"
+    },
+    {
+      "url": "https://signoz.io/docs/audit-logs/overview.md",
+      "title": "Audit Logs - Track Changes in Your SigNoz Workspace",
+      "sha256": "450b662d2bdd8c82c11f153b2ba16b1dadf774d0d9f937c546b87e2d35f269de",
+      "fetched_at": "2026-11-27T08:47:08.146516528Z"
+    },
+    {
+      "url": "https://signoz.io/docs/audit-logs/query-api.md",
+      "title": "Query SigNoz Audit Logs via API - Find Who Changed What",
+      "sha256": "3b85f07dedb7743ad92ef61da2389c15a1e7059cc7ade5d98ffb2feaefca9991",
+      "fetched_at": "2026-11-27T08:47:08.19965673Z"
+    },
+    {
+      "url": "https://signoz.io/docs/audit-logs/reference.md",
+      "title": "Audit Logs Reference - Fields, Values, and Recording Rules",
+      "sha256": "95194cf4808c842b5b259c07875805d14ca89288e3a82b7df4201cfbf3e3de29",
+      "fetched_at": "2026-11-27T08:47:08.144099969Z"
     },
     {
       "url": "https://signoz.io/docs/dashboards/overview.md",
-      "title": "Dashboards",
-      "sha256": "80bf00474280d5318c2a99151c9bf31f59c19847e1ff2fa44905a5026159e2cb",
-      "fetched_at": "2026-11-19T15:53:28.458032+05:30"
+      "title": "Dashboards Overview - Visualize Metrics, Logs, and Traces",
+      "sha256": "67117f6bd3aba985df3183ffc3f938f0e419fdfe5b9b9c779ffde6dddf62555b",
+      "fetched_at": "2026-11-27T08:47:08.150512951Z"
     },
     {
       "url": "https://signoz.io/docs/userguide/manage-dashboards.md",
@@ -2435,9 +2477,9 @@
     },
     {
       "url": "https://signoz.io/docs/dashboards/panel-types.md",
-      "title": "Panel types in Dashboards",
-      "sha256": "cd6ab80fcf9368ccce8790eaa92680775c5a34611ec457c72e801dec32e7f6f8",
-      "fetched_at": "2026-11-19T15:53:29.956657+05:30"
+      "title": "Dashboard Panel Types - Browse Charts, Tables, and Lists",
+      "sha256": "83f8b09aaa2a1c64927ae0bbbb5dcc71274359641859dbba4b489aaf5d79d918",
+      "fetched_at": "2026-11-27T08:47:08.159026616Z"
     },
     {
       "url": "https://signoz.io/docs/dashboards/panel-types/area.md",
@@ -2452,10 +2494,16 @@
       "fetched_at": "2026-11-19T15:53:29.882156+05:30"
     },
     {
+      "url": "https://signoz.io/docs/dashboards/panel-types/geo-map.md",
+      "title": "Geo Map Panel Type - Visualize Data on a World Map",
+      "sha256": "19472f539afedac5124c4807d9b0db8deca80ec102412fdadce591563fd1d326",
+      "fetched_at": "2026-11-27T08:47:08.158505977Z"
+    },
+    {
       "url": "https://signoz.io/docs/dashboards/panel-types/heatmap.md",
       "title": "Heatmap Panel Type - Visualize Metric Distributions",
-      "sha256": "4adc0319b7e8035d9624c65f347f10461299f553f8895e5c3e3e04ae692a7162",
-      "fetched_at": "2026-11-19T15:53:32.093948+05:30"
+      "sha256": "8b7655a82cf78533b4e9018683f15f147c2b2e9f7031773d282ebc86f76f337f",
+      "fetched_at": "2026-11-27T08:47:08.156433927Z"
     },
     {
       "url": "https://signoz.io/docs/dashboards/panel-types/histogram.md",
@@ -2476,6 +2524,12 @@
       "fetched_at": "2026-11-19T15:53:20.433169+05:30"
     },
     {
+      "url": "https://signoz.io/docs/dashboards/panel-types/scatter-plot.md",
+      "title": "Scatter Plot Panel Type - Plot Two Values per Group",
+      "sha256": "d18cce856de543f23cd732ebd15d866099f2e4ee32f0801cdb1c9d7e1e5dbd0a",
+      "fetched_at": "2026-11-27T08:47:08.152318017Z"
+    },
+    {
       "url": "https://signoz.io/docs/dashboards/panel-types/table.md",
       "title": "Table Panel Type",
       "sha256": "0a4695cd40f9d1094879dad97ce3a5bfc5d1a5367b803c8cf7cf088bddb6869e",
@@ -2492,6 +2546,12 @@
       "title": "Text Panel Type - Add Markdown Notes to Dashboards",
       "sha256": "fd33af0177e0574cd8fa90f1a50dc3056bbe5c8aca7a53d7631a8782cfc75cf4",
       "fetched_at": "2026-11-19T15:53:20.520415+05:30"
+    },
+    {
+      "url": "https://signoz.io/docs/dashboards/panel-types/top-list.md",
+      "title": "Top List Panel Type - Rank Groups by a Single Value",
+      "sha256": "aacf945620de0f50c79bcb945d20397b97d03689e2280ee59bfc021bc20e6508",
+      "fetched_at": "2026-11-27T08:47:08.162595978Z"
     },
     {
       "url": "https://signoz.io/docs/dashboards/panel-types/value.md",
@@ -4194,8 +4254,8 @@
     {
       "url": "https://signoz.io/docs/ai/signoz-mcp-server.md",
       "title": "SigNoz MCP Server",
-      "sha256": "3270214540754cbc0f137613b99451509a6ddf9f63a78f6f8d404cb2c6341b82",
-      "fetched_at": "2026-11-19T15:53:26.199437+05:30"
+      "sha256": "2661a2e1c65aa83e18cc0b011ff9add3b815686aa3b86b42705fea6ea059bd87",
+      "fetched_at": "2026-11-27T08:47:08.161139006Z"
     },
     {
       "url": "https://signoz.io/docs/ai/agent-skills.md",
@@ -4608,8 +4668,8 @@
     {
       "url": "https://signoz.io/docs/integrations/aws/one-click-aws-integrations.md",
       "title": "AWS One-Click Integration - Collect AWS Metrics and Logs",
-      "sha256": "a38867ceede8d468d425f6c4415ec3d284b6dc768bcd70ea4ced18a195828c41",
-      "fetched_at": "2026-11-23T10:26:26.350859427Z"
+      "sha256": "bd3d8179c36d9395924a28d8e3a24ec684958f5edb0be02c696fbccbb4efa214",
+      "fetched_at": "2026-11-27T08:47:08.167691705Z"
     },
     {
       "url": "https://signoz.io/docs/integrations/aws/alb.md",
@@ -5136,8 +5196,8 @@
     {
       "url": "https://signoz.io/docs/ingestion/signoz-cloud/keys.md",
       "title": "Ingestion Keys",
-      "sha256": "0068b8d8719e9e8124f0a23924893f904a039776e9193a547032f68c507e3971",
-      "fetched_at": "2026-11-19T15:53:32.093758+05:30"
+      "sha256": "aca67990d1010cd9ce4205592dd3deedbf874ca91eb07a8fb9005c8dafcfa76c",
+      "fetched_at": "2026-11-27T08:47:08.164100811Z"
     },
     {
       "url": "https://signoz.io/docs/ingestion/signoz-cloud/troubleshooting/troubleshooting.md",
@@ -5232,8 +5292,8 @@
     {
       "url": "https://signoz.io/docs/telemetry-stats-api.md",
       "title": "Stats API - Verify SigNoz Telemetry Ingestion Health",
-      "sha256": "6660c674b6c2879e62c7bf78b95f2f5e11f3f2519109aa818871bdc3c708ba48",
-      "fetched_at": "2026-11-19T15:53:29.454331+05:30"
+      "sha256": "f7740f26d387d67cba9f5966e647efb10d7a1b5e086ef67e1f8a45b7d0ce5067",
+      "fetched_at": "2026-11-27T08:47:08.195650122Z"
     },
     {
       "url": "https://signoz.io/docs/migration/migrate-to-signoz.md",
@@ -5243,9 +5303,9 @@
     },
     {
       "url": "https://signoz.io/docs/migration/migrate-from-datadog-to-signoz.md",
-      "title": "Migrate From Datadog to SigNoz",
-      "sha256": "1fdf24c7e0a37f85486ff0b4f8c08003c64f45c04de0ef1fce8a350994e9ae2a",
-      "fetched_at": "2026-11-19T15:53:29.542274+05:30"
+      "title": "Migrate From Datadog to SigNoz: Metrics, Traces, Logs",
+      "sha256": "5d9969fbfd95843d8550658e2ab6d71063eca7db12021dcc041589c7b0c8e847",
+      "fetched_at": "2026-11-27T08:47:08.205447764Z"
     },
     {
       "url": "https://signoz.io/docs/migration/migrate-from-datadog/metrics.md",
@@ -5267,9 +5327,9 @@
     },
     {
       "url": "https://signoz.io/docs/migration/migrate-from-datadog/dashboards.md",
-      "title": "Migrate Dashboards from Datadog",
-      "sha256": "fcc32fbff47296e61225925873a61d8c1755af4bdd392dad9f8e2fe4c3dfe195",
-      "fetched_at": "2026-11-19T15:53:29.744368+05:30"
+      "title": "Migrate Datadog Dashboards to SigNoz: AI, Templates, Panels",
+      "sha256": "10ae703208265714142214afa2e979ad8dd26853923b8fc47b242f945edeb665",
+      "fetched_at": "2026-11-27T08:47:08.192791469Z"
     },
     {
       "url": "https://signoz.io/docs/migration/migrate-from-datadog/alerts.md",
@@ -5309,15 +5369,15 @@
     },
     {
       "url": "https://signoz.io/docs/migration/migrate-from-grafana/dashboards.md",
-      "title": "Migrate Dashboards from LGTM Stack",
-      "sha256": "f6cb5fd89754c9c73d3bc57543abcd2c63ef7d0349876c2d8663e1fb2016555c",
-      "fetched_at": "2026-11-19T15:53:29.956689+05:30"
+      "title": "Migrate Grafana Dashboards to SigNoz from the LGTM Stack",
+      "sha256": "6d5f8c955d8e95cce5c512c21e6423dd007fd24f569f0baf6ecfab026cd47b9f",
+      "fetched_at": "2026-11-27T08:47:08.187939943Z"
     },
     {
       "url": "https://signoz.io/docs/migration/migrate-from-grafana/alerts.md",
-      "title": "Migrate Alerts from LGTM Stack",
-      "sha256": "c6d573199d98e54679b5ff4f2959901b7df029703a2d21a54662a237b7a1bccb",
-      "fetched_at": "2026-11-19T15:53:29.676626+05:30"
+      "title": "Migrate Grafana Alerts to SigNoz from the LGTM Stack",
+      "sha256": "1d83e8a9f5e8d192cdfa6830fa2c800cd1adc04c2a8bb0f19dd4dedeaa2f7713",
+      "fetched_at": "2026-11-27T08:47:08.192071766Z"
     },
     {
       "url": "https://signoz.io/docs/migration/migrate-from-elk-to-signoz.md",
@@ -5345,9 +5405,9 @@
     },
     {
       "url": "https://signoz.io/docs/migration/migrate-from-elk/dashboards.md",
-      "title": "Migrate Dashboards from ELK Stack",
-      "sha256": "508104baf97c92a942248ef990973ab0ef1e6cc40e4747f88e63c71a6922a0d4",
-      "fetched_at": "2026-11-19T15:53:31.312315+05:30"
+      "title": "Migrate Kibana Dashboards to SigNoz - Templates and Panels",
+      "sha256": "a1131cda9c63a08f2279afab4e8ef17181e64f1db418c0d009dc748eb6076b9b",
+      "fetched_at": "2026-11-27T08:47:08.201389299Z"
     },
     {
       "url": "https://signoz.io/docs/migration/migrate-from-elk/alerts.md",
@@ -5405,9 +5465,9 @@
     },
     {
       "url": "https://signoz.io/docs/migration/migrate-from-honeycomb/dashboards.md",
-      "title": "Migrate Dashboard from Honeycomb to SigNoz",
-      "sha256": "0010f9df1db045ba86eeafd3ab9f27af562046f582c8f9379a1883932ec9868c",
-      "fetched_at": "2026-11-19T15:53:30.123812+05:30"
+      "title": "Migrate Honeycomb Dashboards to SigNoz - Panels and Queries",
+      "sha256": "a5135bf07d83404bb45403569ce2fee6e4b9dce1c8157fbeae9ce4ccfdd0fc36",
+      "fetched_at": "2026-11-27T08:47:08.226174418Z"
     },
     {
       "url": "https://signoz.io/docs/migration/migrate-from-honeycomb/alerts.md",
@@ -5856,8 +5916,8 @@
     {
       "url": "https://signoz.io/docs/faqs/general.md",
       "title": "General FAQs",
-      "sha256": "087e56c69fa97f134302b0ee207d8d066f17b2d55714c621b69a4943a7bda09d",
-      "fetched_at": "2026-11-23T10:26:26.343984919Z"
+      "sha256": "d475e3d5539e71d5dce686addfbababf7856ae61fd7ca050390fa6f935bb172e",
+      "fetched_at": "2026-11-27T08:47:08.130542503Z"
     },
     {
       "url": "https://signoz.io/docs/faqs/product.md",
