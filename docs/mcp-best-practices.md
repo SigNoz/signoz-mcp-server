@@ -349,6 +349,54 @@ section governs the judgment layer.
   highest-priority findings; "no findings" is a valid result. Findings are
   advisory, not blocking.
 
+### Running an EVL-1 evaluation
+
+No harness is checked in. An evaluation is a set of client sessions run against
+two builds of the server, with the result recorded in the PR.
+
+It applies when a PR changes text an agent reads to choose or fill a call: a
+tool or parameter description, a result note, an error text, or the server
+instructions. A new optional parameter counts. Its description loads with the
+tool, so it can change how agents answer questions that never needed it.
+
+1. **Write the prompts and the pass measure before running.** Use the three
+   kinds EVL-1 names:
+   - A direct prompt names the feature.
+   - An indirect prompt states the user's goal in their own words, without the
+     tool or parameter name.
+   - A negative prompt is a neighbouring question that must not take the new
+     path. It is the check that existing workflows still work.
+
+   Add a prompt that reaches the failed call when the change touches an error
+   text or a recovery note. A pass is either the call the agent made (tool and
+   arguments) or its final answer against a known value.
+2. **Run two builds against one backend.** Build the server from the base
+   branch and from the PR head, and point both at the same SigNoz with the
+   same data. Choose data for which the wrong path returns a different answer
+   from the right one, so a miss shows. A fake SigNoz that records requests is
+   enough when only the calls are scored.
+3. **Keep the sessions comparable.** Use the same client and model for both
+   builds. Start each run in a fresh session with only this server configured
+   and no skills or other instruction sources. Alternate the builds instead of
+   running one after the other.
+4. **Repeat each prompt.** Run every prompt at least three times per build and
+   report the passes out of the runs. A single run per build cannot separate a
+   change from run-to-run variation.
+5. **Read the negatives first.** The change passes when no prompt passes less
+   often than on the base branch and the prompts it targets pass more often. A
+   negative that gets worse is a finding even when every target prompt
+   improves. A target prompt that already passed on the base branch is a
+   result to report, not a failure. Compare turns per session too when the
+   change adds a step.
+6. **Record it in the PR and the plan.** Give the client and its version, the
+   model, both commits, the backend and its data, the prompts, and one row per
+   prompt with the passes per build. Say whether the client loaded tools up
+   front or on demand: a client that defers tool loading reads a description
+   only after it searches for the tool. State the limits (how many clients,
+   models, and runs), and name any run you excluded and why.
+
+EVL-1 is a `SHOULD`. A PR that skips the evaluation says why in its body.
+
 ### PR checklist
 
 For any PR touching a client-visible MCP surface, review the applicable items:
@@ -393,3 +441,6 @@ For any PR touching a client-visible MCP surface, review the applicable items:
 - [ ] No silent breaking change; intentional breaks carry migration note; aliases tracked, not dropped or promised forever (CMP-1, CMP-2)
 - [ ] README/manifest/docs/tests sync done; companion agent-skills outcome stated and linked when needed (CMP-3)
 - [ ] Runtime changes prove both protocol eras on every production transport and enumerate only narrow protocol-owned differences (CMP-4, CMP-5, CMP-6)
+
+**Evaluation**
+- [ ] Changed guidance evaluated before and after with direct, indirect, and negative prompts, with per-build results in the PR; or the reason for skipping stated (EVL-1)
