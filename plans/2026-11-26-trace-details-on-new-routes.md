@@ -124,7 +124,8 @@ Constraints:
   PRs, answered 10 of the eval questions (1 run each, Sonnet): 9 correct, 1.6 tool calls per answer,
   no result over the client's limit. The miss is the small-trace case in Open questions. Results
   carried `webUrl` and their notes. This is a spot check, not the 40-question eval.
-- After moving to the generated client the live check was repeated on 6 questions: 6 correct.
+- After moving to the generated client the live check was repeated on 6 questions: 6 correct. On the
+  final code, 7 questions: 7 correct, 1.1 tool calls per answer.
 - `GOTOOLCHAIN=go1.26.11 make ci` passes on the staged change: format, lint, dependencies, build,
   race tests, guardrails, protocol, conformance, e2e style, and repository docs. `make gen-check`
   was not run.
