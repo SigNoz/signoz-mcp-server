@@ -199,9 +199,8 @@ type TraceSearchOptions struct {
 	OrderDir  string
 }
 
-// SpanSearch builds the raw request signoz_search_traces and
-// signoz_get_trace_details send: one row per span, newest first unless
-// OrderExpr is set. With builder_ai_query the spans come from AI traces.
+// SpanSearch builds the raw request signoz_search_traces sends: one row per
+// span, newest first unless OrderExpr is set. With builder_ai_query the spans come from AI traces.
 func SpanSearch(start, end int64, opts TraceSearchOptions) (Request, error) {
 	order := newOrderBy("timestamp", "desc")
 	if opts.OrderExpr != "" {

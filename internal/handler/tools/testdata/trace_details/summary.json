@@ -1,0 +1,1 @@
+{"status":"success","data":{"startTimestampMillis":1795684155621,"endTimestampMillis":1795684156033,"rootServiceName":"documents-api","rootServiceEntryPoint":"POST /api/documents/{id}/archive","rootSpanStatusCode":"500","totalSpansCount":10,"totalErrorSpansCount":2,"hasMissingSpans":false}}

@@ -8,8 +8,8 @@ type DashboardtypesDashboardSpec struct {
 	// Display The dashboard title and description.
 	Display DashboardtypesDisplay `json:"display" jsonschema:"The dashboard title and description."`
 
-	// Duration The default time range, as a Prometheus duration such as 1h or 7d. Stored, but not applied by the UI.
-	Duration *string `json:"duration,omitempty" jsonschema:"The default time range, as a Prometheus duration such as 1h or 7d. Stored, but not applied by the UI."`
+	// Duration The default time range, as a Prometheus duration such as 1h or 7d. The UI opens the dashboard on it, rounded up to whole minutes, when neither the URL nor the viewer's last pick sets a time range.
+	Duration *string `json:"duration,omitempty" jsonschema:"The default time range, as a Prometheus duration such as 1h or 7d. The UI opens the dashboard on it, rounded up to whole minutes, when neither the URL nor the viewer's last pick sets a time range."`
 
 	// Layouts The Grid layouts that place panels, at most 500. Each panel can be placed at most once. Use [] for none.
 	Layouts []DashboardtypesLayout `json:"layouts" jsonschema:"The Grid layouts that place panels, at most 500. Each panel can be placed at most once. Use [] for none."`

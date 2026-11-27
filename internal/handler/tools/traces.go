@@ -3,7 +3,6 @@ package tools
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"strconv"
 	"strings"
@@ -78,9 +77,16 @@ func (h *Handler) RegisterTracesHandlers(s *mcp.Server) {
 	getTraceDetailsTool := mcp.NewTool("signoz_get_trace_details",
 		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description(searchContextParamDescription)),
-		mcp.WithDescription("Use this when the user already has a known trace ID and wants that trace's spans, metadata, and hierarchy. If the ID is unknown, discover it with signoz_search_traces first. Each span comes back as its complete record: the span fields plus its attributes and resource maps, events, and links. SigNoz locates the trace by its ID alone, so no time window is needed; an ID SigNoz does not know returns no spans. Do not use this for filtering many spans or aggregate analysis."),
+		mcp.WithDescription(traceDetailsToolDescription),
 		mcp.WithString("traceId", mcp.Required(), mcp.Description(traceIDParamDescription)),
-		mcp.WithBoolean("includeSpans", boolOrStringType(), mcp.Description(includeSpansParamDescription)),
+		mcp.WithString("spanId", mcp.Description(traceSpanIDParamDescription)),
+		mcp.WithBoolean("includeOverview", boolOrStringType(), mcp.Description(traceIncludeOverviewParamDescription)),
+		mcp.WithString("scope", mcp.Enum("all", "descendants", "children", "ancestors"), mcp.Description(traceScopeParamDescription)),
+		mcp.WithArray("view", stringOrStringArrayType(), mcp.Description(traceViewParamDescription)),
+		mcp.WithString("search", mcp.Description(traceSearchParamDescription)),
+		mcp.WithArray("selectFields", stringOrStringArrayType(), mcp.Description(traceSelectFieldsParamDescription)),
+		mcp.WithString("pageSize", intOrStringType(), mcp.Description(tracePageSizeParamDescription)),
+		mcp.WithString("cursor", mcp.Description(traceCursorParamDescription)),
 	)
 
 	h.addTool(s, getTraceDetailsTool, h.handleGetTraceDetails)
@@ -220,45 +226,6 @@ func aiSearchNotes(reqData *SearchTracesRequest, payload []byte) []string {
 		notes = append(notes, aiNoRowsNote)
 	}
 	return notes
-}
-
-func (h *Handler) handleGetTraceDetails(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	args, errResult := requireArgsMap(req.Params.Arguments)
-	if errResult != nil {
-		return errResult, nil
-	}
-
-	traceID, errResult := requireStringArg(args, "traceId")
-	if errResult != nil {
-		return errResult, nil
-	}
-
-	includeSpans := true
-	if v, present, err := parseBoolArg(args, "includeSpans"); err != nil {
-		return errorWithCode(CodeValidationFailed, fmt.Sprintf(`Parameter validation failed: %s`, err.Error())), nil
-	} else if present {
-		includeSpans = v
-	}
-
-	h.logger.DebugContext(ctx, "Tool called: signoz_get_trace_details", slog.String("traceId", traceID), slog.Bool("includeSpans", includeSpans))
-	client, base, clientErr := h.getResourceClient(ctx)
-	if clientErr != nil {
-		return clientErr, nil
-	}
-	result, err := client.GetTraceDetails(ctx, traceID, includeSpans)
-	if err != nil {
-		h.logUpstreamFailure(ctx, "Failed to get trace details", err, slog.String("traceId", traceID))
-		return upstreamError(err), nil
-	}
-	result = h.enrichTraceWebURL(ctx, base, result, traceID)
-	return structuredResult(result), nil
-}
-
-// enrichTraceWebURL injects a webUrl deep link into a single-trace passthrough
-// body. Delegates to util.InjectWebURL, which preserves large int64 fields
-// (e.g. duration_nano) and fails open on unparseable input.
-func (h *Handler) enrichTraceWebURL(ctx context.Context, base string, data []byte, traceID string) []byte {
-	return util.InjectWebURL(data, base, "trace", traceID)
 }
 
 // enrichSearchTracesWebURL injects a per-row webUrl deep link into a search

@@ -33,7 +33,10 @@ type RuletypesListableRule struct {
 	RuleType RuletypesRuleType `json:"ruleType" jsonschema:"The evaluation strategy: threshold_rule, promql_rule or anomaly_rule."`
 
 	// State The current evaluation state: inactive, pending, recovering, firing, nodata or disabled.
-	State     RuletypesAlertState `json:"state" jsonschema:"The current evaluation state: inactive, pending, recovering, firing, nodata or disabled."`
-	UpdatedAt *time.Time          `json:"updatedAt,omitempty"`
-	UpdatedBy *string             `json:"updatedBy,omitempty"`
+	State RuletypesAlertState `json:"state" jsonschema:"The current evaluation state: inactive, pending, recovering, firing, nodata or disabled."`
+
+	// Thresholds The rule's threshold names in lowercase, deduplicated and ordered critical, error, warning, info, then other names. An alert carries the name of the threshold that fired as its severity. Read-only.
+	Thresholds []string   `json:"thresholds" jsonschema:"The rule's threshold names in lowercase, deduplicated and ordered critical, error, warning, info, then other names. An alert carries the name of the threshold that fired as its severity. Read-only."`
+	UpdatedAt  *time.Time `json:"updatedAt,omitempty"`
+	UpdatedBy  *string    `json:"updatedBy,omitempty"`
 }

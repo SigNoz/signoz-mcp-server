@@ -57,3 +57,11 @@ data_sources:
   span_mapper_groups: {read: {path: /api/v1/span_mapper_groups, method: GET}}
   span_mappers: {read: {path: "/api/v1/span_mapper_groups/{groupId}/span_mappers", method: GET}}
   span_mapper_test: {read: {path: /api/v1/span_mapper_groups/test, method: POST}}
+  trace_summary: {read: {path: "/api/v1/traces/{traceID}/summary", method: GET}}
+  trace_highlights: {read: {path: "/api/v1/traces/{traceID}/highlights", method: GET}}
+  trace_spans: {read: {path: "/api/v1/traces/{traceID}/spans", method: GET}}
+  trace_span: {read: {path: "/api/v1/traces/{traceID}/spans/{spanID}", method: GET}}
+  trace_span_children: {read: {path: "/api/v1/traces/{traceID}/spans/{spanID}/children", method: GET}}
+  trace_span_descendants: {read: {path: "/api/v1/traces/{traceID}/spans/{spanID}/descendants", method: GET}}
+  trace_span_ancestors: {read: {path: "/api/v1/traces/{traceID}/spans/{spanID}/ancestors", method: GET}}
+  trace_thread: {read: {path: "/api/v1/traces/{traceID}/thread", method: GET}}

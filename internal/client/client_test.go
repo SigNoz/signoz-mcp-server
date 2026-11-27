@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -582,56 +581,6 @@ func TestGetMetricMetadata_RequestsTheExactName(t *testing.T) {
 	var statusErr *HTTPStatusError
 	require.ErrorAs(t, err, &statusErr)
 	require.Equal(t, http.StatusNotFound, statusErr.StatusCode)
-}
-
-func TestGetTraceDetails_LetsSigNozNarrowAWindowThatCoversAnyTrace(t *testing.T) {
-	var captured []byte
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, http.MethodPost, r.Method)
-		assert.Equal(t, "/api/v5/query_range", r.URL.Path)
-		body, err := io.ReadAll(r.Body)
-		assert.NoError(t, err)
-		captured = body
-		_, _ = w.Write([]byte(`{"status":"success","data":{"result":[]}}`))
-	}))
-	defer server.Close()
-
-	client := NewClient(logpkg.New("error"), server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
-
-	before := time.Now().UnixMilli()
-	_, err := client.GetTraceDetails(context.Background(), "abc123", true)
-	require.NoError(t, err)
-	var request struct {
-		Start          int64 `json:"start"`
-		End            int64 `json:"end"`
-		CompositeQuery struct {
-			Queries []struct {
-				Spec struct {
-					Filter struct {
-						Expression string `json:"expression"`
-					} `json:"filter"`
-					Limit        int             `json:"limit"`
-					Order        json.RawMessage `json:"order"`
-					SelectFields json.RawMessage `json:"selectFields"`
-				} `json:"spec"`
-			} `json:"queries"`
-		} `json:"compositeQuery"`
-	}
-	require.NoError(t, json.Unmarshal(captured, &request))
-	require.Less(t, request.Start, time.Date(2002, 1, 1, 0, 0, 0, 0, time.UTC).UnixMilli(), "the window reaches back past any stored trace")
-	require.Len(t, strconv.FormatInt(request.Start, 10), 13, "SigNoz reads only a 13-digit start as milliseconds")
-	require.GreaterOrEqual(t, request.End, before, "the window reaches the present")
-	require.Len(t, request.CompositeQuery.Queries, 1)
-	spec := request.CompositeQuery.Queries[0].Spec
-	require.Equal(t, "trace_id = 'abc123'", spec.Filter.Expression)
-	require.Equal(t, 1000, spec.Limit)
-	require.Nil(t, spec.SelectFields, "no selectFields, so SigNoz returns each span's complete record")
-	require.JSONEq(t, `[{"key":{"name":"timestamp"},"direction":"desc"}]`, string(spec.Order))
-
-	// A quote in the ID stays inside the literal instead of adding conditions.
-	_, err = client.GetTraceDetails(context.Background(), "x' OR trace_id != 'y", true)
-	require.NoError(t, err)
-	require.Contains(t, string(captured), `"expression":"trace_id = 'x\\' OR trace_id != \\'y'"`)
 }
 
 func TestGetFieldKeys(t *testing.T) {
