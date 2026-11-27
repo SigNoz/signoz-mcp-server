@@ -29,6 +29,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+
+## [1.0.1] - 2026-11-27
+
+### Added
+- adding support for audit logs ([#464](https://github.com/SigNoz/signoz-mcp-server/pull/464))
+- let the agent name the app that hosts it ([#484](https://github.com/SigNoz/signoz-mcp-server/pull/484))
+- tell agents to send feedback in the server instructions ([#482](https://github.com/SigNoz/signoz-mcp-server/pull/482))
+
+### Fixed
+- reject SigNoz URL hosts that contain a percent sign ([#486](https://github.com/SigNoz/signoz-mcp-server/pull/486))
+- keep searchContext from blocking calls ([#483](https://github.com/SigNoz/signoz-mcp-server/pull/483))
+
+### Documentation
+- say how to run an EVL-1 prompt evaluation ([#485](https://github.com/SigNoz/signoz-mcp-server/pull/485))
+
+### Other
+- query SigNoz audit events seeded on collector v0.144.16 ([#470](https://github.com/SigNoz/signoz-mcp-server/pull/470))
+
 ## [1.0.0] - 2026-11-23
 
 ### Added
@@ -620,3 +638,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [0.19.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.18.0...v0.19.0
 [0.20.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.19.0...v0.20.0
 [1.0.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.20.0...v1.0.0
+[1.0.1]: https://github.com/SigNoz/signoz-mcp-server/compare/v1.0.0...v1.0.1
