@@ -75,6 +75,9 @@ the PR. Budgets and CI mechanics live in `guardrails/README.md`. In the same PR:
 - Update `guardrails/tests.txt` when a `TestGuardrail_*` test is added, removed, or renamed.
 - Add an e2e test in `tests/e2e/tests/` when the behavior depends on SigNoz.
 - Client-visible text follows `docs/client-visible-writing-style.md`.
+- Evaluate a changed description, result note, error text, or server instruction before and after
+  with direct, indirect, and negative prompts (EVL-1). `docs/mcp-best-practices.md` section 11 says
+  how to run one. Put the per-build results in the PR, or the reason for skipping it.
 - `docs/` has no stale references.
 - A breaking change (CMP-1) ships with a compatibility path and a migration note (CMP-2). The
   compatibility path for a retired or renamed input is a coded validation error that names its
